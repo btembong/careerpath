@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 const XP_TABLE: Record<string, number> = {
@@ -119,7 +119,17 @@ export class GamificationService {
     return { xpTotal: user?.xpTotal ?? 0, streak: user?.streak ?? 0, badges, courses: courseProgress, recentXP };
   }
 
-  async getCohortLeaderboard(cohortId: string) {
+  async getCohortLeaderboard(cohortId: string, user: { id: string; role: string }) {
+    // Lists classmates' names, so only cohort members, its teacher, and admins may see it
+    if (user.role !== 'ADMIN') {
+      const cohort = await this.prisma.cohort.findUnique({ where: { id: cohortId }, select: { teacherId: true } });
+      if (!cohort) throw new NotFoundException('Cohort not found');
+      const isMember = cohort.teacherId === user.id || !!(await this.prisma.cohortRoster.findUnique({
+        where: { studentId_cohortId: { studentId: user.id, cohortId } },
+      }));
+      if (!isMember) throw new ForbiddenException('Not a member of this cohort');
+    }
+
     const roster = await this.prisma.cohortRoster.findMany({
       where: { cohortId },
       include: { student: { select: { id: true, name: true, firstName: true, lastName: true, avatarUrl: true, xpTotal: true, streak: true } } },

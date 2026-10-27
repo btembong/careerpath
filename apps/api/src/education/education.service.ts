@@ -311,11 +311,19 @@ export class EducationService {
       subs.forEach(s => submissionMap.set(s.assignmentId, s));
     }
 
-    return assignments.map(a => ({
-      ...a,
-      cohortName: cohortNameMap.get(a.cohortId) ?? null,
-      submission: submissionMap.get(a.id) ?? null,
-    }));
+    return assignments.map(a => {
+      const submission = submissionMap.get(a.id) ?? null;
+      const cohortName = cohortNameMap.get(a.cohortId) ?? null;
+      return {
+        ...a,
+        cohortName,
+        submission,
+        // Flat fields used by the dashboard and calendar widgets
+        dueAt: a.dueDate,
+        status: submission?.status ?? 'NOT_SUBMITTED',
+        course: { title: cohortName ?? undefined },
+      };
+    });
   }
 
   // ── Quiz questions (public, no correctAnswer) ────────────

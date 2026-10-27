@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -18,8 +18,9 @@ export class AlertsService {
     });
   }
 
-  async deleteAlert(id: string) {
-    await this.prisma.progressAlert.delete({ where: { id } });
+  async deleteAlert(id: string, teacherId: string) {
+    const { count } = await this.prisma.progressAlert.deleteMany({ where: { id, teacherId } });
+    if (!count) throw new NotFoundException('Alert not found');
     return { deleted: true };
   }
 
@@ -78,13 +79,19 @@ export class AlertsService {
     }
   }
 
-  async getAtRiskStudents(cohortId: string) {
+  async getAtRiskStudents(cohortId: string, user: { id: string; role: string }) {
+    // Returns names + emails, so only admins and the cohort's own teacher may see it
+    const cohort = await this.prisma.cohort.findUnique({ where: { id: cohortId }, select: { teacherId: true } });
+    if (!cohort) throw new NotFoundException('Cohort not found');
+    if (user.role !== 'ADMIN' && cohort.teacherId !== user.id) throw new ForbiddenException('Not your cohort');
+
     const roster = await this.prisma.cohortRoster.findMany({
       where: { cohortId },
-      include: { student: { select: { id: true, name: true, firstName: true, lastName: true, avatarUrl: true, lastActiveDate: true, xpTotal: true, streak: true } } },
+      include: { student: { select: { id: true, email: true, name: true, firstName: true, lastName: true, avatarUrl: true, lastActiveDate: true, xpTotal: true, streak: true } } },
     });
 
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const DAY = 24 * 60 * 60 * 1000;
+    const sevenDaysAgo = new Date(Date.now() - 7 * DAY);
 
     return roster.map(r => {
       const s = r.student;
@@ -93,9 +100,12 @@ export class AlertsService {
       const riskLevel = isInactive && isLowXP ? 'high' : isInactive || isLowXP ? 'medium' : 'low';
       return {
         id: s.id,
+        studentId: s.id,
+        email: s.email,
         name: s.name ?? ([s.firstName, s.lastName].filter(Boolean).join(' ') || 'Student'),
         avatarUrl: s.avatarUrl,
         lastActiveDate: s.lastActiveDate,
+        daysInactive: s.lastActiveDate ? Math.floor((Date.now() - s.lastActiveDate.getTime()) / DAY) : null,
         xpTotal: s.xpTotal,
         streak: s.streak,
         riskLevel,

@@ -38,7 +38,7 @@ export default function StudyCalendarPage() {
     Promise.all([
       api.get('/live/student/upcoming')
         .then(r => setLiveSessions(r.data ?? [])).catch(() => {}),
-      api.get('/education/assignments')
+      api.get('/education/assignments/mine')
         .then(r => {
           const all: AssignmentDue[] = r.data ?? [];
           setAssignments(all.filter(a => a.status !== 'GRADED'));

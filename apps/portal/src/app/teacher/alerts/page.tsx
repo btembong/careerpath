@@ -18,7 +18,7 @@ interface AtRiskStudent {
   name: string;
   email: string;
   riskLevel: 'high' | 'medium' | 'low';
-  daysInactive: number;
+  daysInactive: number | null;
   xpTotal: number;
 }
 
@@ -59,7 +59,7 @@ export default function AlertsPage() {
     setLoading(true);
     Promise.all([
       api.get(`/alerts?cohortId=${selectedCohort}`),
-      api.get(`/alerts/at-risk?cohortId=${selectedCohort}`),
+      api.get(`/alerts/at-risk/${selectedCohort}`),
     ])
       .then(([aRes, rRes]) => {
         setAlerts(aRes.data ?? []);
@@ -213,7 +213,7 @@ export default function AlertsPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-navy truncate">{s.name || s.email}</p>
                       <p className="text-xs text-royal/50">
-                        {s.daysInactive > 0 ? `Inactive ${s.daysInactive}d` : 'Active recently'} · {s.xpTotal} XP
+                        {s.daysInactive === null ? 'Never active' : s.daysInactive > 0 ? `Inactive ${s.daysInactive}d` : 'Active recently'} · {s.xpTotal} XP
                       </p>
                     </div>
                     <span className={`text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 capitalize ${RISK_COLORS[s.riskLevel]}`}>

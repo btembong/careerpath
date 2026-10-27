@@ -13,7 +13,7 @@ export class GamificationController {
   }
 
   @Get('leaderboard/:cohortId')
-  leaderboard(@Param('cohortId') cohortId: string) {
-    return this.gamificationService.getCohortLeaderboard(cohortId);
+  leaderboard(@Req() req: any, @Param('cohortId') cohortId: string) {
+    return this.gamificationService.getCohortLeaderboard(cohortId, req.user);
   }
 }

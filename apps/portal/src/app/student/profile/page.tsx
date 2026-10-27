@@ -68,7 +68,15 @@ export default function StudentProfilePage() {
           linkedinUrl: u.linkedinUrl ?? '',
         });
       }).catch(() => {}),
-      api.get('/education/certificates').then(r => setCerts(r.data ?? [])).catch(() => {}),
+      api.get('/certificates').then(r => setCerts((r.data ?? []).map((c: {
+        id: string; courseName: string; issuedAt: string; verifyCode: string;
+      }) => ({
+        id: c.id,
+        title: c.courseName,
+        issuedAt: c.issuedAt,
+        course: { title: c.courseName },
+        verifyUrl: `/verify/${c.verifyCode}`,
+      })))).catch(() => {}),
       api.get('/education/enrollments').then(r => setCourses(r.data ?? [])).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, []);

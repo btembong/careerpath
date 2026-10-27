@@ -91,7 +91,7 @@ interface CertProgress {
 interface Rec { courseId: string; title: string; coverUrl?: string; subjectName?: string; tip?: string; }
 interface AssignmentDue { id: string; title: string; dueAt?: string | null; course?: { title?: string }; status?: string; }
 interface LastLesson { courseId: string; courseTitle?: string; lessonId?: string; lessonTitle?: string; pct?: number; coverUrl?: string; }
-interface LeaderboardEntry { userId: string; name: string; progress: number; rank: number; }
+interface LeaderboardEntry { userId: string; name: string; xpTotal: number; rank: number; }
 interface ActivityItem { userId: string; name: string; action: string; target: string; timestamp: string; }
 interface Teacher { id: string; name: string; avatarUrl?: string; subject?: string; }
 interface WeekSnap { sessions: number; certs: number; packages: number; }
@@ -161,14 +161,21 @@ export default function StudentDashboard() {
     ]).finally(() => setLoading(false));
 
     api.get('/ai/recommendations').then(r => setRecs(r.data?.slice(0, 4) ?? [])).catch(() => {});
-    api.get('/education/assignments').then(r => {
+    api.get('/education/assignments/mine').then(r => {
       const all: AssignmentDue[] = r.data ?? [];
       setAssignments(all.filter(a => a.status !== 'GRADED').slice(0, 6));
     }).catch(() => {});
     api.get('/portals/student/last-lesson').then(r => setLastLesson(r.data ?? null)).catch(() => {});
-    api.get('/portals/student/leaderboard').then(r => setLeaderboard(r.data ?? [])).catch(() => {});
     api.get('/portals/student/activity-feed').then(r => setActivityFeed((r.data ?? []).slice(0, 5))).catch(() => {});
     api.get('/portals/student/cohorts').then(r => {
+      const firstCohortId: string | undefined = r.data?.[0]?.id;
+      if (firstCohortId) {
+        api.get(`/gamification/leaderboard/${firstCohortId}`)
+          .then(lb => setLeaderboard((lb.data ?? []).map((e: { id: string; name: string; xpTotal: number; rank: number }) => ({
+            userId: e.id, name: e.name, xpTotal: e.xpTotal ?? 0, rank: e.rank,
+          }))))
+          .catch(() => {});
+      }
       const seen = new Set<string>();
       const unique: Teacher[] = [];
       (r.data ?? []).forEach((c: any) => {
@@ -1235,10 +1242,12 @@ export default function StudentDashboard() {
                     </div>
                     <p className="text-xs font-semibold text-navy flex-1 truncate">{entry.name}</p>
                     <div className="flex items-center gap-2">
+                      {/* Bar is relative to the cohort leader's XP */}
                       <div className="h-1 w-16 rounded-full bg-cloud overflow-hidden">
-                        <div className="h-full rounded-full bg-azure" style={{ width: `${entry.progress}%` }} />
+                        <div className="h-full rounded-full bg-azure"
+                          style={{ width: `${leaderboard[0]?.xpTotal ? Math.round((entry.xpTotal / leaderboard[0].xpTotal) * 100) : 0}%` }} />
                       </div>
-                      <p className="text-[10px] font-bold text-azure w-8 text-right">{entry.progress}%</p>
+                      <p className="text-[10px] font-bold text-azure w-12 text-right">{entry.xpTotal} XP</p>
                     </div>
                   </div>
                 ))}

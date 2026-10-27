@@ -1,9 +1,13 @@
 import { Controller, Get, Post, Delete, Body, Param, UseGuards, Req } from '@nestjs/common';
+import { UserRole } from '@cpa/shared';
 import { AlertsService } from './alerts.service';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('alerts')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.TEACHER, UserRole.ADMIN)
 export class AlertsController {
   constructor(private readonly alertsService: AlertsService) {}
 
@@ -14,10 +18,12 @@ export class AlertsController {
   upsert(@Req() req: any, @Body() body: any) { return this.alertsService.upsertAlert(req.user.id, body); }
 
   @Delete(':id')
-  remove(@Param('id') id: string) { return this.alertsService.deleteAlert(id); }
+  remove(@Req() req: any, @Param('id') id: string) { return this.alertsService.deleteAlert(id, req.user.id); }
 
   @Get('at-risk/:cohortId')
-  atRisk(@Param('cohortId') cohortId: string) { return this.alertsService.getAtRiskStudents(cohortId); }
+  atRisk(@Req() req: any, @Param('cohortId') cohortId: string) {
+    return this.alertsService.getAtRiskStudents(cohortId, req.user);
+  }
 
   @Post('check-certificates')
   checkCerts(@Body() body: { studentId: string; courseId: string }) {
