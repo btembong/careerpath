@@ -74,6 +74,11 @@ model UserProfile {
   onboardingVideoViews OnboardingVideoView[]
   notifications        Notification[]
   broadcastsSent       Broadcast[]
+  /// Shareable code, generated the first time the student opens the referrals page
+  referralCode         String?        @unique
+  referredById         String?
+  referredBy           UserProfile?   @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals            UserProfile[]  @relation("Referrals")
 }
 
 /// In-app inbox item. `type` matches the portal's icons: live | assignment | grade | certificate | message | system.

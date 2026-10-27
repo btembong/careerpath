@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, IsOptional, IsPhoneNumber, IsUUID } from 'class-validator';
+import { IsEmail, IsString, MinLength, MaxLength, IsOptional, IsPhoneNumber, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterStudentDto {
@@ -35,4 +35,10 @@ export class RegisterStudentDto {
   @IsString()
   @IsOptional()
   programTrack?: string;
+
+  @ApiPropertyOptional({ example: 'CPA-7K2Q9M', description: 'Code from a referral link; unknown codes are ignored' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  referralCode?: string;
 }

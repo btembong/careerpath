@@ -50,10 +50,10 @@ export default function StudentReferralsPage() {
     </div>
   );
 
-  // Use code from API if available, else derive from user ID
-  const code = stats?.referralCode ?? (me?.id ?? 'XXXXXXXX').slice(0, 8).toUpperCase();
+  // Only a code issued by the API is tracked — never show an invented one
+  const code = stats?.referralCode ?? '—';
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://careerpathafrica.com';
-  const referralLink = `${origin}/register?ref=${code}`;
+  const referralLink = stats?.referralCode ? `${origin}/register?ref=${stats.referralCode}` : '';
 
   async function copyLink() {
     try {

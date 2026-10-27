@@ -13,6 +13,7 @@ import { WordPressService, portalRoleFromWp } from '../wordpress/wordpress.servi
 import { MailService } from '../mail/mail.service';
 import { RedisService } from '../redis/redis.service';
 import { OnboardingVideoService } from '../onboarding-video/onboarding-video.service';
+import { ReferralsService } from '../referrals/referrals.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterStudentDto } from './dto/register-student.dto';
 import { RegisterTeacherDto } from './dto/register-teacher.dto';
@@ -35,6 +36,7 @@ export class AuthService {
     private mail: MailService,
     private redis: RedisService,
     private onboardingVideo: OnboardingVideoService,
+    private referrals: ReferralsService,
   ) {}
 
   // ── OTP ──────────────────────────────────────────────────
@@ -185,6 +187,8 @@ export class AuthService {
       wpRole: 'subscriber',
     });
 
+    const referredById = await this.referrals.findReferrer(dto.referralCode);
+
     const profile = await this.prisma.userProfile.create({
       data: {
         wpUserId,
@@ -195,6 +199,7 @@ export class AuthService {
         firstName:      dto.firstName  || null,
         lastName:       dto.lastName   || null,
         phone:          dto.phone      || null,
+        referredById,
       },
     });
 

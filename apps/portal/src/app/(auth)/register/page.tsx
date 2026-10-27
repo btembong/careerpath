@@ -1209,7 +1209,20 @@ function TeacherWizard({ countries, onStepChange }: { countries: Country[]; onSt
 // ── Student Form ────────────────────────────────────────────────────────────
 function StudentForm({ countries, nextUrl }: { countries: Country[]; nextUrl?: string | null }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '', phone: '', countryId: '' });
+
+  // Referral code from ?ref=…, kept for the session in case the role picker changes the URL
+  const [referralCode, setReferralCode] = useState('');
+  useEffect(() => {
+    const fromUrl = searchParams?.get('ref')?.trim();
+    try {
+      if (fromUrl) sessionStorage.setItem('cpa_ref', fromUrl);
+      setReferralCode(fromUrl || sessionStorage.getItem('cpa_ref') || '');
+    } catch {
+      setReferralCode(fromUrl ?? '');
+    }
+  }, [searchParams]);
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1253,7 +1266,8 @@ function StudentForm({ countries, nextUrl }: { countries: Country[]; nextUrl?: s
     setError(''); setOtpLoading(true);
     try {
       await api.post('/auth/otp/verify', { email: form.email, code: otp.trim() });
-      const { data } = await api.post('/auth/register/student', form);
+      const { data } = await api.post('/auth/register/student', { ...form, ...(referralCode && { referralCode }) });
+      try { sessionStorage.removeItem('cpa_ref'); } catch { /* storage unavailable */ }
       if (data.accessToken) {
         await setAuthToken(data.accessToken, true);
         const decoded = jwtDecode<{ role: string }>(data.accessToken);
