@@ -15,6 +15,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/portal/node_modules ./apps/portal/node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_STANDALONE=1
 RUN pnpm --filter @cpa/portal build
 
 # ── runner ────────────────────────────────────────────────────────────────
