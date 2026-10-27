@@ -442,11 +442,7 @@ function TeacherWizard({ countries, onStepChange }: { countries: Country[]; onSt
   useEffect(() => {
     if (step !== 2 || taxSubjects.length > 0) return;
     setTaxLoading(true);
-    Promise.all([
-      api.get('/catalogue/programmes'),
-      api.get('/catalogue/programmes').then(() => api.get('/catalogue/programmes')), // fetch subjects via programmes
-    ]).catch(() => {});
-    // Load subjects from all programmes
+    // Programmes carry their subjects, so one request gives both lists
     api.get('/catalogue/programmes')
       .then(r => {
         const allSubjects: TaxSubject[] = [];
@@ -459,6 +455,7 @@ function TeacherWizard({ countries, onStepChange }: { countries: Country[]; onSt
         setTaxSubjects(allSubjects.sort((a: TaxSubject, b: TaxSubject) => a.name.localeCompare(b.name)));
         setTaxProgrammes(r.data.map((p: any) => ({ id: p.id, name: p.name, shortName: p.shortName, type: p.type })));
       })
+      .catch(() => {})
       .finally(() => setTaxLoading(false));
   }, [step]);
 

@@ -70,6 +70,8 @@ services:
     env_file:
       - .env
     environment:
+      # Required: disables DEMO_ACCOUNTS (apps/api/.env is mounted below) and enforces a strong JWT_SECRET
+      NODE_ENV: production
       DATABASE_URL: postgresql://cpa_user:cpa_password@postgres:5432/cpa_db
       REDIS_URL: redis://redis:6379
     ports:

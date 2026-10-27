@@ -3,7 +3,17 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
+/** Anyone who knows a default secret can sign their own admin token — refuse to run with one in production. */
+function assertProductionSecrets() {
+  if (process.env.NODE_ENV !== 'production') return;
+  const secret = process.env.JWT_SECRET ?? '';
+  if (secret.length < 32 || /change_?me|changeme|secret/i.test(secret)) {
+    throw new Error('JWT_SECRET must be a random value of at least 32 characters in production.');
+  }
+}
+
 async function bootstrap() {
+  assertProductionSecrets();
   // rawBody: true is required for Paystack + Tranzak webhook signature verification
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
