@@ -33,3 +33,6 @@ pnpm-debug.log*
 
 # docker volumes
 postgres_data
+
+# Git Bash crash dumps
+*.stackdump
