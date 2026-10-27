@@ -67,6 +67,20 @@ export default function TeacherWalletPage() {
     return m;
   }, [courses]);
 
+  // Must stay above the loading early-return: hooks have to run in the same order every render
+  const courseEarnings = useMemo(() => {
+    const map: Record<string, { title: string; amount: number; count: number }> = {};
+    for (const tx of wallet?.transactions ?? []) {
+      if (tx.type !== 'CREDIT' || !tx.courseId) continue;
+      if (!map[tx.courseId]) {
+        map[tx.courseId] = { title: courseMap[tx.courseId] ?? `Course …${tx.courseId.slice(-6)}`, amount: 0, count: 0 };
+      }
+      map[tx.courseId].amount += tx.amount;
+      map[tx.courseId].count  += 1;
+    }
+    return Object.entries(map).sort((a, b) => b[1].amount - a[1].amount);
+  }, [wallet, courseMap]);
+
   if (loading) return (
     <div className="flex flex-col min-h-full">
       <SkeletonTopbar />
@@ -92,18 +106,6 @@ export default function TeacherWalletPage() {
     .filter(p => p.status === 'PAID' || p.paidAt)
     .reduce((s, p) => s + Number(p.amount ?? 0), 0);
 
-  const courseEarnings = useMemo(() => {
-    const map: Record<string, { title: string; amount: number; count: number }> = {};
-    for (const tx of txns) {
-      if (tx.type !== 'CREDIT' || !tx.courseId) continue;
-      if (!map[tx.courseId]) {
-        map[tx.courseId] = { title: courseMap[tx.courseId] ?? `Course …${tx.courseId.slice(-6)}`, amount: 0, count: 0 };
-      }
-      map[tx.courseId].amount += tx.amount;
-      map[tx.courseId].count  += 1;
-    }
-    return Object.entries(map).sort((a, b) => b[1].amount - a[1].amount);
-  }, [txns, courseMap]);
 
   return (
     <div className="flex flex-col min-h-full">

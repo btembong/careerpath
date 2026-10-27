@@ -54,7 +54,7 @@ export class TeachersService {
     ]);
 
     return {
-      data: teachers.map(this.formatTeacher),
+      data: teachers.map(t => this.formatTeacher(t)),
       total,
       page,
       pages: Math.ceil(total / limit),
