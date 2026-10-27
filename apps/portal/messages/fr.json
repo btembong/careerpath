@@ -1,0 +1,84 @@
+{
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "courses": "Mes cours",
+    "search": "Rechercher",
+    "teachers": "Enseignants",
+    "messages": "Messages",
+    "mentorship": "Mentorat",
+    "assignments": "Devoirs",
+    "certificates": "Certificats",
+    "wallet": "Portefeuille",
+    "community": "Communauté",
+    "support": "Aide & Support",
+    "logout": "Se déconnecter"
+  },
+  "dashboard": {
+    "welcome": "Bon retour, {name} !",
+    "subtitle": "Voici ce qui se passe dans votre parcours d'apprentissage"
+  },
+  "courses": {
+    "title": "Mes cours",
+    "subtitle": "Tous vos cours inscrits",
+    "empty": "Pas encore de cours",
+    "emptyDescription": "Inscrivez-vous à un forfait pour accéder à votre premier cours",
+    "progress": "Progression",
+    "completed": "Terminé",
+    "inProgress": "En cours",
+    "notStarted": "Pas commencé",
+    "startLearning": "Commencer",
+    "continueLearning": "Continuer",
+    "reviewCourse": "Revoir le cours"
+  },
+  "search": {
+    "title": "Recherche",
+    "placeholder": "Rechercher des cours, matières, enseignants…",
+    "tabs": {
+      "all": "Tout",
+      "courses": "Cours",
+      "teachers": "Enseignants"
+    },
+    "noResults": "Aucun résultat pour « {query} »",
+    "prompt": "Rechercher n'importe quoi",
+    "promptSub": "Cours, enseignants, matières, programmes…"
+  },
+  "teachers": {
+    "title": "Nos enseignants",
+    "subtitle": "Trouvez le tuteur idéal pour vos objectifs",
+    "topRated": "Mieux noté",
+    "risingStar": "Étoile montante",
+    "new": "Nouveau",
+    "bookSession": "Réserver une séance",
+    "message": "Message",
+    "noReviews": "Pas encore d'avis",
+    "reviews": "{count, plural, one {# avis} other {# avis}}"
+  },
+  "messages": {
+    "title": "Messages",
+    "subtitle": "Discutez avec vos enseignants et étudiants",
+    "noConversations": "Pas encore de conversations",
+    "noConversationsDescription": "Envoyez un message à un enseignant depuis sa page de profil",
+    "typeMessage": "Tapez un message… (Entrée pour envoyer)",
+    "send": "Envoyer"
+  },
+  "auth": {
+    "login": "Se connecter",
+    "register": "S'inscrire",
+    "logout": "Se déconnecter",
+    "email": "Adresse e-mail",
+    "password": "Mot de passe",
+    "forgotPassword": "Mot de passe oublié ?",
+    "noAccount": "Pas encore de compte ?",
+    "hasAccount": "Vous avez déjà un compte ?"
+  },
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "loading": "Chargement…",
+    "error": "Quelque chose a mal tourné",
+    "success": "Enregistré avec succès",
+    "back": "Retour",
+    "viewAll": "Voir tout",
+    "learnMore": "En savoir plus"
+  }
+}

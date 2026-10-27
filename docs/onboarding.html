@@ -1,0 +1,3331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CareerPath Africa — User Onboarding Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+<style>
+  :root {
+    --navy:   #072061;
+    --azure:  #5889FA;
+    --royal:  #405FAD;
+    --cloud:  #E6ECFD;
+    --surface:#F4F6FF;
+    --white:  #FFFFFF;
+    --text:   #1a2340;
+    --muted:  #6b7a9e;
+    --border: #d4ddf7;
+    --green:  #22c55e;
+    --amber:  #f59e0b;
+    --red:    #ef4444;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--white);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Page layout ── */
+  .page-wrap { max-width: 900px; margin: 0 auto; padding: 0 32px 120px; }
+
+  /* ── Cover ── */
+  .cover {
+    background: linear-gradient(135deg, var(--navy) 0%, #0f3490 60%, var(--royal) 100%);
+    color: white;
+    padding: 80px 32px 72px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(88,137,250,.35) 0%, transparent 70%);
+  }
+  .cover-inner { position: relative; z-index: 1; max-width: 680px; margin: 0 auto; }
+  .cover-logo {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 72px; height: 72px; background: var(--azure);
+    border-radius: 20px; margin-bottom: 28px;
+    box-shadow: 0 8px 32px rgba(88,137,250,.5);
+  }
+  .cover-logo iconify-icon { font-size: 36px; color: white; }
+  .cover h1 { font-size: 42px; font-weight: 900; letter-spacing: -1.5px; line-height: 1.1; margin-bottom: 12px; }
+  .cover h1 span { color: var(--azure); }
+  .cover-sub { font-size: 17px; color: rgba(255,255,255,.75); font-weight: 400; margin-bottom: 36px; line-height: 1.6; }
+  .cover-meta {
+    display: inline-flex; align-items: center; gap: 24px;
+    background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.15);
+    border-radius: 100px; padding: 10px 24px; font-size: 13px; color: rgba(255,255,255,.8);
+  }
+  .cover-meta span { display: flex; align-items: center; gap: 6px; }
+
+  /* ── TOC ── */
+  .toc-section {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 40px; margin: 48px 0;
+  }
+  .toc-title {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.5px; color: var(--royal); margin-bottom: 28px;
+  }
+  .toc-title iconify-icon { font-size: 16px; }
+  .toc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .toc-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: 10px;
+    text-decoration: none; color: var(--text);
+    font-size: 14px; font-weight: 500; transition: background .15s;
+  }
+  .toc-item:hover { background: var(--cloud); color: var(--navy); }
+  .toc-item iconify-icon { font-size: 17px; color: var(--azure); flex-shrink: 0; }
+  .toc-num { font-size: 11px; font-weight: 700; color: var(--muted); min-width: 22px; }
+
+  /* ── Section ── */
+  .doc-section { margin-top: 72px; }
+  .section-header {
+    display: flex; align-items: flex-start; gap: 20px;
+    padding-bottom: 28px; border-bottom: 2px solid var(--cloud); margin-bottom: 36px;
+  }
+  .section-icon {
+    display: flex; align-items: center; justify-content: center;
+    width: 56px; height: 56px; border-radius: 16px;
+    background: linear-gradient(135deg, var(--azure), var(--royal));
+    flex-shrink: 0; box-shadow: 0 4px 16px rgba(88,137,250,.3);
+  }
+  .section-icon iconify-icon { font-size: 26px; color: white; }
+  .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--azure); margin-bottom: 4px; }
+  .section-title { font-size: 28px; font-weight: 800; color: var(--navy); letter-spacing: -0.5px; line-height: 1.2; }
+  .section-desc { font-size: 15px; color: var(--muted); margin-top: 6px; line-height: 1.6; }
+
+  /* ── Badge ── */
+  .role-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 100px; font-size: 12px; font-weight: 600;
+  }
+  .badge-azure  { background: rgba(88,137,250,.12); color: var(--azure); }
+  .badge-navy   { background: rgba(7,32,97,.1);     color: var(--navy);  }
+  .badge-green  { background: rgba(34,197,94,.12);  color: #16a34a;      }
+  .badge-amber  { background: rgba(245,158,11,.12); color: #b45309;      }
+  .badge-royal  { background: rgba(64,95,173,.12);  color: var(--royal); }
+  .badge iconify-icon { font-size: 13px; }
+
+  /* ── Steps ── */
+  .steps { display: flex; flex-direction: column; gap: 0; }
+  .step { display: flex; gap: 20px; position: relative; }
+  .step:not(:last-child)::before {
+    content: ''; position: absolute; left: 19px; top: 44px;
+    width: 2px; bottom: 0; background: var(--cloud);
+  }
+  .step-num {
+    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--azure); color: white;
+    font-size: 14px; font-weight: 800; flex-shrink: 0; z-index: 1;
+    box-shadow: 0 2px 8px rgba(88,137,250,.35);
+  }
+  .step-body { padding-bottom: 32px; flex: 1; }
+  .step-title { font-size: 16px; font-weight: 700; color: var(--navy); margin-bottom: 6px; line-height: 1.4; padding-top: 8px; }
+  .step-text { font-size: 14px; color: #4a5568; line-height: 1.7; }
+  .step-text p + p { margin-top: 8px; }
+
+  /* ── Feature grid ── */
+  .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 24px 0; }
+  .feature-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+  .feature-card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .feature-card-icon {
+    width: 40px; height: 40px; border-radius: 10px; background: var(--cloud);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .feature-card-icon iconify-icon { font-size: 20px; color: var(--azure); }
+  .feature-card h4 { font-size: 14px; font-weight: 700; color: var(--navy); }
+  .feature-card p  { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+  /* ── Callouts ── */
+  .callout {
+    display: flex; align-items: flex-start; gap: 14px;
+    border-radius: 14px; padding: 18px 20px; margin: 20px 0; font-size: 14px; line-height: 1.6;
+  }
+  .callout iconify-icon { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+  .callout-info  { background: rgba(88,137,250,.08);  border: 1px solid rgba(88,137,250,.2);  color: #1a3a7c; }
+  .callout-info iconify-icon  { color: var(--azure); }
+  .callout-tip   { background: rgba(34,197,94,.07);   border: 1px solid rgba(34,197,94,.2);   color: #14532d; }
+  .callout-tip iconify-icon   { color: var(--green); }
+  .callout-warn  { background: rgba(245,158,11,.08);  border: 1px solid rgba(245,158,11,.2);  color: #78350f; }
+  .callout-warn iconify-icon  { color: var(--amber); }
+  .callout strong { font-weight: 700; display: block; margin-bottom: 2px; }
+
+  /* ── Table ── */
+  .doc-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; }
+  .doc-table th {
+    background: var(--navy); color: white;
+    padding: 12px 16px; text-align: left; font-weight: 600; font-size: 13px;
+  }
+  .doc-table th:first-child { border-radius: 10px 0 0 0; }
+  .doc-table th:last-child  { border-radius: 0 10px 0 0; }
+  .doc-table td { padding: 12px 16px; border-bottom: 1px solid var(--cloud); vertical-align: top; }
+  .doc-table tr:last-child td { border-bottom: none; }
+  .doc-table tr:nth-child(even) td { background: var(--surface); }
+
+  /* ── Sub-section ── */
+  .sub-section { margin-top: 44px; }
+  .sub-section-title {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 19px; font-weight: 700; color: var(--navy); margin-bottom: 20px;
+  }
+  .sub-section-title iconify-icon { font-size: 22px; color: var(--azure); }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 2px dashed var(--cloud); margin: 60px 0; }
+
+  /* ── Inline icon ── */
+  .icon-inline { vertical-align: middle; font-size: 15px; color: var(--azure); margin: 0 2px; }
+
+  /* ── Quick ref ── */
+  .quick-ref { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .quick-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+  .quick-card h3 {
+    font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--royal); margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .quick-card h3 iconify-icon { font-size: 16px; }
+  .quick-card ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .quick-card li { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--text); line-height: 1.5; }
+  .quick-card li iconify-icon { font-size: 15px; color: var(--azure); flex-shrink: 0; margin-top: 1px; }
+
+  /* ── Checklist ── */
+  .checklist { list-style: none; display: flex; flex-direction: column; gap: 10px; margin: 16px 0; }
+  .checklist li { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.6; }
+  .checklist li iconify-icon { font-size: 18px; color: var(--green); flex-shrink: 0; margin-top: 2px; }
+
+  /* ── Inline code ── */
+  code {
+    font-family: 'Courier New', Courier, monospace;
+    background: var(--cloud);
+    color: var(--navy);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.88em;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  @media print {
+    .cover { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .doc-section { page-break-inside: avoid; }
+    .toc-section { page-break-after: always; }
+  }
+  @media (max-width: 640px) {
+    .page-wrap { padding: 0 16px 80px; }
+    .cover { padding: 56px 20px 52px; }
+    .cover h1 { font-size: 28px; }
+    .toc-grid { grid-template-columns: 1fr; }
+    .feature-grid { grid-template-columns: 1fr; }
+    .quick-ref { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <div class="cover-inner">
+    <div class="cover-logo">
+      <iconify-icon icon="solar:diploma-bold"></iconify-icon>
+    </div>
+    <h1>CareerPath <span>Africa</span><br>User Guide</h1>
+    <p class="cover-sub">
+      A complete onboarding manual for Students, Teachers, Administrators,<br>
+      Country Representatives, and Course Reviewers.
+    </p>
+    <div class="cover-meta">
+      <span><iconify-icon icon="solar:calendar-bold"></iconify-icon> Version 4.0 &mdash; September 2026</span>
+      <span><iconify-icon icon="solar:global-bold"></iconify-icon> app.careerpathafrica.com</span>
+    </div>
+  </div>
+</div>
+
+<div class="page-wrap">
+
+<!-- TABLE OF CONTENTS -->
+<div class="toc-section">
+  <div class="toc-title">
+    <iconify-icon icon="solar:list-bold"></iconify-icon>
+    Table of Contents
+  </div>
+  <div class="toc-grid">
+    <a href="#s1"  class="toc-item"><span class="toc-num">01</span><iconify-icon icon="solar:widget-bold"></iconify-icon>Platform Overview</a>
+    <a href="#s2"  class="toc-item"><span class="toc-num">02</span><iconify-icon icon="solar:user-plus-rounded-bold"></iconify-icon>Registration &amp; Login</a>
+    <a href="#s3"  class="toc-item"><span class="toc-num">03</span><iconify-icon icon="solar:rocket-bold"></iconify-icon>First-Time Setup</a>
+    <a href="#s4"  class="toc-item"><span class="toc-num">04</span><iconify-icon icon="solar:widget-bold"></iconify-icon>Student Dashboard</a>
+    <a href="#s5"  class="toc-item"><span class="toc-num">05</span><iconify-icon icon="solar:notebook-bookmark-bold"></iconify-icon>Catalogue &amp; Enrolment</a>
+    <a href="#s6"  class="toc-item"><span class="toc-num">06</span><iconify-icon icon="solar:play-circle-bold"></iconify-icon>Course Player</a>
+    <a href="#s7"  class="toc-item"><span class="toc-num">07</span><iconify-icon icon="solar:users-group-rounded-bold"></iconify-icon>Cohort &amp; Mentorship</a>
+    <a href="#s8"  class="toc-item"><span class="toc-num">08</span><iconify-icon icon="solar:videocamera-record-bold"></iconify-icon>Live Classes</a>
+    <a href="#s9"  class="toc-item"><span class="toc-num">09</span><iconify-icon icon="solar:document-text-bold"></iconify-icon>Assignments</a>
+    <a href="#s10" class="toc-item"><span class="toc-num">10</span><iconify-icon icon="solar:medal-ribbons-star-bold"></iconify-icon>Certificates</a>
+    <a href="#s11" class="toc-item"><span class="toc-num">11</span><iconify-icon icon="solar:wallet-money-bold"></iconify-icon>Wallet &amp; Billing</a>
+    <a href="#s12" class="toc-item"><span class="toc-num">12</span><iconify-icon icon="solar:heart-bold"></iconify-icon>Referrals &amp; Community</a>
+    <a href="#s13" class="toc-item"><span class="toc-num">13</span><iconify-icon icon="solar:diploma-bold"></iconify-icon>Teacher Portal</a>
+    <a href="#s14" class="toc-item"><span class="toc-num">14</span><iconify-icon icon="solar:shield-check-bold"></iconify-icon>Admin Portal</a>
+    <a href="#s15" class="toc-item"><span class="toc-num">15</span><iconify-icon icon="solar:global-bold"></iconify-icon>Country Representative</a>
+    <a href="#s16" class="toc-item"><span class="toc-num">16</span><iconify-icon icon="solar:star-bold"></iconify-icon>Course Reviewer</a>
+    <a href="#s17" class="toc-item"><span class="toc-num">17</span><iconify-icon icon="solar:settings-bold"></iconify-icon>Settings &amp; Profile</a>
+    <a href="#s18" class="toc-item"><span class="toc-num">18</span><iconify-icon icon="solar:shield-check-bold"></iconify-icon>Help &amp; Support</a>
+    <a href="#s19" class="toc-item"><span class="toc-num">19</span><iconify-icon icon="solar:bolt-bold"></iconify-icon>Quick Reference</a>
+    <a href="#s20" class="toc-item"><span class="toc-num">20</span><iconify-icon icon="solar:magnifer-bold"></iconify-icon>Search &amp; Discovery</a>
+    <a href="#s21" class="toc-item"><span class="toc-num">21</span><iconify-icon icon="solar:chat-round-bold"></iconify-icon>Messaging Inbox</a>
+    <a href="#s22" class="toc-item"><span class="toc-num">22</span><iconify-icon icon="solar:document-text-bold"></iconify-icon>Quizzes &amp; Assessments</a>
+    <a href="#s23" class="toc-item"><span class="toc-num">23</span><iconify-icon icon="solar:cup-star-bold"></iconify-icon>Gamification &amp; XP</a>
+    <a href="#s24" class="toc-item"><span class="toc-num">24</span><iconify-icon icon="solar:card-bold"></iconify-icon>Flashcards</a>
+    <a href="#s25" class="toc-item"><span class="toc-num">25</span><iconify-icon icon="solar:magic-stick-3-bold"></iconify-icon>AI Study Assistant</a>
+    <a href="#s26" class="toc-item"><span class="toc-num">26</span><iconify-icon icon="solar:notes-bold"></iconify-icon>Notes &amp; Bookmarks</a>
+    <a href="#s27" class="toc-item"><span class="toc-num">27</span><iconify-icon icon="solar:checklist-bold"></iconify-icon>Rubrics &amp; Peer Review</a>
+    <a href="#s28" class="toc-item"><span class="toc-num">28</span><iconify-icon icon="solar:bell-bing-bold"></iconify-icon>Progress Alerts</a>
+    <a href="#s29" class="toc-item"><span class="toc-num">29</span><iconify-icon icon="solar:letter-bold"></iconify-icon>Email Notifications</a>
+  </div>
+</div>
+
+<!-- ══ 01 PLATFORM OVERVIEW ══ -->
+<div class="doc-section" id="s1">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:widget-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">01 — Introduction</div>
+      <div class="section-title">Platform Overview</div>
+      <div class="section-desc">What CareerPath Africa is, who it serves, and how it works.</div>
+    </div>
+  </div>
+
+  <p>CareerPath Africa is a comprehensive e-learning and career development platform built for African learners and educators. It delivers structured programmes, live instruction, professional mentorship, and internationally verifiable certificates — all in one place, accessible from any device.</p>
+
+  <div class="feature-grid" style="margin-top:28px;">
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:notebook-bookmark-bold"></iconify-icon></div>
+        <h4>Structured Courses</h4>
+      </div>
+      <p>Self-paced video modules you can watch anytime — individually or as part of a package bundle.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:videocamera-record-bold"></iconify-icon></div>
+        <h4>Live Classes</h4>
+      </div>
+      <p>Scheduled interactive sessions on Daily.co — attend live or watch recordings later.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:users-group-rounded-bold"></iconify-icon></div>
+        <h4>Mentorship</h4>
+      </div>
+      <p>Book private 1-on-1 video sessions with your own teachers. Teachers open time slots; students browse, pick a slot, add a note on what to discuss, and confirm — the session room is auto-created.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:medal-ribbons-star-bold"></iconify-icon></div>
+        <h4>Certificates</h4>
+      </div>
+      <p>Earn verifiable PDF certificates shareable on LinkedIn or with any employer.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:wallet-money-bold"></iconify-icon></div>
+        <h4>Integrated Wallet</h4>
+      </div>
+      <p>Token-based wallet for course access, in-platform spending, and affiliate payouts.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:global-bold"></iconify-icon></div>
+        <h4>Pan-African Reach</h4>
+      </div>
+      <p>Country-specific pricing and packages managed through local Country Representatives.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:magnifer-bold"></iconify-icon></div>
+        <h4>Search &amp; Discovery</h4>
+      </div>
+      <p>Instant full-text search across all published courses and teacher profiles with results in real time.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:chat-round-bold"></iconify-icon></div>
+        <h4>Direct Messaging</h4>
+      </div>
+      <p>Private iMessage-style inbox for students and teachers — start a conversation from any teacher profile.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:star-bold"></iconify-icon></div>
+        <h4>Reputation Badges</h4>
+      </div>
+      <p>Teacher reputation badges (Top Rated, Rising Star) computed automatically from verified student reviews.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:earth-bold"></iconify-icon></div>
+        <h4>Multilingual (EN / FR)</h4>
+      </div>
+      <p>Switch the interface language between English and French at any time via the Language Switcher in the topbar.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:document-text-bold"></iconify-icon></div>
+        <h4>Quizzes &amp; Assessments</h4>
+      </div>
+      <p>MCQ, True/False, Fill-in-the-blank, and written quizzes with auto-grading, time limits, and per-question analytics.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:cup-star-bold"></iconify-icon></div>
+        <h4>Gamification &amp; XP</h4>
+      </div>
+      <p>Earn XP for every action, level up, maintain daily streaks, unlock badges, and compete on the cohort leaderboard.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:card-bold"></iconify-icon></div>
+        <h4>Flashcards</h4>
+      </div>
+      <p>Spaced-repetition flashcard decks created by teachers or AI-generated from lesson content — Easy/Hard/Again rating system.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:magic-stick-3-bold"></iconify-icon></div>
+        <h4>AI Study Assistant</h4>
+      </div>
+      <p>Chat with an AI tutor grounded in your lesson content — also generates quiz questions and provides writing feedback.</p>
+    </div>
+  </div>
+
+  <!-- Learning Paths -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:routing-bold"></iconify-icon>
+      Three Ways to Learn on CareerPath Africa
+    </div>
+    <p style="margin-bottom:20px;color:var(--muted);font-size:14px;">Students can access content through any of these three independent learning paths — they are not mutually exclusive.</p>
+    <div class="feature-grid" style="grid-template-columns:1fr 1fr 1fr;">
+
+      <div class="feature-card" style="border-top:3px solid var(--azure);">
+        <div class="feature-card-header">
+          <div class="feature-card-icon"><iconify-icon icon="solar:play-circle-bold"></iconify-icon></div>
+          <h4>1 — Self-Paced Course</h4>
+        </div>
+        <p>Buy a single course and work through video modules at your own pace. No schedule, no teacher interaction required. Best for learners who want to pick up a specific skill on their own timeline.</p>
+      </div>
+
+      <div class="feature-card" style="border-top:3px solid var(--royal);">
+        <div class="feature-card-header">
+          <div class="feature-card-icon"><iconify-icon icon="solar:box-bold"></iconify-icon></div>
+          <h4>2 — Package (Bundle)</h4>
+        </div>
+        <p>Buy a package (e.g. "ACCA Foundation Bundle") to unlock access to multiple courses at once. Still self-paced — just more content in one purchase. Packages are country-priced and managed by Country Representatives.</p>
+      </div>
+
+      <div class="feature-card" style="border-top:3px solid var(--navy);">
+        <div class="feature-card-header">
+          <div class="feature-card-icon"><iconify-icon icon="solar:users-group-rounded-bold"></iconify-icon></div>
+          <h4>3 — Cohort (Teacher-Led)</h4>
+        </div>
+        <p>Placed by admin into a structured exam-prep group with a dedicated teacher and a fixed exam date. Includes live classes, assignments, grading, attendance tracking, and an exam countdown. The premium track for professional exam sittings (WASSCE, ACCA, Cambridge, etc.).</p>
+      </div>
+
+    </div>
+    <div class="callout callout-info" style="margin-top:16px;">
+      <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+      <div><strong>They are independent.</strong> A student can have a self-paced course, an active package, and be enrolled in a cohort — all at the same time. Cohorts are not required; they are only applicable to students doing structured teacher-led exam prep.</div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:users-group-rounded-bold"></iconify-icon>
+      User Roles
+    </div>
+    <table class="doc-table">
+      <thead>
+        <tr><th>Role</th><th>Responsibilities</th><th>Portal prefix</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span></td>
+          <td>Enrol in courses, attend live classes, submit assignments, earn certificates</td>
+          <td><code>/student/</code></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-royal"><iconify-icon icon="solar:diploma-bold"></iconify-icon>Teacher</span></td>
+          <td>Build &amp; publish courses, manage cohorts, host live classes, grade assignments, mentor students</td>
+          <td><code>/teacher/</code></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-navy"><iconify-icon icon="solar:shield-check-bold"></iconify-icon>Admin</span></td>
+          <td>Oversee the entire platform — users, packages, courses, payouts, analytics</td>
+          <td><code>/admin/</code></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-green"><iconify-icon icon="solar:global-bold"></iconify-icon>Country Rep</span></td>
+          <td>Manage enrolments and packages in their assigned country, earn commissions</td>
+          <td><code>/country-rep/</code></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-amber"><iconify-icon icon="solar:star-bold"></iconify-icon>Course Reviewer</span></td>
+          <td>Review, approve or reject teacher-submitted course content</td>
+          <td><code>/reviewer/</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- WordPress Integration -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:global-bold"></iconify-icon>
+      WordPress Integration — Built on Your Existing Infrastructure
+    </div>
+    <p>CareerPath Africa does <strong>not</strong> replace your existing WordPress website. The new portal is built <em>on top of</em> it. Your WordPress site remains the primary content catalogue and is the source of record for course descriptions, media, and pricing. The portal pulls this content in automatically and adds the management, student, and teacher layers on top.</p>
+
+    <div class="callout callout-info" style="margin-top:20px;margin-bottom:20px;">
+      <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+      <div><strong>What this means for you:</strong> Content your team creates on WordPress is immediately available in the portal without re-entering it. Your existing SEO, domain authority, and content library are fully preserved.</div>
+    </div>
+
+    <table class="doc-table">
+      <thead><tr><th>Concern</th><th>Answer</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Do I lose my WP site?</strong></td>
+          <td>No. WordPress continues to run exactly as it does today. The portal is an addition, not a replacement.</td>
+        </tr>
+        <tr>
+          <td><strong>How are WP courses imported?</strong></td>
+          <td>Admin clicks <strong>Sync WordPress Courses</strong> on the Courses page. The system calls <code>POST /platform-courses/wp-sync</code> and pulls in new and updated courses automatically. Each course retains its WP Post ID and a direct link back to the original WordPress page.</td>
+        </tr>
+        <tr>
+          <td><strong>What is the "WP Reviews" page?</strong></td>
+          <td>Admin assigns each imported WP course to a teacher (who will teach it) and optionally a Subject Reviewer (who checks quality). Both receive a commission percentage. Reviewers approve or reject with written notes before the course goes live.</td>
+        </tr>
+        <tr>
+          <td><strong>Can I still edit courses on WP?</strong></td>
+          <td>Yes. WP courses are managed on the WordPress site. The portal shows an <strong>Open in WordPress</strong> button next to every WP-sourced course so admins can jump directly to the WP editor.</td>
+        </tr>
+        <tr>
+          <td><strong>What are "Native" courses?</strong></td>
+          <td>Courses created directly inside the portal by teachers using the built-in course builder (video modules, rich text, quizzes). These live entirely in the CPA database and are independent of WordPress.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Architecture Diagram -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:chart-square-bold"></iconify-icon>
+      System Architecture
+    </div>
+    <p style="margin-bottom:24px;">The diagram below shows how every component fits together. The portal is one layer in a broader ecosystem that includes your existing WordPress site, the CPA backend API, and several third-party services.</p>
+
+    <!-- Diagram -->
+    <div style="font-family:'Inter',sans-serif;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:32px;overflow-x:auto;">
+
+      <!-- Row 1: WP -->
+      <div style="display:flex;justify-content:center;margin-bottom:0;">
+        <div style="background:#fff7ed;border:2px solid #fb923c;border-radius:14px;padding:18px 28px;text-align:center;min-width:340px;max-width:520px;width:100%;">
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:8px;">
+            <div style="width:36px;height:36px;background:#fb923c;border-radius:10px;display:flex;align-items:center;justify-content:center;">
+              <iconify-icon icon="solar:global-bold" style="color:white;font-size:20px;"></iconify-icon>
+            </div>
+            <div style="text-align:left;">
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#ea580c;">Existing Infrastructure</div>
+              <div style="font-size:15px;font-weight:800;color:#7c2d12;">WordPress / WooCommerce Site</div>
+            </div>
+          </div>
+          <div style="font-size:12px;color:#92400e;line-height:1.6;">Course catalogue &bull; content &bull; media &bull; existing SEO &amp; domain</div>
+        </div>
+      </div>
+
+      <!-- Arrow down -->
+      <div style="display:flex;flex-direction:column;align-items:center;margin:0;padding:0;">
+        <div style="width:2px;height:18px;background:var(--border);"></div>
+        <div style="background:white;border:1px solid var(--border);border-radius:100px;padding:4px 14px;font-size:11px;font-weight:700;color:var(--royal);white-space:nowrap;">POST /platform-courses/wp-sync</div>
+        <div style="width:2px;height:18px;background:var(--border);"></div>
+        <div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:9px solid var(--border);"></div>
+      </div>
+
+      <!-- Row 2: Backend API -->
+      <div style="display:flex;justify-content:center;margin-bottom:0;">
+        <div style="background:#eef2ff;border:2px solid var(--royal);border-radius:14px;padding:18px 28px;text-align:center;min-width:340px;max-width:520px;width:100%;">
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:8px;">
+            <div style="width:36px;height:36px;background:var(--navy);border-radius:10px;display:flex;align-items:center;justify-content:center;">
+              <iconify-icon icon="solar:server-bold" style="color:white;font-size:20px;"></iconify-icon>
+            </div>
+            <div style="text-align:left;">
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--royal);">Core</div>
+              <div style="font-size:15px;font-weight:800;color:var(--navy);">CPA Backend REST API</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:4px;">
+            <span style="background:rgba(64,95,173,.12);color:var(--royal);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:600;">JWT Auth</span>
+            <span style="background:rgba(64,95,173,.12);color:var(--royal);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:600;">Users &amp; Roles</span>
+            <span style="background:rgba(64,95,173,.12);color:var(--royal);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:600;">Courses</span>
+            <span style="background:rgba(64,95,173,.12);color:var(--royal);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:600;">Cohorts</span>
+            <span style="background:rgba(64,95,173,.12);color:var(--royal);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:600;">Assignments</span>
+            <span style="background:rgba(64,95,173,.12);color:var(--royal);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:600;">Payments</span>
+            <span style="background:rgba(64,95,173,.12);color:var(--royal);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:600;">Mentorship</span>
+            <span style="background:rgba(64,95,173,.12);color:var(--royal);border-radius:100px;padding:3px 10px;font-size:11px;font-weight:600;">Wallets</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow down splits to two -->
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="width:2px;height:20px;background:var(--border);"></div>
+        <!-- horizontal split bar -->
+        <div style="display:flex;width:100%;max-width:560px;position:relative;justify-content:space-between;align-items:flex-start;">
+          <!-- left arm -->
+          <div style="display:flex;flex-direction:column;align-items:center;flex:1;">
+            <div style="width:100%;height:2px;background:var(--border);"></div>
+            <div style="width:2px;height:16px;background:var(--border);"></div>
+            <div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:9px solid var(--border);"></div>
+          </div>
+          <!-- right arm -->
+          <div style="display:flex;flex-direction:column;align-items:center;flex:1;">
+            <div style="width:100%;height:2px;background:var(--border);"></div>
+            <div style="width:2px;height:16px;background:var(--border);"></div>
+            <div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:9px solid var(--border);"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 3: Portal + 3rd party side by side -->
+      <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;">
+
+        <!-- Portal -->
+        <div style="background:linear-gradient(135deg,var(--navy) 0%,#0f3490 100%);border-radius:14px;padding:20px 24px;flex:1;min-width:220px;max-width:300px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+            <div style="width:34px;height:34px;background:var(--azure);border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <iconify-icon icon="solar:widget-bold" style="color:white;font-size:18px;"></iconify-icon>
+            </div>
+            <div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,.5);">New Build</div>
+              <div style="font-size:14px;font-weight:800;color:white;">CPA Portal</div>
+            </div>
+          </div>
+          <div style="font-size:12px;color:rgba(255,255,255,.6);margin-bottom:10px;">Next.js 15 &bull; TypeScript &bull; Tailwind</div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.8);"><iconify-icon icon="solar:user-rounded-bold" style="color:var(--azure);font-size:14px;"></iconify-icon> Student</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.8);"><iconify-icon icon="solar:diploma-bold" style="color:var(--azure);font-size:14px;"></iconify-icon> Teacher</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.8);"><iconify-icon icon="solar:shield-check-bold" style="color:var(--azure);font-size:14px;"></iconify-icon> Admin</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.8);"><iconify-icon icon="solar:global-bold" style="color:var(--azure);font-size:14px;"></iconify-icon> Country Rep</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.8);"><iconify-icon icon="solar:star-bold" style="color:var(--azure);font-size:14px;"></iconify-icon> Subject Reviewer</div>
+          </div>
+        </div>
+
+        <!-- Third party services -->
+        <div style="flex:1;min-width:220px;max-width:300px;display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:2px;">Third-party services</div>
+
+          <div style="background:white;border:1px solid var(--border);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
+            <div style="width:30px;height:30px;background:#f0f9ff;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <iconify-icon icon="solar:videocamera-record-bold" style="color:#0284c7;font-size:16px;"></iconify-icon>
+            </div>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:var(--navy);">Daily.co</div>
+              <div style="font-size:11px;color:var(--muted);">Live classes &amp; mentorship video rooms</div>
+            </div>
+          </div>
+
+          <div style="background:white;border:1px solid var(--border);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
+            <div style="width:30px;height:30px;background:#f0fdf4;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <iconify-icon icon="solar:wallet-money-bold" style="color:#16a34a;font-size:16px;"></iconify-icon>
+            </div>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:var(--navy);">Paystack / Tranzak</div>
+              <div style="font-size:11px;color:var(--muted);">Package &amp; course payments</div>
+            </div>
+          </div>
+
+          <div style="background:white;border:1px solid var(--border);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:10px;">
+            <div style="width:30px;height:30px;background:#fefce8;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <iconify-icon icon="solar:cloud-storage-bold" style="color:#ca8a04;font-size:16px;"></iconify-icon>
+            </div>
+            <div>
+              <div style="font-size:12px;font-weight:700;color:var(--navy);">Cloudflare R2</div>
+              <div style="font-size:11px;color:var(--muted);">File storage — assignments, certificates, uploads</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end row 3 -->
+    </div><!-- end diagram -->
+
+    <div class="callout callout-tip" style="margin-top:20px;">
+      <iconify-icon icon="solar:lightbulb-bold"></iconify-icon>
+      <div><strong>For the client:</strong> The portal does not require migrating away from WordPress. Both systems run simultaneously. As your content team creates new courses on WP, one click in the admin panel pulls them into the portal. Students, teachers, and admins work entirely in the new portal — they never need to log into WordPress.</div>
+    </div>
+  </div>
+
+</div>
+
+<hr class="divider">
+
+<!-- ══ 02 REGISTRATION & LOGIN ══ -->
+<div class="doc-section" id="s2">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:user-plus-rounded-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">02 — Getting Started</div>
+      <div class="section-title">Registration &amp; Login</div>
+      <div class="section-desc">How to create your account and sign in for the first time.</div>
+    </div>
+  </div>
+
+  <div class="sub-section-title" style="margin-top:0">
+    <iconify-icon icon="solar:user-plus-rounded-bold"></iconify-icon>
+    Creating an Account
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-title">Visit the registration page</div>
+        <div class="step-text">Open <strong>app.careerpathafrica.com/register</strong> in any modern browser. The platform is also installable as a PWA (Progressive Web App) on your phone for a native-app experience.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-title">Enter your details</div>
+        <div class="step-text">Fill in your <strong>Full Name</strong>, <strong>Email Address</strong>, and a secure <strong>Password</strong> (minimum 8 characters). If you have a referral code from a fellow student, enter it in the "Referral Code" field to give them credit automatically.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-title">Verify your email</div>
+        <div class="step-text">Check your inbox for a verification email from CareerPath Africa. Click the confirmation link — it expires in 24 hours. Check your spam folder if it does not arrive within a few minutes.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <div class="step-title">You are in — and you have mail</div>
+        <div class="step-text">After email verification you are redirected to your <strong>Student Dashboard</strong> automatically. Moments later you will receive a <strong>Welcome Email</strong> containing your unique <strong>Student ID</strong> (format: <code>SN-XXXXXXXX</code>). Save this ID — you can quote it in any support request. All new accounts are created with the Student role. Teachers and other elevated roles are assigned by an Administrator.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-tip">
+    <iconify-icon icon="solar:letter-bold"></iconify-icon>
+    <div><strong>Welcome email &amp; Student ID:</strong> Every new student receives a personalised welcome email with their unique Student ID (e.g. <strong>SN-A3F2B891</strong>). Students who register via Google also receive the same welcome email. Quote your Student ID in any support ticket for faster resolution. If you registered via Google Sign-In, the same welcome email with your Student ID is sent automatically.</div>
+  </div>
+
+  <div class="callout callout-info">
+    <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+    <div><strong>Organisation invite?</strong> If your employer enrolled you in bulk, you will receive a direct invite link by email. Clicking it pre-fills your email and links your account to the organisation — skip the manual registration above.</div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:lock-password-bold"></iconify-icon>
+      Logging In
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Go to the login page</div>
+          <div class="step-text">Navigate to <strong>app.careerpathafrica.com/login</strong>.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Enter your credentials</div>
+          <div class="step-text">Type your registered email and password, then click <strong>Sign In</strong>.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Automatic role routing</div>
+          <div class="step-text">The platform reads your role from the secure auth token and routes you directly to your dashboard — Student, Teacher, Admin, etc. No extra steps required.</div>
+        </div>
+      </div>
+    </div>
+    <div class="callout callout-warn">
+      <iconify-icon icon="solar:danger-bold"></iconify-icon>
+      <div><strong>Forgot your password?</strong> Click "Forgot password?" on the login page. A reset link is sent to your email immediately. The link is valid for 1 hour only.</div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 03 FIRST-TIME SETUP ══ -->
+<div class="doc-section" id="s3">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:rocket-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">03 — Onboarding</div>
+      <div class="section-title">First-Time Setup</div>
+      <div class="section-desc">Five steps to complete before you start learning.</div>
+    </div>
+  </div>
+
+  <ul class="checklist">
+    <li>
+      <iconify-icon icon="solar:check-circle-bold"></iconify-icon>
+      <span><strong>Find your Student ID</strong> — Check your welcome email for your unique Student ID (e.g. <strong>SN-A3F2B891</strong>). Keep it handy — you will need it for support requests. It is always visible in <strong>Settings &rarr; Profile</strong> as well.</span>
+    </li>
+    <li>
+      <iconify-icon icon="solar:check-circle-bold"></iconify-icon>
+      <span><strong>Complete your profile</strong> — Go to <strong>Settings &rarr; Profile</strong>. Upload a profile photo, select your country, add a phone number, and write a short bio. A complete profile helps teachers and mentors connect with you.</span>
+    </li>
+    <li>
+      <iconify-icon icon="solar:check-circle-bold"></iconify-icon>
+      <span><strong>Browse the Catalogue</strong> — Visit the <strong>Catalogue</strong> page to explore all published programmes. Filter by category, level, or search by keyword.</span>
+    </li>
+    <li>
+      <iconify-icon icon="solar:check-circle-bold"></iconify-icon>
+      <span><strong>Select a Package</strong> — Packages bundle one or more courses at a fixed price. Your Country Representative may offer country-specific pricing. Go to <strong>Billing</strong> to see all available packages.</span>
+    </li>
+    <li>
+      <iconify-icon icon="solar:check-circle-bold"></iconify-icon>
+      <span><strong>Complete payment</strong> — The payment method depends on the package currency: <strong>Paystack</strong> (cards, bank transfer, USSD — NGN, GHS, ZAR, KES, EGP), <strong>Tranzak</strong> (MTN MoMo &amp; Orange Money — XAF, XOF and other Central/West African currencies), or <strong>Stripe</strong> (international cards — USD, EUR, GBP and more). You are redirected back to the portal automatically after a successful payment.</span>
+    </li>
+    <li>
+      <iconify-icon icon="solar:check-circle-bold"></iconify-icon>
+      <span><strong>Install the app (optional)</strong> — On mobile, tap your browser menu and choose <em>Add to Home Screen</em> to install CareerPath Africa as a PWA for offline access and push notifications.</span>
+    </li>
+  </ul>
+
+  <div class="callout callout-info">
+    <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+    <div><strong>Already have a careerpathafrica.com account?</strong> Sign in with the same email and password — no need to register again. On your first sign-in you’ll be asked for your <strong>country</strong> (and optionally your phone number) before choosing your programmes.</div>
+  </div>
+
+  <div class="callout callout-tip">
+    <iconify-icon icon="solar:lightbulb-bold"></iconify-icon>
+    <div><strong>Pro tip:</strong> Allow browser notifications when prompted. You will receive real-time alerts when a live class is about to start, when an assignment is graded, and when your teacher posts a cohort announcement.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 04 STUDENT DASHBOARD ══ -->
+<div class="doc-section" id="s4">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:widget-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">04 — Student</div>
+      <div class="section-title">Dashboard</div>
+      <div class="section-desc">Your learning command centre — stats, upcoming events, and quick actions.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+  </div>
+
+  <p>The Dashboard is the first screen you see after logging in. It provides an at-a-glance view of your entire learning journey across all enrolled courses and cohorts.</p>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:chart-2-bold"></iconify-icon>
+      Dashboard Widgets
+    </div>
+    <table class="doc-table">
+      <thead>
+        <tr><th>Widget</th><th>What it shows</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Active Packages</strong></td>
+          <td>How many course packages you are currently enrolled in and their validity.</td>
+        </tr>
+        <tr>
+          <td><strong>Upcoming Live Sessions</strong></td>
+          <td>Your next scheduled live class across all cohorts, with a countdown timer and a direct <strong>Join</strong> button.</td>
+        </tr>
+        <tr>
+          <td><strong>Certificates Earned</strong></td>
+          <td>Total certificates you have been awarded to date, with a link to view them.</td>
+        </tr>
+        <tr>
+          <td><strong>Wallet Balance</strong></td>
+          <td>Your current token balance for in-platform spending.</td>
+        </tr>
+        <tr>
+          <td><strong>Recent Activity</strong></td>
+          <td>Latest events — assignment grades received, certificates issued, cohort announcements, and new lessons published.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout callout-info">
+    <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+    <div>On mobile, the bottom tab bar shows <iconify-icon class="icon-inline" icon="solar:widget-bold"></iconify-icon><strong>Home</strong>, <iconify-icon class="icon-inline" icon="solar:notebook-bookmark-bold"></iconify-icon><strong>Courses</strong>, <iconify-icon class="icon-inline" icon="solar:users-group-rounded-bold"></iconify-icon><strong>Cohort</strong>, <iconify-icon class="icon-inline" icon="solar:videocamera-record-bold"></iconify-icon><strong>Live</strong>, and <iconify-icon class="icon-inline" icon="solar:widget-4-bold"></iconify-icon><strong>More</strong>. Tap More to access Assignments, Certificates, Wallet, Billing, and all other pages.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 05 CATALOGUE & ENROLMENT ══ -->
+<div class="doc-section" id="s5">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:notebook-bookmark-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">05 — Student</div>
+      <div class="section-title">Course Catalogue &amp; Enrolment</div>
+      <div class="section-desc">Finding programmes and enrolling through a package.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-title">Open the Catalogue</div>
+        <div class="step-text">Click <strong>Catalogue</strong> in the sidebar (or in the More menu on mobile). All published courses are listed here with title, teacher name, duration, and skill level.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-title">Explore a course</div>
+        <div class="step-text">Click any course card to view its full details — description, curriculum outline, teacher bio, learner outcomes, and total lesson count.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-title">Choose a Package</div>
+        <div class="step-text">Courses are unlocked through Packages. Click <strong>View Packages</strong> on the course detail page, or go directly to <strong>Billing</strong> in the sidebar to browse all packages available in your country.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <div class="step-title">Purchase the Package</div>
+        <div class="step-text">Click <strong>Buy Now</strong>. Choose your payment method — <strong>Paystack</strong> (card, bank transfer, USSD, mobile money including M-Pesa and MTN MoMo) or <strong>Tranzak</strong> (international card &amp; cross-border payments). Complete the payment flow and you are redirected back automatically.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <div class="step-title">Start learning</div>
+        <div class="step-text">After payment, go to <strong>My Courses</strong>. All courses in your package appear immediately. Click any course to begin.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-tip">
+    <iconify-icon icon="solar:lightbulb-bold"></iconify-icon>
+    <div><strong>Coupon codes:</strong> If you have a discount coupon, enter it on the checkout page before completing payment. Coupons can apply a fixed amount or percentage discount.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 06 COURSE PLAYER ══ -->
+<div class="doc-section" id="s6">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:play-circle-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">06 — Student</div>
+      <div class="section-title">Learning — Course Player</div>
+      <div class="section-desc">Watching lessons, tracking progress, and navigating course content.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+  </div>
+
+  <p>Clicking a course in <strong>My Courses</strong> opens the <strong>Course Player</strong> — a two-panel layout with the video on the left and a structured lesson sidebar on the right.</p>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:play-bold"></iconify-icon>
+      Player Interface
+    </div>
+    <table class="doc-table">
+      <thead>
+        <tr><th>Area</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Video Player</strong></td>
+          <td>Embedded video with full playback controls. Supports 0.75×, 1×, 1.25×, 1.5×, and 2× speed. Use fullscreen for distraction-free viewing.</td>
+        </tr>
+        <tr>
+          <td><strong>Lesson Sidebar</strong></td>
+          <td>Lists all modules and lessons in order. Completed lessons are marked with a green tick. Click any lesson title to jump directly to it.</td>
+        </tr>
+        <tr>
+          <td><strong>Progress Bar</strong></td>
+          <td>Displays your overall course completion percentage at the top of the player. Progress saves automatically.</td>
+        </tr>
+        <tr>
+          <td><strong>Lesson Resources</strong></td>
+          <td>Downloadable files attached to a lesson (PDFs, slides, exercise files) appear below the video. Click the download icon to save.</td>
+        </tr>
+        <tr>
+          <td><strong>Lesson Description</strong></td>
+          <td>Rich-text notes written by the teacher summarising the lesson objectives and key takeaways.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout callout-tip">
+    <iconify-icon icon="solar:lightbulb-bold"></iconify-icon>
+    <div><strong>Completion requirement:</strong> You must watch a minimum percentage of each lesson video for it to count as complete. Simply skipping to the end does not mark the lesson finished.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 07 COHORT & MENTORSHIP ══ -->
+<div class="doc-section" id="s7">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:users-group-rounded-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">07 — Student</div>
+      <div class="section-title">My Cohort &amp; Mentorship</div>
+      <div class="section-desc">Your exam-prep group, assignments, attendance, and 1-on-1 sessions with your teacher.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+  </div>
+
+  <p>A <strong>Cohort</strong> is a structured learning group created by an Admin. It ties a batch of students to one teacher, a target exam date, and a shared schedule of live classes and assignments. It is the primary delivery mode for exam-prep programmes (WASSCE, ACCA, Cambridge, etc.).</p>
+
+  <div class="callout callout-info" style="margin-top:20px;">
+    <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+    <div><strong>Cohorts are not mandatory.</strong> Students who buy a self-paced course or package but are not assigned to a cohort never see this page. The <strong>My Cohort</strong> tab only appears when you have been placed in at least one group by an Admin.</div>
+  </div>
+
+  <!-- Exam Countdown -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:clock-circle-bold"></iconify-icon>
+      Exam Countdown
+    </div>
+    <p>At the top of each cohort card you will see a live countdown to your exam date set by the Admin. The colour changes as the date approaches:</p>
+    <table class="doc-table">
+      <thead><tr><th>Colour</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>Blue</td><td>More than 14 days remaining — on track</td></tr>
+        <tr><td>Amber</td><td>7–14 days remaining — start final revision</td></tr>
+        <tr><td>Orange / red</td><td>Under 7 days — exam imminent</td></tr>
+        <tr><td>Grey</td><td>Exam date has passed</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Live Sessions -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:videocamera-record-bold"></iconify-icon>
+      Live Sessions
+    </div>
+    <p>All classes scheduled for your cohort are listed under <strong>All Sessions</strong>. Each row shows the topic, date/time, and duration.</p>
+    <ul class="checklist">
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span><strong>Next class strip</strong> — The very next upcoming session is highlighted at the top of the cohort card with a <strong>Join now</strong> button that activates when the class goes live.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span><strong>Join</strong> — Active sessions show a blue <em>Join</em> button. Tap it to open the Daily.co video room directly in the portal — no app download needed.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span><strong>Attendance record</strong> — Completed sessions show a green <em>Present</em> chip or a grey <em>Absent</em> chip so you can track your own attendance history.</span></li>
+    </ul>
+  </div>
+
+  <!-- Assignments -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:document-text-bold"></iconify-icon>
+      Assignments
+    </div>
+    <p>Assignments set by your teacher for this cohort are shown directly on the cohort page, so you never miss a deadline.</p>
+    <ul class="checklist">
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span><strong>Overdue alert</strong> — A red banner appears if any assignment is past its due date.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span><strong>Due date labels</strong> — Each assignment shows <em>Due today</em>, <em>Due in X days</em>, or <em>Overdue</em> at a glance.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span><strong>Submit button</strong> — Tap <em>Submit</em> to go directly to the full submission page (PDF, DOCX, JPG, PNG — max 10 MB).</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span><strong>Grade display</strong> — Once graded, your score (e.g. <em>18/20 pts</em>) appears inline. Tap <em>View all assignments</em> for teacher feedback.</span></li>
+    </ul>
+  </div>
+
+  <!-- Classmates -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:users-group-rounded-bold"></iconify-icon>
+      Classmates
+    </div>
+    <p>Tap the <strong>Classmates</strong> card to expand a grid of everyone in your cohort — name and email. Use this to study together or form revision groups.</p>
+  </div>
+
+  <!-- Mentorship booking -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:diploma-bold"></iconify-icon>
+      Book a 1-on-1 Session
+    </div>
+    <p>Each cohort card shows a <strong>Book a 1-on-1 session</strong> shortcut at the bottom. Tapping it takes you to the Mentorship page pre-contextualised to your cohort teacher. You can also browse all available mentors from the <strong>Mentorship</strong> menu item.</p>
+  </div>
+
+  <hr style="border:none;border-top:1px dashed var(--cloud);margin:40px 0;">
+
+  <!-- ── MENTORSHIP DEEP-DIVE ── -->
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title" style="font-size:22px;">
+      <iconify-icon icon="solar:diploma-bold"></iconify-icon>
+      Mentorship — How It Works
+    </div>
+    <p style="margin-bottom:20px;">Mentorship is the 1-on-1 private video session system. <strong>The mentors are your teachers</strong> — there is no separate mentor role. Any teacher who opens availability slots appears in the student Browse Mentors list.</p>
+
+    <div class="feature-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:28px;">
+      <div class="feature-card" style="border-top:3px solid var(--azure);">
+        <div class="feature-card-header">
+          <div class="feature-card-icon"><iconify-icon icon="solar:diploma-bold"></iconify-icon></div>
+          <h4>Teacher opens slots</h4>
+        </div>
+        <p>Teacher goes to <strong>Mentorship → My Slots</strong>, picks a date/time, sets duration (15, 30, 45, or 60 min), and saves. The slot is immediately visible to students.</p>
+      </div>
+      <div class="feature-card" style="border-top:3px solid var(--royal);">
+        <div class="feature-card-header">
+          <div class="feature-card-icon"><iconify-icon icon="solar:calendar-bold"></iconify-icon></div>
+          <h4>Student books a slot</h4>
+        </div>
+        <p>Student browses mentors, selects a teacher, picks an available slot, writes a note on what to discuss, then confirms. Booking status becomes <em>Confirmed</em>.</p>
+      </div>
+      <div class="feature-card" style="border-top:3px solid var(--navy);">
+        <div class="feature-card-header">
+          <div class="feature-card-icon"><iconify-icon icon="solar:videocamera-record-bold"></iconify-icon></div>
+          <h4>Session &amp; review</h4>
+        </div>
+        <p>A private Daily.co video room is auto-created. Both sides click <strong>Join</strong> up to 15 min before start. After the session the student can leave a star rating and comment.</p>
+      </div>
+    </div>
+
+    <div class="sub-section-title" style="font-size:16px;margin-top:28px;">
+      <iconify-icon icon="solar:user-rounded-bold"></iconify-icon>
+      As a Student — step by step
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Go to Mentorship → Browse Mentors</div>
+          <div class="step-text">Each teacher card shows their subjects, average star rating, review count, and the number of open slots. Click any card to load their available times on the right.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Pick a slot and add a note</div>
+          <div class="step-text">Choose a date/time that suits you. In the confirmation modal, write what you want to cover — e.g. <em>"Help with ACCA F3 Chapter 4 — I'm struggling with consolidation"</em>. The teacher sees this before the session so they can prepare.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Confirm and wait for session time</div>
+          <div class="step-text">Your booking appears in <strong>My Sessions</strong>. The <strong>Join</strong> button activates 15 minutes before the scheduled start. It pulses blue when the session is live.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Leave a review</div>
+          <div class="step-text">After the session ends, a <strong>★ Review</strong> button appears on your booking card. Rate 1–5 stars and add an optional comment. Reviews are shown publicly on the teacher's profile and affect their reputation badge.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-tip" style="margin-top:24px;">
+      <iconify-icon icon="solar:lightbulb-bold"></iconify-icon>
+      <div><strong>Cancellation policy:</strong> You can cancel a confirmed booking any time before the session. An optional reason field is provided. The teacher is notified by email immediately and the slot becomes available for other students. You will also receive a cancellation confirmation email.</div>
+    </div>
+
+    <div class="sub-section-title" style="font-size:16px;margin-top:32px;">
+      <iconify-icon icon="solar:letter-bold"></iconify-icon>
+      Email Confirmations
+    </div>
+    <table class="doc-table" style="margin-top:12px;">
+      <thead><tr><th>Event</th><th>Who receives it</th><th>What it contains</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Booking Confirmed</strong></td>
+          <td>Student</td>
+          <td>Teacher name, session date &amp; time, duration, and a <strong>Join</strong> link</td>
+        </tr>
+        <tr>
+          <td><strong>New Booking Received</strong></td>
+          <td>Teacher</td>
+          <td>Student name, session date &amp; time, duration, student's note on what to discuss, and a <strong>Join</strong> link</td>
+        </tr>
+        <tr>
+          <td><strong>Booking Cancelled</strong></td>
+          <td>The other party (student or teacher)</td>
+          <td>Who cancelled, session date &amp; time, and a link to browse new sessions</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 08 LIVE CLASSES ══ -->
+<div class="doc-section" id="s8">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:videocamera-record-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">08 — Student &amp; Teacher</div>
+      <div class="section-title">Live Classes</div>
+      <div class="section-desc">Joining, hosting, and reviewing live instructor-led sessions.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+    <span class="badge badge-royal"><iconify-icon icon="solar:diploma-bold"></iconify-icon>Teacher</span>
+  </div>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:user-rounded-bold"></iconify-icon>
+      As a Student
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">View upcoming sessions</div>
+          <div class="step-text">Go to <strong>Live Classes</strong> in the sidebar. All sessions scheduled for your cohorts are listed with date, time, teacher name, and topic.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Join a live session</div>
+          <div class="step-text">When a session is active, the card shows a green <strong>Live Now</strong> badge. Click <strong>Join Class</strong> to open the Daily.co video room directly in the portal — no separate app download required.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Interact during class</div>
+          <div class="step-text">Use the in-room controls for camera on/off, microphone mute, screen sharing, and text chat. Raise your hand icon to signal you want to speak without interrupting.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Watch recordings</div>
+          <div class="step-text">Missed a session? After the class ends, the teacher can attach a recording link. It appears on the same session card under <strong>Recording</strong>.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:diploma-bold"></iconify-icon>
+      As a Teacher — Hosting a Class
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Schedule a class</div>
+          <div class="step-text">Go to <strong>Live Classes</strong> and click <strong>Schedule New Class</strong>. Select the cohort, date, start time, and estimated duration. A unique video room URL is generated automatically.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Start the class</div>
+          <div class="step-text">On the session day, click <strong>Start Class</strong> on the card. This activates the room and sends a push notification to all enrolled students that the class is live.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Host in Daily.co</div>
+          <div class="step-text">You join as the host with elevated permissions — mute/unmute participants, spotlight a speaker, manage who can share their screen, and moderate the chat.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">End the class</div>
+          <div class="step-text">Click <strong>End Class</strong> in the CareerPath Africa portal (separate from the Daily.co UI). This marks the session complete and records attendance for all participants.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-warn">
+    <iconify-icon icon="solar:danger-bold"></iconify-icon>
+    <div><strong>Browser permissions required:</strong> Allow your browser to access the camera and microphone when prompted the first time. If blocked, you join in view-only mode. Fix via the lock icon in your browser's address bar.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 09 ASSIGNMENTS ══ -->
+<div class="doc-section" id="s9">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:document-text-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">09 — Student &amp; Teacher</div>
+      <div class="section-title">Assignments</div>
+      <div class="section-desc">Submitting coursework and reviewing grades and feedback.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+    <span class="badge badge-royal"><iconify-icon icon="solar:diploma-bold"></iconify-icon>Teacher</span>
+  </div>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:user-rounded-bold"></iconify-icon>
+      Student — Submitting Work
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open Assignments</div>
+          <div class="step-text">Click <strong>Assignments</strong> in the sidebar or More menu. All tasks assigned to you are listed with status badges: <span class="badge badge-amber" style="font-size:11px;">Pending</span>, <span class="badge badge-royal" style="font-size:11px;">Submitted</span>, or <span class="badge badge-green" style="font-size:11px;">Graded</span>.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Read the brief</div>
+          <div class="step-text">Click any assignment card to open the full brief — instructions, due date, accepted file formats, and maximum file size (10 MB per file). Read carefully before starting.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Upload your file</div>
+          <div class="step-text">Click <strong>Upload File</strong> or drag and drop your file into the upload zone. Accepted formats: <strong>PDF, DOCX, JPG, PNG</strong>. Your file is stored securely in the cloud.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Submit</div>
+          <div class="step-text">Click <strong>Submit Assignment</strong>. Status changes to Submitted. You can re-upload and re-submit before the due date if you need to revise your work.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">Receive grade and feedback</div>
+          <div class="step-text">Once graded, the status changes to <span class="badge badge-green" style="font-size:11px;">Graded</span>. You also receive an <strong>email notification</strong> with your score, a colour-coded result (green ≥70%, amber ≥50%, red below 50%), and your teacher's written feedback. Click the card in the portal to view full details.</div>
+        </div>
+      </div>
+    </div>
+    <div class="callout callout-info" style="margin-top:16px;">
+      <iconify-icon icon="solar:letter-bold"></iconify-icon>
+      <div><strong>Graded notification email:</strong> The email shows your score clearly (e.g. <em>Score: 78/100 — 78%</em>), highlights whether you passed, and includes the teacher's feedback directly in the message — no login required to read it.</div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:diploma-bold"></iconify-icon>
+      Teacher — Grading Submissions
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open Assignments</div>
+          <div class="step-text">The grading queue shows all pending student submissions sorted by due date. Filter by cohort or course to focus on specific groups.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Download and review</div>
+          <div class="step-text">Click a submission to open it. Download the student's file to review it in your preferred app (Word, Acrobat, etc.).</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Enter score and feedback</div>
+          <div class="step-text">On desktop, grade inline next to the submission. On mobile, a bottom sheet slides up for grading. Enter a score out of 100 and constructive written feedback.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Submit the grade</div>
+          <div class="step-text">Click <strong>Submit Grade</strong>. The student is instantly notified by <strong>email</strong> — the message includes the score, percentage, pass/fail colour coding, and your written feedback. The student can also view the result in the portal immediately.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 10 CERTIFICATES ══ -->
+<div class="doc-section" id="s10">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:medal-ribbons-star-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">10 — Student</div>
+      <div class="section-title">Certificates</div>
+      <div class="section-desc">Earning, downloading, and sharing your professional certificates.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+  </div>
+
+  <p>When you complete all requirements of a course — all lessons watched and all assignments passed — the platform automatically issues your certificate. You receive an <strong>email notification</strong> with your certificate details and a direct verification link. The certificate also appears instantly in the <strong>Certificates</strong> section of the portal.</p>
+
+  <div class="callout callout-tip" style="margin-top:16px;">
+    <iconify-icon icon="solar:letter-bold"></iconify-icon>
+    <div><strong>Certificate email:</strong> The notification email includes your full name, the course title, issue date, and a <strong>Verify Certificate</strong> link that employers can use to confirm authenticity — no portal login required. Add the link to your CV or email signature.</div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:medal-ribbons-star-bold"></iconify-icon>
+      What You Can Do With Your Certificate
+    </div>
+    <table class="doc-table">
+      <thead>
+        <tr><th>Action</th><th>How to do it</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><iconify-icon class="icon-inline" icon="solar:download-bold"></iconify-icon> <strong>Download PDF</strong></td>
+          <td>Click <strong>Download</strong> to save a high-resolution PDF. The document includes your full name, course title, completion date, and a unique certificate ID.</td>
+        </tr>
+        <tr>
+          <td><iconify-icon class="icon-inline" icon="solar:link-bold"></iconify-icon> <strong>Add to LinkedIn</strong></td>
+          <td>Click <strong>Add to LinkedIn</strong>. The platform opens LinkedIn's certification form pre-filled with all required fields. Click "Save" in LinkedIn to add it to your profile.</td>
+        </tr>
+        <tr>
+          <td><iconify-icon class="icon-inline" icon="solar:shield-check-bold"></iconify-icon> <strong>Verify (for employers)</strong></td>
+          <td>Share the unique verify URL printed on the certificate. Anyone with the link can confirm its authenticity — no login required.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout callout-tip">
+    <iconify-icon icon="solar:lightbulb-bold"></iconify-icon>
+    <div><strong>Not seeing your certificate?</strong> Ensure every lesson is marked complete and all assignments have a passing grade. If requirements are met but no certificate has appeared after 48 hours, submit a support ticket.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 11 WALLET & BILLING ══ -->
+<div class="doc-section" id="s11">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:wallet-money-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">11 — Student</div>
+      <div class="section-title">Wallet &amp; Billing</div>
+      <div class="section-desc">Managing your balance, transactions, packages, and payments.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+  </div>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:wallet-money-bold"></iconify-icon>
+      Wallet
+    </div>
+    <p>Your Wallet holds token credits usable for in-platform purchases. Tokens are earned through referrals, gifted by the platform for promotions, or credited by Admins.</p>
+    <table class="doc-table" style="margin-top:16px;">
+      <thead><tr><th>Feature</th><th>Details</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Balance</strong></td>
+          <td>Your current token balance is shown prominently at the top of the Wallet page.</td>
+        </tr>
+        <tr>
+          <td><strong>Transaction History</strong></td>
+          <td>A full ledger showing every credit and debit with date, amount, and reason.</td>
+        </tr>
+        <tr>
+          <td><strong>Using Wallet at Checkout</strong></td>
+          <td>If a package supports wallet payment, you can apply your balance to reduce the checkout total.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:box-bold"></iconify-icon>
+      Billing — Packages &amp; Payments
+    </div>
+    <p>The Billing page shows all packages available to you (filtered by your country) and your full purchase history.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Browse packages</div>
+          <div class="step-text">Each package card shows included courses, price, currency, validity period, and a brief description.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Click Buy Now</div>
+          <div class="step-text">You are taken to the checkout page. Optionally apply a coupon code and select your payment method.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Confirm payment and receive receipt</div>
+          <div class="step-text">After successful payment you land on a confirmation screen. Enrolled courses appear immediately under <strong>My Courses</strong>. You also receive a <strong>Purchase Receipt email</strong> with your full invoice.</div>
+        </div>
+      </div>
+    </div>
+    <div class="callout callout-info">
+      <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+      <div><strong>Supported payment methods:</strong> Paystack (Visa/Mastercard, bank transfer, USSD, M-Pesa, MTN MoMo, Airtel Money) and Tranzak (international cards &amp; cross-border payments). Currency is set per package by your Country Rep or Admin.</div>
+    </div>
+    <div class="callout callout-tip" style="margin-top:16px;">
+      <iconify-icon icon="solar:letter-bold"></iconify-icon>
+      <div><strong>Purchase Receipt email:</strong> Every payment triggers an automatic receipt email containing the <strong>Invoice Number</strong> (e.g. <code>INV-00042</code>), item name (package or course), amount paid, currency, date, and your name as billed. Keep these emails for accounting or expense claims. If a receipt does not arrive within a few minutes, check your spam folder or contact support with your payment reference.</div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 12 REFERRALS & COMMUNITY ══ -->
+<div class="doc-section" id="s12">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:heart-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">12 — Student</div>
+      <div class="section-title">Referrals &amp; Community</div>
+      <div class="section-desc">Earning rewards by inviting friends and connecting with fellow learners.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+  </div>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:heart-bold"></iconify-icon>
+      Refer &amp; Earn
+    </div>
+    <p>Every student has a unique referral link. When someone registers using your link and purchases a package, you automatically earn wallet tokens as a reward.</p>
+    <ul class="checklist">
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>Go to <strong>Refer &amp; Earn</strong> in the More menu or sidebar.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>Copy your unique referral link or code with one click.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>Share it via WhatsApp, email, Twitter, or any channel you prefer.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>Track how many people have signed up and your total tokens earned on the same page.</span></li>
+    </ul>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:chat-round-bold"></iconify-icon>
+      Community
+    </div>
+    <p>The Community section is a discussion forum for all CareerPath Africa learners. Share your journey, ask questions, and connect with peers across the continent.</p>
+    <table class="doc-table">
+      <thead><tr><th>Feature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Posts / Stories</strong></td>
+          <td>Share your learning journey, career wins, or tips for other students. Posts are reviewed by Admins before going live to maintain quality.</td>
+        </tr>
+        <tr>
+          <td><strong>Comments</strong></td>
+          <td>Engage with other learners' stories through threaded comments and reactions.</td>
+        </tr>
+        <tr>
+          <td><strong>Categories</strong></td>
+          <td>Browse by topic — Career Advice, Tech, Business, Success Stories, Study Tips, and more.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 13 TEACHER PORTAL ══ -->
+<div class="doc-section" id="s13">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:diploma-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">13 — Teacher</div>
+      <div class="section-title">Teacher Portal</div>
+      <div class="section-desc">Building courses, managing cohorts, hosting live classes, mentoring students, and earning.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-royal"><iconify-icon icon="solar:diploma-bold"></iconify-icon>Teacher</span>
+  </div>
+
+  <!-- Getting started as a teacher -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:rocket-bold"></iconify-icon>
+      Getting Started as a Teacher
+    </div>
+    <p>How you start depends on whether you already teach on <strong>careerpathafrica.com</strong>.</p>
+    <table class="doc-table">
+      <thead><tr><th>You are…</th><th>What happens</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>New to CareerPath Africa</strong></td>
+          <td>Choose <strong>Teacher</strong> on the Sign up page, verify your email with the 6-digit code, then complete the application (subjects, programmes, qualification, bio, CV, tutor agreement). An admin reviews it — usually within 1–2 business days. You receive an <strong>approval email</strong> with your <strong>Teacher ID</strong> (e.g. <strong>TCH-D1E2F3A4</strong>); quote it in any billing or support correspondence. If the application isn’t approved, the email explains why.</td>
+        </tr>
+        <tr>
+          <td><strong>Already a tutor on careerpathafrica.com</strong></td>
+          <td>Sign in with your existing careerpathafrica.com email and password — no new application. On your first sign-in you complete a short <strong>teacher profile</strong>: country, phone, programmes and subjects, qualification and experience, bio and CV, an optional intro video, and the tutor agreement. You go straight to the portal afterwards; an admin may still review your profile later.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Welcome video -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:play-circle-bold"></iconify-icon>
+      Welcome Video <span class="badge badge-amber" style="font-size:11px;vertical-align:middle;margin-left:8px;">Required</span>
+    </div>
+    <p>Before you use the Teacher Portal for the first time, you watch a short orientation video covering payouts, content rules, and how to build a course. It appears automatically after you sign in (and after your teacher profile, if you came from careerpathafrica.com).</p>
+    <ul class="checklist">
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span><strong>Pause and rewind any time</strong> — but you can’t skip ahead or change the playback speed.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>The video <strong>pauses automatically</strong> if you switch tabs or minimise the window.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span><strong>Continue to dashboard</strong> unlocks when the video finishes. The progress line shows how much is left.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>Your progress is saved — if your connection drops, sign back in and it resumes where you stopped.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>You only watch it once. If the video is updated with important changes, you may be asked to watch the new version.</span></li>
+    </ul>
+    <div class="callout callout-tip">
+      <iconify-icon icon="solar:lightbulb-bold"></iconify-icon>
+      <div>Turn on <strong>CC</strong> in the player if captions are available — handy on mobile data or in a noisy place.</div>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:widget-bold"></iconify-icon>
+      Teacher Dashboard
+    </div>
+    <p>The Teacher Dashboard surfaces the information you need most: active cohorts, pending assignment submissions awaiting grading, and upcoming live sessions. The grading queue is prominently displayed so you never miss a submission.</p>
+    <table class="doc-table">
+      <thead><tr><th>Widget</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Grading Queue</strong></td><td>Number of student submissions waiting for your grade, sorted by due date. Click to jump directly to the assignment.</td></tr>
+        <tr><td><strong>Active Cohorts</strong></td><td>Total cohorts currently assigned to you and their student count.</td></tr>
+        <tr><td><strong>Upcoming Live Sessions</strong></td><td>Your next scheduled class with a countdown and Start button.</td></tr>
+        <tr><td><strong>Recent Earnings</strong></td><td>This month's revenue from your courses.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Course Builder -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:notebook-bookmark-bold"></iconify-icon>
+      Building a Course — Step by Step
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Go to My Courses</div>
+          <div class="step-text">Navigate to <strong>My Courses</strong> in the Teacher sidebar. All your courses are listed here with their current review status (Draft, Pending Review, Approved, Rejected).</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Create a new course</div>
+          <div class="step-text">Click <strong>New Course</strong>. Enter the course title, category (e.g. Technology, Business, Creative), and level (Beginner / Intermediate / Advanced).</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Open the Course Builder</div>
+          <div class="step-text">Click <strong>Edit Content</strong> on the course card. The Course Builder opens with a <strong>Course Details</strong> card at the top, a drag-and-drop curriculum editor below it, and a rich text overview editor on the right. In the Course Details card you can:
+            <ul style="margin-top:8px;padding-left:16px;line-height:2.2;">
+              <li><strong>Upload a cover image</strong> — drag a JPG/PNG (up to 5 MB) onto the image zone or click to browse. The cover is shown in the catalogue and on the course detail page.</li>
+              <li><strong>Write a short description</strong> — up to 200 characters, shown as the subtitle in search results and course cards.</li>
+            </ul>
+            Click <strong>Save Details</strong> to persist these changes.
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Add Modules</div>
+          <div class="step-text">Click <strong>Add Module</strong> to create a top-level section (e.g., "Module 1 — Introduction to Python"). Modules act as chapters grouping related lessons together.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">Add Lessons to each Module</div>
+          <div class="step-text">
+            <p>Within each module, click <strong>Add Lesson</strong>. For every lesson provide:</p>
+            <ul style="margin-top:8px;padding-left:16px;line-height:2.2;">
+              <li><strong>Title</strong> — Clear and descriptive.</li>
+              <li><strong>Video URL</strong> — YouTube, Vimeo, or direct CDN link.</li>
+              <li><strong>Description</strong> — Use the Rich Text Editor (Bold, Italic, Headings, lists, code blocks, blockquotes).</li>
+              <li><strong>Resources</strong> — Upload PDFs, DOCX files, or slides for students to download.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <div class="step-title">Reorder content</div>
+          <div class="step-text">Drag modules or lessons by their handle to reorder them. Changes are saved in real time.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">7</div>
+        <div class="step-body">
+          <div class="step-title">Submit for review</div>
+          <div class="step-text">When the course is ready, click <strong>Submit for Review</strong>. A Course Reviewer assigned by the Admin will evaluate the content. You receive a notification with the decision and any feedback. If rejected, revise the indicated sections and re-submit.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-info">
+      <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+      <div>After approval, an Admin adds the course to a Package. Students can then enrol and access it. You cannot edit an approved live course without re-submitting for review to protect students' experience.</div>
+    </div>
+  </div>
+
+  <!-- Cohorts -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:users-group-rounded-bold"></iconify-icon>
+      Managing Cohorts
+    </div>
+    <p>Cohorts are student groups assigned to you by an Admin. In the <strong>Cohorts</strong> page you can:</p>
+    <ul class="checklist">
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>View every student with their individual course progress percentage.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>Post announcements visible to all cohort members instantly.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>See a breakdown of pending, submitted, and graded assignments per cohort.</span></li>
+    </ul>
+  </div>
+
+  <!-- Mentorship -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:diploma-bold"></iconify-icon>
+      Mentorship Slots
+    </div>
+    <p>Open your availability so students can book private 1-on-1 sessions with you. Go to <strong>Mentorship → My Slots</strong> to manage everything.</p>
+    <ul class="checklist">
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span><strong>Add a slot</strong> — Select date/time and duration: <em>15, 30, 45, or 60 minutes</em>. The slot is immediately visible to all students who can book you.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span><strong>View bookings</strong> — Switch to the <strong>Student Bookings</strong> tab to see who has booked, their note on what they want to discuss, and the session time. Booked slots are locked and cannot be deleted.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span><strong>Join session</strong> — A private Daily.co video room is auto-created per booking. The <strong>Join</strong> button activates 15 minutes before start. Click it to enter the 1-on-1 room.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span><strong>Stats bar</strong> — At the top of the page you can see: open slots available, upcoming confirmed sessions, and total completed sessions at a glance.</span></li>
+    </ul>
+  </div>
+
+  <!-- Earnings -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:wallet-money-bold"></iconify-icon>
+      Earnings &amp; Wallet
+    </div>
+    <p>Teachers earn a revenue share from course package sales. The <strong>Earnings</strong> page shows your full financial picture.</p>
+    <table class="doc-table">
+      <thead><tr><th>Feature</th><th>Details</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Total Earnings</strong></td><td>Lifetime revenue from all your published courses.</td></tr>
+        <tr><td><strong>Available Balance</strong></td><td>Amount ready to withdraw as a payout.</td></tr>
+        <tr><td><strong>Payout History</strong></td><td>All previous payout requests with status (Pending / Paid) and bank reference numbers.</td></tr>
+        <tr><td><strong>Per-Course Breakdown</strong></td><td>Revenue attributed to each individual course you have published.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-info">
+      <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+      <div>To request a payout, click <strong>Request Payout</strong> on the Earnings page. Ensure your bank details are saved in <strong>Settings &rarr; Profile</strong> first. Admin processes requests within 5 business days.</div>
+    </div>
+  </div>
+
+  <!-- Video Intro -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:videocamera-record-bold"></iconify-icon>
+      Video Introduction <span class="badge badge-amber" style="font-size:11px;vertical-align:middle;margin-left:8px;">Required for Mentorship</span>
+    </div>
+    <p>A 60–90 second video about you, what you teach, and how you help students prepare. It dramatically increases booking rates and is <strong>required for mentorship</strong>. Add it in <strong>Teacher &rarr; Profile</strong> (or during your first-time teacher profile setup).</p>
+    <div class="callout callout-warn" style="margin-bottom:16px;">
+      <iconify-icon icon="solar:danger-bold"></iconify-icon>
+      <div><strong>Mentorship gate:</strong> until you add an intro video, you are hidden from the student <strong>Browse Mentors</strong> list and students can’t book your slots. As soon as you save one, your open slots become visible.</div>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Upload a video file</div>
+          <div class="step-text">Drag an <strong>MP4, MOV, or WebM</strong> file (up to 100 MB) onto the upload zone in the Intro video card. It uploads directly to secure cloud storage with a progress bar, and a preview appears when it’s done.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Or paste a YouTube / Vimeo link</div>
+          <div class="step-text">Paste any YouTube link (including <em>youtu.be</em> share links and Shorts) or Vimeo link (including unlisted ones) and click <strong>Save</strong>. Links from other sites aren’t accepted because they can’t be played in the portal. Use <strong>Remove</strong> to take the video down.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Students see it on your profile</div>
+          <div class="step-text">The video appears on your public teacher profile and on the Mentorship page when a student selects you. Students press play to watch it.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reputation Badges -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:star-bold"></iconify-icon>
+      Reputation Badges
+    </div>
+    <p>Reputation badges are calculated automatically from verified student reviews and displayed next to your name in search results and on your profile.</p>
+    <table class="doc-table">
+      <thead><tr><th>Badge</th><th>Criteria</th><th>Benefit</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-amber"><iconify-icon icon="solar:star-bold"></iconify-icon>Top Rated</span></td>
+          <td>Average rating &ge; 4.8 with at least 10 reviews</td>
+          <td>Prominently featured in search results and the teacher discovery page</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-royal"><iconify-icon icon="solar:fire-bold"></iconify-icon>Rising Star</span></td>
+          <td>Average rating &ge; 4.5 with at least 3 reviews</td>
+          <td>Highlighted as a high-potential new teacher to students</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>New</span></td>
+          <td>No reviews yet</td>
+          <td>Indicates availability to students who enjoy supporting new educators</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout callout-tip">
+      <iconify-icon icon="solar:lightbulb-bold"></iconify-icon>
+      <div>Badges are recalculated every time a student submits a review. You cannot manually request a badge — keep teaching quality high and the badge will appear automatically.</div>
+    </div>
+  </div>
+
+  <!-- Messages -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:chat-round-bold"></iconify-icon>
+      Messages
+    </div>
+    <p>The <strong>Messages</strong> section in the Teacher sidebar gives you a private inbox with all students who have contacted you. See <a href="#s21">Section 21 — Messaging Inbox</a> for the full guide.</p>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 14 ADMIN PORTAL ══ -->
+<div class="doc-section" id="s14">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:shield-check-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">14 — Admin</div>
+      <div class="section-title">Admin Portal</div>
+      <div class="section-desc">Full platform oversight — users, packages, courses, payouts, and analytics.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-navy"><iconify-icon icon="solar:shield-check-bold"></iconify-icon>Admin</span>
+  </div>
+
+  <div class="callout callout-warn">
+    <iconify-icon icon="solar:danger-bold"></iconify-icon>
+    <div><strong>Restricted access:</strong> The Admin portal is only available to users with the ADMIN role. Any attempt to access admin routes with another role is automatically redirected to the correct dashboard.</div>
+  </div>
+
+  <div class="feature-grid" style="margin-top:24px;">
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:chart-2-bold"></iconify-icon></div>
+        <h4>Dashboard</h4>
+      </div>
+      <p>Platform KPIs (students, enrolments, completion rate, courses), top courses by enrolment, teacher earnings leaderboard, revenue sparkline, and pending teacher approvals.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:box-bold"></iconify-icon></div>
+        <h4>Packages</h4>
+      </div>
+      <p>Create and manage course bundles — set price, currency, validity, included courses, and country availability.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:tag-bold"></iconify-icon></div>
+        <h4>Coupons</h4>
+      </div>
+      <p>Generate discount codes (fixed or percentage) with optional expiry dates and usage limits per code.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:notebook-bookmark-bold"></iconify-icon></div>
+        <h4>Courses</h4>
+      </div>
+      <p>View all courses on the platform, add them to packages, manage published status, and assign to cohorts.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon></div>
+        <h4>Users</h4>
+      </div>
+      <p>Search and manage all registered users. Change roles, deactivate accounts, view enrolment history.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:diploma-bold"></iconify-icon></div>
+        <h4>Teachers</h4>
+      </div>
+      <p>Review and approve/reject teacher applications. View their courses, cohorts, and payout requests.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:users-group-rounded-bold"></iconify-icon></div>
+        <h4>Cohorts</h4>
+      </div>
+      <p>Create cohorts, assign a teacher, add students, and link courses and live sessions to the group.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:document-text-bold"></iconify-icon></div>
+        <h4>WP Reviews</h4>
+      </div>
+      <p>Assign written projects to specific teachers or course reviewers for independent evaluation.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:transfer-horizontal-bold"></iconify-icon></div>
+        <h4>Payouts</h4>
+      </div>
+      <p>Process payout requests from teachers, country reps, and reviewers. Mark as paid with reference numbers.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:wallet-money-bold"></iconify-icon></div>
+        <h4>Wallets</h4>
+      </div>
+      <p>View and manually adjust any earner's wallet balance for corrections, promotions, or refunds.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:chart-2-bold"></iconify-icon></div>
+        <h4>Reports</h4>
+      </div>
+      <p>Date-range revenue analytics, enrolment trends, and course performance. Export any report to CSV.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:global-bold"></iconify-icon></div>
+        <h4>Countries</h4>
+      </div>
+      <p>Manage country representatives — assign, deactivate, and review their commission rates and student counts.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:diploma-bold"></iconify-icon></div>
+        <h4>Org Enrolments</h4>
+      </div>
+      <p>Bulk-enrol corporate learners into a package by uploading a CSV of email addresses.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:bell-linear"></iconify-icon></div>
+        <h4>Notifications</h4>
+      </div>
+      <p>Broadcast push notifications to all users, by role, or to a specific cohort.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:shield-check-bold"></iconify-icon></div>
+        <h4>Support</h4>
+      </div>
+      <p>View, respond to, and close support tickets submitted by students. Assign tickets to team members.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-card-header">
+        <div class="feature-card-icon"><iconify-icon icon="solar:chat-round-bold"></iconify-icon></div>
+        <h4>Community</h4>
+      </div>
+      <p>Moderate community posts — approve, reject, or remove user-generated stories and comments.</p>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:chart-2-bold"></iconify-icon>
+      Reports &amp; Analytics — Step by Step
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open Reports</div>
+          <div class="step-text">Go to <strong>Reports</strong> in the admin sidebar.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Set a date range</div>
+          <div class="step-text">Click the date range picker — select a start date, then an end date. The calendar highlights selected days in blue.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Review charts and tables</div>
+          <div class="step-text">Revenue by month, enrolments by country, top-performing courses, and teacher revenue share are rendered as interactive charts. Hover over data points for exact figures.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Export to CSV</div>
+          <div class="step-text">Click <strong>Export CSV</strong> to download the raw tabular data for the selected period. Open in Excel or Google Sheets for further analysis.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Analytics -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:chart-2-bold"></iconify-icon>
+      Dashboard Analytics (Enhanced)
+    </div>
+    <p>The Admin Dashboard now includes a rich analytics section powered by live data — no need to navigate to the Reports page for a quick overview.</p>
+    <table class="doc-table">
+      <thead><tr><th>Widget</th><th>What it shows</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>KPI Cards</strong></td>
+          <td>Total Students, Total Enrolments, Overall Course Completion Rate (%), and Total Published Courses — all updated in real time.</td>
+        </tr>
+        <tr>
+          <td><strong>Top Courses</strong></td>
+          <td>The 10 highest-enrolled courses with cover thumbnail, teacher name, enrolment count, and per-course completion percentage.</td>
+        </tr>
+        <tr>
+          <td><strong>Teacher Earnings Leaderboard</strong></td>
+          <td>Top 10 teachers ranked by wallet balance — useful for identifying your highest-revenue educators quickly.</td>
+        </tr>
+        <tr>
+          <td><strong>Revenue Sparkline</strong></td>
+          <td>A 14-day rolling revenue trend chart sourced from daily revenue snapshots. Hover over any data point to see the exact figure.</td>
+        </tr>
+        <tr>
+          <td><strong>Pending Approvals</strong></td>
+          <td>Teacher applications awaiting approval — click to jump to the Teachers page and action them.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- WP Auto-sync -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:refresh-bold"></iconify-icon>
+      WordPress Course Auto-Sync
+    </div>
+    <p>CareerPath Africa automatically imports courses from the connected WordPress site every <strong>6 hours</strong>. No manual action is required.</p>
+    <ul class="checklist">
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>All published WP courses appear in the Admin Courses list with a <strong>WordPress</strong> source badge.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>Course title, description, cover image, and excerpt are synced automatically. HTML is stripped from descriptions.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>WP courses are published immediately and credited to a system teacher account so they appear in student search results right away.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>Existing WP courses are updated on each sync cycle — no duplicates are created.</span></li>
+    </ul>
+    <div class="callout callout-info">
+      <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+      <div>WP-imported courses cannot be edited in the portal Course Builder. Changes must be made on the WordPress site and will propagate on the next sync cycle.</div>
+    </div>
+  </div>
+
+  <!-- Teacher welcome video -->
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:play-circle-bold"></iconify-icon>
+      Teacher Welcome Video
+    </div>
+    <p>The orientation video every teacher must watch before using the Teacher Portal. Manage it in <strong>Admin &rarr; Teacher Welcome Video</strong>.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Upload the video</div>
+          <div class="step-text">Upload an <strong>MP4, MOV or WebM</strong> file (up to 500 MB; 3–5 minutes recommended). The length is detected automatically. YouTube/Vimeo links aren’t accepted here — skipping can only be blocked on files hosted by the platform.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Add captions (optional)</div>
+          <div class="step-text">Upload a <strong>.vtt</strong> captions file. Teachers can switch captions on with the CC button.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Switch it on and save</div>
+          <div class="step-text">Tick <strong>Show this video to teachers</strong> and click <strong>Save</strong>. From then on, every teacher who hasn’t watched it is sent to it before they can use the portal. Untick it to pause the requirement.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Replacing the video</div>
+          <div class="step-text">Upload a new file and tick <strong>Make every teacher watch again</strong> to publish a new version that everyone must watch. Leave it unticked for small fixes such as a title change. The status card shows how many approved teachers have finished the current version.</div>
+        </div>
+      </div>
+    </div>
+    <div class="callout callout-info">
+      <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+      <div>Completion is recorded by the server from actual playback time — a teacher can’t mark it as watched by skipping or editing the page.</div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 15 COUNTRY REPRESENTATIVE ══ -->
+<div class="doc-section" id="s15">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:global-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">15 — Country Rep</div>
+      <div class="section-title">Country Representative Portal</div>
+      <div class="section-desc">Managing your country's students and packages, and earning commissions.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-green"><iconify-icon icon="solar:global-bold"></iconify-icon>Country Representative</span>
+  </div>
+
+  <p>Country Representatives (CRs) are local partners who promote CareerPath Africa in their assigned country. They earn a percentage commission on every package sold to students in their country.</p>
+
+  <div class="sub-section" style="margin-top:24px;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:chart-2-bold"></iconify-icon>
+      Dashboard
+    </div>
+    <p>The CR Dashboard features analytics charts powered by Recharts:</p>
+    <ul class="checklist">
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>Total students enrolled through your country link.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>Total revenue generated and your commission earned to date.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>Month-by-month enrolment trend line chart.</span></li>
+      <li><iconify-icon icon="solar:check-circle-bold"></iconify-icon><span>Commission calculator — input a number of enrolments to project future earnings.</span></li>
+    </ul>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title"><iconify-icon icon="solar:box-bold"></iconify-icon>Country Packages</div>
+    <p>View all packages available in your country. Contact the Admin to request custom packages with country-specific pricing to match local market conditions and purchasing power.</p>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title"><iconify-icon icon="solar:users-group-rounded-bold"></iconify-icon>Students</div>
+    <p>The Students page lists every learner who enrolled through your country link — name, enrolled package, enrolment date, and current status.</p>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title"><iconify-icon icon="solar:wallet-money-bold"></iconify-icon>Wallet &amp; Payouts</div>
+    <p>Commissions are credited to your wallet automatically after each verified purchase in your country. Request a payout from the Wallet page — Admin processes it within 5 business days to your saved bank account.</p>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 16 COURSE REVIEWER ══ -->
+<div class="doc-section" id="s16">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:star-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">16 — Reviewer</div>
+      <div class="section-title">Course Reviewer Portal</div>
+      <div class="section-desc">Evaluating teacher-submitted courses and providing structured feedback.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-amber"><iconify-icon icon="solar:star-bold"></iconify-icon>Course Reviewer</span>
+  </div>
+
+  <p>Course Reviewers are subject-matter experts who evaluate courses submitted by teachers before they go live to students. This quality gate ensures all published content meets CareerPath Africa's editorial and technical standards.</p>
+
+  <div class="sub-section">
+    <div class="sub-section-title"><iconify-icon icon="solar:document-text-bold"></iconify-icon>Review Queue</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Check your queue</div>
+          <div class="step-text">Your dashboard shows all courses assigned to you with a <span class="badge badge-amber" style="font-size:11px;">Pending Review</span> badge. They are sorted oldest-first to prevent submissions waiting too long.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Open the course</div>
+          <div class="step-text">Click a course to view the complete content as students would — modules, lessons, video embeds, rich text descriptions, and downloadable resources.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Evaluate quality</div>
+          <div class="step-text">Assess: content accuracy, curriculum completeness, video quality and clarity, lesson description depth, resource relevance, and overall structure against the platform's editorial guidelines.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Approve or Reject with feedback</div>
+          <div class="step-text">Click <strong>Approve</strong> to pass the course to Admin for packaging. Click <strong>Reject</strong> and provide specific, actionable written feedback on exactly what the teacher needs to fix before re-submitting.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title"><iconify-icon icon="solar:wallet-money-bold"></iconify-icon>Earnings</div>
+    <p>Reviewers earn a flat commission for each course reviewed (regardless of outcome). The Earnings page shows your wallet balance, per-review amounts, and payout history.</p>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 17 SETTINGS & PROFILE ══ -->
+<div class="doc-section" id="s17">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:settings-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">17 — All Roles</div>
+      <div class="section-title">Settings &amp; Profile</div>
+      <div class="section-desc">Personalising your account and managing security preferences.</div>
+    </div>
+  </div>
+
+  <p>Access Settings from the sidebar (desktop) or the More menu (mobile). Changes are saved instantly.</p>
+
+  <table class="doc-table">
+    <thead>
+      <tr><th>Setting</th><th>Description</th><th>Who</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Profile Photo</strong></td>
+        <td>Upload a square JPG/PNG. Displayed in the sidebar, on certificates, and on your public teacher profile.</td>
+        <td>All</td>
+      </tr>
+      <tr>
+        <td><strong>Full Name</strong></td>
+        <td>Name printed on certificates, shown in the cohort roster and community.</td>
+        <td>All</td>
+      </tr>
+      <tr>
+        <td><strong>Bio</strong></td>
+        <td>Short professional summary — visible on the teacher profile page seen by students booking mentorship.</td>
+        <td>Teacher, CR, Reviewer</td>
+      </tr>
+      <tr>
+        <td><strong>Country</strong></td>
+        <td>Used for localised package pricing and to associate you with a Country Representative.</td>
+        <td>All</td>
+      </tr>
+      <tr>
+        <td><strong>Phone Number</strong></td>
+        <td>Used for support contact and Paystack mobile-money payments.</td>
+        <td>All</td>
+      </tr>
+      <tr>
+        <td><strong>Bank Details</strong></td>
+        <td>Bank name, account number, and account name. Required before requesting a payout.</td>
+        <td>Teacher, CR, Reviewer</td>
+      </tr>
+      <tr>
+        <td><strong>Change Password</strong></td>
+        <td>Enter current password + new password (minimum 8 characters) + confirm.</td>
+        <td>All</td>
+      </tr>
+      <tr>
+        <td><strong>Notification Preferences</strong></td>
+        <td>Toggle email and push notifications individually for: assignments, live classes, grades, announcements, and promotions.</td>
+        <td>All</td>
+      </tr>
+      <tr>
+        <td><strong>Language</strong></td>
+        <td>Switch the portal interface between <strong>English</strong> and <strong>French</strong> using the EN / FR toggle in the top navigation bar (desktop) or via the Language Switcher button in the More menu (mobile). The setting is saved in a cookie and persists across sessions.</td>
+        <td>All</td>
+      </tr>
+      <tr>
+        <td><strong>Video Introduction</strong></td>
+        <td>Upload an MP4/MOV/WebM file (up to 100 MB) or paste a YouTube/Vimeo URL to add a short intro video to your public teacher profile.</td>
+        <td>Teacher</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 18 HELP & SUPPORT ══ -->
+<div class="doc-section" id="s18">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:shield-check-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">18 — All Roles</div>
+      <div class="section-title">Help &amp; Support</div>
+      <div class="section-desc">Getting assistance when something goes wrong or you have a question.</div>
+    </div>
+  </div>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:chat-round-bold"></iconify-icon>
+      Submitting a Support Ticket
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open Help &amp; Support</div>
+          <div class="step-text">Click <strong>Support</strong> in the student sidebar or the More menu.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Describe your issue</div>
+          <div class="step-text">Select a category (Technical / Billing / Course Content / Other), write a clear description of the problem. Include steps to reproduce if it is a technical issue. Optionally attach a screenshot.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Submit and track</div>
+          <div class="step-text">Click <strong>Submit Ticket</strong>. You receive an email confirmation with a ticket ID. Return to the Support page at any time to see the status and any replies from the support team. Tickets are typically resolved within 24–48 hours.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-tip">
+    <iconify-icon icon="solar:lightbulb-bold"></iconify-icon>
+    <div>
+      <strong>Common issues and quick fixes:</strong>
+      <ul style="margin-top:8px;padding-left:16px;line-height:2.3;">
+        <li><strong>Video not loading</strong> — Check your internet connection. Disable VPN or ad blocker. Try Chrome or Firefox.</li>
+        <li><strong>Camera blocked in live class</strong> — Click the lock icon in the browser address bar &rarr; Camera &rarr; Allow. Refresh the page.</li>
+        <li><strong>Payment declined</strong> — Ensure your card has sufficient funds. Try an alternative payment method (e.g., bank transfer instead of card). Contact your bank if the issue persists.</li>
+        <li><strong>Certificate missing after completion</strong> — Confirm all lessons are marked complete and all assignments are graded as passed. If requirements are met, submit a support ticket.</li>
+        <li><strong>Forgot password</strong> — Use the "Forgot password?" link on the login page. Check spam if the email does not arrive within 5 minutes.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 19 QUICK REFERENCE ══ -->
+<div class="doc-section" id="s19">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:bolt-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">19 — Reference</div>
+      <div class="section-title">Quick Reference</div>
+      <div class="section-desc">At-a-glance summaries for every role.</div>
+    </div>
+  </div>
+
+  <div class="quick-ref">
+    <div class="quick-card">
+      <h3><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</h3>
+      <ul>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Register &rarr; Verify email &rarr; Browse Catalogue</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Buy Package &rarr; Access My Courses</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Watch lessons &rarr; Mark complete</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Attend live classes via Daily.co</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Submit assignments &rarr; Receive grades</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Complete course &rarr; Download certificate</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Share referral link &rarr; Earn wallet tokens</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Search courses &amp; teachers via <strong>/student/search</strong></li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Message teachers directly via <strong>/student/messages</strong></li>
+      </ul>
+    </div>
+    <div class="quick-card">
+      <h3><iconify-icon icon="solar:diploma-bold"></iconify-icon>Teacher</h3>
+      <ul>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Create course &rarr; Build in Course Builder</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Upload cover image &amp; short description in builder</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Submit for review &rarr; Await approval</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Manage cohorts &amp; post announcements</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Schedule &amp; host live classes</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Grade assignment submissions</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Offer mentorship slots</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Upload video intro for your public profile</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Reply to student messages via <strong>/teacher/messages</strong></li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Request earnings payout</li>
+      </ul>
+    </div>
+    <div class="quick-card">
+      <h3><iconify-icon icon="solar:shield-check-bold"></iconify-icon>Admin</h3>
+      <ul>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Approve teachers &amp; reviewers</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Create packages with pricing</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Assign courses to cohorts &amp; students</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Issue certificates to completers</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Process teacher &amp; CR payouts</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Pull revenue reports &amp; export CSV</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Monitor dashboard KPIs &amp; top courses</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Broadcast platform notifications</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>WP courses auto-sync every 6 hours</li>
+      </ul>
+    </div>
+    <div class="quick-card">
+      <h3><iconify-icon icon="solar:global-bold"></iconify-icon>Country Rep</h3>
+      <ul>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Promote packages in your country</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Track enrolments &amp; commissions</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>View your country's student roster</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Request payouts from wallet</li>
+      </ul>
+    </div>
+    <div class="quick-card">
+      <h3><iconify-icon icon="solar:star-bold"></iconify-icon>Course Reviewer</h3>
+      <ul>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Review assigned course queue</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Evaluate content quality &amp; accuracy</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Approve or reject with feedback</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon>Earn commission per completed review</li>
+      </ul>
+    </div>
+    <div class="quick-card">
+      <h3><iconify-icon icon="solar:bolt-bold"></iconify-icon>Key URLs</h3>
+      <ul>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon><strong>Portal:</strong> app.careerpathafrica.com</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon><strong>Register:</strong> /register</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon><strong>Login:</strong> /login</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon><strong>Reset password:</strong> /forgot-password</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon><strong>Support:</strong> /student/support</li>
+        <li><iconify-icon icon="solar:arrow-right-bold"></iconify-icon><strong>Settings:</strong> /settings</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout callout-info" style="margin-top:40px;">
+    <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+    <div><strong>Need further help?</strong> Contact your Country Representative or submit a support ticket at <strong>app.careerpathafrica.com/student/support</strong>. Our team responds within 24 hours on business days.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 20 SEARCH & DISCOVERY ══ -->
+<div class="doc-section" id="s20">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:magnifer-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">20 — Student</div>
+      <div class="section-title">Search &amp; Discovery</div>
+      <div class="section-desc">Finding courses and teachers instantly with full-text search.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+  </div>
+
+  <p>The Search page at <strong>/student/search</strong> lets you instantly find any published course or approved teacher on the platform. Results update as you type — no need to press Enter.</p>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:magnifer-bold"></iconify-icon>
+      How to Search
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open Search</div>
+          <div class="step-text">Click <strong>Search</strong> in the student sidebar, tap the search tab in the mobile bottom bar, or press <kbd style="background:var(--cloud);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:12px;font-family:monospace;">⌘ K</kbd> on desktop to open the search palette from anywhere in the portal.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Type your query</div>
+          <div class="step-text">Enter any keyword — course title, subject name, programme name, teacher name, or bio keyword. The search is <strong>case-insensitive</strong> and looks across all relevant fields simultaneously.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Filter by type</div>
+          <div class="step-text">Use the tabs above the results to switch between <strong>All</strong>, <strong>Courses</strong>, and <strong>Teachers</strong>. Up to 20 results are returned per category.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Act on a result</div>
+          <div class="step-text">
+            <ul style="padding-left:16px;line-height:2.2;">
+              <li><strong>Course card</strong> — shows cover image, title, short description, teacher name, and subject. Click to open the course detail page.</li>
+              <li><strong>Teacher card</strong> — shows avatar, name, reputation badge, average star rating, and course count. Click to open the teacher profile where you can book a session or send a message.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:star-bold"></iconify-icon>
+      Teacher Discovery
+    </div>
+    <p>When searching for teachers, each result card displays:</p>
+    <table class="doc-table">
+      <thead><tr><th>Field</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Name &amp; Avatar</strong></td><td>Teacher's display name and profile photo.</td></tr>
+        <tr><td><strong>Badge</strong></td><td>Top Rated, Rising Star, or New — automatically computed from verified reviews.</td></tr>
+        <tr><td><strong>Star Rating</strong></td><td>Average of all student ratings (1–5 stars) rounded to 1 decimal place.</td></tr>
+        <tr><td><strong>Course Count</strong></td><td>Total published courses by this teacher.</td></tr>
+        <tr><td><strong>Subjects</strong></td><td>Subjects the teacher is qualified to teach.</td></tr>
+      </tbody>
+    </table>
+    <p>Click any teacher card to visit their full profile — view their bio, video intro, mentorship slots, and available courses, then send a direct message or book a session.</p>
+  </div>
+
+  <div class="callout callout-tip">
+    <iconify-icon icon="solar:lightbulb-bold"></iconify-icon>
+    <div><strong>Keyboard shortcut:</strong> Press <kbd style="background:var(--cloud);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:12px;font-family:monospace;">⌘ K</kbd> (Mac) or <kbd style="background:var(--cloud);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:12px;font-family:monospace;">Ctrl K</kbd> (Windows) from any page to open the search palette without leaving your current screen.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 21 MESSAGING INBOX ══ -->
+<div class="doc-section" id="s21">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:chat-round-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">21 — Student &amp; Teacher</div>
+      <div class="section-title">Messaging Inbox</div>
+      <div class="section-desc">Private direct messages between students and teachers.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+    <span class="badge badge-royal"><iconify-icon icon="solar:diploma-bold"></iconify-icon>Teacher</span>
+  </div>
+
+  <p>The Messaging Inbox provides a private, iMessage-style conversation channel between any student and any teacher. No group chats — every thread is strictly 1-on-1.</p>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:user-rounded-bold"></iconify-icon>
+      Student — Starting a Conversation
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Find the teacher</div>
+          <div class="step-text">Go to the teacher's profile — either from a course detail page, the Search results, or the Cohort page. Click the <strong>Message</strong> button next to their name.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Thread is created automatically</div>
+          <div class="step-text">The platform creates (or opens an existing) private thread between you and the teacher. You are taken directly to the chat view.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Write and send</div>
+          <div class="step-text">Type your message in the input at the bottom. Press <kbd style="background:var(--cloud);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:12px;font-family:monospace;">Enter</kbd> to send or <kbd style="background:var(--cloud);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:12px;font-family:monospace;">Shift + Enter</kbd> for a newline. Your messages appear as blue bubbles on the right; the teacher's replies appear as white bubbles on the left.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:diploma-bold"></iconify-icon>
+      Teacher — Managing Conversations
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open Messages</div>
+          <div class="step-text">Click <strong>Messages</strong> in the Teacher sidebar. The thread list shows all conversations sorted by most recent, with the other party's name, last message preview, and timestamp.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Spot unread messages</div>
+          <div class="step-text">A blue dot on the left of a thread indicates unread messages. All unread messages are automatically marked as read when you open the thread.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Reply</div>
+          <div class="step-text">Click any thread to open the chat. Older messages are loaded by scrolling up. Type your reply and press Enter to send. On mobile, tap a thread to go full-screen — swipe back or tap the back arrow to return to the thread list.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+      Inbox Features
+    </div>
+    <table class="doc-table">
+      <thead><tr><th>Feature</th><th>Details</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Chat Bubbles</strong></td><td>Your messages: blue bubble, right-aligned. Other party: white bubble with border, left-aligned — familiar iMessage-style layout.</td></tr>
+        <tr><td><strong>Read Receipts</strong></td><td>A small "Read" label appears below your sent messages once the other person has opened the thread.</td></tr>
+        <tr><td><strong>Unread Count</strong></td><td>The notification bell in the topbar shows a dot when you have unread messages.</td></tr>
+        <tr><td><strong>Pagination</strong></td><td>The 30 most recent messages are loaded by default. Scroll up to load older messages.</td></tr>
+        <tr><td><strong>Auto-refresh</strong></td><td>The inbox polls for new messages every 5 seconds — no manual refresh needed.</td></tr>
+        <tr><td><strong>Mobile</strong></td><td>Thread list is hidden when a chat is open on mobile to maximise screen space. Use the back button to return to the thread list.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout callout-warn">
+    <iconify-icon icon="solar:danger-bold"></iconify-icon>
+    <div><strong>Appropriate use:</strong> The messaging feature is intended for academic and mentorship communication. Misuse (spam, harassment, solicitation) may result in account suspension. All messages are subject to the CareerPath Africa Terms of Service.</div>
+  </div>
+</div>
+
+<!-- ══ 22 QUIZZES & ASSESSMENTS ══ -->
+<div class="doc-section" id="s22">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:document-text-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">22 — Student &amp; Teacher</div>
+      <div class="section-title">Quizzes &amp; Assessments</div>
+      <div class="section-desc">Auto-graded quizzes, timed exams, AI-assisted question generation, and per-question analytics.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+    <span class="badge badge-royal"><iconify-icon icon="solar:diploma-bold"></iconify-icon>Teacher</span>
+  </div>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:diploma-bold"></iconify-icon>
+      Teacher — Building a Quiz
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open Quiz Builder</div>
+          <div class="step-text">In the Teacher sidebar go to <strong>Quiz Builder</strong>. Select the course, then add questions individually or use the <strong>✨ AI Generate</strong> button to auto-generate 10 questions from a lesson's content.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Choose question type</div>
+          <div class="step-text">Pick from <strong>MCQ</strong>, <strong>True / False</strong>, <strong>Fill in the blank</strong>, <strong>Short answer</strong>, or <strong>Written</strong>. Set the difficulty (Easy / Medium / Hard), point value, and an explanation shown after submission.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Configure the lesson</div>
+          <div class="step-text">In the Course Builder, set the lesson type to <strong>QUIZ</strong> and optionally configure: pass mark %, time limit in minutes, max attempts, and shuffle questions.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:user-rounded-bold"></iconify-icon>
+      Student — Taking a Quiz
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Start the quiz</div>
+          <div class="step-text">Open the lesson in the Course Player. The quiz info screen shows pass mark, time limit, and your previous attempts. Click <strong>Start quiz</strong>.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Answer questions</div>
+          <div class="step-text">Navigate question by question. A countdown timer appears if a time limit is set — the quiz auto-submits when it reaches zero.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">See your results</div>
+          <div class="step-text">Instant results show your score, pass/fail status, and per-question explanations for MCQ/True-False questions. Written answers go to teacher manual grading. Passing a quiz awards XP automatically.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:chart-bold"></iconify-icon>
+      Quiz Analytics (Teacher)
+    </div>
+    <p>Navigate to <strong>Quiz Builder → Analytics</strong> for any lesson to see overall pass rate, average score, total attempts, and a per-question correctness breakdown — helping identify questions that need rewording or content areas students struggle with.</p>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<!-- ══ 23 GAMIFICATION & XP ══ -->
+<div class="doc-section" id="s23">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:cup-star-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">23 — Student</div>
+      <div class="section-title">Gamification &amp; XP</div>
+      <div class="section-desc">Earn points, level up, maintain streaks, collect badges, and compete on the cohort leaderboard.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+  </div>
+
+  <p>Every action on the platform awards Experience Points (XP). Accumulate 1,000 XP to reach the next level. The XP bar is always visible in your sidebar, showing your current level, progress to the next level, and daily streak.</p>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:bolt-bold"></iconify-icon>
+      XP Events
+    </div>
+    <table class="doc-table">
+      <thead><tr><th>Action</th><th>XP Awarded</th></tr></thead>
+      <tbody>
+        <tr><td>Complete a lesson</td><td>+10 XP</td></tr>
+        <tr><td>Pass a quiz</td><td>+20 XP</td></tr>
+        <tr><td>Score 100% on a quiz</td><td>+50 XP (Perfect bonus)</td></tr>
+        <tr><td>Submit an assignment</td><td>+5 XP</td></tr>
+        <tr><td>Post in a discussion</td><td>+3 XP</td></tr>
+        <tr><td>Complete a peer review</td><td>+15 XP</td></tr>
+        <tr><td>7-day streak</td><td>+50 XP bonus</td></tr>
+        <tr><td>30-day streak</td><td>+200 XP bonus</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:medal-star-bold"></iconify-icon>
+      Badges
+    </div>
+    <table class="doc-table">
+      <thead><tr><th>Badge</th><th>How to earn</th></tr></thead>
+      <tbody>
+        <tr><td>🎓 First Lesson</td><td>Complete your first lesson</td></tr>
+        <tr><td>📚 5 Lessons</td><td>Complete 5 lessons</td></tr>
+        <tr><td>🏆 20 Lessons</td><td>Complete 20 lessons</td></tr>
+        <tr><td>✅ First Quiz Pass</td><td>Pass your first quiz</td></tr>
+        <tr><td>🔥 7-Day Streak</td><td>Log in and engage 7 days in a row</td></tr>
+        <tr><td>🔥 30-Day Streak</td><td>Log in and engage 30 days in a row</td></tr>
+        <tr><td>⭐ Top Scorer</td><td>Achieve 5 perfect quiz scores</td></tr>
+        <tr><td>🎉 Course Complete</td><td>Complete all lessons in a course</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:ranking-bold"></iconify-icon>
+      Cohort Leaderboard
+    </div>
+    <p>Access the leaderboard from <strong>Student → Leaderboard</strong>. It shows all students in your cohort ranked by total XP, with gold / silver / bronze medals for the top 3. Your rank updates in real time as you earn XP.</p>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:chart-2-bold"></iconify-icon>
+      My Progress Page
+    </div>
+    <p>Go to <strong>Student → My Progress</strong> to see your full analytics: current level and XP bar, course completion percentages, all badges earned with dates, and a chronological feed of every XP event.</p>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<!-- ══ 24 FLASHCARDS ══ -->
+<div class="doc-section" id="s24">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:card-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">24 — Student &amp; Teacher</div>
+      <div class="section-title">Flashcards</div>
+      <div class="section-desc">Spaced-repetition flashcard decks for active recall and long-term retention.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+    <span class="badge badge-royal"><iconify-icon icon="solar:diploma-bold"></iconify-icon>Teacher</span>
+  </div>
+
+  <p>Flashcard decks are attached to courses. Each deck contains question/answer cards. The platform uses a spaced-repetition algorithm — cards you find hard appear more frequently; easy cards are shown less often.</p>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:diploma-bold"></iconify-icon>
+      Teacher — Creating a Deck
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open the Course Builder</div>
+          <div class="step-text">Navigate to <strong>Teacher → Courses → [Course] → Builder</strong>. Scroll to the <strong>Flashcard Decks</strong> section.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Create manually or via AI</div>
+          <div class="step-text">Click <strong>New Deck</strong> and add cards one by one — or click <strong>✨ AI Generate</strong> to automatically create 10 question/answer pairs from any lesson's content.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:user-rounded-bold"></iconify-icon>
+      Student — Studying Flashcards
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open a deck</div>
+          <div class="step-text">Go to <strong>Student → Flashcards</strong>. Your decks are shown with card counts. Click any deck to start a session — only cards due for review are shown.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Flip and rate</div>
+          <div class="step-text">Tap the card to reveal the answer. Then rate your recall: <strong>Easy</strong> (next review in 3 days), <strong>Hard</strong> (next review in 1 day), or <strong>Again</strong> (next review in 10 minutes).</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Complete the session</div>
+          <div class="step-text">When all due cards have been rated, you see a completion screen. Come back the next day for more — the algorithm schedules each card independently.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<!-- ══ 25 AI STUDY ASSISTANT ══ -->
+<div class="doc-section" id="s25">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:magic-stick-3-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">25 — Student &amp; Teacher</div>
+      <div class="section-title">AI Study Assistant</div>
+      <div class="section-desc">An AI tutor, quiz generator, and writing feedback engine powered by Claude.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+    <span class="badge badge-royal"><iconify-icon icon="solar:diploma-bold"></iconify-icon>Teacher</span>
+  </div>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:user-rounded-bold"></iconify-icon>
+      Student — AI Chat in Lesson Player
+    </div>
+    <p>While watching a lesson, click the <strong>✨ AI</strong> button in the top bar to open the AI Study Assistant panel. Type any question about the lesson content and receive an instant, grounded answer. The AI is restricted to the scope of your enrolled course — it will not answer off-topic questions.</p>
+    <div class="callout callout-tip">
+      <iconify-icon icon="solar:lightbulb-bold"></iconify-icon>
+      <div><strong>Best practice:</strong> Ask specific questions like "Explain the difference between X and Y in this lesson" or "Give me an example of Z from what was covered." The more specific the question, the more useful the answer.</div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:diploma-bold"></iconify-icon>
+      Teacher — AI Tools
+    </div>
+    <table class="doc-table">
+      <thead><tr><th>Feature</th><th>Where to find it</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><strong>AI Quiz Generation</strong></td><td>Quiz Builder → ✨ AI button</td><td>Generates 10 MCQ questions from a selected lesson's content and adds them to the question bank.</td></tr>
+        <tr><td><strong>AI Flashcard Generation</strong></td><td>Course Builder → Flashcard Decks → AI Generate</td><td>Creates a 10-card spaced-repetition deck from lesson content.</td></tr>
+        <tr><td><strong>AI Writing Feedback</strong></td><td>Assignments → Grade → AI Pre-grade</td><td>Provides strengths, improvements, and a suggested score for written submissions before teacher review.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout callout-info">
+    <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+    <div><strong>AI model:</strong> All AI features use Anthropic Claude (claude-haiku model). Responses are generated in real time — generation may take 3–10 seconds depending on content length. AI-generated content is suggestions only; teachers should review AI-generated quiz questions before publishing.</div>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<!-- ══ 26 NOTES & BOOKMARKS ══ -->
+<div class="doc-section" id="s26">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:notes-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">26 — Student</div>
+      <div class="section-title">Notes &amp; Bookmarks</div>
+      <div class="section-desc">Take timestamped notes while watching lessons and export them as a study guide.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+  </div>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:pen-bold"></iconify-icon>
+      Taking Notes
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open the Notes panel</div>
+          <div class="step-text">Inside the Course Player, click the <strong>Notes</strong> button in the top bar. A panel slides in on the right side of the screen.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Write and save</div>
+          <div class="step-text">Type your note in the text area and click <strong>Save note</strong>. Notes appear in reverse-chronological order below the input.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Export all notes</div>
+          <div class="step-text">Click <strong>Export</strong> in the Notes panel to download a plain-text file of all your notes for the entire course, with lesson titles and timestamps as headers — ready to use as a revision guide.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-tip">
+    <iconify-icon icon="solar:lightbulb-bold"></iconify-icon>
+    <div>Notes are per-lesson and per-student — private to you only. They are stored in the cloud and available on all your devices.</div>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<!-- ══ 27 RUBRICS & PEER REVIEW ══ -->
+<div class="doc-section" id="s27">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:checklist-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">27 — Teacher &amp; Student</div>
+      <div class="section-title">Rubrics &amp; Peer Review</div>
+      <div class="section-desc">Structured grading criteria for assignments and peer-to-peer assessment workflows.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-royal"><iconify-icon icon="solar:diploma-bold"></iconify-icon>Teacher</span>
+    <span class="badge badge-azure"><iconify-icon icon="solar:user-rounded-bold"></iconify-icon>Student</span>
+  </div>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:diploma-bold"></iconify-icon>
+      Teacher — Building a Rubric
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open Rubric Builder</div>
+          <div class="step-text">In the Teacher portal, go to <strong>Assignments → [Assignment] → Build Rubric</strong>. The URL pattern is <code>/teacher/rubrics/[assignmentId]</code>.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Add criteria</div>
+          <div class="step-text">Add one criterion per key skill (e.g. Content Quality, Structure, Originality). Each criterion has a <strong>name</strong>, optional <strong>description</strong>, and a <strong>weight %</strong>. All weights must total 100%.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Grade using the rubric</div>
+          <div class="step-text">When grading a submission, open <strong>Assignments → Grade</strong>. Score each criterion 0–4 (0 = Not attempted, 4 = Outstanding). The weighted final grade is computed and saved automatically.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:users-group-rounded-bold"></iconify-icon>
+      Peer Review
+    </div>
+    <p>When an assignment is configured for peer review, submitted work is anonymously shuffled to other students in the cohort. Each student receives submissions to review from their peers.</p>
+    <table class="doc-table">
+      <thead><tr><th>Step</th><th>Who</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Teacher</td><td>Enable <strong>Peer Review</strong> on the assignment and set the number of peer reviews per submission (default: 3).</td></tr>
+        <tr><td>2</td><td>System</td><td>After the deadline, the platform automatically assigns review pairs — each student receives work from different peers.</td></tr>
+        <tr><td>3</td><td>Student</td><td>Go to <strong>Assignments → Peer Review Queue</strong> to see submissions assigned for review. Write structured feedback and submit.</td></tr>
+        <tr><td>4</td><td>Student</td><td>Completing a peer review awards +15 XP.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<!-- ══ 28 PROGRESS ALERTS ══ -->
+<div class="doc-section" id="s28">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:bell-bing-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">28 — Teacher</div>
+      <div class="section-title">Progress Alerts &amp; At-Risk Students</div>
+      <div class="section-desc">Automated alerts when students fall behind, with an at-risk dashboard for proactive intervention.</div>
+    </div>
+  </div>
+
+  <div class="role-badges">
+    <span class="badge badge-royal"><iconify-icon icon="solar:diploma-bold"></iconify-icon>Teacher</span>
+  </div>
+
+  <p>The Alerts system monitors student engagement in a cohort and flags students who are inactive, scoring below thresholds, or have overdue assignments. A daily automated check runs at 08:00 and sends notifications where configured.</p>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:settings-bold"></iconify-icon>
+      Configuring Alerts
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open Alerts</div>
+          <div class="step-text">Go to <strong>Teacher → Alerts</strong>. Select a cohort from the dropdown.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Create an alert rule</div>
+          <div class="step-text">Choose the alert type: <strong>Inactivity</strong> (days since last login), <strong>Quiz Score Below</strong> (minimum % threshold), or <strong>Assignment Overdue</strong> (days overdue). Set the threshold value.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Toggle active / paused</div>
+          <div class="step-text">Click the status badge on any saved alert to toggle it between <strong>Active</strong> and <strong>Paused</strong>. Paused alerts are not evaluated in the daily check.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:danger-bold"></iconify-icon>
+      At-Risk Student Dashboard
+    </div>
+    <p>Click the <strong>At-Risk Students</strong> tab to see all students currently flagged in the selected cohort. Each student shows a risk level badge:</p>
+    <table class="doc-table">
+      <thead><tr><th>Risk Level</th><th>Criteria</th><th>Recommended action</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-amber">Medium</span></td><td>Inactive 7–14 days or low XP relative to cohort average</td><td>Send an encouraging message via the Messaging Inbox</td></tr>
+        <tr><td><span class="badge" style="background:rgba(239,68,68,.12);color:#b91c1c;">High</span></td><td>Inactive 14+ days or XP in bottom 10% of cohort</td><td>Reach out directly; consider scheduling a 1-on-1 mentorship session</td></tr>
+        <tr><td><span class="badge badge-green">Low</span></td><td>Occasionally inactive but still progressing</td><td>Monitor; no immediate action needed</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout callout-info">
+    <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+    <div><strong>Certificate auto-issue:</strong> When a student completes 100% of a course's lessons, the platform automatically generates and issues their certificate — no manual action required from the teacher or admin.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══ 29 EMAIL NOTIFICATIONS ══ -->
+<div class="doc-section" id="s29">
+  <div class="section-header">
+    <div class="section-icon"><iconify-icon icon="solar:letter-bold"></iconify-icon></div>
+    <div>
+      <div class="section-label">29 — All Roles</div>
+      <div class="section-title">Email Notifications</div>
+      <div class="section-desc">A complete reference of every automated email the platform sends, when it is triggered, and who receives it.</div>
+    </div>
+  </div>
+
+  <p>CareerPath Africa uses email as its primary notification channel. All emails are sent automatically — no action is required from an Admin to trigger them. Below is a full reference of every automated email.</p>
+
+  <div class="sub-section" style="margin-top:0;">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:user-rounded-bold"></iconify-icon>
+      Account &amp; Onboarding
+    </div>
+    <table class="doc-table">
+      <thead><tr><th>Email</th><th>Recipient</th><th>Trigger</th><th>Key contents</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Welcome — Student</strong></td>
+          <td>Student</td>
+          <td>Successful registration (form or Google SSO)</td>
+          <td>Student ID (e.g. <code>SN-A3F2B891</code>), getting-started checklist, portal link</td>
+        </tr>
+        <tr>
+          <td><strong>Welcome — Teacher (Pending)</strong></td>
+          <td>Applicant</td>
+          <td>Teacher application submitted</td>
+          <td>Application reference, expected review timeframe, contact info</td>
+        </tr>
+        <tr>
+          <td><strong>Teacher Application Decision</strong></td>
+          <td>Applicant</td>
+          <td>Admin approves or rejects the application</td>
+          <td><em>Approved:</em> Teacher ID (e.g. <code>TCH-D1E2F3A4</code>), first steps to get started. <em>Rejected:</em> Clear reason &amp; next-step guidance.</td>
+        </tr>
+        <tr>
+          <td><strong>OTP Verification</strong></td>
+          <td>User</td>
+          <td>OTP requested (login, sensitive action)</td>
+          <td>6-digit code, 10-minute expiry warning</td>
+        </tr>
+        <tr>
+          <td><strong>Password Reset</strong></td>
+          <td>User</td>
+          <td>Forgot-password form submitted</td>
+          <td>Secure reset link (valid 1 hour), security advice</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:wallet-money-bold"></iconify-icon>
+      Payments &amp; Billing
+    </div>
+    <table class="doc-table">
+      <thead><tr><th>Email</th><th>Recipient</th><th>Trigger</th><th>Key contents</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Purchase Receipt</strong></td>
+          <td>Student</td>
+          <td>Successful package or course payment</td>
+          <td>Invoice number (e.g. <code>INV-00042</code>), item name, amount, currency, date, student name</td>
+        </tr>
+        <tr>
+          <td><strong>Payout Processed</strong></td>
+          <td>Teacher / Country Rep</td>
+          <td>Admin marks a payout request as Paid</td>
+          <td>Amount, currency, payout date, bank reference</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:diploma-bold"></iconify-icon>
+      Mentorship
+    </div>
+    <table class="doc-table">
+      <thead><tr><th>Email</th><th>Recipient</th><th>Trigger</th><th>Key contents</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Booking Confirmation</strong></td>
+          <td>Student</td>
+          <td>Student confirms a mentorship slot</td>
+          <td>Teacher name, session date &amp; time, duration, Join link</td>
+        </tr>
+        <tr>
+          <td><strong>New Booking Alert</strong></td>
+          <td>Teacher</td>
+          <td>Student confirms a mentorship slot</td>
+          <td>Student name, session date &amp; time, duration, student's note, Join link</td>
+        </tr>
+        <tr>
+          <td><strong>Booking Cancelled</strong></td>
+          <td>The other party</td>
+          <td>Student or teacher cancels a confirmed booking</td>
+          <td>Who cancelled, session date &amp; time, link to browse new sessions</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:videocamera-record-bold"></iconify-icon>
+      Live Classes
+    </div>
+    <table class="doc-table">
+      <thead><tr><th>Email</th><th>Recipient</th><th>Trigger</th><th>Key contents</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Live Class Reminder — 60 min</strong></td>
+          <td>Teacher + all enrolled students</td>
+          <td>Automated cron, ~60 minutes before a scheduled live class</td>
+          <td>Course title, start time, "Join live class" button with room URL</td>
+        </tr>
+        <tr>
+          <td><strong>Live Class Reminder — 15 min</strong></td>
+          <td>Teacher + all enrolled students</td>
+          <td>Automated cron, ~15 minutes before a scheduled live class</td>
+          <td>Urgent reminder with "Class starts in 15 minutes", room URL</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout callout-info" style="margin-top:16px;">
+      <iconify-icon icon="solar:info-circle-bold"></iconify-icon>
+      <div>Live class reminders are sent automatically by a background scheduler. No manual action is needed from teachers or admins. Both the 60-minute and 15-minute reminders are sent for every scheduled class.</div>
+    </div>
+  </div>
+
+  <div class="sub-section">
+    <div class="sub-section-title">
+      <iconify-icon icon="solar:document-text-bold"></iconify-icon>
+      Assignments &amp; Certificates
+    </div>
+    <table class="doc-table">
+      <thead><tr><th>Email</th><th>Recipient</th><th>Trigger</th><th>Key contents</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Assignment Graded</strong></td>
+          <td>Student</td>
+          <td>Teacher submits a grade</td>
+          <td>Score (e.g. <em>78/100 — 78%</em>), colour-coded pass/fail, teacher's written feedback</td>
+        </tr>
+        <tr>
+          <td><strong>Certificate Earned</strong></td>
+          <td>Student</td>
+          <td>Certificate issued (auto or manual)</td>
+          <td>Student name, course title, issue date, Verify Certificate link (public, no login needed)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout callout-warn" style="margin-top:8px;">
+    <iconify-icon icon="solar:danger-bold"></iconify-icon>
+    <div><strong>Not receiving emails?</strong> Check your spam / junk folder and mark <em>no-reply@careerpathafrica.com</em> as a safe sender. If emails are still missing, submit a support ticket with your Student ID or Teacher ID so the team can verify your email address on file.</div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div style="margin-top:72px;padding-top:28px;border-top:1px solid var(--cloud);text-align:center;color:var(--muted);font-size:13px;line-height:2;">
+  <p style="font-weight:800;color:var(--navy);font-size:15px;margin-bottom:2px;">CareerPath Africa</p>
+  <p>User Onboarding Guide &mdash; Version 4.0 &mdash; September 2026</p>
+  <p>app.careerpathafrica.com</p>
+</div>
+
+</div><!-- /page-wrap -->
+</body>
+</html>

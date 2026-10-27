@@ -1,0 +1,24 @@
+# CareerPath Africa — Caddy reverse proxy
+# Caddy auto-provisions TLS via Let's Encrypt.
+# Run: caddy run --config Caddyfile
+
+# ── Portal (Next.js) ───────────────────────────────────────────────────────
+app.careerpathafrica.com {
+    reverse_proxy portal:3000 {
+        # Forward real client IP
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+
+# ── API (NestJS) ───────────────────────────────────────────────────────────
+api.careerpathafrica.com {
+    reverse_proxy api:3001 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+
+        # WebSocket support (whiteboard / live class)
+        header_up Connection {>Connection}
+        header_up Upgrade {>Upgrade}
+    }
+}

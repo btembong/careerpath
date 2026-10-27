@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CareerPath Africa — Portal System Documentation</title>
+<style>
+  :root {
+    --navy:   #072061;
+    --azure:  #5889FA;
+    --royal:  #405FAD;
+    --cloud:  #E6ECFD;
+    --surface:#F4F6FF;
+    --white:  #ffffff;
+    --text:   #1a1a2e;
+    --muted:  #64748b;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--surface);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  /* ── Top bar ── */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--navy);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    height: 52px;
+    box-shadow: 0 2px 12px rgba(7,32,97,0.18);
+  }
+  .topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--white);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-decoration: none;
+  }
+  .topbar-brand span {
+    color: var(--azure);
+  }
+  .topbar-links {
+    display: flex;
+    gap: 20px;
+  }
+  .topbar-links a {
+    color: rgba(255,255,255,0.5);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    transition: color .15s;
+  }
+  .topbar-links a:hover { color: var(--white); }
+
+  /* ── Hero ── */
+  .hero {
+    background: linear-gradient(135deg, var(--navy) 0%, #0d3080 100%);
+    padding: 64px 40px 56px;
+    text-align: center;
+  }
+  .hero-badge {
+    display: inline-block;
+    background: rgba(88,137,250,0.2);
+    color: var(--azure);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    border-radius: 20px;
+    padding: 4px 14px;
+    margin-bottom: 18px;
+  }
+  .hero h1 {
+    color: var(--white);
+    font-size: 36px;
+    font-weight: 900;
+    line-height: 1.2;
+    margin-bottom: 14px;
+  }
+  .hero h1 span { color: var(--azure); }
+  .hero p {
+    color: rgba(255,255,255,0.55);
+    font-size: 15px;
+    max-width: 560px;
+    margin: 0 auto 28px;
+  }
+  .hero-meta {
+    display: flex;
+    justify-content: center;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+  .hero-meta span {
+    color: rgba(255,255,255,0.35);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .hero-meta strong { color: var(--azure); }
+
+  /* ── Main layout ── */
+  .main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 48px 32px 80px;
+  }
+
+  /* ── Table of Contents ── */
+  .toc {
+    background: var(--white);
+    border: 1px solid var(--cloud);
+    border-radius: 16px;
+    padding: 32px 36px;
+    margin-bottom: 56px;
+  }
+  .toc-title {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--azure);
+    margin-bottom: 20px;
+  }
+  .toc ol {
+    counter-reset: toc-section;
+    list-style: none;
+    columns: 2;
+    column-gap: 32px;
+  }
+  @media (max-width: 640px) { .toc ol { columns: 1; } }
+  .toc > ol > li {
+    counter-increment: toc-section;
+    margin-bottom: 6px;
+  }
+  .toc > ol > li > a {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    color: var(--navy);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 5px 8px;
+    border-radius: 8px;
+    transition: background .12s, color .12s;
+  }
+  .toc > ol > li > a:hover {
+    background: var(--cloud);
+    color: var(--azure);
+  }
+  .toc > ol > li > a::before {
+    content: counter(toc-section, decimal-leading-zero);
+    font-size: 10px;
+    font-weight: 900;
+    color: var(--azure);
+    background: var(--cloud);
+    border-radius: 6px;
+    padding: 2px 7px;
+    flex-shrink: 0;
+  }
+  .toc-sub {
+    list-style: none;
+    padding-left: 36px;
+    margin-top: 4px;
+  }
+  .toc-sub li a {
+    font-size: 12px;
+    color: var(--muted);
+    text-decoration: none;
+    transition: color .12s;
+  }
+  .toc-sub li a:hover { color: var(--azure); }
+  .toc-sub li::before { content: "· "; color: var(--azure); }
+
+  /* ── Section ── */
+  .section {
+    margin-bottom: 64px;
+    scroll-margin-top: 68px;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--cloud);
+  }
+  .section-num {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--azure);
+    color: var(--white);
+    font-size: 13px;
+    font-weight: 900;
+    flex-shrink: 0;
+  }
+  .section-header h2 {
+    font-size: 22px;
+    font-weight: 900;
+    color: var(--navy);
+  }
+  .section-header p {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  h3 {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--navy);
+    margin: 28px 0 10px;
+    scroll-margin-top: 68px;
+  }
+  h4 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--royal);
+    margin: 18px 0 8px;
+  }
+
+  p { margin-bottom: 12px; color: #2d3a5e; }
+  p:last-child { margin-bottom: 0; }
+
+  /* ── Role badges ── */
+  .role {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border-radius: 20px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .role-student    { background: #e0ffe8; color: #177a3c; }
+  .role-teacher    { background: #fff3e0; color: #b45309; }
+  .role-admin      { background: var(--cloud); color: var(--navy); }
+  .role-rep        { background: #fce7f3; color: #9d174d; }
+  .role-reviewer   { background: #ede9fe; color: #5b21b6; }
+  .role-public     { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+
+  /* ── Info box ── */
+  .info-box {
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin: 18px 0;
+    font-size: 13.5px;
+  }
+  .info-box.note    { background: #eff6ff; border-left: 4px solid var(--azure); color: #1e40af; }
+  .info-box.warn    { background: #fffbeb; border-left: 4px solid #f59e0b; color: #92400e; }
+  .info-box.success { background: #f0fdf4; border-left: 4px solid #22c55e; color: #166534; }
+  .info-box.danger  { background: #fff1f2; border-left: 4px solid #f43f5e; color: #9f1239; }
+  .info-box strong  { display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; opacity: .7; }
+
+  /* ── Tables ── */
+  .table-wrap { overflow-x: auto; margin: 18px 0; border-radius: 12px; border: 1px solid var(--cloud); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: var(--navy); }
+  thead th {
+    color: var(--white);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    padding: 12px 16px;
+    text-align: left;
+  }
+  tbody tr { border-bottom: 1px solid var(--cloud); }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:nth-child(even) { background: var(--surface); }
+  td { padding: 10px 16px; color: #2d3a5e; vertical-align: top; }
+  td strong { color: var(--navy); }
+
+  /* ── Steps / Flow ── */
+  .steps { list-style: none; margin: 18px 0; counter-reset: step; }
+  .steps li {
+    counter-increment: step;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+    padding: 14px 16px;
+    background: var(--white);
+    border: 1px solid var(--cloud);
+    border-radius: 12px;
+  }
+  .steps li::before {
+    content: counter(step);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    border-radius: 8px;
+    background: var(--azure);
+    color: var(--white);
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .steps li .step-body { flex: 1; }
+  .steps li .step-body strong { display: block; font-size: 13px; color: var(--navy); }
+  .steps li .step-body span { font-size: 12.5px; color: var(--muted); }
+
+  /* ── Code / Route ── */
+  code {
+    font-family: 'Consolas', 'Fira Code', monospace;
+    background: var(--cloud);
+    color: var(--navy);
+    font-size: 12px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-weight: 600;
+  }
+  .route-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 8px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: monospace;
+    margin: 2px 3px;
+  }
+  .route-pill.get    { background: #dcfce7; color: #166534; }
+  .route-pill.post   { background: #fef9c3; color: #713f12; }
+  .route-pill.patch  { background: #ede9fe; color: #5b21b6; }
+  .route-pill.delete { background: #ffe4e6; color: #9f1239; }
+
+  /* ── Flow diagram ── */
+  .flow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0;
+    margin: 18px 0;
+    background: var(--white);
+    border: 1px solid var(--cloud);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .flow-step {
+    flex: 1;
+    min-width: 120px;
+    padding: 16px 14px;
+    text-align: center;
+    position: relative;
+  }
+  .flow-step:not(:last-child)::after {
+    content: '→';
+    position: absolute;
+    right: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--azure);
+    font-weight: 900;
+    font-size: 16px;
+    z-index: 1;
+  }
+  .flow-step .flow-icon {
+    font-size: 20px;
+    margin-bottom: 6px;
+    display: block;
+  }
+  .flow-step .flow-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--navy);
+    display: block;
+  }
+  .flow-step .flow-sub {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+    display: block;
+  }
+  .flow-step.highlight { background: var(--navy); }
+  .flow-step.highlight .flow-label { color: var(--white); }
+  .flow-step.highlight .flow-sub { color: rgba(255,255,255,0.5); }
+
+  /* ── Key-value cards ── */
+  .kv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin: 18px 0;
+  }
+  .kv-card {
+    background: var(--white);
+    border: 1px solid var(--cloud);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .kv-card .kv-label {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--azure);
+    margin-bottom: 4px;
+  }
+  .kv-card .kv-value {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+  .kv-card .kv-desc {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+
+  /* ── Checklist ── */
+  .checklist { list-style: none; margin: 12px 0; }
+  .checklist li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 13.5px;
+    color: #2d3a5e;
+    border-bottom: 1px solid var(--cloud);
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist li::before {
+    content: '✓';
+    color: var(--azure);
+    font-weight: 900;
+    font-size: 12px;
+    margin-top: 2px;
+  }
+
+  /* ── Divider ── */
+  .divider {
+    border: none;
+    border-top: 2px dashed var(--cloud);
+    margin: 40px 0;
+  }
+
+  /* ── Page break (print) ── */
+  @media print {
+    .topbar { display: none; }
+    .section { page-break-inside: avoid; }
+    .toc { page-break-after: always; }
+    a { color: inherit; text-decoration: none; }
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: var(--cloud); border-radius: 99px; }
+</style>
+</head>
+<body>
+
+<!-- ── TOP BAR ── -->
+<div class="topbar">
+  <a href="#top" class="topbar-brand">CareerPath <span>Africa</span> &nbsp;·&nbsp; Portal Documentation</a>
+  <div class="topbar-links">
+    <a href="#toc">Contents</a>
+    <a href="#s1">Overview</a>
+    <a href="#s5">Payments</a>
+    <a href="#s9">Admin</a>
+  </div>
+</div>
+
+<!-- ── HERO ── -->
+<div class="hero" id="top">
+  <div class="hero-badge">System Documentation — v1.0</div>
+  <h1>CareerPath <span>Africa</span><br>Portal — Full System Manual</h1>
+  <p>Complete reference for all portals, roles, payment flows, live classes, cohorts, and integrations built into the CareerPath Africa platform.</p>
+  <div class="hero-meta">
+    <span><strong>Stack:</strong> Next.js 15 · NestJS · PostgreSQL · Prisma</span>
+    <span><strong>Payments:</strong> Paystack · Tranzak</span>
+    <span><strong>Live:</strong> Daily.co</span>
+    <span><strong>Content:</strong> Native + WordPress/LearnDash</span>
+  </div>
+</div>
+
+<!-- ── MAIN ── -->
+<div class="main">
+
+  <!-- TABLE OF CONTENTS -->
+  <div class="toc" id="toc">
+    <div class="toc-title">Table of Contents</div>
+    <ol>
+      <li><a href="#s1">System Overview &amp; Architecture</a></li>
+      <li><a href="#s2">User Roles &amp; Access Control</a></li>
+      <li><a href="#s3">Authentication</a></li>
+      <li><a href="#s4">Student Portal</a>
+        <ul class="toc-sub">
+          <li><a href="#s4-dashboard">Dashboard</a></li>
+          <li><a href="#s4-courses">Courses &amp; Learning</a></li>
+          <li><a href="#s4-assignments">Assignments</a></li>
+          <li><a href="#s4-live">Live Classes</a></li>
+          <li><a href="#s4-cohort">Cohort &amp; Exam Countdown</a></li>
+          <li><a href="#s4-mentorship">Mentorship</a></li>
+          <li><a href="#s4-certificates">Certificates</a></li>
+        </ul>
+      </li>
+      <li><a href="#s5">Teacher Portal</a>
+        <ul class="toc-sub">
+          <li><a href="#s5-dashboard">Dashboard</a></li>
+          <li><a href="#s5-builder">Course Builder</a></li>
+          <li><a href="#s5-grading">Assignment Grading</a></li>
+          <li><a href="#s5-live">Live Class Management</a></li>
+          <li><a href="#s5-wallet">Wallet &amp; Earnings</a></li>
+          <li><a href="#s5-mentorship">Mentorship Slots</a></li>
+        </ul>
+      </li>
+      <li><a href="#s6">Admin Portal</a>
+        <ul class="toc-sub">
+          <li><a href="#s6-users">User Management</a></li>
+          <li><a href="#s6-teachers">Teacher Approvals</a></li>
+          <li><a href="#s6-cohorts">Cohort Management</a></li>
+          <li><a href="#s6-courses">Course Management</a></li>
+          <li><a href="#s6-packages">Packages</a></li>
+          <li><a href="#s6-coupons">Coupons</a></li>
+          <li><a href="#s6-reports">Reports</a></li>
+          <li><a href="#s6-payouts">Payouts</a></li>
+        </ul>
+      </li>
+      <li><a href="#s7">Country Rep Portal</a></li>
+      <li><a href="#s8">Subject Reviewer Portal</a></li>
+      <li><a href="#s9">Payments &amp; Checkout</a>
+        <ul class="toc-sub">
+          <li><a href="#s9-gateways">Payment Gateways</a></li>
+          <li><a href="#s9-packages">Package Checkout</a></li>
+          <li><a href="#s9-courses">Individual Course Checkout</a></li>
+          <li><a href="#s9-webhooks">Webhook Fulfillment</a></li>
+          <li><a href="#s9-coupons">Coupons</a></li>
+        </ul>
+      </li>
+      <li><a href="#s10">Live Classes (Daily.co)</a></li>
+      <li><a href="#s11">Course Types: Native vs WordPress</a></li>
+      <li><a href="#s12">Public Course Catalogue</a></li>
+      <li><a href="#s13">WordPress Integration</a></li>
+      <li><a href="#s14">Cohorts &amp; Exam Sittings</a></li>
+      <li><a href="#s15">Certificates</a></li>
+      <li><a href="#s16">Wallets &amp; Payouts</a></li>
+      <li><a href="#s17">API Reference Summary</a></li>
+    </ol>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S1 — OVERVIEW -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s1">
+    <div class="section-header">
+      <div class="section-num">01</div>
+      <div>
+        <h2>System Overview &amp; Architecture</h2>
+        <p>How all the pieces fit together</p>
+      </div>
+    </div>
+
+    <p>CareerPath Africa is a multi-role education platform built as a monorepo. It consists of two main applications that communicate over a REST API:</p>
+
+    <div class="kv-grid">
+      <div class="kv-card">
+        <div class="kv-label">Portal (Frontend)</div>
+        <div class="kv-value">Next.js 15</div>
+        <div class="kv-desc">App Router, Tailwind CSS v4. Serves all role-specific portals from a single app using middleware-based route protection.</div>
+      </div>
+      <div class="kv-card">
+        <div class="kv-label">API (Backend)</div>
+        <div class="kv-value">NestJS + Prisma</div>
+        <div class="kv-desc">REST API with JWT auth, role guards, PostgreSQL via Prisma ORM. Handles all business logic, payments, file storage.</div>
+      </div>
+      <div class="kv-card">
+        <div class="kv-label">Database</div>
+        <div class="kv-value">PostgreSQL</div>
+        <div class="kv-desc">Single database for all data. Managed via Prisma schema with <code>prisma db push</code>.</div>
+      </div>
+      <div class="kv-card">
+        <div class="kv-label">File Storage</div>
+        <div class="kv-value">Cloudflare R2</div>
+        <div class="kv-desc">All uploaded files (assignments, course assets, covers). Uploaded via <code>POST /files/upload</code>.</div>
+      </div>
+      <div class="kv-card">
+        <div class="kv-label">Live Video</div>
+        <div class="kv-value">Daily.co</div>
+        <div class="kv-desc">Browser-based live class rooms. Teachers create rooms; students join via iframe embed.</div>
+      </div>
+      <div class="kv-card">
+        <div class="kv-label">Email</div>
+        <div class="kv-value">Mail Service</div>
+        <div class="kv-desc">Transactional emails for teacher approvals, payment confirmations, certificate delivery.</div>
+      </div>
+    </div>
+
+    <h3>High-Level Architecture</h3>
+    <div class="flow">
+      <div class="flow-step">
+        <span class="flow-icon">🌐</span>
+        <span class="flow-label">Browser</span>
+        <span class="flow-sub">Student / Teacher / Admin</span>
+      </div>
+      <div class="flow-step highlight">
+        <span class="flow-icon">⚡</span>
+        <span class="flow-label">Next.js Portal</span>
+        <span class="flow-sub">Route protection via middleware</span>
+      </div>
+      <div class="flow-step highlight">
+        <span class="flow-icon">🔌</span>
+        <span class="flow-label">NestJS API</span>
+        <span class="flow-sub">JWT guards + role checks</span>
+      </div>
+      <div class="flow-step">
+        <span class="flow-icon">🗄️</span>
+        <span class="flow-label">PostgreSQL</span>
+        <span class="flow-sub">Via Prisma ORM</span>
+      </div>
+    </div>
+
+    <div class="info-box note">
+      <strong>Important</strong>
+      The portal's middleware provides a first layer of route protection (role-based redirects). Real security is enforced by the NestJS API on every request — the API checks JWT validity and role on every endpoint independently.
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S2 — ROLES -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s2">
+    <div class="section-header">
+      <div class="section-num">02</div>
+      <div>
+        <h2>User Roles &amp; Access Control</h2>
+        <p>Six distinct roles, each with their own portal section</p>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Role</th>
+            <th>Portal Path</th>
+            <th>Description</th>
+            <th>Assigned By</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="role role-student">Student</span></td>
+            <td><code>/student/*</code></td>
+            <td>Buys packages or individual courses. Accesses content, live classes, assignments, certificates.</td>
+            <td>Self-registration</td>
+          </tr>
+          <tr>
+            <td><span class="role role-teacher">Teacher</span></td>
+            <td><code>/teacher/*</code></td>
+            <td>Applies to teach. Builds courses, manages cohorts, runs live classes, grades assignments, earns commissions.</td>
+            <td>Admin approval after application</td>
+          </tr>
+          <tr>
+            <td><span class="role role-admin">Admin</span></td>
+            <td><code>/admin/*</code></td>
+            <td>Full platform control. Manages users, courses, packages, cohorts, payouts, reports.</td>
+            <td>Admin sets role via User Management</td>
+          </tr>
+          <tr>
+            <td><span class="role role-rep">Country Rep</span></td>
+            <td><code>/country-rep/*</code></td>
+            <td>Regional ambassador. Sees analytics and commission earnings for their country's sales.</td>
+            <td>Admin sets role</td>
+          </tr>
+          <tr>
+            <td><span class="role role-reviewer">Subject Reviewer</span></td>
+            <td><code>/reviewer/*</code></td>
+            <td>Domain expert. Reviews and approves/rejects courses submitted by teachers. Earns per review.</td>
+            <td>Admin sets role + assigns payout currency</td>
+          </tr>
+          <tr>
+            <td><span class="role role-public">Public</span></td>
+            <td><code>/courses</code>, <code>/packages</code></td>
+            <td>Unauthenticated visitor. Can browse the public course catalogue and package listings.</td>
+            <td>No account needed</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="info-box note">
+      <strong>Route Protection Rule</strong>
+      If a user with role TEACHER tries to access <code>/student/*</code>, the portal middleware redirects them to <code>/teacher/dashboard</code>. The same applies for all role-to-path mismatches.
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S3 — AUTH -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s3">
+    <div class="section-header">
+      <div class="section-num">03</div>
+      <div>
+        <h2>Authentication</h2>
+        <p>JWT-based, cookie-stored, role-aware</p>
+      </div>
+    </div>
+
+    <h3>How Login Works</h3>
+    <ol class="steps">
+      <li>
+        <div class="step-body">
+          <strong>User submits credentials</strong>
+          <span><code>POST /auth/login</code> — email + password. Returns a signed JWT.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-body">
+          <strong>JWT stored in cookie</strong>
+          <span>Cookie name: <code>cpa_token</code>. HttpOnly in production. Contains: <code>sub</code> (user ID), <code>role</code>, <code>exp</code>.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-body">
+          <strong>Middleware reads cookie on every request</strong>
+          <span>Decodes JWT, checks expiry, enforces role-to-path rules. Expired tokens are deleted and user is sent to <code>/login</code>.</span>
+        </div>
+      </li>
+      <li>
+        <div class="step-body">
+          <strong>API validates JWT on every endpoint</strong>
+          <span><code>JwtAuthGuard</code> + <code>RolesGuard</code> on all protected routes. The API never trusts the frontend alone.</span>
+        </div>
+      </li>
+    </ol>
+
+    <h3>Registration Flows</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Flow</th><th>Route</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Student registration</td><td><code>POST /auth/register</code></td><td>Immediately gets STUDENT role. Can purchase right away.</td></tr>
+          <tr><td>Teacher application</td><td><code>POST /auth/apply-teacher</code></td><td>Creates account with TEACHER role + <code>PENDING</code> status. Cannot access teacher portal until approved by admin.</td></tr>
+          <tr><td>Promote existing user</td><td><code>PATCH /portals/admin/users/:id/role</code></td><td>Admin-only. Used to make someone a Country Rep, Reviewer, or Admin.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Key Auth Endpoints</h3>
+    <p>
+      <span class="route-pill post">POST /auth/login</span>
+      <span class="route-pill post">POST /auth/register</span>
+      <span class="route-pill post">POST /auth/apply-teacher</span>
+      <span class="route-pill get">GET /auth/me</span>
+      <span class="route-pill post">POST /auth/logout</span>
+    </p>
+
+    <div class="info-box warn">
+      <strong>Teacher Approval Required</strong>
+      A teacher who registers cannot access the teacher portal until an admin approves their application at <strong>Admin → Teachers → Pending</strong>.
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S4 — STUDENT PORTAL -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s4">
+    <div class="section-header">
+      <div class="section-num">04</div>
+      <div>
+        <h2>Student Portal</h2>
+        <p>Everything a student sees and does after enrolling</p>
+      </div>
+    </div>
+
+    <h3 id="s4-dashboard">4.1 Dashboard</h3>
+    <p>The dashboard is the student's home screen. It shows a real-time summary pulled from the API:</p>
+    <ul class="checklist">
+      <li>Active package count and names</li>
+      <li>Number of individually purchased courses</li>
+      <li>Upcoming live classes (next 3)</li>
+      <li>Certificate count</li>
+      <li>Wallet balance (if applicable)</li>
+    </ul>
+    <p>If the student has no packages or course purchases, the dashboard shows empty states with CTAs to browse packages and courses.</p>
+
+    <h3 id="s4-courses">4.2 Courses &amp; Learning</h3>
+
+    <h4>Catalogue (<code>/student/catalogue</code>)</h4>
+    <p>Shows all published courses. Access indicators show whether the student can enter a course (green tick = has access, lock = need to purchase). Courses can be filtered by programme, subject, and source.</p>
+    <p>For individually-sold courses, a <strong>Buy this course</strong> button appears alongside the package option.</p>
+
+    <h4>Course Player (<code>/student/learn/[courseId]</code>)</h4>
+    <p>The portal first verifies access before loading the player:</p>
+    <ol class="steps">
+      <li><div class="step-body"><strong>Check active packages</strong><span>Does the student have an active package that includes this course?</span></div></li>
+      <li><div class="step-body"><strong>Check direct purchases</strong><span>Does the student have a valid individual <code>CoursePurchase</code> for this course?</span></div></li>
+      <li><div class="step-body"><strong>Grant or deny access</strong><span>If neither — show "Access required" screen with buy options. If yes — load the player.</span></div></li>
+    </ol>
+
+    <p>For <strong>Native courses</strong>: modules and lessons load in the portal's built-in player with progress tracking, video, text content, and resume functionality.</p>
+    <p>For <strong>WordPress courses</strong>: an "Open course" button redirects the student to the LearnDash page on the WordPress site.</p>
+
+    <div class="info-box note">
+      <strong>Expiry Warning</strong>
+      If the student's package or direct purchase expires within 7 days, a yellow warning banner appears in the player with a "Renew now" link.
+    </div>
+
+    <h3 id="s4-assignments">4.3 Assignments</h3>
+    <p>Assignments are created by teachers and attached to cohorts. Students see all assignments across all their cohorts at <code>/student/assignments</code>.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Pending</strong></td><td>Assignment is active; student has not submitted yet</td></tr>
+          <tr><td><strong>Submitted</strong></td><td>Student has uploaded a file; awaiting teacher grading</td></tr>
+          <tr><td><strong>Graded</strong></td><td>Teacher has reviewed and assigned a grade (0–100)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Submission uploads a file to Cloudflare R2 via <code>POST /files/upload?folder=submissions</code> and then calls <code>POST /education/assignments/:id/submit</code>.</p>
+
+    <h3 id="s4-live">4.4 Live Classes</h3>
+    <p>Students see their upcoming live classes at <code>/student/live</code>. When a class is LIVE, a <strong>Join now</strong> button appears. The live class page embeds a Daily.co iframe in participant mode.</p>
+    <p>Live class statuses: <code>SCHEDULED</code> → <code>LIVE</code> → <code>COMPLETED</code>.</p>
+
+    <h3 id="s4-cohort">4.5 Cohort &amp; Exam Countdown</h3>
+    <p>Students assigned to a cohort see their group at <code>/student/cohort</code>. This page shows:</p>
+    <ul class="checklist">
+      <li>Cohort name, teacher info, student count, session count</li>
+      <li>Next scheduled or live class with a "Join now" button</li>
+      <li>Full list of all sessions with statuses</li>
+      <li>Exam countdown banner (for certification programmes like ACCA, CFA, IELTS)</li>
+      <li>Book 1-on-1 mentorship with the cohort teacher</li>
+    </ul>
+
+    <p>The exam countdown changes colour based on urgency:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Days until exam</th><th>Banner colour</th></tr></thead>
+        <tbody>
+          <tr><td>More than 14 days</td><td>Blue (calm)</td></tr>
+          <tr><td>8–14 days</td><td>Amber (warning)</td></tr>
+          <tr><td>1–7 days</td><td>Deep amber / orange (urgent)</td></tr>
+          <tr><td>0 or past</td><td>Grey (passed)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="s4-mentorship">4.6 Mentorship</h3>
+    <p>Students can book 1-on-1 sessions with teachers who have open availability slots. The mentorship page (<code>/student/mentorship</code>) reads cohort data to surface the student's own teacher first, making booking quick.</p>
+
+    <h3 id="s4-certificates">4.7 Certificates</h3>
+    <p>Certificates are issued when a student completes all lessons in a course. The certificates page (<code>/student/certificates</code>) lists all earned certificates with:</p>
+    <ul class="checklist">
+      <li>Certificate download link</li>
+      <li>LinkedIn "Add to profile" share button</li>
+      <li>Public verification URL (anyone can verify authenticity)</li>
+    </ul>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S5 — TEACHER PORTAL -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s5">
+    <div class="section-header">
+      <div class="section-num">05</div>
+      <div>
+        <h2>Teacher Portal</h2>
+        <p>Course creation, cohort management, grading, live classes, and earnings</p>
+      </div>
+    </div>
+
+    <div class="info-box warn">
+      <strong>Approval Required</strong>
+      A teacher account must be approved by an admin before access to the teacher portal is granted. Until approved, login redirects to a pending screen.
+    </div>
+
+    <h3 id="s5-dashboard">5.1 Dashboard</h3>
+    <p>The teacher dashboard shows at a glance:</p>
+    <ul class="checklist">
+      <li>Grading queue — submissions waiting for a grade</li>
+      <li>Upcoming live classes (scheduled)</li>
+      <li>Quick links to cohorts and wallet</li>
+    </ul>
+
+    <h3 id="s5-builder">5.2 Course Builder</h3>
+    <p>Teachers create native courses at <code>/teacher/courses/[courseId]/builder</code>. The builder supports:</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Feature</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Modules</strong></td><td>Drag-and-drop reordering. Each module has a title and contains lessons.</td></tr>
+          <tr><td><strong>Lesson types</strong></td><td>VIDEO (upload or URL), TEXT (rich text editor), QUIZ (question-based)</td></tr>
+          <tr><td><strong>Rich text editor</strong></td><td>Tiptap-based: bold, italic, underline, headings, lists, blockquote, code, undo/redo</td></tr>
+          <tr><td><strong>File attachments</strong></td><td>PDFs/DOCX attachable to lessons</td></tr>
+          <tr><td><strong>Submit for review</strong></td><td>When complete, teacher clicks "Submit for review" — status moves to <code>PENDING_REVIEW</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Course Publication Flow</h4>
+    <div class="flow">
+      <div class="flow-step"><span class="flow-icon">📝</span><span class="flow-label">DRAFT</span><span class="flow-sub">Teacher building</span></div>
+      <div class="flow-step"><span class="flow-icon">📤</span><span class="flow-label">PENDING_REVIEW</span><span class="flow-sub">Submitted by teacher</span></div>
+      <div class="flow-step highlight"><span class="flow-icon">👁️</span><span class="flow-label">Review</span><span class="flow-sub">Admin or Reviewer</span></div>
+      <div class="flow-step"><span class="flow-icon">✅</span><span class="flow-label">PUBLISHED</span><span class="flow-sub">Live to students</span></div>
+    </div>
+
+    <h3 id="s5-grading">5.3 Assignment Grading</h3>
+    <p>At <code>/teacher/assignments</code>, teachers see all submissions from students in their cohorts. Each submission shows the uploaded file, submission date, and current status.</p>
+    <p>Grading: teacher clicks a submission, enters a grade (0–100) and optional feedback, then saves. The API call is <code>PATCH /education/submissions/:id/grade</code> with <code>{ grade, feedback }</code>.</p>
+
+    <h3 id="s5-live">5.4 Live Class Management</h3>
+    <p>At <code>/teacher/live</code>, teachers can:</p>
+    <ul class="checklist">
+      <li>Schedule a new live class for one of their cohorts (title, date/time)</li>
+      <li>See all upcoming and past sessions</li>
+      <li>Start a class — changes status to LIVE, creates a Daily.co room, issues a student join link</li>
+      <li>End a class — marks it COMPLETED</li>
+    </ul>
+    <p>The live class host view (<code>/teacher/live/[classId]</code>) embeds the Daily.co room with host controls (mute, camera, kick participants, end meeting).</p>
+
+    <h3 id="s5-wallet">5.5 Wallet &amp; Earnings</h3>
+    <p>Every teacher has a wallet. When a student purchases a package or course that includes a teacher's course, the teacher automatically receives a commission credit to their wallet.</p>
+    <p>At <code>/teacher/wallet</code>, teachers see:</p>
+    <ul class="checklist">
+      <li>Current wallet balance and currency</li>
+      <li>Transaction history (each purchase that generated a commission)</li>
+      <li>Payout statements (amounts paid out)</li>
+    </ul>
+    <p>Payouts are initiated by the admin (see Section 16).</p>
+
+    <h3 id="s5-mentorship">5.6 Mentorship Slots</h3>
+    <p>Teachers manage their availability at <code>/teacher/mentorship</code>. They can add time slots (date, start time, duration) and see which slots have been booked by students.</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S6 — ADMIN PORTAL -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s6">
+    <div class="section-header">
+      <div class="section-num">06</div>
+      <div>
+        <h2>Admin Portal</h2>
+        <p>Full platform control — the central command centre</p>
+      </div>
+    </div>
+
+    <h3 id="s6-users">6.1 User Management (<code>/admin/users</code>)</h3>
+    <p>Admins can search and list all users. For any user, the admin can:</p>
+    <ul class="checklist">
+      <li>Change their role (Student, Teacher, Country Rep, Subject Reviewer, Admin)</li>
+      <li>Assign a payout currency when promoting to Subject Reviewer</li>
+      <li>View their email, current role, and approval status</li>
+    </ul>
+
+    <h3 id="s6-teachers">6.2 Teacher Approvals (<code>/admin/teachers</code>)</h3>
+    <p>New teacher applications arrive here with <code>PENDING</code> status. The admin can:</p>
+    <ul class="checklist">
+      <li>Review the teacher's application (bio, qualifications)</li>
+      <li>Approve — teacher gains portal access immediately</li>
+      <li>Reject — optionally supply a rejection reason sent by email</li>
+    </ul>
+
+    <h3 id="s6-cohorts">6.3 Cohort Management (<code>/admin/cohorts</code>)</h3>
+    <p>Cohorts are learning groups that connect students to a teacher. Admins create and manage cohorts:</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Field</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Name</strong></td><td>e.g. "ACCA F3 — March 2025 Cohort"</td></tr>
+          <tr><td><strong>Teacher</strong></td><td>Assigned teacher (must be an approved teacher)</td></tr>
+          <tr><td><strong>Sitting Label</strong></td><td>e.g. "March 2025 Sitting" — shown on student exam countdown</td></tr>
+          <tr><td><strong>Exam Date</strong></td><td>Triggers countdown timer visible to teacher and students</td></tr>
+          <tr><td><strong>Start Date</strong></td><td>When tuition begins</td></tr>
+          <tr><td><strong>Students</strong></td><td>Added by email address. Can be removed at any time.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>From a cohort's detail panel, the admin can add students by email, remove students, and edit exam fields (sitting label, exam date, start date) inline.</p>
+
+    <div class="info-box note">
+      <strong>Exam Countdown</strong>
+      Setting an Exam Date on a cohort activates a visual countdown for both the assigned teacher and all students in the cohort. The countdown turns amber at 14 days and urgent at 7 days.
+    </div>
+
+    <h3 id="s6-courses">6.4 Course Management (<code>/admin/courses</code>)</h3>
+    <p>All platform courses (native and WordPress-synced) are visible here. Per course, admins can:</p>
+    <ul class="checklist">
+      <li>View curriculum (modules and lessons)</li>
+      <li>Edit tags — assign Programme, Subject, Level, Teacher</li>
+      <li>Set individual pricing — price amount, currency, enable "sold individually" toggle</li>
+      <li>Publish (moves PENDING_REVIEW → PUBLISHED)</li>
+      <li>Archive (hides from students)</li>
+      <li>Sync WordPress courses (pulls from WP/LearnDash via WP Sync button)</li>
+    </ul>
+
+    <h4>Setting Individual Course Pricing</h4>
+    <p>Click the <strong>Pricing</strong> button on any course detail page. Set:</p>
+    <ul class="checklist">
+      <li><strong>Price amount</strong> — integer (e.g. 5000 for GHS 50.00)</li>
+      <li><strong>Currency</strong> — 3-letter code (GHS, USD, XAF, etc.)</li>
+      <li><strong>Sold individually</strong> — toggle on to allow standalone purchase</li>
+    </ul>
+
+    <h3 id="s6-packages">6.5 Packages (<code>/admin/packages</code>)</h3>
+    <p>Packages bundle multiple courses and are the primary purchase unit. Admins create packages with:</p>
+    <ul class="checklist">
+      <li>Name and description</li>
+      <li>Course IDs to include</li>
+      <li>Price amount and currency (GHS / USD / XAF routes to Paystack or Tranzak)</li>
+      <li>Validity period (days) — null means lifetime access</li>
+      <li>Category tags — used for filtering on the packages page</li>
+    </ul>
+
+    <h3 id="s6-coupons">6.6 Coupons (<code>/admin/coupons</code>)</h3>
+    <p>Admins create discount codes applied at package checkout:</p>
+    <ul class="checklist">
+      <li>Code (e.g. "SAVE20")</li>
+      <li>Discount type: flat amount or percentage</li>
+      <li>Expiry date and max uses</li>
+    </ul>
+
+    <h3 id="s6-reports">6.7 Reports (<code>/admin/reports</code>)</h3>
+    <p>Date-range analytics report with CSV export. Covers purchases, revenue by package, and enrolment trends. Uses a date picker for custom ranges.</p>
+
+    <h3 id="s6-payouts">6.8 Payouts (<code>/admin/payouts</code>)</h3>
+    <p>The admin reviews pending wallet balances for teachers and subject reviewers, then records payouts manually (bank transfer outside the system) and marks them as paid in the portal. This creates a <code>PayoutStatement</code> and deducts the wallet balance.</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S7 — COUNTRY REP -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s7">
+    <div class="section-header">
+      <div class="section-num">07</div>
+      <div>
+        <h2>Country Rep Portal</h2>
+        <p>Regional ambassador analytics and commission tracking</p>
+      </div>
+    </div>
+
+    <p>Country Representatives are assigned to a specific country. When a student from their country purchases a package or course, the country rep earns a commission that is credited to their wallet.</p>
+
+    <p>The country rep dashboard (<code>/country-rep/dashboard</code>) shows:</p>
+    <ul class="checklist">
+      <li>Recharts analytics: sales over time, revenue by package for their country</li>
+      <li>Commission calculator — simulates earnings for different price points</li>
+      <li>Wallet balance and transaction history</li>
+    </ul>
+
+    <p>Country reps are promoted from student accounts by admins via <strong>Admin → Users → Change Role</strong>. They do not register separately.</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S8 — REVIEWER -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s8">
+    <div class="section-header">
+      <div class="section-num">08</div>
+      <div>
+        <h2>Subject Reviewer Portal</h2>
+        <p>Domain experts who validate course content quality</p>
+      </div>
+    </div>
+
+    <p>Subject Reviewers are assigned courses to review by the admin via <code>/admin/reviews</code>. Once assigned, the course appears in the reviewer's queue at <code>/reviewer/dashboard</code>.</p>
+
+    <p>For each course in the queue, the reviewer can:</p>
+    <ul class="checklist">
+      <li>Browse the full curriculum (modules and lessons)</li>
+      <li>Approve — moves course to PUBLISHED status</li>
+      <li>Reject — supply a reason; course returns to DRAFT for the teacher to fix</li>
+    </ul>
+
+    <p>Reviewers earn a flat fee per review, credited to their wallet. Admins set the payout currency when assigning the reviewer role.</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S9 — PAYMENTS -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s9">
+    <div class="section-header">
+      <div class="section-num">09</div>
+      <div>
+        <h2>Payments &amp; Checkout</h2>
+        <p>Paystack, Tranzak, webhooks, and fulfillment logic</p>
+      </div>
+    </div>
+
+    <h3 id="s9-gateways">9.1 Payment Gateways</h3>
+    <p>The platform supports two payment gateways, routed by currency:</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Gateway</th><th>Currencies</th><th>Use case</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Paystack</strong></td><td>GHS, NGN, ZAR, USD</td><td>Ghana, Nigeria, South Africa and USD payments</td></tr>
+          <tr><td><strong>Tranzak</strong></td><td>XAF, XOF</td><td>Francophone Africa (Cameroon, Côte d'Ivoire, etc.)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The <code>PaymentsService</code> automatically picks the correct gateway based on the package or course currency. No manual configuration is needed per purchase.</p>
+
+    <h3 id="s9-packages">9.2 Package Checkout Flow</h3>
+    <ol class="steps">
+      <li><div class="step-body"><strong>Student clicks "Enroll" on a package</strong><span>Portal calls <code>POST /payments/create-checkout/:packageId</code>. Optional coupon code included.</span></div></li>
+      <li><div class="step-body"><strong>API creates a checkout session</strong><span>Calls gateway (Paystack or Tranzak) to generate a hosted payment URL. Returns <code>{ url }</code> to the portal.</span></div></li>
+      <li><div class="step-body"><strong>Portal redirects student to payment page</strong><span>Student completes card/mobile money payment on the gateway's hosted page.</span></div></li>
+      <li><div class="step-body"><strong>Gateway sends webhook to API</strong><span><code>POST /payments/webhook/paystack</code> or <code>/payments/webhook/tranzak</code>. API verifies signature.</span></div></li>
+      <li><div class="step-body"><strong>API fulfills the purchase (idempotent)</strong><span>Creates <code>PackagePurchase</code>, enrolls student in all package courses, credits teacher and country rep wallets.</span></div></li>
+      <li><div class="step-body"><strong>Student redirected to success page</strong><span><code>/packages/success</code> — waits 1.5 seconds, calls <code>/auth/me</code> to refresh session, redirects to dashboard.</span></div></li>
+    </ol>
+
+    <h3 id="s9-courses">9.3 Individual Course Checkout Flow</h3>
+    <p>Students can buy specific native courses without a package, if the admin has enabled <em>isSoldIndividually</em> on the course.</p>
+    <ol class="steps">
+      <li><div class="step-body"><strong>Student clicks "Buy now" on /courses or /student/catalogue</strong><span>Navigates to <code>/student/courses/[courseId]/checkout</code>.</span></div></li>
+      <li><div class="step-body"><strong>Checkout page confirms course details and price</strong><span>Shows what's included (lesson access, certificates) vs what requires a package (live classes, mentorship).</span></div></li>
+      <li><div class="step-body"><strong>Student clicks "Pay"</strong><span>Portal calls <code>POST /payments/create-course-checkout/:courseId</code>.</span></div></li>
+      <li><div class="step-body"><strong>Same gateway/webhook flow as packages</strong><span>Webhook identifies <code>courseId</code> in metadata and routes to <code>fulfillCoursePurchase</code>.</span></div></li>
+      <li><div class="step-body"><strong>Creates CoursePurchase record</strong><span>Student redirected to <code>/student/courses/success?courseId=...</code> then to the learn page.</span></div></li>
+    </ol>
+
+    <h3 id="s9-webhooks">9.4 Webhook Fulfillment</h3>
+    <p>All fulfillment logic runs inside the webhook handler, making it <strong>idempotent</strong> — if a webhook fires twice (network retry), the second call is ignored.</p>
+    <div class="info-box success">
+      <strong>Idempotency</strong>
+      Before creating a <code>PackagePurchase</code> or <code>CoursePurchase</code>, the API checks if one already exists for this student + package/course combination. If it does, the webhook handler returns early without double-crediting.
+    </div>
+
+    <h3 id="s9-coupons">9.5 Coupons</h3>
+    <p>A coupon code entered at checkout reduces the payment amount before the gateway session is created. The API validates the coupon (exists, not expired, uses remaining) and applies the discount. The coupon use count increments on successful payment only.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Discount type</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td>Flat amount</td><td>Coupon "OFF50" reduces price by GHS 50</td></tr>
+          <tr><td>Percentage</td><td>Coupon "SAVE20" reduces price by 20%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S10 — LIVE CLASSES -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s10">
+    <div class="section-header">
+      <div class="section-num">10</div>
+      <div>
+        <h2>Live Classes (Daily.co)</h2>
+        <p>Real-time video sessions between teachers and cohort students</p>
+      </div>
+    </div>
+
+    <p>Live classes are tied to cohorts — only students in the cohort can join. They are powered by <strong>Daily.co</strong>, which provides browser-based video rooms with no app install required.</p>
+
+    <h3>Teacher Flow</h3>
+    <ol class="steps">
+      <li><div class="step-body"><strong>Schedule a class</strong><span>Teacher selects cohort, enters title and date/time. API creates a <code>LiveClass</code> record with status <code>SCHEDULED</code>.</span></div></li>
+      <li><div class="step-body"><strong>Start the class</strong><span>Teacher clicks "Start" — API calls <code>PATCH /live/classes/:id/start</code>. This creates a Daily.co room and changes status to <code>LIVE</code>.</span></div></li>
+      <li><div class="step-body"><strong>Host the session</strong><span>Teacher's view embeds the Daily.co room with host controls (mute all, screenshare, end meeting).</span></div></li>
+      <li><div class="step-body"><strong>End the class</strong><span>Teacher clicks "End" — API calls <code>PATCH /live/classes/:id/end</code>. Status moves to <code>COMPLETED</code>. Daily.co room is closed.</span></div></li>
+    </ol>
+
+    <h3>Student Flow</h3>
+    <p>When a class status changes to <code>LIVE</code>, a <strong>Join now</strong> button appears on the student's cohort page and live classes page. Clicking it opens the Daily.co room in participant mode (no host controls).</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Status</th><th>Student sees</th></tr></thead>
+        <tbody>
+          <tr><td><code>SCHEDULED</code></td><td>Date/time, "Upcoming" badge</td></tr>
+          <tr><td><code>LIVE</code></td><td>Blue pulsing indicator, "Join now" button</td></tr>
+          <tr><td><code>COMPLETED</code></td><td>"Done" badge, session is over</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S11 — COURSE TYPES -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s11">
+    <div class="section-header">
+      <div class="section-num">11</div>
+      <div>
+        <h2>Course Types: Native vs WordPress</h2>
+        <p>Two content delivery methods, unified payment</p>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th></th><th>Native Courses</th><th>WordPress Courses</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Source field</strong></td><td><code>NATIVE</code></td><td><code>WORDPRESS</code></td></tr>
+          <tr><td><strong>Built in</strong></td><td>Portal course builder</td><td>WordPress / LearnDash</td></tr>
+          <tr><td><strong>Content lives</strong></td><td>Portal database + R2 storage</td><td>WordPress server</td></tr>
+          <tr><td><strong>Student experience</strong></td><td>Portal lesson player (video, text, quizzes)</td><td>Redirect to WP LearnDash page</td></tr>
+          <tr><td><strong>Progress tracking</strong></td><td>Portal (<code>LessonProgress</code> table)</td><td>LearnDash on WordPress</td></tr>
+          <tr><td><strong>How created</strong></td><td>Teacher builds in builder, submitted for review</td><td>Admin runs WP Sync to import</td></tr>
+          <tr><td><strong>Payment</strong></td><td>Portal only (Paystack / Tranzak)</td><td>Portal only — WP has no payment</td></tr>
+          <tr><td><strong>Can sell individually</strong></td><td>Yes (set isSoldIndividually)</td><td>Yes (same flow)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="info-box note">
+      <strong>Key rule</strong>
+      All payments go through the portal regardless of course type. WordPress is content-only — it never handles money. When a student pays for a package containing a WP course, the portal redirects them to the WP URL after confirming their active package.
+    </div>
+
+    <h3>WP Sync Process</h3>
+    <ol class="steps">
+      <li><div class="step-body"><strong>Admin clicks "Sync WP Courses"</strong><span>At <code>/admin/courses</code>. Calls <code>POST /platform-courses/wp-sync</code>.</span></div></li>
+      <li><div class="step-body"><strong>API fetches all published courses from WP</strong><span>Calls the WordPress REST API. Reads title, description, and course URL.</span></div></li>
+      <li><div class="step-body"><strong>Upserts into PlatformCourse table</strong><span>New courses created. Existing ones updated (title, URL). Nothing deleted automatically.</span></div></li>
+      <li><div class="step-body"><strong>Admin tags courses</strong><span>Use the "Edit tags" button to assign Programme, Subject, Level to imported WP courses for searchability.</span></div></li>
+    </ol>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S12 — PUBLIC CATALOGUE -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s12">
+    <div class="section-header">
+      <div class="section-num">12</div>
+      <div>
+        <h2>Public Course Catalogue</h2>
+        <p>Discovery page for unauthenticated visitors</p>
+      </div>
+    </div>
+
+    <p>The public course catalogue at <code>/courses</code> is accessible to anyone — no account required. It serves as a marketing storefront for the platform.</p>
+
+    <h3>What it shows</h3>
+    <ul class="checklist">
+      <li>All published courses (both NATIVE and WORDPRESS)</li>
+      <li>Programme, subject, and level tags per course</li>
+      <li>Price and "Buy now" CTA for individually-sold courses</li>
+      <li>"Package only" badge with "View packages" link for courses not sold individually</li>
+      <li>Module count and enrollment count per course</li>
+    </ul>
+
+    <h3>Filter options</h3>
+    <ul class="checklist">
+      <li>Search by course title, programme name, or subject</li>
+      <li>Filter: All / Buy individually / Package only</li>
+    </ul>
+
+    <h3>Visitor vs Logged-in behaviour</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Visitor type</th><th>Buy button goes to</th></tr></thead>
+        <tbody>
+          <tr><td>Not logged in</td><td><code>/login</code> — then forwarded to checkout</td></tr>
+          <tr><td>Logged-in student</td><td><code>/student/courses/[id]/checkout</code> directly</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Powered by</h3>
+    <p>The page calls <code>GET /catalogue/courses</code> — a public API endpoint with no authentication required. It returns only PUBLISHED courses and includes pricing fields.</p>
+
+    <div class="info-box note">
+      <strong>Linking from WordPress</strong>
+      To surface this catalogue for people browsing the WP site, add a navigation menu item in WordPress admin (Appearance → Menus) pointing to <code>https://yourportal.com/courses</code>. No code changes needed on WP.
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S13 — WP INTEGRATION -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s13">
+    <div class="section-header">
+      <div class="section-num">13</div>
+      <div>
+        <h2>WordPress Integration</h2>
+        <p>How WP and the portal coexist</p>
+      </div>
+    </div>
+
+    <h3>Responsibilities split</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>WordPress</th><th>Portal</th></tr></thead>
+        <tbody>
+          <tr><td>Course content (videos, lessons)</td><td>✅ Hosts it</td><td>—</td></tr>
+          <tr><td>User accounts</td><td>—</td><td>✅ Single source of truth</td></tr>
+          <tr><td>Payments</td><td>❌ Never</td><td>✅ Always</td></tr>
+          <tr><td>Access control</td><td>—</td><td>✅ Portal grants/checks</td></tr>
+          <tr><td>Course metadata (title, tags)</td><td>Source</td><td>✅ Synced copy</td></tr>
+          <tr><td>Analytics &amp; reports</td><td>—</td><td>✅</td></tr>
+          <tr><td>Certificates</td><td>—</td><td>✅</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>One-way sync</h3>
+    <p>The sync is <strong>WP → Portal only</strong>. Changes on WP (title, URL) get pulled in when admin runs WP Sync. The portal never writes back to WP.</p>
+
+    <h3>Payment does NOT touch WP</h3>
+    <p>When a student buys a package containing a WP course:</p>
+    <ol class="steps">
+      <li><div class="step-body"><strong>Payment processed on portal</strong><span>Paystack/Tranzak webhook → <code>PackagePurchase</code> created.</span></div></li>
+      <li><div class="step-body"><strong>Student visits course in portal</strong><span>Portal checks <code>PackagePurchase</code> — access confirmed.</span></div></li>
+      <li><div class="step-body"><strong>Portal shows redirect button</strong><span>"Open course" → <code>wpCourseUrl</code> opens in new tab.</span></div></li>
+      <li><div class="step-body"><strong>Student watches content on WP</strong><span>WordPress/LearnDash serves the video. Student must be enrolled in the WP course on the WP side (manual or via WP API if you choose to automate).</span></div></li>
+    </ol>
+
+    <div class="info-box warn">
+      <strong>WP Enrollment Gap</strong>
+      The portal does not automatically enroll students into LearnDash on WordPress after payment. This is a deliberate simplification — if you want seamless access on WP, you'd need to call the WP REST API from the portal's webhook handler to create a LearnDash enrollment. This is an optional future enhancement.
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S14 — COHORTS & EXAM SITTINGS -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s14">
+    <div class="section-header">
+      <div class="section-num">14</div>
+      <div>
+        <h2>Cohorts &amp; Exam Sittings</h2>
+        <p>Structured learning groups for certification programmes</p>
+      </div>
+    </div>
+
+    <p>Cohorts are designed for professional certification programmes (ACCA, CFA, IELTS, etc.) where students study together toward a specific exam date. Each cohort has:</p>
+
+    <div class="kv-grid">
+      <div class="kv-card">
+        <div class="kv-label">Name</div>
+        <div class="kv-value">Cohort identifier</div>
+        <div class="kv-desc">e.g. "ACCA F3 — Jan 2026"</div>
+      </div>
+      <div class="kv-card">
+        <div class="kv-label">Teacher</div>
+        <div class="kv-value">Assigned instructor</div>
+        <div class="kv-desc">An approved teacher account</div>
+      </div>
+      <div class="kv-card">
+        <div class="kv-label">Sitting Label</div>
+        <div class="kv-value">Exam session name</div>
+        <div class="kv-desc">e.g. "March 2026 Sitting"</div>
+      </div>
+      <div class="kv-card">
+        <div class="kv-label">Exam Date</div>
+        <div class="kv-value">Triggers countdown</div>
+        <div class="kv-desc">Shown to teacher and all students</div>
+      </div>
+      <div class="kv-card">
+        <div class="kv-label">Start Date</div>
+        <div class="kv-value">Tuition start</div>
+        <div class="kv-desc">When classes begin</div>
+      </div>
+      <div class="kv-card">
+        <div class="kv-label">Students</div>
+        <div class="kv-value">Roster</div>
+        <div class="kv-desc">Added by admin via email address</div>
+      </div>
+    </div>
+
+    <h3>Who manages cohorts</h3>
+    <ul class="checklist">
+      <li><strong>Admin</strong> — creates cohorts, assigns teacher, adds/removes students, sets exam fields</li>
+      <li><strong>Teacher</strong> — sees their cohorts, student roster, progress stats, schedules live classes for the cohort</li>
+      <li><strong>Student</strong> — sees their cohort details, exam countdown, all sessions</li>
+    </ul>
+
+    <h3>Exam countdown visibility</h3>
+    <p>The countdown is visible in two places: the teacher's cohort detail page and the student's cohort page. It uses colour coding to indicate urgency (see Section 4.5).</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S15 — CERTIFICATES -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s15">
+    <div class="section-header">
+      <div class="section-num">15</div>
+      <div>
+        <h2>Certificates</h2>
+        <p>Issued on course completion, shareable to LinkedIn</p>
+      </div>
+    </div>
+
+    <p>A certificate is generated automatically when a student completes all lessons in a native course (100% progress). Certificates have:</p>
+    <ul class="checklist">
+      <li>Unique certificate ID for public verification</li>
+      <li>Student name, course title, completion date</li>
+      <li>Download link (PDF or image)</li>
+      <li>LinkedIn "Add to profile" button (pre-fills LinkedIn certificate form)</li>
+      <li>Public verification URL — anyone can confirm authenticity without logging in</li>
+    </ul>
+
+    <div class="info-box note">
+      <strong>Note on WordPress courses</strong>
+      Certificates for WP courses are managed by LearnDash on WordPress. The portal only issues certificates for native courses where it can track lesson completions.
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S16 — WALLETS & PAYOUTS -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s16">
+    <div class="section-header">
+      <div class="section-num">16</div>
+      <div>
+        <h2>Wallets &amp; Payouts</h2>
+        <p>Earnings, commissions, and how money flows to contributors</p>
+      </div>
+    </div>
+
+    <h3>Who has a wallet</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Role</th><th>Earns from</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Teacher</strong></td><td>Commission when a student buys a package or course containing their content</td></tr>
+          <tr><td><strong>Country Rep</strong></td><td>Commission on purchases made by students from their assigned country</td></tr>
+          <tr><td><strong>Subject Reviewer</strong></td><td>Flat fee per course review completed</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Payout flow</h3>
+    <ol class="steps">
+      <li><div class="step-body"><strong>Earnings accumulate</strong><span>Every successful purchase triggers automatic wallet credits for the relevant teacher and country rep.</span></div></li>
+      <li><div class="step-body"><strong>Admin reviews balances</strong><span>At <code>/admin/payouts</code> — sees all wallets with positive balances.</span></div></li>
+      <li><div class="step-body"><strong>Admin pays out (off-platform)</strong><span>Bank transfer, mobile money, or other method outside the portal.</span></div></li>
+      <li><div class="step-body"><strong>Admin records the payout</strong><span>Marks as paid in the portal. Creates a <code>PayoutStatement</code>, deducts wallet balance to zero.</span></div></li>
+      <li><div class="step-body"><strong>Teacher / Rep sees updated balance</strong><span>Wallet balance resets, payout appears in statements history.</span></div></li>
+    </ol>
+
+    <div class="info-box note">
+      <strong>Currency</strong>
+      Each wallet has a single currency, set when the role is assigned. All credits for that user are in that currency. If a user earns in multiple currencies (e.g. a teacher with students from Ghana and Cameroon), this is a future enhancement — current design is one wallet per user.
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- S17 — API REFERENCE SUMMARY -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="section" id="s17">
+    <div class="section-header">
+      <div class="section-num">17</div>
+      <div>
+        <h2>API Reference Summary</h2>
+        <p>Key endpoints grouped by domain</p>
+      </div>
+    </div>
+
+    <h3>Authentication</h3>
+    <p>
+      <span class="route-pill post">POST /auth/login</span>
+      <span class="route-pill post">POST /auth/register</span>
+      <span class="route-pill post">POST /auth/apply-teacher</span>
+      <span class="route-pill get">GET /auth/me</span>
+      <span class="route-pill post">POST /auth/logout</span>
+    </p>
+
+    <h3>Student Portal</h3>
+    <p>
+      <span class="route-pill get">GET /portals/student/cohorts</span>
+      <span class="route-pill get">GET /portals/student/courses</span>
+      <span class="route-pill get">GET /portals/student/course-purchases</span>
+      <span class="route-pill get">GET /live/student/upcoming</span>
+      <span class="route-pill get">GET /education/assignments/mine</span>
+    </p>
+
+    <h3>Teacher Portal</h3>
+    <p>
+      <span class="route-pill get">GET /portals/teacher/cohorts</span>
+      <span class="route-pill get">GET /portals/teacher/rosters/:cohortId</span>
+      <span class="route-pill get">GET /portals/teacher/students/:id/progress</span>
+      <span class="route-pill get">GET /live/teacher/upcoming</span>
+      <span class="route-pill patch">PATCH /live/classes/:id/start</span>
+      <span class="route-pill patch">PATCH /live/classes/:id/end</span>
+      <span class="route-pill patch">PATCH /education/submissions/:id/grade</span>
+    </p>
+
+    <h3>Admin Portal</h3>
+    <p>
+      <span class="route-pill get">GET /portals/admin/cohorts</span>
+      <span class="route-pill post">POST /portals/admin/cohorts</span>
+      <span class="route-pill patch">PATCH /portals/admin/cohorts/:id</span>
+      <span class="route-pill post">POST /portals/admin/cohorts/:id/students</span>
+      <span class="route-pill delete">DELETE /portals/admin/cohorts/:id/students/:studentId</span>
+      <span class="route-pill get">GET /portals/admin/teachers/pending</span>
+      <span class="route-pill patch">PATCH /portals/admin/teachers/:id/approve</span>
+      <span class="route-pill patch">PATCH /portals/admin/users/:id/role</span>
+    </p>
+
+    <h3>Platform Courses</h3>
+    <p>
+      <span class="route-pill get">GET /platform-courses</span>
+      <span class="route-pill post">POST /platform-courses</span>
+      <span class="route-pill get">GET /platform-courses/:id</span>
+      <span class="route-pill patch">PATCH /platform-courses/:id</span>
+      <span class="route-pill post">POST /platform-courses/:id/submit</span>
+      <span class="route-pill post">POST /platform-courses/:id/publish</span>
+      <span class="route-pill post">POST /platform-courses/wp-sync</span>
+      <span class="route-pill get">GET /platform-courses/:id/progress</span>
+      <span class="route-pill post">POST /platform-courses/:id/enroll</span>
+    </p>
+
+    <h3>Public Catalogue</h3>
+    <p>
+      <span class="route-pill get">GET /catalogue/courses</span>
+      <span class="route-pill get">GET /catalogue/programmes</span>
+      <span class="route-pill get">GET /catalogue/programmes/:id</span>
+      <span class="route-pill get">GET /catalogue/summary</span>
+    </p>
+
+    <h3>Payments</h3>
+    <p>
+      <span class="route-pill post">POST /payments/create-checkout/:packageId</span>
+      <span class="route-pill post">POST /payments/create-course-checkout/:courseId</span>
+      <span class="route-pill post">POST /payments/webhook/paystack</span>
+      <span class="route-pill post">POST /payments/webhook/tranzak</span>
+    </p>
+
+    <h3>Files</h3>
+    <p>
+      <span class="route-pill post">POST /files/upload</span>
+    </p>
+
+    <h3>Live Classes</h3>
+    <p>
+      <span class="route-pill get">GET /live/cohorts/:id/classes</span>
+      <span class="route-pill post">POST /live/cohorts/:id/classes</span>
+      <span class="route-pill get">GET /live/classes/:id</span>
+      <span class="route-pill patch">PATCH /live/classes/:id/start</span>
+      <span class="route-pill patch">PATCH /live/classes/:id/end</span>
+    </p>
+
+    <hr class="divider" />
+    <div class="info-box success">
+      <strong>Full API Docs</strong>
+      The NestJS API exposes a full Swagger UI at <code>/api/docs</code> when running in development mode. All endpoints, request bodies, and response schemas are documented there.
+    </div>
+  </div>
+
+</div>
+
+<!-- ── FOOTER ── -->
+<div style="background:var(--navy);padding:32px 40px;text-align:center;margin-top:0;">
+  <p style="color:rgba(255,255,255,0.3);font-size:12px;margin:0;">
+    CareerPath Africa — Portal System Documentation &nbsp;·&nbsp; Generated 2026 &nbsp;·&nbsp;
+    <a href="#top" style="color:var(--azure);text-decoration:none;font-weight:700;">Back to top ↑</a>
+  </p>
+</div>
+
+<script>
+  // Smooth scroll for all anchor links
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      const target = document.querySelector(a.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+</script>
+</body>
+</html>

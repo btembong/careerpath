@@ -1,0 +1,475 @@
+@import "tailwindcss";
+@import "overlayscrollbars/overlayscrollbars.css";
+
+/* ── Brand theme ─────────────────────────────────────────────────────────────
+   Replaces tailwind.config.ts entirely.
+   CSS variables here generate matching utility classes automatically:
+   --color-azure  →  bg-azure / text-azure / border-azure / ring-azure …
+   --shadow-card  →  shadow-card
+   ───────────────────────────────────────────────────────────────────────── */
+
+@theme {
+  /* Reset Tailwind's built-in color palette — only brand + named extras below */
+  --color-*: initial;
+
+  /* ── Core brand ── */
+  --color-cloud:   #E6ECFD;
+  --color-azure:   #5889FA;
+  --color-royal:   #405FAD;
+  --color-navy:    #072061;
+  --color-surface: #F4F6FD;
+
+  /* ── Neutrals ── */
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  /* ── Error / danger (forms, reject flows) ── */
+  --color-red-50:  #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-200: #fecaca;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+
+  /* ── Warning ── */
+  --color-amber-50:  #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-700: #b45309;
+
+  /* ── Success ── */
+  --color-green-50:  #f0fdf4;
+  --color-green-100: #dcfce7;
+  --color-green-500: #22c55e;
+  --color-green-700: #15803d;
+
+  /* ── Brand-tinted neutral scale (replaces cold grays) ──
+     gray-900  = navy          (primary text, headings)
+     gray-700  = navy mid      (semibold labels)
+     gray-500  = royal         (secondary text)
+     gray-400  = royal light   (tertiary / placeholder)
+     gray-300  = royal lighter (decorative lines)
+     gray-200  = cloud dark    (borders, dividers)
+     gray-100  = cloud         (card interiors, icon boxes)
+     gray-50   = surface       (page background sections)
+  ── */
+  --color-gray-900: #072061;
+  --color-gray-700: #1a3a80;
+  --color-gray-500: #405FAD;
+  --color-gray-400: #7b93c7;
+  --color-gray-300: #a3b4e0;
+  --color-gray-200: #c8d5f5;
+  --color-gray-100: #E6ECFD;
+  --color-gray-50:  #F4F6FD;
+
+  /* ── Typography ── */
+  --font-sans: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+
+  /* ── Brand shadows ── */
+  --shadow-card:    0 1px 4px rgba(7, 32, 97, 0.05);
+  --shadow-card-md: 0 4px 16px rgba(7, 32, 97, 0.09);
+  --shadow-card-lg: 0 10px 32px rgba(7, 32, 97, 0.12);
+}
+
+/* ── Base styles ─────────────────────────────────────────────────────────── */
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-surface text-navy;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold text-navy;
+    letter-spacing: -0.02em;
+  }
+}
+
+/* ── Component classes ───────────────────────────────────────────────────── */
+
+@layer components {
+  .section-label {
+    @apply text-xs font-semibold uppercase tracking-widest text-azure;
+  }
+
+  .card {
+    @apply rounded-2xl border border-cloud bg-white shadow-card;
+  }
+  .card-hover {
+    @apply rounded-2xl border border-cloud bg-white shadow-card cursor-pointer transition-all hover:border-azure/30 hover:shadow-card-md;
+  }
+
+  .icon-box {
+    @apply flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-cloud text-azure;
+  }
+  .icon-box-active {
+    @apply flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-white/20 text-white;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-navy transition-all hover:bg-cloud;
+  }
+  .nav-item-active {
+    @apply flex items-center gap-3 rounded-xl bg-azure px-3 py-2.5 text-sm font-semibold text-white;
+  }
+
+  /* placeholder-gray-400 / disabled:bg-gray-50 removed — no gray in palette */
+  .input-base {
+    @apply w-full rounded-xl border border-cloud bg-white px-4 py-3 text-sm text-navy outline-none
+           transition-all placeholder:text-royal/40
+           focus:border-azure focus:ring-2 focus:ring-azure/15
+           disabled:cursor-not-allowed disabled:bg-cloud disabled:text-royal/40;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-azure px-5 py-3
+           text-sm font-semibold text-white transition-all
+           hover:bg-royal active:scale-[0.98]
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-cloud
+           bg-white px-5 py-3 text-sm font-semibold text-navy transition-all
+           hover:bg-cloud active:scale-[0.98]
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5
+           text-sm font-medium text-royal transition-all hover:bg-cloud active:scale-[0.98];
+  }
+}
+
+/* ── Tiptap editor ───────────────────────────────────────────────────────── */
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: rgb(64 95 173 / 0.35);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+.ProseMirror {
+  outline: none;
+}
+
+.ProseMirror > * + * {
+  margin-top: 0.6em;
+}
+
+.ProseMirror h2 { font-size: 1.1rem; font-weight: 700; color: #072061; }
+.ProseMirror h3 { font-size: 0.95rem; font-weight: 700; color: #072061; }
+.ProseMirror ul { list-style: disc; padding-left: 1.25rem; }
+.ProseMirror ol { list-style: decimal; padding-left: 1.25rem; }
+.ProseMirror blockquote {
+  border-left: 3px solid #5889FA;
+  padding-left: 0.75rem;
+  color: rgb(64 95 173 / 0.7);
+  font-style: italic;
+}
+.ProseMirror code {
+  background: #E6ECFD;
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+  font-family: monospace;
+  font-size: 0.85em;
+}
+.ProseMirror pre {
+  background: #E6ECFD;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-family: monospace;
+  font-size: 0.85em;
+  overflow-x: auto;
+}
+
+/* ── Lesson player theme ─────────────────────────────────────────────────── */
+
+/* Dark (default) */
+[data-player-theme] {
+  --pl-bg-root: #050d24;
+  --pl-bg:      #070f2b;
+  --pl-bg2:     #0a1535;
+
+  /* Panel structural colors — card bg, hover, borders, inputs, sub-text */
+  --pl-card:     rgba(255, 255, 255, 0.04);
+  --pl-card-h:   rgba(255, 255, 255, 0.08);
+  --pl-divider:  rgba(255, 255, 255, 0.08);
+  --pl-input:    rgba(255, 255, 255, 0.05);
+  --pl-sub:      rgba(255, 255, 255, 0.35);
+  --pl-faint:    rgba(255, 255, 255, 0.22);
+}
+
+/* Light override — flip all white-opacity classes to navy-opacity automatically */
+[data-player-theme="light"] {
+  --pl-bg-root: #e8edff;
+  --pl-bg:      #eef2ff;
+  --pl-bg2:     #f4f7ff;
+
+  /* Panel structural colors — visible on light bg */
+  --pl-card:     rgba(7, 32, 97, 0.05);
+  --pl-card-h:   rgba(7, 32, 97, 0.09);
+  --pl-divider:  rgba(7, 32, 97, 0.10);
+  --pl-input:    rgba(7, 32, 97, 0.04);
+  --pl-sub:      rgba(7, 32, 97, 0.50);
+  --pl-faint:    rgba(7, 32, 97, 0.35);
+  /* Redefine --color-white → navy so every text-white/X, bg-white/X,
+     border-white/X inside the player inherits the navy equivalent */
+  --color-white: #072061;
+}
+
+/* Restore true white text/borders on coloured backgrounds in light mode */
+[data-player-theme="light"] .bg-azure,
+[data-player-theme="light"] .bg-royal,
+[data-player-theme="light"] .bg-navy,
+[data-player-theme="light"] .bg-green-500,
+[data-player-theme="light"] .bg-red-500,
+[data-player-theme="light"] .bg-red-600,
+[data-player-theme="light"] .bg-amber-500 {
+  --color-white: #ffffff;
+}
+
+/* ── Dark mode ───────────────────────────────────────────────────────────── */
+/* Flip CSS variables so every bg-surface, bg-white, border-cloud, text-navy
+   adapts automatically without touching component markup.                    */
+
+html.dark {
+  --color-surface: #060e26;
+  --color-white:   #0c1840;
+  --color-cloud:   rgba(255, 255, 255, 0.08);
+  --color-navy:    #dce8ff;
+  --color-royal:   #8fa8d8;
+  color-scheme: dark;
+}
+
+/* Sidebar & topbar already use bg-white — they go dark automatically.
+   Explicitly dark elements (bg-navy cards, promo tiles) need this override. */
+html.dark .dark-invert-bg {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  color: #dce8ff !important;
+}
+
+/* ── Confetti animation ───────────────────────────────────────────────────── */
+
+@keyframes confetti-fall {
+  0%   { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateY(105vh) rotate(600deg); opacity: 0; }
+}
+
+.confetti-piece {
+  position: fixed;
+  top: -12px;
+  pointer-events: none;
+  animation: confetti-fall linear forwards;
+}
+
+/* ── Auth panel drifting blobs ───────────────────────────────────────────── */
+@keyframes blob-drift-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(30px, -40px) scale(1.05); }
+  66%      { transform: translate(-20px, 20px) scale(0.95); }
+}
+@keyframes blob-drift-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(-40px, 30px) scale(1.08); }
+  66%      { transform: translate(25px, -25px) scale(0.92); }
+}
+@keyframes blob-drift-3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(20px, 35px) scale(0.96); }
+  66%      { transform: translate(-35px, -20px) scale(1.04); }
+}
+
+/* ── Custom utilities ────────────────────────────────────────────────────── */
+
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Thin styled scrollbar — for dark panels (lesson player, notes, AI) */
+@utility scrollbar-dark {
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(88, 137, 250, 0.25) transparent;
+
+  /* Chromium / Safari */
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(88, 137, 250, 0.2);
+    border-radius: 9999px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(88, 137, 250, 0.45);
+  }
+}
+
+/* ── Lesson reader prose ─────────────────────────────────── */
+/* Used by TextContent in the lesson player.                   */
+/* Intentionally self-contained — no Tailwind prose plugin.    */
+.lesson-prose {
+  font-size: 1rem;
+  line-height: 1.8;
+  color: rgba(255, 255, 255, 0.72);
+}
+.lesson-prose > * + * { margin-top: 0.9em; }
+
+.lesson-prose h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  border-left: 3px solid #5889FA;
+  padding-left: 0.875rem;
+  margin-top: 2.5rem;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.02em;
+}
+.lesson-prose h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.88);
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.01em;
+}
+.lesson-prose p { margin-bottom: 0.5em; }
+.lesson-prose strong { font-weight: 600; color: rgba(255, 255, 255, 0.92); }
+.lesson-prose em     { font-style: italic; color: rgba(255, 255, 255, 0.7); }
+.lesson-prose a      { color: #5889FA; text-decoration: underline; text-decoration-color: rgba(88,137,250,0.4); }
+.lesson-prose a:hover { text-decoration-color: #5889FA; }
+
+/* Custom bullet list — azure dot */
+.lesson-prose ul { list-style: none; padding: 0; margin: 1em 0; }
+.lesson-prose ul li {
+  display: flex; align-items: flex-start; gap: 0.6rem;
+  margin-bottom: 0.4em; line-height: 1.7;
+}
+.lesson-prose ul li::before {
+  content: ''; flex-shrink: 0;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #5889FA; opacity: 0.6; margin-top: 0.56em;
+}
+
+/* Numbered list — azure circle counter */
+.lesson-prose ol { counter-reset: lesson-ol; padding: 0; margin: 1em 0; }
+.lesson-prose ol li {
+  counter-increment: lesson-ol;
+  display: flex; align-items: flex-start; gap: 0.75rem;
+  margin-bottom: 0.4em; line-height: 1.7;
+}
+.lesson-prose ol li::before {
+  content: counter(lesson-ol);
+  flex-shrink: 0; width: 1.4rem; height: 1.4rem;
+  border-radius: 50%; background: rgba(88,137,250,0.15);
+  color: #5889FA; font-size: 0.7rem; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; margin-top: 0.18em;
+}
+
+/* Blockquote — azure info card */
+.lesson-prose blockquote {
+  background: rgba(88, 137, 250, 0.07);
+  border: 1px solid rgba(88, 137, 250, 0.18);
+  border-left: 4px solid #5889FA;
+  border-radius: 0 12px 12px 0;
+  padding: 1rem 1.25rem;
+  margin: 1.75rem 0;
+  color: rgba(255, 255, 255, 0.72);
+}
+.lesson-prose blockquote p { margin: 0; }
+
+/* Inline code */
+.lesson-prose code:not(pre code) {
+  background: rgba(88, 137, 250, 0.12);
+  border: 1px solid rgba(88, 137, 250, 0.18);
+  border-radius: 5px;
+  padding: 0.1em 0.4em;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875em;
+  color: #5889FA;
+}
+
+/* Code block */
+.lesson-prose pre {
+  background: rgba(5, 13, 36, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  overflow-x: auto;
+  margin: 1.75rem 0;
+}
+.lesson-prose pre code {
+  background: none; border: none; padding: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.875rem; line-height: 1.65;
+}
+
+/* ── Light mode overrides for lesson prose ── */
+/* All hardcoded rgba(255,255,255,X) become rgba(7,32,97,X) */
+[data-player-theme="light"] .lesson-prose {
+  color: rgba(7, 32, 97, 0.72);
+}
+[data-player-theme="light"] .lesson-prose h2 {
+  color: rgba(7, 32, 97, 0.95);
+}
+[data-player-theme="light"] .lesson-prose h3 {
+  color: rgba(7, 32, 97, 0.88);
+}
+[data-player-theme="light"] .lesson-prose strong { color: rgba(7, 32, 97, 0.92); }
+[data-player-theme="light"] .lesson-prose em     { color: rgba(7, 32, 97, 0.70); }
+[data-player-theme="light"] .lesson-prose blockquote {
+  background: rgba(88, 137, 250, 0.07);
+  color: rgba(7, 32, 97, 0.72);
+}
+[data-player-theme="light"] .lesson-prose pre {
+  background: rgba(7, 32, 97, 0.05);
+  border-color: rgba(7, 32, 97, 0.10);
+}
+[data-player-theme="light"] .lesson-prose pre code {
+  color: rgba(7, 32, 97, 0.85);
+}
+
+/* OverlayScrollbars — azure dark theme for lesson player panels */
+.os-theme-azure {
+  --os-size:                          4px;
+  --os-padding-perpendicular:         0px;
+  --os-track-bg:                      transparent;
+  --os-track-bg-hover:                transparent;
+  --os-track-bg-active:               transparent;
+  --os-track-border:                  none;
+  --os-track-border-hover:            none;
+  --os-track-border-active:           none;
+  --os-track-radius:                  0;
+  --os-handle-bg:                     rgba(88, 137, 250, 0.22);
+  --os-handle-bg-hover:               rgba(88, 137, 250, 0.50);
+  --os-handle-bg-active:              rgba(88, 137, 250, 0.70);
+  --os-handle-border:                 none;
+  --os-handle-border-hover:           none;
+  --os-handle-border-active:          none;
+  --os-handle-radius:                 9999px;
+  --os-handle-min-size:               24px;
+  --os-handle-perpendicular-size:     100%;
+  --os-handle-perpendicular-size-hover: 100%;
+  --os-handle-perpendicular-size-active: 100%;
+  --os-handle-interactive-area-offset: 0px;
+}

@@ -1,0 +1,19 @@
+# Overrides for local development.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+
+services:
+  caddy:
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
+
+  # Expose API directly so the browser (and Next.js rewrites) can reach it
+  api:
+    ports:
+      - "3001:3001"
+
+  # Expose Redis for local dev tools — mapped to 6381 to avoid conflicts with other projects
+  redis:
+    ports:
+      - "6381:6379"

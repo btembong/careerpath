@@ -1,0 +1,9 @@
+onlyBuiltDependencies:
+  - "@nestjs/core"
+  - "@prisma/client"
+  - "@prisma/engines"
+  - prisma
+
+overrides:
+  "@types/react": "^19.3.0"
+  "@types/react-dom": "^19.3.0"

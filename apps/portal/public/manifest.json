@@ -1,0 +1,60 @@
+{
+  "name": "CareerPath Africa",
+  "short_name": "CPA",
+  "description": "Learn, grow, and advance your career across Africa with expert-led courses, live classes, and mentorship.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#072061",
+  "theme_color": "#5889FA",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "prefer_related_applications": false,
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "My Courses",
+      "url": "/student/courses",
+      "description": "View your enrolled courses"
+    },
+    {
+      "name": "Live Classes",
+      "url": "/student/live",
+      "description": "Join upcoming live sessions"
+    },
+    {
+      "name": "Assignments",
+      "url": "/student/assignments",
+      "description": "View and submit assignments"
+    },
+    {
+      "name": "Study Calendar",
+      "url": "/student/calendar",
+      "description": "Your schedule and deadlines"
+    },
+    {
+      "name": "Notifications",
+      "url": "/student/notifications",
+      "description": "Check your notifications"
+    },
+    {
+      "name": "My Progress",
+      "url": "/student/progress",
+      "description": "View study analytics"
+    }
+  ]
+}

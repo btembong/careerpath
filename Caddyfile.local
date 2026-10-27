@@ -1,0 +1,6 @@
+# Local development — plain HTTP, no TLS
+# Usage: docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+
+http://localhost {
+    reverse_proxy portal:3000
+}

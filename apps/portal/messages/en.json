@@ -1,0 +1,84 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "courses": "My Courses",
+    "search": "Search",
+    "teachers": "Teachers",
+    "messages": "Messages",
+    "mentorship": "Mentorship",
+    "assignments": "Assignments",
+    "certificates": "Certificates",
+    "wallet": "Wallet",
+    "community": "Community",
+    "support": "Help & Support",
+    "logout": "Log out"
+  },
+  "dashboard": {
+    "welcome": "Welcome back, {name}!",
+    "subtitle": "Here's what's happening on your learning journey"
+  },
+  "courses": {
+    "title": "My Courses",
+    "subtitle": "All your enrolled courses",
+    "empty": "No courses yet",
+    "emptyDescription": "Enroll in a package to access your first course",
+    "progress": "Progress",
+    "completed": "Completed",
+    "inProgress": "In progress",
+    "notStarted": "Not started",
+    "startLearning": "Start learning",
+    "continueLearning": "Continue learning",
+    "reviewCourse": "Review course"
+  },
+  "search": {
+    "title": "Search",
+    "placeholder": "Search courses, subjects, teachers…",
+    "tabs": {
+      "all": "All",
+      "courses": "Courses",
+      "teachers": "Teachers"
+    },
+    "noResults": "No results for \"{query}\"",
+    "prompt": "Search anything",
+    "promptSub": "Courses, teachers, subjects, programmes…"
+  },
+  "teachers": {
+    "title": "Our Teachers",
+    "subtitle": "Find the perfect tutor for your goals",
+    "topRated": "Top Rated",
+    "risingStar": "Rising Star",
+    "new": "New",
+    "bookSession": "Book Session",
+    "message": "Message",
+    "noReviews": "No reviews yet",
+    "reviews": "{count, plural, one {# review} other {# reviews}}"
+  },
+  "messages": {
+    "title": "Messages",
+    "subtitle": "Chat with your teachers and students",
+    "noConversations": "No conversations yet",
+    "noConversationsDescription": "Message a teacher from their profile page",
+    "typeMessage": "Type a message… (Enter to send)",
+    "send": "Send"
+  },
+  "auth": {
+    "login": "Log in",
+    "register": "Sign up",
+    "logout": "Log out",
+    "email": "Email address",
+    "password": "Password",
+    "forgotPassword": "Forgot password?",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "loading": "Loading…",
+    "error": "Something went wrong",
+    "success": "Saved successfully",
+    "back": "Back",
+    "viewAll": "View all",
+    "learnMore": "Learn more"
+  }
+}

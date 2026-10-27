@@ -1,0 +1,1091 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model UserProfile {
+  id                  String                   @id @default(uuid())
+  wpUserId            Int                      @unique
+  email               String                   @unique
+  role                UserRole                 @default(STUDENT)
+  approvalStatus      ApprovalStatus           @default(APPROVED)
+  countryId           String?
+  currentLevelId      String?
+  onboardingCompleted Boolean                  @default(false)
+  avatarUrl           String?
+  name                String?
+  phone               String?
+  firstName           String?
+  lastName            String?
+  bio                 String?
+  linkedinUrl         String?
+  websiteUrl          String?
+  timezone            String?
+  videoIntroUrl       String?
+  googleId            String?                  @unique
+  lastActiveDate      DateTime?
+  microsoftId         String?                  @unique
+  streak              Int                      @default(0)
+  xpTotal             Int                      @default(0)
+  agreementAcceptedAt DateTime?
+  agreementVersion    String?
+  agreementIp         String?
+  certificates        Certificate[]
+  teacherCohorts      Cohort[]                 @relation("TeacherCohorts")
+  cohorts             CohortRoster[]
+  discussionPosts     CourseDiscussionPost[]
+  courseEnrollments   CourseEnrollment[]
+  coursePurchases     CoursePurchase[]
+  discussionUpvotes   DiscussionUpvote[]
+  flashcardReviews    FlashcardReview[]
+  lessonBookmarks     LessonBookmark[]
+  lessonNotes         LessonNote[]
+  lessonProgress      LessonProgress[]
+  liveAttendance      LiveAttendance[]         @relation("StudentAttendance")
+  mentorBookings      MentorBooking[]          @relation("StudentBookings")
+  mentorSlots         MentorSlot[]             @relation("TeacherSlots")
+  sentMessages        Message[]                @relation("SentMessages")
+  messageThreadsAsA   MessageThread[]          @relation("ThreadParticipantA")
+  messageThreadsAsB   MessageThread[]          @relation("ThreadParticipantB")
+  purchases           PackagePurchase[]
+  payoutAccount       PayoutAccount?
+  peerReviewsGiven    PeerReview[]             @relation("PeerReviewGiver")
+  platformCourses     PlatformCourse[]         @relation("TeacherCourses")
+  progressAlerts      ProgressAlert[]
+  quizAttempts        QuizAttempt[]
+  rubricScores        RubricScore[]            @relation("GraderRubricScores")
+  submissions         Submission[]
+  successStories      SuccessStorySubmission[]
+  supportTickets      SupportTicket[]
+  teacherApplication  TeacherApplication?
+  studentReviews      TeacherReview[]          @relation("StudentTeacherReviews")
+  teacherReviews      TeacherReview[]          @relation("TeacherReviews")
+  userBadges          UserBadge[]
+  country             Country?                 @relation(fields: [countryId], references: [id])
+  wallet              Wallet?
+  xpEvents            XPEvent[]
+  programmeInterests  Programme[]              @relation("StudentProgrammeInterests")
+  teachingProgrammes  Programme[]              @relation("TeacherProgrammes")
+  teachingSubjects    Subject[]                @relation("TeacherSubjects")
+  onboardingVideoViews OnboardingVideoView[]
+}
+
+/// Mandatory orientation video for teachers (one row per audience; only TEACHER today).
+/// Bumping `version` makes everyone watch again.
+model OnboardingVideo {
+  id          String                @id @default(uuid())
+  audience    String                @unique @default("TEACHER")
+  title       String
+  videoUrl    String
+  captionsUrl String?
+  durationSec Int?
+  version     Int                   @default(1)
+  isActive    Boolean               @default(false)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  views       OnboardingVideoView[]
+}
+
+/// Server-side watch progress — completion is decided here, never by the client alone.
+model OnboardingVideoView {
+  id            String          @id @default(uuid())
+  userId        String
+  videoId       String
+  version       Int
+  maxWatchedSec Float           @default(0)
+  durationSec   Float?
+  lastReportAt  DateTime        @default(now())
+  completedAt   DateTime?
+  user          UserProfile     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video         OnboardingVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, videoId, version])
+}
+
+model SupportTicket {
+  id        String      @id @default(uuid())
+  studentId String
+  category  String
+  subject   String
+  message   String
+  status    String      @default("OPEN")
+  adminNote String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  student   UserProfile @relation(fields: [studentId], references: [id])
+}
+
+model Country {
+  id                   String           @id @default(uuid())
+  code                 String           @unique
+  name                 String
+  currency             String
+  repCommissionPercent Float?
+  perStudentBonus      Int?
+  educationSystemId    String?
+  educationSystem      EducationSystem? @relation(fields: [educationSystemId], references: [id])
+  reps                 UserProfile[]
+  programmes           Programme[]      @relation("ProgrammeCountries")
+}
+
+model EducationSystem {
+  id         String           @id @default(uuid())
+  name       String           @unique
+  countries  Country[]
+  levels     EducationLevel[]
+  programmes Programme[]
+}
+
+model EducationLevel {
+  id                String           @id @default(uuid())
+  name              String
+  tier              EducationTier
+  sortOrder         Int
+  educationSystemId String
+  educationSystem   EducationSystem  @relation(fields: [educationSystemId], references: [id])
+  platformCourses   PlatformCourse[]
+  programmes        Programme[]      @relation("ProgrammeLevels")
+
+  @@unique([educationSystemId, sortOrder])
+}
+
+model Programme {
+  id                String           @id @default(uuid())
+  name              String           @unique
+  shortName         String?
+  description       String?
+  type              ProgrammeType
+  scope             ProgrammeScope   @default(GLOBAL)
+  educationSystemId String?
+  cpdProfession     String?
+  cpdBody           String?
+  cpdHoursPerCycle  Int?
+  logoUrl           String?
+  isActive          Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  platformCourses   PlatformCourse[]
+  educationSystem   EducationSystem? @relation(fields: [educationSystemId], references: [id])
+  countries         Country[]        @relation("ProgrammeCountries")
+  levels            EducationLevel[] @relation("ProgrammeLevels")
+  subjects          Subject[]        @relation("ProgrammeSubjects")
+  studentInterests  UserProfile[]    @relation("StudentProgrammeInterests")
+  teacherProfiles   UserProfile[]    @relation("TeacherProgrammes")
+}
+
+model Subject {
+  id              String           @id @default(uuid())
+  name            String
+  category        SubjectCategory
+  isPractical     Boolean          @default(false)
+  platformCourses PlatformCourse[]
+  programmes      Programme[]      @relation("ProgrammeSubjects")
+  teacherProfiles UserProfile[]    @relation("TeacherSubjects")
+
+  @@unique([name, category])
+}
+
+model ExchangeRate {
+  id        String   @id @default(uuid())
+  currency  String   @unique
+  toUsdRate Float
+  updatedAt DateTime @updatedAt
+}
+
+model Package {
+  id           String            @id @default(uuid())
+  name         String
+  description  String?
+  priceAmount  Int
+  currency     String
+  courseIds    String[]
+  categoryTags String[]
+  validityDays Int?
+  isPublished  Boolean           @default(false)
+  cohortId     String?
+  createdAt    DateTime          @default(now())
+  purchases    PackagePurchase[]
+  cohort       Cohort?           @relation("PackageCohort", fields: [cohortId], references: [id])
+}
+
+model PackagePurchase {
+  id           String              @id @default(uuid())
+  studentId    String
+  packageId    String
+  couponId     String?
+  purchasedAt  DateTime            @default(now())
+  expiresAt    DateTime?
+  amountPaid   Int?
+  currency     String?
+  gateway      String?
+  gatewayRef   String?
+  invoiceNo    String?             @unique
+  package      Package             @relation(fields: [packageId], references: [id])
+  student      UserProfile         @relation(fields: [studentId], references: [id])
+  transactions WalletTransaction[]
+}
+
+model CoursePurchase {
+  id           String              @id @default(uuid())
+  studentId    String
+  courseId     String
+  amountPaid   Int
+  currency     String
+  purchasedAt  DateTime            @default(now())
+  expiresAt    DateTime?
+  gateway      String?
+  gatewayRef   String?
+  invoiceNo    String?             @unique
+  course       PlatformCourse      @relation(fields: [courseId], references: [id])
+  student      UserProfile         @relation(fields: [studentId], references: [id])
+  transactions WalletTransaction[]
+
+  @@unique([studentId, courseId])
+}
+
+model TeacherApplication {
+  id                   String      @id @default(uuid())
+  userId               String      @unique
+  subjectAreas         String[]
+  yearsExperience      Int?
+  bio                  String
+  documentUrl          String?
+  submittedAt          DateTime    @default(now())
+  firstName            String?
+  lastName             String?
+  linkedinUrl          String?
+  phone                String?
+  qualification        String?
+  rejectionReason      String?
+  teachingModality     String?
+  websiteUrl           String?
+  teachingProgrammeIds String[]
+  teachingSubjectIds   String[]
+  user                 UserProfile @relation(fields: [userId], references: [id])
+}
+
+model Cohort {
+  id             String          @id @default(uuid())
+  name           String
+  teacherId      String
+  examDate       DateTime?
+  sittingLabel   String?
+  startDate      DateTime?
+  assignments    Assignment[]
+  teacher        UserProfile     @relation("TeacherCohorts", fields: [teacherId], references: [id])
+  students       CohortRoster[]
+  liveClasses    LiveClass[]
+  progressAlerts ProgressAlert[]
+  packages       Package[]       @relation("PackageCohort")
+}
+
+model CohortRoster {
+  id        String      @id @default(uuid())
+  studentId String
+  cohortId  String
+  cohort    Cohort      @relation(fields: [cohortId], references: [id])
+  student   UserProfile @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, cohortId])
+}
+
+model LiveClass {
+  id                 String           @id @default(uuid())
+  cohortId           String
+  title              String
+  dailyRoomUrl       String
+  scheduledAt        DateTime
+  status             ClassStatus      @default(SCHEDULED)
+  description        String?
+  durationMins       Int              @default(90)
+  recordingUrl       String?
+  whiteboardSnapshot String?
+  attendance         LiveAttendance[]
+  cohort             Cohort           @relation(fields: [cohortId], references: [id])
+}
+
+model LiveAttendance {
+  id          String      @id @default(uuid())
+  liveClassId String
+  studentId   String
+  joinedAt    DateTime    @default(now())
+  leftAt      DateTime?
+  liveClass   LiveClass   @relation(fields: [liveClassId], references: [id])
+  student     UserProfile @relation("StudentAttendance", fields: [studentId], references: [id])
+
+  @@unique([liveClassId, studentId])
+}
+
+model Assignment {
+  id              String            @id @default(uuid())
+  cohortId        String
+  title           String
+  description     String
+  maxPoints       Int
+  dueDate         DateTime
+  isPeerReviewed  Boolean           @default(false)
+  peerReviewCount Int               @default(3)
+  cohort          Cohort            @relation(fields: [cohortId], references: [id])
+  rubric          AssignmentRubric?
+  submissions     Submission[]
+}
+
+model Submission {
+  id           String           @id @default(uuid())
+  assignmentId String
+  studentId    String
+  fileUrl      String?
+  grade        Int?
+  feedback     String?
+  status       SubmissionStatus @default(PENDING_REVIEW)
+  submittedAt  DateTime         @default(now())
+  aiFeedback   String?
+  peerReviews  PeerReview[]
+  rubricScores RubricScore[]
+  assignment   Assignment       @relation(fields: [assignmentId], references: [id])
+  student      UserProfile      @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, assignmentId])
+}
+
+model AssignmentRubric {
+  id           String            @id @default(uuid())
+  assignmentId String            @unique
+  assignment   Assignment        @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  criteria     RubricCriterion[]
+}
+
+model RubricCriterion {
+  id          String           @id @default(uuid())
+  rubricId    String
+  title       String
+  weight      Float
+  descriptors Json
+  rubric      AssignmentRubric @relation(fields: [rubricId], references: [id], onDelete: Cascade)
+  scores      RubricScore[]
+}
+
+model RubricScore {
+  id           String          @id @default(uuid())
+  submissionId String
+  criterionId  String
+  graderId     String
+  score        Int
+  comment      String?
+  criterion    RubricCriterion @relation(fields: [criterionId], references: [id])
+  grader       UserProfile     @relation("GraderRubricScores", fields: [graderId], references: [id])
+  submission   Submission      @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, criterionId, graderId])
+}
+
+model PeerReview {
+  id           String           @id @default(uuid())
+  assignmentId String
+  reviewerId   String
+  submissionId String
+  grade        Int?
+  feedback     String?
+  status       PeerReviewStatus @default(PENDING)
+  createdAt    DateTime         @default(now())
+  completedAt  DateTime?
+  reviewer     UserProfile      @relation("PeerReviewGiver", fields: [reviewerId], references: [id])
+  submission   Submission       @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewerId, submissionId])
+}
+
+model QuestionBank {
+  id             String              @id @default(uuid())
+  courseId       String
+  questionText   String
+  type           QuestionType
+  options        Json?
+  correctAnswer  String
+  explanation    String?
+  lessonId       String?
+  sortOrder      Int                 @default(0)
+  createdAt      DateTime            @default(now())
+  difficulty     QuestionDifficulty  @default(MEDIUM)
+  imageUrl       String?
+  points         Int                 @default(1)
+  tags           String[]            @default([])
+  attemptAnswers QuizAttemptAnswer[]
+}
+
+model QuizAttempt {
+  id            String              @id @default(uuid())
+  studentId     String
+  courseId      String
+  autoScore     Int
+  manualScore   Int                 @default(0)
+  finalScore    Int                 @default(0)
+  isFullyGraded Boolean             @default(false)
+  answersJson   Json
+  submittedAt   DateTime            @default(now())
+  lessonId      String?
+  maxScore      Int                 @default(0)
+  passed        Boolean             @default(false)
+  timeTakenSecs Int?
+  student       UserProfile         @relation(fields: [studentId], references: [id])
+  answers       QuizAttemptAnswer[]
+}
+
+/// Per-question answer record for detailed analytics
+model QuizAttemptAnswer {
+  id         String       @id @default(uuid())
+  attemptId  String
+  questionId String
+  answer     Json
+  isCorrect  Boolean?
+  score      Float        @default(0)
+  aiFeedback String?
+  attempt    QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question   QuestionBank @relation(fields: [questionId], references: [id])
+}
+
+model CourseAssignment {
+  id                    String       @id @default(uuid())
+  courseId              String       @unique
+  teacherId             String?
+  teacherCommissionPct  Float?
+  reviewerId            String?
+  reviewerCommissionPct Float?
+  reviewStatus          ReviewStatus @default(PENDING)
+  reviewedAt            DateTime?
+  reviewNotes           String?
+  updatedAt             DateTime     @updatedAt
+  programmeId           String?
+  subjectId             String?
+}
+
+model Wallet {
+  id           String              @id @default(uuid())
+  userId       String              @unique
+  balance      Int                 @default(0)
+  currency     String
+  updatedAt    DateTime            @updatedAt
+  user         UserProfile         @relation(fields: [userId], references: [id])
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id                String           @id @default(uuid())
+  walletId          String
+  type              WalletTxType
+  source            WalletTxSource
+  amount            Int
+  currency          String
+  packagePurchaseId String?
+  courseId          String?
+  description       String?
+  createdAt         DateTime         @default(now())
+  coursePurchaseId  String?
+  coursePurchase    CoursePurchase?  @relation(fields: [coursePurchaseId], references: [id])
+  packagePurchase   PackagePurchase? @relation(fields: [packagePurchaseId], references: [id])
+  wallet            Wallet           @relation(fields: [walletId], references: [id])
+}
+
+model Certificate {
+  id         String         @id @default(uuid())
+  studentId  String
+  courseId   String
+  issuedAt   DateTime       @default(now())
+  verifyCode String         @unique
+  pdfUrl     String
+  course     PlatformCourse @relation(fields: [courseId], references: [id])
+  student    UserProfile    @relation(fields: [studentId], references: [id])
+}
+
+model MentorSlot {
+  id           String         @id @default(uuid())
+  teacherId    String
+  startsAt     DateTime
+  endsAt       DateTime
+  isBooked     Boolean        @default(false)
+  durationMins Int            @default(30)
+  booking      MentorBooking?
+  teacher      UserProfile    @relation("TeacherSlots", fields: [teacherId], references: [id])
+}
+
+model MentorBooking {
+  id           String        @id @default(uuid())
+  slotId       String        @unique
+  studentId    String
+  notes        String?
+  bookedAt     DateTime      @default(now())
+  cancelReason String?
+  cancelledAt  DateTime?
+  meetingUrl   String?
+  status       String        @default("CONFIRMED")
+  slot         MentorSlot    @relation(fields: [slotId], references: [id])
+  student      UserProfile   @relation("StudentBookings", fields: [studentId], references: [id])
+  review       MentorReview?
+}
+
+model MentorReview {
+  id        String        @id @default(uuid())
+  bookingId String        @unique
+  studentId String
+  teacherId String
+  rating    Int
+  comment   String?
+  createdAt DateTime      @default(now())
+  booking   MentorBooking @relation(fields: [bookingId], references: [id])
+}
+
+model TeacherReview {
+  id        String      @id @default(uuid())
+  teacherId String
+  studentId String
+  rating    Int
+  comment   String?
+  createdAt DateTime    @default(now())
+  student   UserProfile @relation("StudentTeacherReviews", fields: [studentId], references: [id])
+  teacher   UserProfile @relation("TeacherReviews", fields: [teacherId], references: [id])
+
+  @@unique([teacherId, studentId])
+}
+
+model Coupon {
+  id             String    @id @default(uuid())
+  code           String    @unique
+  percentOff     Int?
+  amountOff      Int?
+  packageId      String?
+  maxRedemptions Int?
+  redeemedCount  Int       @default(0)
+  expiresAt      DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+}
+
+model OrgEnrollment {
+  id               String    @id @default(uuid())
+  organizationName String
+  contactEmail     String
+  packageId        String
+  seatsPurchased   Int
+  purchasedAt      DateTime  @default(now())
+  seats            OrgSeat[]
+}
+
+model OrgSeat {
+  id              String        @id @default(uuid())
+  orgEnrollmentId String
+  inviteEmail     String
+  studentId       String?
+  claimedAt       DateTime?
+  orgEnrollment   OrgEnrollment @relation(fields: [orgEnrollmentId], references: [id])
+}
+
+model PayoutStatement {
+  id            String              @id @default(uuid())
+  recipientId   String
+  recipientType PayoutRecipientType
+  periodStart   DateTime
+  periodEnd     DateTime
+  amount        Int
+  currency      String
+  status        PayoutStatus        @default(PENDING)
+  generatedAt   DateTime            @default(now())
+  paidAt        DateTime?
+}
+
+model CourseDiscussionPost {
+  id          String                 @id @default(uuid())
+  courseId    String
+  authorId    String
+  parentId    String?
+  body        String
+  createdAt   DateTime               @default(now())
+  lessonId    String?
+  isPinned    Boolean                @default(false)
+  updatedAt   DateTime               @updatedAt
+  upvoteCount Int                    @default(0)
+  author      UserProfile            @relation(fields: [authorId], references: [id])
+  parent      CourseDiscussionPost?  @relation("DiscussionReplies", fields: [parentId], references: [id])
+  replies     CourseDiscussionPost[] @relation("DiscussionReplies")
+  upvotes     DiscussionUpvote[]
+}
+
+model DiscussionUpvote {
+  id     String               @id @default(uuid())
+  postId String
+  userId String
+  post   CourseDiscussionPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user   UserProfile          @relation(fields: [userId], references: [id])
+
+  @@unique([postId, userId])
+}
+
+model SuccessStorySubmission {
+  id               String       @id @default(uuid())
+  studentId        String
+  story            String
+  consentToPublish Boolean      @default(false)
+  status           ReviewStatus @default(PENDING)
+  submittedAt      DateTime     @default(now())
+  student          UserProfile  @relation(fields: [studentId], references: [id])
+}
+
+model PlatformCourse {
+  id                 String             @id @default(uuid())
+  title              String
+  description        String?
+  coverUrl           String?
+  teacherId          String
+  programmeId        String?
+  subjectId          String?
+  levelId            String?
+  status             CourseStatus       @default(DRAFT)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  source             CourseSource       @default(NATIVE)
+  wpCourseId         Int?               @unique
+  wpCourseUrl        String?
+  isSoldIndividually Boolean            @default(false)
+  priceAmount        Int?
+  priceCurrency      String?
+  shortDescription   String?
+  certificates       Certificate[]
+  enrollments        CourseEnrollment[]
+  modules            CourseModule[]
+  coursePurchases    CoursePurchase[]
+  flashcardDecks     FlashcardDeck[]
+  level              EducationLevel?    @relation(fields: [levelId], references: [id])
+  programme          Programme?         @relation(fields: [programmeId], references: [id])
+  subject            Subject?           @relation(fields: [subjectId], references: [id])
+  teacher            UserProfile        @relation("TeacherCourses", fields: [teacherId], references: [id])
+}
+
+model CourseModule {
+  id        String         @id @default(uuid())
+  courseId  String
+  title     String
+  sortOrder Int
+  course    PlatformCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons   Lesson[]
+}
+
+model Lesson {
+  id               String             @id @default(uuid())
+  moduleId         String
+  title            String
+  type             LessonType
+  videoUrl         String?
+  content          String?
+  sortOrder        Int
+  durationSecs     Int?
+  isFree           Boolean            @default(false)
+  maxAttempts      Int                @default(0)
+  passMark         Int?
+  shuffleQuestions Boolean            @default(false)
+  timeLimitSecs    Int?
+  module           CourseModule       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  attachments      LessonAttachment[]
+  bookmarks        LessonBookmark[]
+  notes            LessonNote[]
+  progress         LessonProgress[]
+}
+
+model LessonAttachment {
+  id       String  @id @default(uuid())
+  lessonId String
+  name     String
+  url      String
+  fileType String?
+  lesson   Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+}
+
+model LessonProgress {
+  id          String      @id @default(uuid())
+  studentId   String
+  lessonId    String
+  completed   Boolean     @default(false)
+  watchedSecs Int         @default(0)
+  updatedAt   DateTime    @updatedAt
+  lesson      Lesson      @relation(fields: [lessonId], references: [id])
+  student     UserProfile @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, lessonId])
+}
+
+model CourseEnrollment {
+  id          String         @id @default(uuid())
+  studentId   String
+  courseId    String
+  enrolledAt  DateTime       @default(now())
+  completedAt DateTime?
+  course      PlatformCourse @relation(fields: [courseId], references: [id])
+  student     UserProfile    @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, courseId])
+}
+
+/// Webhook dedup — prevents double-fulfillment when a gateway retries a webhook.
+model WebhookEvent {
+  id          String   @id @default(uuid())
+  gateway     String
+  eventId     String
+  processedAt DateTime @default(now())
+
+  @@unique([gateway, eventId])
+}
+
+/// Temporary mapping created before a Tranzak payment request is sent.
+/// Tranzak has no customData/metadata field, so we store the purchase context
+/// here keyed by mchTransactionRef (= this record's id).
+/// Cleaned up lazily after fulfillment.
+model TranzakSession {
+  id        String   @id @default(uuid())
+  requestId String?  @unique
+  studentId String
+  packageId String?
+  courseId  String?
+  couponId  String?
+  amount    Int
+  currency  String
+  createdAt DateTime @default(now())
+
+  @@index([studentId])
+}
+
+/// Atomic invoice counter — one row per year/month, incremented inside a transaction.
+model InvoiceCounter {
+  id      String @id @default(uuid())
+  year    Int
+  month   Int
+  lastVal Int    @default(0)
+
+  @@unique([year, month])
+}
+
+/// Bank account details submitted by earners for payout processing.
+model PayoutAccount {
+  id            String      @id @default(uuid())
+  userId        String      @unique
+  bankName      String
+  accountNumber String
+  bankCode      String?
+  country       String
+  isVerified    Boolean     @default(false)
+  verifiedAt    DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  user          UserProfile @relation(fields: [userId], references: [id])
+}
+
+/// Immutable audit trail for compliance — records every admin action that touches money or roles.
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  targetType String?
+  targetId   String?
+  before     Json?
+  after      Json?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+}
+
+/// A conversation thread between two users (student↔teacher or teacher↔teacher).
+model MessageThread {
+  id             String      @id @default(uuid())
+  participantAId String
+  participantBId String
+  lastMessageAt  DateTime    @default(now())
+  createdAt      DateTime    @default(now())
+  messages       Message[]
+  participantA   UserProfile @relation("ThreadParticipantA", fields: [participantAId], references: [id])
+  participantB   UserProfile @relation("ThreadParticipantB", fields: [participantBId], references: [id])
+
+  @@unique([participantAId, participantBId])
+}
+
+model Message {
+  id        String        @id @default(uuid())
+  threadId  String
+  senderId  String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime      @default(now())
+  sender    UserProfile   @relation("SentMessages", fields: [senderId], references: [id])
+  thread    MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+}
+
+model LessonNote {
+  id        String      @id @default(uuid())
+  studentId String
+  lessonId  String
+  timestamp Int?
+  body      String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  lesson    Lesson      @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  student   UserProfile @relation(fields: [studentId], references: [id])
+}
+
+model LessonBookmark {
+  id        String      @id @default(uuid())
+  studentId String
+  lessonId  String
+  timestamp Int
+  label     String?
+  createdAt DateTime    @default(now())
+  lesson    Lesson      @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  student   UserProfile @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, lessonId, timestamp])
+}
+
+model XPEvent {
+  id        String      @id @default(uuid())
+  userId    String
+  type      XPEventType
+  points    Int
+  meta      Json?
+  createdAt DateTime    @default(now())
+  user      UserProfile @relation(fields: [userId], references: [id])
+}
+
+model UserBadge {
+  id       String      @id @default(uuid())
+  userId   String
+  badge    BadgeType
+  earnedAt DateTime    @default(now())
+  user     UserProfile @relation(fields: [userId], references: [id])
+
+  @@unique([userId, badge])
+}
+
+model FlashcardDeck {
+  id          String            @id @default(uuid())
+  courseId    String
+  lessonId    String?
+  title       String
+  aiGenerated Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  cards       Flashcard[]
+  course      PlatformCourse    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  reviews     FlashcardReview[]
+}
+
+model Flashcard {
+  id     String        @id @default(uuid())
+  deckId String
+  front  String
+  back   String
+  order  Int
+  deck   FlashcardDeck @relation(fields: [deckId], references: [id], onDelete: Cascade)
+}
+
+/// Spaced-repetition review record per student per card
+model FlashcardReview {
+  id           String        @id @default(uuid())
+  deckId       String
+  studentId    String
+  cardId       String
+  difficulty   Int
+  nextReviewAt DateTime
+  reviewedAt   DateTime      @default(now())
+  deck         FlashcardDeck @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  student      UserProfile   @relation(fields: [studentId], references: [id])
+}
+
+model ProgressAlert {
+  id             String      @id @default(uuid())
+  cohortId       String
+  teacherId      String
+  type           AlertType
+  thresholdDays  Int?
+  thresholdScore Float?
+  enabled        Boolean     @default(true)
+  cohort         Cohort      @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  teacher        UserProfile @relation(fields: [teacherId], references: [id])
+}
+
+/// Daily revenue snapshot for admin dashboard charts — avoids full table scans.
+model RevenueSnapshot {
+  id           String   @id @default(uuid())
+  date         DateTime @unique
+  totalRevenue Int      @default(0)
+  newStudents  Int      @default(0)
+  newPurchases Int      @default(0)
+  createdAt    DateTime @default(now())
+}
+
+enum ProgrammeType {
+  NATIONAL_CURRICULUM
+  INTERNATIONAL_EXAM
+  PROFESSIONAL_LICENSURE
+  LANGUAGE_PROFICIENCY
+  CPD
+  UNIVERSITY
+}
+
+enum ProgrammeScope {
+  COUNTRY
+  REGIONAL
+  GLOBAL
+}
+
+enum SubjectCategory {
+  MATHEMATICS
+  SCIENCES
+  HUMANITIES
+  LANGUAGES
+  SOCIAL_STUDIES
+  ARTS
+  BUSINESS
+  TECHNOLOGY
+  HEALTH
+  LAW
+  FINANCE
+  ENGINEERING
+  EDUCATION
+  AGRICULTURE
+  OTHER
+}
+
+enum EducationTier {
+  PRIMARY
+  JUNIOR_SECONDARY
+  SENIOR_SECONDARY
+  POST_SECONDARY
+  TERTIARY
+  PROFESSIONAL
+  ALL
+}
+
+enum UserRole {
+  ADMIN
+  TEACHER
+  STUDENT
+  COUNTRY_REP
+  SUBJECT_REVIEWER
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ClassStatus {
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum QuestionType {
+  MCQ
+  WRITTEN
+  TRUE_FALSE
+  FILL_BLANK
+  SHORT_ANSWER
+  MATCHING
+}
+
+enum QuestionDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum XPEventType {
+  LESSON_COMPLETE
+  QUIZ_PASS
+  ASSIGNMENT_SUBMIT
+  ASSIGNMENT_PASS
+  FORUM_POST
+  FORUM_UPVOTE_RECEIVED
+  STREAK_BONUS
+  ENROLLMENT
+  CERTIFICATE_EARNED
+  FLASHCARD_REVIEW
+  PEER_REVIEW_GIVEN
+}
+
+enum BadgeType {
+  FIRST_LESSON
+  FIRST_COURSE_COMPLETE
+  STREAK_7
+  STREAK_30
+  QUIZ_PERFECT
+  TOP_OF_COHORT
+  FORUM_HELPER
+  FAST_LEARNER
+  CERTIFICATE_FIRST
+  PEER_REVIEWER
+}
+
+enum AlertType {
+  INACTIVE
+  QUIZ_BELOW_THRESHOLD
+  ASSIGNMENT_OVERDUE
+  LOW_COMPLETION
+}
+
+enum PeerReviewStatus {
+  PENDING
+  COMPLETED
+}
+
+enum SubmissionStatus {
+  PENDING_REVIEW
+  GRADED
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CourseStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CourseSource {
+  NATIVE
+  WORDPRESS
+}
+
+enum LessonType {
+  VIDEO
+  TEXT
+  QUIZ
+  LIVE
+}
+
+enum WalletTxType {
+  CREDIT
+  DEBIT
+}
+
+enum WalletTxSource {
+  COURSE_SALE
+  COUNTRY_BONUS
+  REVIEW_COMMISSION
+  PAYOUT
+  ADJUSTMENT
+}
+
+enum PayoutRecipientType {
+  TEACHER
+  SUBJECT_REVIEWER
+  COUNTRY_REP
+}
