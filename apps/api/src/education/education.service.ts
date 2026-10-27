@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { MailService } from '../mail/mail.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { SubmitQuizDto } from './dto/submit-quiz.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { UserProfile } from '@prisma/client';
@@ -17,6 +18,7 @@ export class EducationService {
     private prisma: PrismaService,
     private certificates: CertificatesService,
     private mail: MailService,
+    private notifications: NotificationsService,
   ) {}
 
   // ── Quiz submission ──────────────────────────────────────
@@ -186,6 +188,12 @@ export class EducationService {
       maxPoints: submission.assignment.maxPoints,
       feedback: dto.feedback ?? undefined,
     }).catch(() => {});
+    this.notifications.notify(submission.studentId, {
+      type: 'grade',
+      title: 'Assignment graded',
+      body: `"${submission.assignment.title}": ${dto.grade}/${submission.assignment.maxPoints}`,
+      href: '/student/assignments',
+    });
 
     return result;
   }

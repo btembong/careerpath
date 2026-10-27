@@ -419,6 +419,32 @@ export function welcomeTeacherTemplate(firstName: string): string {
   return base(hero, body);
 }
 
+// ── 5b. Admin announcement (broadcast) ───────────────────────────────────────
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/** Title/body are typed by an admin, so they're escaped; line breaks are kept. */
+export function announcementTemplate(title: string, message: string): string {
+  const hero = `
+    ${heroBadge('global')}
+    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
+      Announcement
+    </p>
+    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
+      ${escapeHtml(title)}
+    </h1>`;
+
+  const body = `
+    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+      ${escapeHtml(message).replace(/\n/g, '<br>')}
+    </p>
+    ${ctaButton('Open CareerPath Africa', PORTAL_URL)}`;
+
+  return base(hero, body);
+}
+
 // ── 5c. Course Approved ──────────────────────────────────────────────────────
 
 export function courseApprovedTemplate(courseTitle: string): string {

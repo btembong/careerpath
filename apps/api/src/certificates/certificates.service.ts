@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { FilesService } from '../files/files.service';
 import { MailService } from '../mail/mail.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { randomBytes } from 'crypto';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { ConfigService } from '@nestjs/config';
@@ -19,6 +20,7 @@ export class CertificatesService {
     private files: FilesService,
     private mail: MailService,
     private config: ConfigService,
+    private notifications: NotificationsService,
   ) {
     this.portalUrl = this.config.get<string>('PORTAL_URL', 'https://portal.careerpathafrica.com');
   }
@@ -146,6 +148,12 @@ export class CertificatesService {
     // Send certificate earned email — non-critical
     const verifyUrl = `${this.portalUrl}/verify/${verifyCode}`;
     this.mail.sendCertificateEarned(student.email, studentName, courseTitle, verifyUrl).catch(() => {});
+    this.notifications.notify(studentId, {
+      type: 'certificate',
+      title: 'Certificate issued',
+      body: `Congratulations! Your certificate for "${courseTitle}" is ready.`,
+      href: '/student/certificates',
+    });
   }
 
   // ── PDF generation ────────────────────────────────────────

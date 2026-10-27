@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { WordPressService, wpCourseImageUrl } from '../wordpress/wordpress.service';
 import { CourseSource } from '@prisma/client';
 
@@ -13,6 +14,7 @@ export class SchedulerService {
     private prisma: PrismaService,
     private mail: MailService,
     private wp: WordPressService,
+    private notifications: NotificationsService,
   ) {}
 
   // ── 1. Expire old purchases ──────────────────────────────
@@ -370,6 +372,13 @@ export class SchedulerService {
           const s = enrol.student;
           const studentName = [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email;
           this.mail.sendLiveSessionReminder(s.email, studentName, courseTitle, startTimeStr, roomUrl, minutesBefore).catch(() => {});
+        }
+
+        // In-app only for the 15-minute reminder, so nobody gets two notifications per class
+        if (minutesBefore === 15) {
+          const n = { type: 'live' as const, title: 'Live class starting soon', body: `"${cls.title}" (${courseTitle}) starts in ${minutesBefore} minutes.` };
+          this.notifications.notify(cls.cohort.students.map(e => e.studentId), { ...n, href: `/student/live/${cls.id}` });
+          this.notifications.notify(teacher.id, { ...n, href: `/teacher/live/${cls.id}` });
         }
 
         if (classes.length > 0) {

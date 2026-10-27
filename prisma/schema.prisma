@@ -72,6 +72,40 @@ model UserProfile {
   teachingProgrammes  Programme[]              @relation("TeacherProgrammes")
   teachingSubjects    Subject[]                @relation("TeacherSubjects")
   onboardingVideoViews OnboardingVideoView[]
+  notifications        Notification[]
+  broadcastsSent       Broadcast[]
+}
+
+/// In-app inbox item. `type` matches the portal's icons: live | assignment | grade | certificate | message | system.
+model Notification {
+  id          String      @id @default(uuid())
+  userId      String
+  type        String
+  title       String
+  body        String
+  href        String?
+  readAt      DateTime?
+  createdAt   DateTime    @default(now())
+  broadcastId String?
+  user        UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  broadcast   Broadcast?  @relation(fields: [broadcastId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}
+
+/// Admin announcement sent to an audience; fans out into Notification rows and/or emails.
+model Broadcast {
+  id             String         @id @default(uuid())
+  title          String
+  body           String
+  audience       String
+  channel        String
+  countryId      String?
+  sentById       String
+  recipientCount Int            @default(0)
+  sentAt         DateTime       @default(now())
+  sentBy         UserProfile    @relation(fields: [sentById], references: [id])
+  notifications  Notification[]
 }
 
 /// Mandatory orientation video for teachers (one row per audience; only TEACHER today).

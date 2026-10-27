@@ -65,6 +65,7 @@ const TEACHER_NAV: NavGroup[] = [
   { title: 'Connect', items: [
     { label: 'Mentorship',     href: '/teacher/mentorship',   icon: 'graduate' },
     { label: 'Messages',       href: '/teacher/messages',     icon: 'messages' },
+    { label: 'Notifications',  href: '/teacher/notifications', icon: 'bell' },
     { label: 'Alerts',         href: '/teacher/alerts',       icon: 'alert' },
   ]},
   { title: 'Account', items: [

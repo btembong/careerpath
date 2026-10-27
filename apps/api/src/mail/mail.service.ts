@@ -22,6 +22,7 @@ import {
   assignmentGradedTemplate,
   certificateEarnedTemplate,
   liveSessionReminderTemplate,
+  announcementTemplate,
 } from './mail.templates';
 
 // Sender names — same email address, different display name per context
@@ -85,6 +86,10 @@ export class MailService {
       otpTemplate(code),
       'system',
     );
+  }
+
+  async sendAnnouncement(email: string, title: string, message: string): Promise<void> {
+    await this.send(email, title, announcementTemplate(title, message), 'support');
   }
 
   // ── Support / Onboarding ─────────────────────────────────

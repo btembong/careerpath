@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WordPressService } from '../wordpress/wordpress.service';
 import { CouponsService } from '../coupons/coupons.service';
 import { MailService } from '../mail/mail.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PaystackGateway } from './gateways/paystack.gateway';
 import { TranzakGateway } from './gateways/tranzak.gateway';
 import { StripeGateway } from './gateways/stripe.gateway';
@@ -36,6 +37,7 @@ export class PaymentsService {
     private tranzak: TranzakGateway,
     private stripeGw: StripeGateway,
     private mail: MailService,
+    private notifications: NotificationsService,
   ) {}
 
   // ── Checkout session ─────────────────────────────────────
@@ -461,6 +463,12 @@ export class PaymentsService {
       student.email, pkg.name, event.amountPaid, event.currency,
       invoice?.invoiceNo ?? undefined, pkgStudentName, 'package',
     ).catch(() => {});
+    this.notifications.notify(event.studentId, {
+      type: 'system',
+      title: 'Payment confirmed',
+      body: `You now have access to "${pkg.name}".`,
+      href: '/student/courses',
+    });
   }
 
   /**
@@ -544,6 +552,12 @@ export class PaymentsService {
       student.email, course.title, event.amountPaid, event.currency,
       latestCoursePurchase?.invoiceNo ?? undefined, courseStudentName, 'course',
     ).catch(() => {});
+    this.notifications.notify(event.studentId, {
+      type: 'system',
+      title: 'Payment confirmed',
+      body: `You now have access to "${course.title}".`,
+      href: `/student/learn/${courseId}`,
+    });
     this.logger.log(`Course purchase fulfilled: student=${event.studentId} course=${courseId}`);
   }
 

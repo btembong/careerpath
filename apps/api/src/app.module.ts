@@ -40,6 +40,7 @@ import { RubricsModule } from './rubrics/rubrics.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { AiModule } from './ai/ai.module';
 import { OnboardingVideoModule } from './onboarding-video/onboarding-video.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { RedisModule } from './redis/redis.module';
 
 @Module({
@@ -93,6 +94,7 @@ import { RedisModule } from './redis/redis.module';
     AlertsModule,
     AiModule,
     OnboardingVideoModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}
