@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { UpsertExchangeRateDto } from './dto/upsert-rate.dto';
@@ -35,6 +35,12 @@ export class ReportsController {
   })
   getCountryRevenue() {
     return this.reportsService.getCountryRevenue();
+  }
+
+  @Get('admin/reports/purchases')
+  @ApiOperation({ summary: '[Admin] Package and course purchases, optionally filtered by date (YYYY-MM-DD)' })
+  getPurchases(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
+    return this.reportsService.getPurchases(startDate, endDate);
   }
 
   @Get('admin/reports/exchange-rates')

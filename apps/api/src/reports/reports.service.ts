@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { minorToMajor } from '@cpa/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -25,6 +26,64 @@ export class ReportsService {
   private toUsd(amount: number, currency: string, rateMap: Map<string, number>): number {
     const rate = rateMap.get(currency.toUpperCase()) ?? 0;
     return Math.round(amount * rate * 100) / 100; // round to 2dp
+  }
+
+  // ── Purchase history ──────────────────────────────────────
+
+  /** Package + individual-course purchases, newest first. Dates are inclusive calendar days (UTC). */
+  async getPurchases(startDate?: string, endDate?: string) {
+    const range = {
+      ...(startDate && { gte: new Date(`${startDate}T00:00:00.000Z`) }),
+      ...(endDate && { lte: new Date(`${endDate}T23:59:59.999Z`) }),
+    };
+    const where = startDate || endDate ? { purchasedAt: range } : {};
+    const now = new Date();
+
+    const [packages, courses] = await Promise.all([
+      this.prisma.packagePurchase.findMany({
+        where,
+        include: { student: { select: { email: true } }, package: { select: { name: true, currency: true } } },
+        orderBy: { purchasedAt: 'desc' },
+        take: 1000,
+      }),
+      this.prisma.coursePurchase.findMany({
+        where,
+        include: { student: { select: { email: true } }, course: { select: { title: true } } },
+        orderBy: { purchasedAt: 'desc' },
+        take: 1000,
+      }),
+    ]);
+
+    const status = (expiresAt: Date | null) => (expiresAt && expiresAt < now ? 'EXPIRED' : 'ACTIVE');
+    return [
+      ...packages.map(p => {
+        const currency = p.currency ?? p.package.currency;
+        return {
+          id: p.id,
+          type: 'package',
+          studentEmail: p.student.email,
+          packageName: p.package.name,
+          amount: minorToMajor(p.amountPaid ?? 0, currency),
+          currency,
+          gateway: p.gateway ?? 'manual',
+          invoiceNo: p.invoiceNo,
+          purchasedAt: p.purchasedAt,
+          status: status(p.expiresAt),
+        };
+      }),
+      ...courses.map(c => ({
+        id: c.id,
+        type: 'course',
+        studentEmail: c.student.email,
+        packageName: c.course.title,
+        amount: minorToMajor(c.amountPaid, c.currency),
+        currency: c.currency,
+        gateway: c.gateway ?? 'free',
+        invoiceNo: c.invoiceNo,
+        purchasedAt: c.purchasedAt,
+        status: status(c.expiresAt),
+      })),
+    ].sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime());
   }
 
   // ── Revenue by course ─────────────────────────────────────

@@ -77,7 +77,7 @@ export default function StudentProfilePage() {
         course: { title: c.courseName },
         verifyUrl: `/verify/${c.verifyCode}`,
       })))).catch(() => {}),
-      api.get('/education/enrollments').then(r => setCourses(r.data ?? [])).catch(() => {}),
+      api.get('/portals/student/enrollments').then(r => setCourses(r.data ?? [])).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, []);
 

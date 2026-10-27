@@ -147,7 +147,7 @@ export default function StudentDashboard() {
     Promise.all([
       api.get('/auth/me').then(r => setMe(r.data)).catch(() => { setLoadError(true); }),
       api.get('/certificates').then(r => setCerts(r.data ?? [])).catch(() => {}),
-      api.get('/education/certificate-progress').then(r => setCertProgress(r.data ?? [])).catch(() => {}),
+      api.get('/portals/student/certificate-progress').then(r => setCertProgress(r.data ?? [])).catch(() => {}),
       api.get('/live/student/upcoming').then(r => setLiveSessions(r.data ?? [])).catch(() => {}),
       api.get('/portals/student/course-purchases').then(r => {
         const purchases: CoursePurchase[] = r.data ?? [];
