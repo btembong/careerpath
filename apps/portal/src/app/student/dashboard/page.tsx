@@ -62,12 +62,13 @@ const ONBOARD_STEPS = [
 
 /* ─── Colour palette ────────────────────────────────────────────────────── */
 const COURSE_COLORS = [
-  { bg: 'bg-azure/10',   text: 'text-azure',       bar: '#5889FA' },
-  { bg: 'bg-red-50',     text: 'text-red-400',      bar: '#f87171' },
-  { bg: 'bg-amber-50',   text: 'text-amber-500',    bar: '#f59e0b' },
-  { bg: 'bg-emerald-50', text: 'text-emerald-500',  bar: '#10b981' },
-  { bg: 'bg-purple-50',  text: 'text-purple-500',   bar: '#a855f7' },
-  { bg: 'bg-pink-50',    text: 'text-pink-500',     bar: '#ec4899' },
+  // One accent: shades of the brand blue only
+  { bg: 'bg-accent-soft', text: 'text-azure-strong', bar: '#5889FA' },
+  { bg: 'bg-accent-soft', text: 'text-azure-strong', bar: '#405FAD' },
+  { bg: 'bg-accent-soft', text: 'text-azure-strong', bar: '#3F6FE8' },
+  { bg: 'bg-accent-soft', text: 'text-azure-strong', bar: '#7FA3FB' },
+  { bg: 'bg-accent-soft', text: 'text-azure-strong', bar: '#2F57C9' },
+  { bg: 'bg-accent-soft', text: 'text-azure-strong', bar: '#9DB8FC' },
 ];
 
 /* ─── Interfaces ─────────────────────────────────────────────────────────── */
@@ -528,19 +529,19 @@ export default function StudentDashboard() {
       {/* STATS GRID + ⑦ TREND BADGES ────────────────────────────────────── */}
       <StaggerList className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { icon: 'packages'     as const, value: packages.length,     label: 'Active packages',   iconCls: 'bg-azure/10 text-azure',     trend: null },
-          { icon: 'live'         as const, value: liveSessions.length,  label: 'Upcoming sessions', iconCls: 'bg-red-50 text-red-400',     trend: sessionTrend },
-          { icon: 'certificates' as const, value: certs.length,         label: 'Certificates',      iconCls: 'bg-amber-50 text-amber-500', trend: certTrend },
+          { icon: 'packages'     as const, value: packages.length,     label: 'Active packages',   iconCls: 'bg-subtle text-ink2', trend: null },
+          { icon: 'live'         as const, value: liveSessions.length,  label: 'Upcoming sessions', iconCls: 'bg-subtle text-ink2', trend: sessionTrend },
+          { icon: 'certificates' as const, value: certs.length,         label: 'Certificates',      iconCls: 'bg-subtle text-ink2', trend: certTrend },
         ].map(stat => (
           <StaggerItem key={stat.label}>
-            <motion.div whileHover={{ y: -2, boxShadow: '0 6px 24px rgba(88,137,250,0.10)', transition: spring.crisp }}
-              className="rounded-2xl border border-cloud bg-white shadow-card p-4 flex flex-col gap-2.5 relative">
+            <motion.div
+              className="rounded-lg border border-line bg-white p-4 flex flex-col gap-2.5 relative">
               <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${stat.iconCls}`}>
                 <Icon name={stat.icon} size={17} />
               </div>
               {stat.trend !== null && stat.trend !== 0 && (
-                <span className={`absolute top-3 right-3 text-[9px] font-bold px-1.5 py-0.5 rounded-full
-                  ${stat.trend > 0 ? 'bg-emerald-50 text-emerald-500' : 'bg-red-50 text-red-400'}`}>
+                <span className={`absolute top-3 right-3 text-[10px] font-bold px-1.5 py-0.5 rounded
+                  ${stat.trend > 0 ? 'bg-accent-soft text-navy' : 'bg-subtle text-ink2'}`}>
                   {stat.trend > 0 ? '+' : ''}{stat.trend}
                 </span>
               )}
@@ -616,7 +617,7 @@ export default function StudentDashboard() {
                 localStorage.setItem('cpa_recent_lessons', JSON.stringify([resumeCourse, ...filtered].slice(0, 3)));
               }}>
               <motion.div whileHover={{ y: -2, boxShadow: '0 8px 32px rgba(88,137,250,0.18)', transition: spring.crisp }}
-                className="rounded-2xl bg-gradient-to-r from-azure to-royal text-white relative overflow-hidden flex">
+                className="rounded-2xl bg-azure-strong text-white relative overflow-hidden flex">
                 {/* Course cover thumbnail */}
                 {resumeCourse.coverUrl && (
                   <div className="hidden sm:block w-32 flex-shrink-0 relative">
@@ -749,7 +750,7 @@ export default function StudentDashboard() {
                               <p className="text-[10px] font-bold text-azure">{pct}%</p>
                             </div>
                             <div className="h-1 w-full rounded-full bg-cloud overflow-hidden">
-                              <div className="h-full rounded-full bg-gradient-to-r from-azure to-royal" style={{ width: `${pct}%` }} />
+                              <div className="h-full rounded-full bg-azure" style={{ width: `${pct}%` }} />
                             </div>
                           </div>
                           <div className="mt-2 flex items-center gap-1 text-azure">
@@ -999,7 +1000,7 @@ export default function StudentDashboard() {
 
           {/* ⑤ COUNTDOWN TO NEXT LIVE CLASS */}
           {nextLiveSession && countdown && (
-            <div className="rounded-2xl border border-red-100 bg-gradient-to-br from-red-50 to-rose-50/40 p-4">
+            <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
               <div className="flex items-center gap-2 mb-1">
                 <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
                 <p className="text-[10px] font-bold uppercase tracking-widest text-red-400">Next Live Class</p>
@@ -1027,7 +1028,7 @@ export default function StudentDashboard() {
             </div>
             <div className="flex items-center justify-center mb-3 relative">
               <ProgressRing pct={pomPct} size={96} stroke={7}
-                color={pomMode === 'break' ? '#10b981' : '#5889FA'} trackColor="#E6ECFD" />
+                color={pomMode === 'break' ? '#405FAD' : '#5889FA'} trackColor="#E6ECFD" />
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <p className="text-xl font-bold text-navy font-mono">{pomDisplay}</p>
                 <p className="text-[10px] text-royal/40">{pomMode === 'break' ? 'break' : 'focus'}</p>
@@ -1374,7 +1375,7 @@ export default function StudentDashboard() {
           </div>
 
           {/* ⑬ KEEP LEARNING PROMO CARD */}
-          <div className="rounded-2xl bg-gradient-to-br from-navy via-[#0d35a0] to-royal p-5 relative overflow-hidden">
+          <div className="rounded-2xl bg-navy p-5 relative overflow-hidden">
             <div className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/5" />
             <div className="pointer-events-none absolute -left-4 bottom-0 h-16 w-16 translate-y-4 rounded-full bg-azure/25" />
             <div className="relative z-10">

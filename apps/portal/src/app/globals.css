@@ -81,6 +81,21 @@
   --color-on-accent:    #FFFFFF;
   --color-error:        #C1352B;
 
+
+  /* Other Tailwind colour names used on older pages, mapped onto the brand palette (blue, neutral, or the error red) */
+  --color-emerald-50: #EAF0FF; --color-emerald-100: #EAF0FF; --color-emerald-200: #C9D8FF; --color-emerald-300: #9DB8FC; --color-emerald-400: #5889FA; --color-emerald-500: #5889FA; --color-emerald-600: #3F6FE8; --color-emerald-700: #2F57C9;
+  --color-purple-50: #EAF0FF; --color-purple-100: #EAF0FF; --color-purple-200: #C9D8FF; --color-purple-300: #9DB8FC; --color-purple-400: #5889FA; --color-purple-500: #5889FA; --color-purple-600: #3F6FE8; --color-purple-700: #2F57C9;
+  --color-blue-50: #EAF0FF; --color-blue-100: #EAF0FF; --color-blue-200: #C9D8FF; --color-blue-300: #9DB8FC; --color-blue-400: #5889FA; --color-blue-500: #5889FA; --color-blue-600: #3F6FE8; --color-blue-700: #2F57C9;
+  --color-violet-50: #EAF0FF; --color-violet-100: #EAF0FF; --color-violet-200: #C9D8FF; --color-violet-300: #9DB8FC; --color-violet-400: #5889FA; --color-violet-500: #5889FA; --color-violet-600: #3F6FE8; --color-violet-700: #2F57C9;
+  --color-cyan-50: #EAF0FF; --color-cyan-100: #EAF0FF; --color-cyan-200: #C9D8FF; --color-cyan-300: #9DB8FC; --color-cyan-400: #5889FA; --color-cyan-500: #5889FA; --color-cyan-600: #3F6FE8; --color-cyan-700: #2F57C9;
+  --color-teal-50: #EAF0FF; --color-teal-100: #EAF0FF; --color-teal-200: #C9D8FF; --color-teal-300: #9DB8FC; --color-teal-400: #5889FA; --color-teal-500: #5889FA; --color-teal-600: #3F6FE8; --color-teal-700: #2F57C9;
+  --color-sky-50: #EAF0FF; --color-sky-100: #EAF0FF; --color-sky-200: #C9D8FF; --color-sky-300: #9DB8FC; --color-sky-400: #5889FA; --color-sky-500: #5889FA; --color-sky-600: #3F6FE8; --color-sky-700: #2F57C9;
+  --color-pink-50: #EAF0FF; --color-pink-100: #EAF0FF; --color-pink-200: #C9D8FF; --color-pink-300: #9DB8FC; --color-pink-400: #5889FA; --color-pink-500: #5889FA; --color-pink-600: #3F6FE8; --color-pink-700: #2F57C9;
+  --color-orange-50: #F4F6FB; --color-orange-100: #EAF0FF; --color-orange-200: #C9D8FF; --color-orange-300: #9DB8FC; --color-orange-400: #5889FA; --color-orange-500: #5889FA; --color-orange-600: #3F6FE8; --color-orange-700: #072061;
+  --color-yellow-50: #F4F6FB; --color-yellow-100: #EAF0FF; --color-yellow-200: #C9D8FF; --color-yellow-300: #9DB8FC; --color-yellow-400: #5889FA; --color-yellow-500: #5889FA; --color-yellow-600: #3F6FE8; --color-yellow-700: #072061;
+  --color-rose-50: #FBEFEE; --color-rose-100: #F7E0DE; --color-rose-200: #EFC4C0; --color-rose-300: #E39089; --color-rose-400: #D9574D; --color-rose-500: #C1352B; --color-rose-600: #A92C23; --color-rose-700: #8F241D;
+  --color-gray-600: #3A4A70;
+
   /* ── Typography ── */
   --font-sans: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
 
@@ -296,6 +311,17 @@ html.dark {
   --color-green-50:  rgba(110, 152, 255, 0.18);
   --color-green-100: rgba(110, 152, 255, 0.18);
   --color-green-700: #8FB0FF;
+  --color-emerald-50: rgba(110, 152, 255, 0.18); --color-emerald-100: rgba(110, 152, 255, 0.18); --color-emerald-700: #8FB0FF;
+  --color-purple-50: rgba(110, 152, 255, 0.18); --color-purple-100: rgba(110, 152, 255, 0.18); --color-purple-700: #8FB0FF;
+  --color-blue-50: rgba(110, 152, 255, 0.18); --color-blue-100: rgba(110, 152, 255, 0.18); --color-blue-700: #8FB0FF;
+  --color-violet-50: rgba(110, 152, 255, 0.18); --color-violet-100: rgba(110, 152, 255, 0.18); --color-violet-700: #8FB0FF;
+  --color-cyan-50: rgba(110, 152, 255, 0.18); --color-cyan-100: rgba(110, 152, 255, 0.18); --color-cyan-700: #8FB0FF;
+  --color-teal-50: rgba(110, 152, 255, 0.18); --color-teal-100: rgba(110, 152, 255, 0.18); --color-teal-700: #8FB0FF;
+  --color-sky-50: rgba(110, 152, 255, 0.18); --color-sky-100: rgba(110, 152, 255, 0.18); --color-sky-700: #8FB0FF;
+  --color-pink-50: rgba(110, 152, 255, 0.18); --color-pink-100: rgba(110, 152, 255, 0.18); --color-pink-700: #8FB0FF;
+  --color-orange-50: #12204A; --color-orange-100: rgba(110, 152, 255, 0.18); --color-orange-700: #E8EEFF;
+  --color-yellow-50: #12204A; --color-yellow-100: rgba(110, 152, 255, 0.18); --color-yellow-700: #E8EEFF;
+  --color-rose-50: rgba(255, 154, 144, 0.12); --color-rose-100: rgba(255, 154, 144, 0.18); --color-rose-700: #FFB3AB;
   color-scheme: dark;
 }
 
@@ -305,6 +331,7 @@ html.dark .dark-invert-logo { background-color: #5889FA; }
 
 /* Navy blocks keep white text readable in dark mode (navy itself flips to a light text colour there) */
 html.dark .bg-navy { background-color: #13224D; }
+html.dark .bg-navy.dark-invert-logo { background-color: #5889FA; }
 
 html.dark .dark-invert-bg {
   background-color: rgba(255, 255, 255, 0.06) !important;

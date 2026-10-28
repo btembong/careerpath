@@ -10,6 +10,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Card } from '@/components/ui/Card';
 import { Icon } from '@/components/ui/Icon';
 import api from '@/lib/api';
+import { StudyHeatmap } from '@/components/learning/StudyHeatmap';
 import { toast } from 'sonner';
 
 interface Stats {
@@ -211,6 +212,8 @@ export default function ProgressPage() {
             </ResponsiveContainer>
           </div>
         </Card>
+
+        <StudyHeatmap />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 

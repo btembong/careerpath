@@ -158,6 +158,79 @@ export class StudentInsightsService {
     });
   }
 
+  /**
+   * Study activity per course per month, for the progress heatmap: lessons completed, practice sets and quizzes.
+   * Watching minutes aren't recorded per day, so a square counts activities rather than time.
+   */
+  async getStudyActivity(studentId: string, monthsBack = 12) {
+    const months = Math.min(Math.max(Math.floor(monthsBack) || 12, 3), 12);
+    const now = new Date();
+    const keys = Array.from({ length: months }, (_, i) => {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1 - i), 1));
+      return { key: d.toISOString().slice(0, 7), label: d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' }) };
+    });
+    const since = new Date(keys[0].key + '-01T00:00:00Z');
+
+    const [lessonsDone, practice, quizzes] = await Promise.all([
+      this.prisma.xPEvent.findMany({
+        where: { userId: studentId, type: 'LESSON_COMPLETE', createdAt: { gte: since } },
+        select: { meta: true, createdAt: true },
+      }),
+      this.prisma.practiceAttempt.findMany({
+        where: { studentId, createdAt: { gte: since } },
+        select: { lessonId: true, createdAt: true },
+      }),
+      this.prisma.quizAttempt.findMany({
+        where: { studentId, submittedAt: { gte: since } },
+        select: { courseId: true, submittedAt: true },
+      }),
+    ]);
+
+    // Lesson → course for the lesson-based records
+    const lessonIds = [...new Set([
+      ...lessonsDone.map(e => (e.meta as { key?: string } | null)?.key).filter((k): k is string => !!k),
+      ...practice.map(p => p.lessonId),
+    ])];
+    const lessonCourse = new Map(
+      (await this.prisma.lesson.findMany({ where: { id: { in: lessonIds } }, select: { id: true, module: { select: { courseId: true } } } }))
+        .map(l => [l.id, l.module.courseId]),
+    );
+
+    type Kind = 'lessons' | 'practice' | 'quizzes';
+    const grid = new Map<string, Map<string, Record<Kind, number>>>();
+    const add = (courseId: string | undefined, at: Date, kind: Kind) => {
+      if (!courseId) return;
+      const month = at.toISOString().slice(0, 7);
+      const row = grid.get(courseId) ?? new Map<string, Record<Kind, number>>();
+      const cell = row.get(month) ?? { lessons: 0, practice: 0, quizzes: 0 };
+      cell[kind]++;
+      row.set(month, cell);
+      grid.set(courseId, row);
+    };
+    lessonsDone.forEach(e => add(lessonCourse.get((e.meta as { key?: string } | null)?.key ?? ''), e.createdAt, 'lessons'));
+    practice.forEach(p => add(lessonCourse.get(p.lessonId), p.createdAt, 'practice'));
+    quizzes.forEach(q => add(q.courseId, q.submittedAt, 'quizzes'));
+
+    const courses = await this.prisma.platformCourse.findMany({
+      where: { id: { in: [...grid.keys()] } },
+      select: { id: true, title: true, subject: { select: { name: true } } },
+    });
+    const rows = courses.map(c => {
+      const row = grid.get(c.id)!;
+      const cells = keys.map(k => {
+        const v = row.get(k.key) ?? { lessons: 0, practice: 0, quizzes: 0 };
+        return { month: k.key, ...v, total: v.lessons + v.practice + v.quizzes };
+      });
+      return { courseId: c.id, title: c.title, subject: c.subject?.name ?? null, total: cells.reduce((s, x) => s + x.total, 0), cells };
+    }).sort((a, b) => b.total - a.total).slice(0, 8);
+
+    return {
+      months: keys,
+      rows,
+      max: Math.max(0, ...rows.flatMap(r => r.cells.map(c => c.total))),
+    };
+  }
+
   /** Most recently touched lesson in a course the student can still open, for "Continue learning". */
   async getLastLesson(studentId: string) {
     const progress = await this.courseProgress(studentId);
