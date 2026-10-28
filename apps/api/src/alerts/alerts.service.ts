@@ -1,10 +1,12 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { UserProfile } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CertificatesService } from '../certificates/certificates.service';
 
 @Injectable()
 export class AlertsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private certificates: CertificatesService) {}
 
   async listAlerts(teacherId: string) {
     return this.prisma.progressAlert.findMany({ where: { teacherId }, include: { cohort: { select: { name: true } } } });
@@ -25,7 +27,11 @@ export class AlertsService {
   }
 
   // Certificate automation — auto-issue when all lessons complete + all assignments passed
-  async checkCertificates(studentId: string, courseId: string) {
+  async checkCertificates(actor: UserProfile, studentId: string, courseId: string) {
+    const course = await this.prisma.platformCourse.findUnique({ where: { id: courseId }, select: { teacherId: true } });
+    if (!course) throw new NotFoundException('Course not found');
+    if (actor.role !== 'ADMIN' && course.teacherId !== actor.id) throw new ForbiddenException('Not your course');
+
     const already = await this.prisma.certificate.findFirst({ where: { studentId, courseId } });
     if (already) return null;
 
@@ -42,13 +48,9 @@ export class AlertsService {
     // Mark enrollment complete
     await this.prisma.courseEnrollment.updateMany({ where: { studentId, courseId }, data: { completedAt: new Date() } });
 
-    // Issue certificate
-    const verifyCode = Math.random().toString(36).slice(2, 10).toUpperCase() + Date.now().toString(36).toUpperCase();
-    const cert = await this.prisma.certificate.create({
-      data: { studentId, courseId, verifyCode, pdfUrl: `/certificates/pdf/${verifyCode}` },
-    });
-
-    return cert;
+    // Same path as automatic issuing: on-demand PDF link and certificate XP
+    await this.certificates.issueCertificate(studentId, courseId);
+    return this.prisma.certificate.findFirst({ where: { studentId, courseId } });
   }
 
   // Cron: run progress alert checks daily at 8 AM UTC

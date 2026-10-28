@@ -26,7 +26,7 @@ export class AlertsController {
   }
 
   @Post('check-certificates')
-  checkCerts(@Body() body: { studentId: string; courseId: string }) {
-    return this.alertsService.checkCertificates(body.studentId, body.courseId);
+  checkCerts(@Req() req: any, @Body() body: { studentId: string; courseId: string }) {
+    return this.alertsService.checkCertificates(req.user, body.studentId, body.courseId);
   }
 }
