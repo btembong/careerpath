@@ -174,15 +174,20 @@ export default function StudentDashboard() {
   const expiring = (me?.activePackages ?? []).filter(p =>
     p.expiresAt && new Date(p.expiresAt) > now && new Date(p.expiresAt).getTime() - now.getTime() < 7 * 86400000);
 
-  const inProgress = courses.filter(c => !c.certificateEarned && (c.percentComplete ?? 0) < 100);
+  const unfinished = courses.filter(c => !c.certificateEarned && (c.percentComplete ?? 0) < 100);
+  const inProgress = unfinished.filter(c => (c.percentComplete ?? 0) > 0);
   const certificates = courses.filter(c => c.certificateEarned);
   const thisWeekHours = weekly.length ? weekly[weekly.length - 1].hours : 0;
-  const resume = lastLesson ?? (inProgress[0] ? { courseId: inProgress[0].courseId, courseTitle: inProgress[0].courseTitle, pct: inProgress[0].percentComplete } : null);
+  // Resume the last lesson unless that course is finished; then the furthest-along unfinished course
+  const lastCourseDone = lastLesson ? (courses.find(c => c.courseId === lastLesson.courseId)?.percentComplete ?? 0) >= 100 : true;
+  const fallback = [...unfinished].sort((a, b) => (b.percentComplete ?? 0) - (a.percentComplete ?? 0))[0];
+  const resume = lastLesson && !lastCourseDone ? lastLesson
+    : fallback ? { courseId: fallback.courseId, courseTitle: fallback.courseTitle, pct: fallback.percentComplete } as LastLesson : null;
   const resumeCourse = resume ? courses.find(c => c.courseId === resume.courseId) : undefined;
   const resumeHref = resume
     ? resume.lessonId ? `/student/learn/${resume.courseId}/lesson/${resume.lessonId}` : `/student/learn/${resume.courseId}`
     : '/student/catalogue';
-  const nextCert = inProgress[0];
+  const nextCert = fallback;
 
   const fmtHours = (h: number) => {
     const mins = Math.round(h * 60);
@@ -396,7 +401,7 @@ export default function StudentDashboard() {
                   {agenda.map(a => (
                     <li key={a.key} className="flex gap-3 border-t border-line py-3">
                       <span className="w-10 flex-shrink-0 rounded-md border border-line py-1 text-center">
-                        <span className="block text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted">{a.at.toLocaleDateString('en-GB', { month: 'short' })}</span>
+                        <span className="block text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted">{a.at.toLocaleDateString('en-US', { month: 'short' })}</span>
                         <span className="block text-base font-extrabold text-navy">{String(a.at.getDate()).padStart(2, '0')}</span>
                       </span>
                       <div className="min-w-0 flex-1">

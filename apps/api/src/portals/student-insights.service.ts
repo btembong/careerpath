@@ -167,7 +167,7 @@ export class StudentInsightsService {
     const now = new Date();
     const keys = Array.from({ length: months }, (_, i) => {
       const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1 - i), 1));
-      return { key: d.toISOString().slice(0, 7), label: d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' }) };
+      return { key: d.toISOString().slice(0, 7), label: d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }) };
     });
     const since = new Date(keys[0].key + '-01T00:00:00Z');
 

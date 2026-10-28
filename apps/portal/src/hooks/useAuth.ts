@@ -41,9 +41,10 @@ export function useAuth() {
     const token = Cookies.get('cpa_token');
     if (token) {
       try {
-        const decoded = jwtDecode<AuthUser & { exp: number }>(token);
+        const decoded = jwtDecode<AuthUser & { exp: number; sub?: string }>(token);
         if (decoded.exp * 1000 > Date.now()) {
-          setUser(decoded);
+          // The API signs the user id as `sub`; expose it as `id` for the rest of the portal
+          setUser({ ...decoded, id: decoded.id ?? decoded.sub ?? '' });
 
           // Schedule silent refresh if token is close to expiry
           const msUntilExpiry = decoded.exp * 1000 - Date.now();
