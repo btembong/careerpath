@@ -21,6 +21,7 @@ import { Icon } from '@/components/ui/Icon';
 import { SkeletonTopbar } from '@/components/ui/Skeleton';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
 import api from '@/lib/api';
+import { CourseChecklistPanel, useCourseChecklist } from '@/components/learning/CourseChecklist';
 
 interface Attachment { id: string; name: string; url: string; fileType: string | null; }
 interface Lesson {
@@ -387,6 +388,21 @@ export default function CourseBuilderPage() {
 
   const moduleSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
+  // Readiness checklist — refetched whenever the course reloads after an edit
+  const { checklist, setChecklist } = useCourseChecklist(courseId, course);
+  const [applyingTemplate, setApplyingTemplate] = useState(false);
+
+  async function applyTemplate() {
+    setApplyingTemplate(true);
+    try {
+      const { data } = await api.post(`/platform-courses/${courseId}/apply-template`);
+      setChecklist(data);
+      await load();
+      notify.success('Template added — fill in each lesson');
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not apply the template'); }
+    finally { setApplyingTemplate(false); }
+  }
+
   async function load() {
     const r = await api.get(`/platform-courses/${courseId}`);
     setCourse(r.data);
@@ -560,7 +576,8 @@ export default function CourseBuilderPage() {
           {course.status === 'DRAFT' && (
             <button
               onClick={submitForReview}
-              disabled={acting === 'review'}
+              disabled={acting === 'review' || checklist?.readyToSubmit === false}
+              title={checklist?.readyToSubmit === false ? 'Complete the required items in Course readiness first' : undefined}
               className="flex items-center gap-1.5 rounded-xl bg-azure px-3 py-1.5 text-xs font-semibold text-white hover:bg-royal transition disabled:opacity-50">
               {acting === 'review' ? 'Submitting…' : 'Submit for Review'}
             </button>
@@ -638,6 +655,21 @@ export default function CourseBuilderPage() {
             </div>
           </div>
         </Card>
+
+        {course.status === 'DRAFT' && <CourseChecklistPanel checklist={checklist} />}
+
+        {course.modules.length === 0 && (
+          <div className="rounded-2xl border-2 border-dashed border-azure/40 bg-azure/5 p-5 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex-1">
+              <p className="text-sm font-bold text-navy">Start from the CareerPath course template</p>
+              <p className="text-xs text-royal/60 mt-0.5">
+                Adds 3 modules — Introduction (with a starting-level quiz), Core content (with a module check) and Exam practice (with a practice test).
+                You fill in the videos, text and questions.
+              </p>
+            </div>
+            <Button size="sm" loading={applyingTemplate} onClick={applyTemplate}>Use template</Button>
+          </div>
+        )}
 
         <DndContext sensors={moduleSensors} collisionDetection={closestCenter} onDragEnd={handleModuleDragEnd}>
           <SortableContext items={course.modules.map(m => m.id)} strategy={verticalListSortingStrategy}>

@@ -7,6 +7,7 @@ import { WordPressService } from '../wordpress/wordpress.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { FilesService } from '../files/files.service';
 import { GamificationService } from '../gamification/gamification.service';
+import { courseChecklist, COURSE_TEMPLATE } from './course-quality';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -214,11 +215,73 @@ export class PlatformCoursesService {
     if (course.status !== CourseStatus.DRAFT) {
       throw new BadRequestException('Only DRAFT courses can be submitted for review');
     }
-    const moduleCount = await this.prisma.courseModule.count({ where: { courseId: id } });
-    if (moduleCount === 0) throw new BadRequestException('Add at least one module before submitting');
+    const missing = (await this.computeChecklist(id)).filter(i => i.required && !i.ok);
+    if (missing.length) {
+      throw new BadRequestException(`Before submitting: ${missing.map(i => i.label.toLowerCase()).join('; ')}.`);
+    }
     return this.prisma.platformCourse.update({
       where: { id }, data: { status: CourseStatus.PENDING_REVIEW },
     });
+  }
+
+  // ── Course quality ────────────────────────────────────────
+
+  private async computeChecklist(courseId: string) {
+    const course = await this.prisma.platformCourse.findUniqueOrThrow({
+      where: { id: courseId },
+      select: {
+        coverUrl: true, shortDescription: true,
+        modules: {
+          orderBy: { sortOrder: 'asc' },
+          select: {
+            title: true,
+            lessons: {
+              orderBy: { sortOrder: 'asc' },
+              select: { id: true, title: true, type: true, videoUrl: true, content: true, chapters: true },
+            },
+          },
+        },
+      },
+    });
+    const lessonIds = course.modules.flatMap(m => m.lessons.map(l => l.id));
+    const counts = lessonIds.length
+      ? await this.prisma.questionBank.groupBy({ by: ['lessonId'], where: { lessonId: { in: lessonIds } }, _count: { _all: true } })
+      : [];
+    const qCount = new Map(counts.map(c => [c.lessonId, c._count._all]));
+    return courseChecklist({
+      ...course,
+      modules: course.modules.map(m => ({
+        title: m.title,
+        lessons: m.lessons.map(l => ({ ...l, questionCount: qCount.get(l.id) ?? 0 })),
+      })),
+    });
+  }
+
+  /** Teachers (own course), admins and subject reviewers can see a course's readiness checklist. */
+  async getChecklist(courseId: string, actor: UserProfile) {
+    if ((actor.role as UserRole) !== UserRole.SUBJECT_REVIEWER) await this.assertCourseAccess(courseId, actor);
+    const items = await this.computeChecklist(courseId);
+    return { items, readyToSubmit: items.every(i => !i.required || i.ok) };
+  }
+
+  /** Fills an empty course with the standard module/lesson structure. */
+  async applyTemplate(courseId: string, actor: UserProfile) {
+    await this.assertCourseAccess(courseId, actor);
+    const existing = await this.prisma.courseModule.count({ where: { courseId } });
+    if (existing) throw new BadRequestException('The template can only be applied to a course with no modules yet.');
+    await this.prisma.$transaction(
+      COURSE_TEMPLATE.map((mod, mi) =>
+        this.prisma.courseModule.create({
+          data: {
+            courseId,
+            title: mod.title,
+            sortOrder: mi + 1,
+            lessons: { create: mod.lessons.map((l, li) => ({ title: l.title, type: l.type, sortOrder: li + 1 })) },
+          },
+        }),
+      ),
+    );
+    return this.getChecklist(courseId, actor);
   }
 
   async publishCourse(id: string) {

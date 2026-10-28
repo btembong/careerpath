@@ -86,6 +86,21 @@ export class PlatformCoursesController {
     return this.svc.submitForReview(id, user);
   }
 
+  @Get(':id/checklist')
+  @Roles(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUBJECT_REVIEWER)
+  @ApiOperation({ summary: 'Course readiness checklist (required items block submit-for-review)' })
+  getChecklist(@Param('id') id: string, @CurrentUser() user: UserProfile) {
+    return this.svc.getChecklist(id, user);
+  }
+
+  @Post(':id/apply-template')
+  @Roles(UserRole.ADMIN, UserRole.TEACHER)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Fill an empty course with the standard module/lesson template' })
+  applyTemplate(@Param('id') id: string, @CurrentUser() user: UserProfile) {
+    return this.svc.applyTemplate(id, user);
+  }
+
   @Post(':id/publish')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)

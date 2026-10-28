@@ -12,8 +12,15 @@ import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
 import { Icon } from '@/components/ui/Icon';
 import { spring } from '@/lib/motion';
 import api from '@/lib/api';
+import { CourseChecklistPanel, useCourseChecklist } from '@/components/learning/CourseChecklist';
 
 type ReviewStatus = 'APPROVED' | 'REJECTED';
+
+/** Same readiness checklist the teacher saw before submitting, for the reviewer's reference. */
+function ReviewerChecklist({ courseId }: { courseId: string }) {
+  const { checklist } = useCourseChecklist(courseId);
+  return <CourseChecklistPanel checklist={checklist} />;
+}
 
 interface QueueItem {
   id: string;
@@ -178,6 +185,7 @@ export default function ReviewerDashboard() {
                         className="overflow-hidden"
                       >
                       <div className="border-t border-cloud px-4 pb-5 pt-4 space-y-4">
+                        {!course.wpCourseId && <ReviewerChecklist courseId={id} />}
                         {(course.description || course.wpCourseId) && (
                           <div className="rounded-xl border border-cloud bg-surface p-4 space-y-2">
                             {course.wpCourseId && (
