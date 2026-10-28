@@ -63,7 +63,7 @@ export class FilesService {
    * Requires a CORS rule on the bucket allowing PUT from the portal origin.
    */
   async presignedVideoUpload(
-    folder: 'intro-videos' | 'onboarding-videos',
+    folder: 'intro-videos' | 'onboarding-videos' | 'lesson-videos',
     contentType: string,
     size: number,
   ): Promise<{ uploadUrl: string; url: string; key: string }> {
@@ -104,6 +104,12 @@ export class FilesService {
    *
    * Default: 2-hour window (7200 s) — long enough for a full lesson session.
    */
+  /** True for files stored in our bucket (bare keys or our public URL), which must be served signed. */
+  isOwnFile(urlOrKey: string | null | undefined): boolean {
+    if (!urlOrKey) return false;
+    return !urlOrKey.startsWith('http') || urlOrKey.startsWith(this.publicUrl);
+  }
+
   async signUrl(urlOrKey: string, expiresInSeconds = 7200): Promise<string> {
     // If it's already a bare key (no protocol) sign it directly
     if (!urlOrKey.startsWith('http')) {

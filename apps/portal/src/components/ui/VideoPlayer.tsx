@@ -27,6 +27,10 @@ interface VideoPlayerProps {
   chapters?: Chapter[] | null;
   /** Called every ~30 s of actual playback and on pause/end, with seconds played since the last call. */
   onProgress?: (positionSecs: number, deltaSecs: number) => void;
+  /** Data saver: nothing downloads until the student presses play. */
+  dataSaver?: boolean;
+  /** The file failed to load (e.g. its signed link expired). */
+  onError?: () => void;
 }
 
 const REPORT_EVERY_SECS = 30;
@@ -48,7 +52,7 @@ function chaptersVtt(chapters: Chapter[], durationHint?: number) {
 }
 
 // React 19: `ref` is a regular prop on function components (no forwardRef needed)
-export function VideoPlayer({ src, title, poster, startAt, chapters, onProgress, ref }: VideoPlayerProps & {
+export function VideoPlayer({ src, title, poster, startAt, chapters, onProgress, dataSaver, onError, ref }: VideoPlayerProps & {
   ref?: Ref<VideoPlayerHandle>;
 }) {
   const parsed = parseVideoUrl(src);
@@ -121,6 +125,8 @@ export function VideoPlayer({ src, title, poster, startAt, chapters, onProgress,
         title={title}
         src={src}
         poster={poster}
+        load={dataSaver ? 'play' : 'visible'}
+        onError={() => onError?.()}
         className="w-full aspect-video bg-black"
         onLoadedMetadata={() => {
           const p = playerRef.current;

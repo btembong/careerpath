@@ -733,6 +733,8 @@ model Lesson {
   title            String
   type             LessonType
   videoUrl         String?
+  /// Optional smaller copy (e.g. 360p) for students on Data saver
+  videoUrlLow      String?
   content          String?
   sortOrder        Int
   durationSecs     Int?

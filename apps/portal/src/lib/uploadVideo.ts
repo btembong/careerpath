@@ -4,10 +4,12 @@ import api from '@/lib/api';
  * Uploads a video straight from the browser to R2 using a pre-signed URL from the API.
  * Large files never pass through the API server.
  */
-export async function uploadVideo(file: File, onProgress?: (pct: number) => void): Promise<string> {
+export async function uploadVideo(
+  file: File, onProgress?: (pct: number) => void, purpose?: 'lesson',
+): Promise<string> {
   // Browsers often report .vtt files with an empty type
   const contentType = file.type || (file.name.toLowerCase().endsWith('.vtt') ? 'text/vtt' : '');
-  const { data } = await api.post('/files/video-upload-url', { contentType, size: file.size });
+  const { data } = await api.post('/files/video-upload-url', { contentType, size: file.size, purpose });
 
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();

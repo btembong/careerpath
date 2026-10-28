@@ -90,17 +90,20 @@ export class FilesController {
     @CurrentUser() user: UserProfile,
     @Body('contentType') contentType: string,
     @Body('size') size: number,
+    @Body('purpose') purpose?: string,
   ) {
     const isAdmin = user.role === UserRole.ADMIN;
+    const isLesson = purpose === 'lesson';
     // Admins may also upload WebVTT captions for the orientation video
-    const isCaptions = isAdmin && contentType === 'text/vtt';
+    const isCaptions = isAdmin && !isLesson && contentType === 'text/vtt';
     if (!VIDEO_TYPES.includes(contentType) && !isCaptions) {
       throw new BadRequestException('Only MP4, MOV and WebM videos are allowed');
     }
-    const maxBytes = (isCaptions ? 1 : isAdmin ? 500 : 100) * 1024 * 1024;
+    const maxBytes = (isCaptions ? 1 : isLesson || isAdmin ? 500 : 100) * 1024 * 1024;
     if (!Number.isInteger(size) || size <= 0 || size > maxBytes) {
       throw new BadRequestException(`Video must be at most ${maxBytes / 1024 / 1024} MB`);
     }
-    return this.filesService.presignedVideoUpload(isAdmin ? 'onboarding-videos' : 'intro-videos', contentType, size);
+    const folder = isLesson ? 'lesson-videos' : isAdmin ? 'onboarding-videos' : 'intro-videos';
+    return this.filesService.presignedVideoUpload(folder, contentType, size);
   }
 }

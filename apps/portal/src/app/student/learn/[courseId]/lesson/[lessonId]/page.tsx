@@ -26,6 +26,8 @@ interface Lesson {
   attachments: Attachment[];
   chapters?: Chapter[] | null;
   transcript?: string | null;
+  /** A smaller copy exists for Data saver (uploaded videos only) */
+  hasDataSaver?: boolean;
   progress: { completed: boolean; watchedSecs: number; positionSecs?: number } | null;
 }
 interface Module { id: string; title: string; sortOrder: number; lessons: Lesson[]; }
@@ -132,17 +134,6 @@ export default function StudentLessonPlayerPage() {
       .then(() => loadProgress())
       .finally(() => setLoading(false));
   }, [courseId]);
-
-  // Signed video URL — refreshed each time the active lesson changes
-  const [signedVideoUrl, setSignedVideoUrl] = useState<string | null>(null);
-  useEffect(() => {
-    setSignedVideoUrl(null);
-    const lesson = progress?.modules.flatMap(m => m.lessons).find(l => l.id === lessonId);
-    if (!lesson || lesson.type !== 'VIDEO' || !lesson.videoUrl) return;
-    api.get(`/platform-courses/${courseId}/lessons/${lessonId}/signed-video`)
-      .then(r => setSignedVideoUrl(r.data.url))
-      .catch(() => setSignedVideoUrl(lesson.videoUrl)); // graceful fallback
-  }, [lessonId, progress, courseId]);
 
   // When lessonId changes, reset quiz state and load quiz data
   useEffect(() => {
@@ -413,7 +404,7 @@ export default function StudentLessonPlayerPage() {
               ) : locked ? (
                 <LockedLesson allLessons={allLessons} lessonId={lessonId} courseId={courseId} />
               ) : activeLesson.type === 'VIDEO' ? (
-                <VideoContent lesson={activeLesson} courseId={courseId} allLessons={allLessons} onMarkComplete={markComplete} signedVideoUrl={signedVideoUrl} />
+                <VideoContent lesson={activeLesson} courseId={courseId} allLessons={allLessons} onMarkComplete={markComplete} />
               ) : activeLesson.type === 'TEXT' ? (
                 <TextContent lesson={activeLesson} courseId={courseId} allLessons={allLessons} onMarkComplete={markComplete} />
               ) : activeLesson.type === 'QUIZ' ? (
@@ -473,14 +464,58 @@ function LockedLesson({ allLessons, lessonId, courseId }: { allLessons: Lesson[]
 }
 
 // ── Video Content ─────────────────────────────────────────
-function VideoContent({ lesson, courseId, allLessons, onMarkComplete, signedVideoUrl }: {
+/** Uploaded videos arrive as this placeholder; the playable link is signed and short-lived. */
+const STORED_VIDEO = 'stored-video';
+const DATA_SAVER_KEY = 'cpa:dataSaver';
+
+function VideoContent({ lesson, courseId, allLessons, onMarkComplete }: {
   lesson: Lesson; courseId: string; allLessons: Lesson[]; onMarkComplete: (l: Lesson) => void;
-  signedVideoUrl: string | null;
 }) {
-  const videoSrc = signedVideoUrl ?? lesson.videoUrl;
   const playerRef = useRef<VideoPlayerHandle>(null);
+  const [links, setLinks] = useState<{ url: string; lowUrl: string | null } | null>(null);
+  const [videoError, setVideoError] = useState('');
+  const [dataSaver, setDataSaver] = useState(false);
+  const lastPosition = useRef<number | null>(null);
+  const refreshedAt = useRef(0);
+
+  useEffect(() => {
+    try { setDataSaver(localStorage.getItem(DATA_SAVER_KEY) === '1'); } catch {}
+  }, []);
+
+  const isStored = lesson.videoUrl === STORED_VIDEO;
+  const loadLinks = useCallback(() => {
+    if (!lesson.videoUrl) return;
+    api.get(`/platform-courses/${courseId}/lessons/${lesson.id}/signed-video`)
+      .then(r => { setLinks({ url: r.data.url, lowUrl: r.data.lowUrl ?? null }); setVideoError(''); })
+      .catch(err => {
+        // External links (YouTube etc.) can still play from the lesson data; stored videos can't
+        if (!isStored) setLinks({ url: lesson.videoUrl!, lowUrl: null });
+        else setVideoError(err?.response?.data?.message ?? 'Could not load this video. Check your connection and try again.');
+      });
+  }, [courseId, lesson.id, lesson.videoUrl, isStored]);
+
+  useEffect(() => {
+    setLinks(null); setVideoError(''); lastPosition.current = null;
+    loadLinks();
+  }, [loadLinks]);
+
+  const videoSrc = links ? (dataSaver && links.lowUrl ? links.lowUrl : links.url) : null;
+
+  function toggleDataSaver() {
+    const next = !dataSaver;
+    setDataSaver(next);
+    try { localStorage.setItem(DATA_SAVER_KEY, next ? '1' : '0'); } catch {}
+  }
+
+  // Signed links expire after a couple of hours: fetch a fresh one (at most once a minute) and resume
+  function onVideoError() {
+    if (!isStored || Date.now() - refreshedAt.current < 60_000) return;
+    refreshedAt.current = Date.now();
+    loadLinks();
+  }
 
   const reportProgress = useCallback((positionSecs: number, deltaSecs: number) => {
+    lastPosition.current = positionSecs;
     api.post(`/platform-courses/${courseId}/progress/${lesson.id}/watch`, { positionSecs, deltaSecs }).catch(() => {});
   }, [courseId, lesson.id]);
 
@@ -504,16 +539,35 @@ function VideoContent({ lesson, courseId, allLessons, onMarkComplete, signedVide
         {videoSrc
           ? <VideoPlayer
               ref={playerRef}
-              key={signedVideoUrl ?? lesson.id}
+              key={videoSrc}
               src={videoSrc}
               title={lesson.title}
-              startAt={lesson.progress?.positionSecs}
+              startAt={lastPosition.current ?? lesson.progress?.positionSecs}
               chapters={lesson.chapters}
               onProgress={reportProgress}
+              dataSaver={dataSaver}
+              onError={onVideoError}
             />
-          : <div className="bg-black flex items-center justify-center" style={{ minHeight: 300 }}><p className="text-white/40 text-sm">No video URL set</p></div>
+          : <div className="bg-black flex items-center justify-center px-6 text-center" style={{ minHeight: 300 }}>
+              <p className="text-white/50 text-sm">
+                {!lesson.videoUrl ? 'No video for this lesson yet' : videoError || 'Loading video…'}
+              </p>
+            </div>
         }
       </div>
+      {isStored && (
+        <div className="flex items-center justify-end gap-2 px-4 py-2 border-b border-[var(--pl-divider)] text-[11px] text-[var(--pl-sub)]">
+          <span className="hidden sm:inline">
+            {dataSaver
+              ? lesson.hasDataSaver ? 'Playing the smaller, lower-quality version' : 'The video only downloads when you press play'
+              : 'Using mobile data?'}
+          </span>
+          <button type="button" onClick={toggleDataSaver} aria-pressed={dataSaver}
+            className={`rounded-full px-3 py-1 font-bold transition ${dataSaver ? 'bg-emerald-500/15 text-emerald-500' : 'bg-[var(--pl-bg2)] hover:text-azure'}`}>
+            Data saver {dataSaver ? 'on' : 'off'}
+          </button>
+        </div>
+      )}
 
       <div className="max-w-3xl mx-auto w-full px-6 xl:px-8 py-8 space-y-6">
 

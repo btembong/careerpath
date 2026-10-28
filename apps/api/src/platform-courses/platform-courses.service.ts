@@ -166,8 +166,8 @@ export class PlatformCoursesService {
         lessons: m.lessons.map(l => {
           const locked = !hasAccess && !l.isFree;
           return locked
-            ? { ...l, videoUrl: null, content: null, transcript: null, attachments: [], locked }
-            : { ...l, locked };
+            ? { ...l, videoUrl: null, videoUrlLow: null, content: null, transcript: null, attachments: [], locked }
+            : { ...this.hideStoredVideo(l), locked };
         }),
       })),
     };
@@ -357,7 +357,7 @@ export class PlatformCoursesService {
   }
 
   async updateLesson(courseId: string, lessonId: string, actor: UserProfile, dto: {
-    title?: string; videoUrl?: string | null; content?: string | null;
+    title?: string; videoUrl?: string | null; videoUrlLow?: string | null; content?: string | null;
     durationSecs?: number | null; isFree?: boolean;
     chapters?: unknown; transcript?: string | null;
   }) {
@@ -370,6 +370,7 @@ export class PlatformCoursesService {
     const data: Prisma.LessonUpdateInput = {
       ...(dto.title !== undefined && { title: String(dto.title).slice(0, 200) }),
       ...(dto.videoUrl !== undefined && { videoUrl: dto.videoUrl || null }),
+      ...(dto.videoUrlLow !== undefined && { videoUrlLow: dto.videoUrlLow || null }),
       ...(dto.content !== undefined && { content: dto.content ?? null }),
       ...(dto.durationSecs !== undefined && { durationSecs: dto.durationSecs ?? null }),
       ...(dto.isFree !== undefined && { isFree: !!dto.isFree }),
@@ -516,7 +517,7 @@ export class PlatformCoursesService {
           // Without access, only the outline is returned — paid video/text stays locked (free previews excepted)
           const locked = !hasAccess && !l.isFree;
           return {
-            ...l,
+            ...this.hideStoredVideo(l),
             ...(locked && { videoUrl: null, content: null, transcript: null }),
             locked,
             progress: l.progress[0] ?? null,
@@ -533,13 +534,16 @@ export class PlatformCoursesService {
    * Validates that the student is enrolled before signing.
    * Non-R2 URLs (YouTube / Vimeo) pass through unsigned.
    */
-  async getSignedVideoUrl(courseId: string, lessonId: string, studentId: string): Promise<{ url: string }> {
+  async getSignedVideoUrl(courseId: string, lessonId: string, studentId: string): Promise<{ url: string; lowUrl: string | null }> {
     // Package buyers usually have no CourseEnrollment row, so check real access, not just enrollment
     const lesson = await this.assertStudentLesson(studentId, courseId, lessonId);
     if (!lesson.videoUrl) throw new NotFoundException('Lesson has no video');
 
-    const url = await this.files.signUrl(lesson.videoUrl);
-    return { url };
+    const [url, lowUrl] = await Promise.all([
+      this.files.signUrl(lesson.videoUrl),
+      lesson.videoUrlLow ? this.files.signUrl(lesson.videoUrlLow) : null,
+    ]);
+    return { url, lowUrl };
   }
 
   // ── Quiz: Questions ──────────────────────────────────────
@@ -870,6 +874,20 @@ export class PlatformCoursesService {
 
   // ── Helpers ───────────────────────────────────────────────
 
+  /**
+   * Students never receive the address of a video in our bucket (it would work forever and can be
+   * shared); they get a placeholder and fetch a short-lived signed link from /signed-video instead.
+   */
+  private hideStoredVideo<L extends { videoUrl: string | null; videoUrlLow?: string | null }>(l: L) {
+    const stored = this.files.isOwnFile(l.videoUrl);
+    return {
+      ...l,
+      videoUrl: stored ? STORED_VIDEO : l.videoUrl,
+      videoUrlLow: null,
+      hasDataSaver: !!l.videoUrlLow,
+    };
+  }
+
   private async assertCourseAccess(courseId: string, actor: UserProfile) {
     const course = await this.prisma.platformCourse.findUnique({ where: { id: courseId } });
     if (!course) throw new NotFoundException('Course not found');
@@ -934,6 +952,9 @@ export class PlatformCoursesService {
     return lesson;
   }
 }
+
+/** Placeholder sent to students instead of a stored video's address. */
+const STORED_VIDEO = 'stored-video';
 
 function courseIncludes() {
   return {

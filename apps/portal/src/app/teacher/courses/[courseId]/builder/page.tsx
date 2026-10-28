@@ -22,10 +22,13 @@ import { SkeletonTopbar } from '@/components/ui/Skeleton';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
 import api from '@/lib/api';
 import { CourseChecklistPanel, useCourseChecklist } from '@/components/learning/CourseChecklist';
+import { LessonVideoUpload } from '@/components/learning/LessonVideoUpload';
 
 interface Attachment { id: string; name: string; url: string; fileType: string | null; }
 interface Lesson {
   id: string; title: string; type: string; videoUrl: string | null;
+  /** Optional smaller copy for students on Data saver */
+  videoUrlLow?: string | null;
   content: string | null; sortOrder: number; isFree: boolean; durationSecs: number | null;
   passMark: number | null; timeLimitSecs: number | null; maxAttempts: number;
   attachments: Attachment[];
@@ -98,8 +101,26 @@ function SortableLesson({
           {editLesson.type === 'VIDEO' && (
             <input value={editLesson.videoUrl ?? ''}
               onChange={e => setEditLesson({ ...editLesson, videoUrl: e.target.value })}
-              placeholder="Video URL (YouTube, Vimeo, direct…)"
+              placeholder="Video URL (YouTube, Vimeo, direct…) or upload a file below"
               className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
+          )}
+          {editLesson.type === 'VIDEO' && (
+            <div className="flex flex-wrap items-start gap-4">
+              <LessonVideoUpload
+                label="Upload video"
+                hint="MP4, up to 500 MB. Uploaded videos are only playable by students with access."
+                onUploaded={url => setEditLesson({ ...editLesson, videoUrl: url })} />
+              <div className="space-y-1">
+                <LessonVideoUpload
+                  label={editLesson.videoUrlLow ? 'Replace data-saver version' : 'Add data-saver version'}
+                  hint="Optional smaller copy (e.g. 360p) for students on mobile data."
+                  onUploaded={url => setEditLesson({ ...editLesson, videoUrlLow: url })} />
+                {editLesson.videoUrlLow && (
+                  <button type="button" onClick={() => setEditLesson({ ...editLesson, videoUrlLow: null })}
+                    className="text-[10px] font-semibold text-red-500 hover:underline">Remove data-saver version</button>
+                )}
+              </div>
+            </div>
           )}
           {editLesson.type === 'VIDEO' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -510,7 +531,7 @@ export default function CourseBuilderPage() {
     setActing('edit-' + lesson.id);
     try {
       await api.patch(`/platform-courses/${courseId}/modules/${moduleId}/lessons/${lesson.id}`, {
-        title: editLesson!.title, videoUrl: editLesson!.videoUrl,
+        title: editLesson!.title, videoUrl: editLesson!.videoUrl, videoUrlLow: editLesson!.videoUrlLow ?? null,
         content: editLesson!.content, isFree: editLesson!.isFree,
         ...(chapters !== undefined && { chapters }),
         ...(isVideo && { transcript: editLesson!.transcript?.trim() || null }),
