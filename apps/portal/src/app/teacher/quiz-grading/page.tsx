@@ -1,13 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
 import { notify } from '@/lib/notify';
 import { Topbar } from '@/components/layout/Topbar';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Drawer, DrawerContent, DrawerSection, InfoGrid } from '@/components/ui/Dialog';
 import api from '@/lib/api';
 
 interface QuizAttempt {
@@ -22,12 +22,19 @@ interface QuizAttempt {
   student: { id: string; email: string; firstName: string | null; lastName: string | null };
 }
 
+function nameOf(a: QuizAttempt) {
+  return a.student.firstName || a.student.lastName
+    ? `${a.student.firstName ?? ''} ${a.student.lastName ?? ''}`.trim()
+    : a.student.email.split('@')[0];
+}
+const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
 export default function QuizGradingPage() {
   const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [scores, setScores] = useState<Record<string, string>>({});
-  const [grading, setGrading] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [score, setScore] = useState('');
+  const [grading, setGrading] = useState(false);
 
   async function load() {
     const r = await api.get('/education/quizzes/written-queue');
@@ -35,150 +42,140 @@ export default function QuizGradingPage() {
   }
 
   useEffect(() => {
-    load().catch(() => notify.error('Failed to load')).finally(() => setLoading(false));
+    load().catch(() => notify.error('Could not load the grading queue')).finally(() => setLoading(false));
   }, []);
 
-  async function gradeAttempt(attemptId: string) {
-    const raw = scores[attemptId];
-    if (!raw && raw !== '0') { notify.error('Enter a manual score'); return; }
-    const manualScore = parseFloat(raw);
-    if (isNaN(manualScore) || manualScore < 0) { notify.error('Invalid score'); return; }
-    setGrading(attemptId);
+  const open = attempts.find(a => a.id === openId) ?? null;
+  useEffect(() => { setScore(''); }, [openId]);
+
+  async function grade() {
+    if (!open) return;
+    const manualScore = parseFloat(score);
+    if (score.trim() === '' || isNaN(manualScore) || manualScore < 0) { notify.error('Enter a score of 0 or more'); return; }
+    setGrading(true);
     try {
-      await api.patch(`/education/quizzes/${attemptId}/grade`, { manualScore });
-      notify.success('Attempt graded');
-      setAttempts(prev => prev.filter(a => a.id !== attemptId));
-      setExpanded(null);
+      await api.patch(`/education/quizzes/${open.id}/grade`, { manualScore });
+      notify.success('Grade saved', { description: `${nameOf(open)} has been notified` });
+      setAttempts(prev => prev.filter(a => a.id !== open.id));
+      setOpenId(null);
     } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Grading failed');
-    } finally { setGrading(null); }
+      notify.error(err?.response?.data?.message ?? 'Could not save the grade');
+    } finally { setGrading(false); }
   }
 
   if (loading) return (
     <div className="flex flex-col min-h-full">
       <SkeletonTopbar back />
-      <div className="flex-1 p-6 max-w-3xl w-full mx-auto space-y-4">
-        {[1,2,3].map(i => <SkeletonCard key={i} lines={2} />)}
+      <div className="flex-1 space-y-3 p-6">
+        {[1, 2, 3].map(i => <SkeletonCard key={i} lines={2} />)}
       </div>
     </div>
   );
 
   return (
-    <div className="flex flex-col min-h-full bg-surface">
+    <div className="flex flex-col min-h-full">
       <Topbar
-        title="Written Quiz Grading"
-        subtitle={`${attempts.length} attempt${attempts.length !== 1 ? 's' : ''} awaiting review`}
-        backHref="/teacher/assignments"
-        backLabel="Assignments"
+        title="Written quiz grading"
+        subtitle={`${attempts.length} attempt${attempts.length !== 1 ? 's' : ''} waiting for a grade`}
       />
 
-      <div className="flex-1 p-6 pb-28 lg:pb-6 max-w-3xl w-full mx-auto space-y-4">
-
+      <div className="flex-1 p-4 pb-28 lg:px-7 lg:py-6">
         {attempts.length === 0 ? (
           <Card padding="lg">
-            <div className="flex flex-col items-center py-12 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-green-50 mb-4">
-                <Icon name="graduate" size={24} className="text-green-500" />
-              </div>
-              <p className="text-sm font-bold text-navy">All caught up!</p>
-              <p className="text-xs text-royal/50 mt-1">No written quiz answers need grading right now.</p>
-            </div>
+            <EmptyState icon="graduate" title="Nothing to grade" description="Written quiz answers appear here when students submit them." />
           </Card>
         ) : (
-          attempts.map(attempt => {
-            const isOpen = expanded === attempt.id;
-            const studentName = attempt.student.firstName || attempt.student.lastName
-              ? `${attempt.student.firstName ?? ''} ${attempt.student.lastName ?? ''}`.trim()
-              : attempt.student.email.split('@')[0];
-            const answers = Object.entries(attempt.answersJson ?? {});
-
-            return (
-              <Card key={attempt.id} padding="none">
-                {/* Header row */}
-                <button
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-cloud/30 transition rounded-2xl"
-                  onClick={() => setExpanded(isOpen ? null : attempt.id)}>
-                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-azure text-sm font-bold text-white">
-                    {(attempt.student.firstName ?? attempt.student.email ?? 'S')[0].toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-navy truncate">{studentName}</p>
-                    <p className="text-[10px] text-royal/50">
-                      Submitted {new Date(attempt.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      {' · '}Auto-score: {attempt.autoScore}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Badge variant="muted">Pending</Badge>
-                    <Icon name="chevronDown" size={14} className={`text-royal/40 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                  </div>
-                </button>
-
-                {/* Expanded: answers + grading form */}
-                <AnimatePresence>
-                  {isOpen && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="px-4 pb-4 space-y-4 border-t border-cloud pt-4">
-                        {/* Written answers */}
-                        <div className="space-y-3">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-azure">Student Answers</p>
-                          {answers.length === 0 ? (
-                            <p className="text-xs text-royal/40">No answers recorded.</p>
-                          ) : (
-                            answers.map(([questionId, answer]) => (
-                              <div key={questionId} className="rounded-xl border border-cloud bg-cloud/30 px-4 py-3">
-                                <p className="text-[10px] font-bold text-royal/40 uppercase tracking-widest mb-1">Q: {questionId.slice(0, 8)}…</p>
-                                <p className="text-sm text-navy whitespace-pre-wrap">{answer || <span className="italic text-royal/30">No answer provided</span>}</p>
-                              </div>
-                            ))
-                          )}
-                        </div>
-
-                        {/* Grading */}
-                        <div className="rounded-xl border border-azure/20 bg-azure/5 px-4 py-3 space-y-3">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-azure">Grade Written Answers</p>
-                          <p className="text-xs text-royal/60">
-                            Auto-score (MCQ): <strong className="text-navy">{attempt.autoScore}</strong>. Add your manual score for the written portion below.
-                            Final score = auto + manual.
-                          </p>
-                          <div className="flex items-center gap-3">
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-semibold text-royal/50 uppercase tracking-wider">Manual score</label>
-                              <input
-                                type="number" min="0" placeholder="0"
-                                value={scores[attempt.id] ?? ''}
-                                onChange={e => setScores(s => ({ ...s, [attempt.id]: e.target.value }))}
-                                className="w-24 rounded-xl border border-cloud px-3 py-2 text-sm text-navy outline-none focus:border-azure focus:ring-2 focus:ring-azure/15" />
-                            </div>
-                            {scores[attempt.id] && (
-                              <div className="space-y-1 self-end pb-2">
-                                <p className="text-[10px] text-royal/40">Final score</p>
-                                <p className="text-lg font-black text-navy">
-                                  {attempt.autoScore + (parseFloat(scores[attempt.id]) || 0)}
-                                </p>
-                              </div>
-                            )}
+          <Card padding="none" className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-sm">
+                <thead>
+                  <tr className="border-b border-line text-left">
+                    {['Student', 'Submitted', 'Multiple choice', 'Status', ''].map(h => (
+                      <th key={h} className="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {attempts.map(a => (
+                    <tr key={a.id} onClick={() => setOpenId(a.id)} className="cursor-pointer border-b border-line last:border-b-0 hover:bg-subtle transition-colors">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-subtle text-[13px] font-bold text-ink2">
+                            {nameOf(a)[0]?.toUpperCase()}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-navy">{nameOf(a)}</p>
+                            <p className="truncate text-xs text-muted">{a.student.email}</p>
                           </div>
-                          <Button size="sm" loading={grading === attempt.id} onClick={() => gradeAttempt(attempt.id)}>
-                            Submit grade
-                          </Button>
                         </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </Card>
-            );
-          })
+                      </td>
+                      <td className="px-5 py-3 text-ink2">{date(a.submittedAt)}</td>
+                      <td className="px-5 py-3 text-ink2">{a.autoScore} points</td>
+                      <td className="px-5 py-3"><Badge variant="default">Waiting</Badge></td>
+                      <td className="px-5 py-3 text-right">
+                        <button type="button" onClick={e => { e.stopPropagation(); setOpenId(a.id); }}
+                          className="inline-flex h-8 items-center rounded-md border border-line bg-white px-3 text-[13px] font-semibold text-navy hover:bg-subtle transition-colors">
+                          Grade
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         )}
-
       </div>
+
+      <Drawer open={!!open} onOpenChange={o => { if (!o) setOpenId(null); }}>
+        {open && (
+          <DrawerContent title={nameOf(open)} description={`Submitted ${date(open.submittedAt)}`}>
+            <InfoGrid items={[
+              { label: 'Student', value: open.student.email },
+              { label: 'Multiple choice', value: `${open.autoScore} points` },
+              { label: 'Status', value: 'Waiting for grade' },
+            ]} />
+
+            <DrawerSection title="Written answers" count={Object.keys(open.answersJson ?? {}).length}>
+              {Object.entries(open.answersJson ?? {}).length === 0 ? (
+                <p className="text-sm text-muted">No written answers were recorded.</p>
+              ) : (
+                <ol className="space-y-3">
+                  {Object.entries(open.answersJson ?? {}).map(([qid, answer], i) => (
+                    <li key={qid} className="rounded-md border border-line">
+                      <p className="border-b border-line bg-subtle px-3 py-2 text-xs font-semibold text-ink2">Answer {i + 1}</p>
+                      <p className="whitespace-pre-wrap px-3 py-2.5 text-sm text-navy">
+                        {answer || <span className="italic text-muted">No answer given</span>}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </DrawerSection>
+
+            <DrawerSection title="Grade">
+              <p className="text-[13px] text-ink2">
+                The multiple-choice part scored <strong className="text-navy">{open.autoScore}</strong>. Add the points for the written answers; the final score is the two added together.
+              </p>
+              <div className="flex items-end gap-4">
+                <label className="block space-y-1.5">
+                  <span className="text-[13px] font-semibold text-navy">Written score</span>
+                  <input type="number" min={0} inputMode="decimal" value={score} onChange={e => setScore(e.target.value)}
+                    placeholder="0" className="input-base w-28" />
+                </label>
+                <div className="pb-1.5">
+                  <p className="text-xs text-muted">Final score</p>
+                  <p className="text-xl font-extrabold text-navy">{open.autoScore + (parseFloat(score) || 0)}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 border-t border-line pt-4">
+                <Button size="sm" loading={grading} onClick={grade}>Save grade</Button>
+                <Button size="sm" variant="secondary" onClick={() => setOpenId(null)}>Cancel</Button>
+              </div>
+            </DrawerSection>
+          </DrawerContent>
+        )}
+      </Drawer>
     </div>
   );
 }

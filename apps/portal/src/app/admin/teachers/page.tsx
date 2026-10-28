@@ -1,14 +1,13 @@
 'use client';
 import { notify } from '@/lib/notify';
 import { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
 import { Topbar } from '@/components/layout/Topbar';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent, DrawerSection, InfoGrid, Stepper } from '@/components/ui/Dialog';
 import api from '@/lib/api';
 
 type Status = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -44,6 +43,7 @@ const QUALIFICATION_LABEL: Record<string, string> = {
 const MODALITY_LABEL: Record<string, string> = {
   ONLINE: 'Online', IN_PERSON: 'In-person', HYBRID: 'Hybrid',
 };
+const STATUS_LABEL: Record<Status, string> = { PENDING: 'Pending review', APPROVED: 'Approved', REJECTED: 'Rejected' };
 
 function initials(t: Teacher): string {
   const app = t.teacherApplication;
@@ -57,282 +57,175 @@ function displayName(t: Teacher): string {
   return t.email.split('@')[0];
 }
 
-// ─── Rejection modal ─────────────────────────────────────────────────────────
+// ─── Rejection dialog ────────────────────────────────────────────────────────
 
-function RejectModal({
+function RejectDialog({
   teacher, onClose, onConfirm, loading,
 }: {
-  teacher: Teacher;
+  teacher: Teacher | null;
   onClose: () => void;
   onConfirm: (reason: string) => void;
   loading: boolean;
 }) {
   const [reason, setReason] = useState('');
+  useEffect(() => { setReason(''); }, [teacher?.id]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-navy/40 backdrop-blur-sm"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-md rounded-2xl border border-cloud bg-white p-6 shadow-xl space-y-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-sm font-bold text-navy">Reject application</p>
-            <p className="text-xs text-royal/50 mt-0.5">{displayName(teacher)}</p>
-          </div>
-          <button onClick={onClose} className="text-royal/40 hover:text-navy transition">
-            <Icon name="close" size={16} />
-          </button>
-        </div>
-
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold text-navy">
-            Rejection reason <span className="font-normal text-royal/40">(sent to applicant by email)</span>
+    <Dialog open={!!teacher} onOpenChange={o => { if (!o) onClose(); }}>
+      {teacher && (
+        <DialogContent title="Reject application" description={displayName(teacher)}>
+          <label className="block space-y-1.5">
+            <span className="text-[13px] font-semibold text-navy">Reason <span className="font-normal text-muted">(sent to the applicant by email)</span></span>
+            <textarea rows={4} value={reason} maxLength={500} onChange={e => setReason(e.target.value)}
+              placeholder="For example: we need at least two years of classroom experience. You're welcome to apply again later."
+              className="w-full resize-none rounded-md border border-line bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-muted" />
+            <span className="block text-xs text-muted">{reason.length} / 500</span>
           </label>
-          <textarea rows={4} value={reason} onChange={e => setReason(e.target.value)}
-            placeholder="e.g. Insufficient teaching experience for this platform at this time. Please reapply after gaining more credentials."
-            className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-red-400 resize-none placeholder:text-royal/40" />
-          <p className="text-[10px] text-royal/40">{reason.length} / 500 max</p>
-        </div>
-
-        <div className="flex gap-3">
-          <Button
-            onClick={() => onConfirm(reason)}
-            loading={loading}
-            className="flex-1 bg-red-500 hover:bg-red-600 border-red-500 hover:border-red-600">
-            Reject application
-          </Button>
-          <Button variant="secondary" onClick={onClose} className="flex-1">Cancel</Button>
-        </div>
-      </div>
-    </div>
+          <DialogFooter>
+            <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
+            <Button variant="danger" size="sm" loading={loading} onClick={() => onConfirm(reason)}>Reject application</Button>
+          </DialogFooter>
+        </DialogContent>
+      )}
+    </Dialog>
   );
 }
 
-// ─── Teacher card ────────────────────────────────────────────────────────────
+// ─── Application drawer ──────────────────────────────────────────────────────
 
-function TeacherCard({
-  teacher, onApprove, onReject, deciding,
+function TeacherDrawer({
+  teacher, onClose, onApprove, onReject, deciding,
 }: {
-  teacher: Teacher;
-  onApprove?: (id: string) => void;
-  onReject?: (t: Teacher) => void;
+  teacher: Teacher | null;
+  onClose: () => void;
+  onApprove: (id: string) => void;
+  onReject: (t: Teacher) => void;
   deciding: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [videoUrl, setVideoUrl] = useState(teacher.videoIntroUrl ?? '');
+  const [videoUrl, setVideoUrl] = useState('');
   const [savingVideo, setSavingVideo] = useState(false);
-  const app = teacher.teacherApplication;
+  useEffect(() => { setVideoUrl(teacher?.videoIntroUrl ?? ''); }, [teacher?.id, teacher?.videoIntroUrl]);
 
   async function saveVideoUrl() {
+    if (!teacher) return;
     setSavingVideo(true);
     try {
-      await api.patch(`/teachers/admin/${teacher.id}/video`, {
-        videoIntroUrl: videoUrl.trim() || null,
-      });
+      await api.patch(`/teachers/admin/${teacher.id}/video`, { videoIntroUrl: videoUrl.trim() || null });
       notify.success('Intro video saved');
     } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to save video');
+      notify.error(err?.response?.data?.message ?? 'Could not save the video link');
     } finally { setSavingVideo(false); }
   }
 
+  const app = teacher?.teacherApplication;
+  const step = !teacher ? 0
+    : teacher.approvalStatus === 'PENDING' ? 1
+    : teacher.approvalStatus === 'REJECTED' ? 2
+    : teacher.agreementAcceptedAt ? 4 : 3;
+  const isFile = videoUrl.startsWith('http') && !/youtube|youtu\.be|vimeo/.test(videoUrl);
+
   return (
-    <Card padding="none" className="overflow-hidden">
-      {/* Header row */}
-      <button onClick={() => setExpanded(e => !e)}
-        className="flex items-center gap-4 px-5 py-4 w-full text-left hover:bg-cloud/30 transition">
-        {/* Avatar */}
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-azure text-sm font-bold text-white flex-shrink-0">
-          {initials(teacher)}
-        </div>
+    <Drawer open={!!teacher} onOpenChange={o => { if (!o) onClose(); }}>
+      {teacher && (
+        <DrawerContent title={displayName(teacher)} description={teacher.email}
+          action={app?.documentUrl ? (
+            <a href={app.documentUrl} target="_blank" rel="noreferrer"
+              className="inline-flex h-8 items-center rounded-md border border-line bg-white px-3 text-[13px] font-semibold text-navy hover:bg-subtle transition-colors">
+              View CV
+            </a>
+          ) : undefined}>
 
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-navy truncate">{displayName(teacher)}</p>
-          <div className="flex items-center gap-2 flex-wrap mt-0.5">
-            <p className="text-xs text-royal/50 truncate">{teacher.email}</p>
-            {app?.teachingModality && (
-              <span className="text-[10px] font-semibold text-royal/40 bg-cloud px-2 py-0.5 rounded-full">
-                {MODALITY_LABEL[app.teachingModality] ?? app.teachingModality}
-              </span>
-            )}
-          </div>
-        </div>
+          <Stepper steps={['Applied', 'Under review', teacher.approvalStatus === 'REJECTED' ? 'Rejected' : 'Approved', 'Agreement signed']} current={step} />
 
-        <div className="flex items-center gap-3 flex-shrink-0">
-          {(app?.subjectAreas?.length ?? 0) > 0 && app && (
-            <div className="hidden sm:flex gap-1 flex-wrap max-w-[180px]">
-              {app.subjectAreas.slice(0, 2).map(s => (
-                <span key={s} className="text-[10px] font-semibold bg-azure/10 text-azure px-2 py-0.5 rounded-full">{s}</span>
-              ))}
-              {app.subjectAreas.length > 2 && (
-                <span className="text-[10px] text-royal/40">+{app.subjectAreas.length - 2}</span>
-              )}
-            </div>
-          )}
-          {app?.yearsExperience != null && (
-            <span className="text-xs text-royal/40 hidden sm:block">{app.yearsExperience}y exp</span>
-          )}
-          <Badge variant={
-            teacher.approvalStatus === 'APPROVED' ? 'active' :
-            teacher.approvalStatus === 'REJECTED' ? 'default' : 'muted'
-          }>
-            {teacher.approvalStatus}
-          </Badge>
-          <Icon name="chevronDown" size={14} className={`text-royal/40 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-        </div>
-      </button>
+          <InfoGrid items={[
+            { label: 'Status', value: STATUS_LABEL[teacher.approvalStatus] },
+            { label: 'Qualification', value: app?.qualification ? (QUALIFICATION_LABEL[app.qualification] ?? app.qualification) : '—' },
+            { label: 'Experience', value: app?.yearsExperience != null ? `${app.yearsExperience} years` : '—' },
+            { label: 'Teaches', value: app?.teachingModality ? (MODALITY_LABEL[app.teachingModality] ?? app.teachingModality) : '—' },
+            { label: 'Phone', value: app?.phone || '—' },
+            { label: 'Applied', value: app?.submittedAt ? new Date(app.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—' },
+          ]} />
 
-      {/* Expanded detail */}
-      <AnimatePresence>
-      {expanded && app && (
-        <motion.div
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: 'auto', opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="overflow-hidden"
-        >
-        <div className="border-t border-cloud px-5 pb-5 pt-4 space-y-5">
-          {/* Meta row */}
-          <div className="flex flex-wrap gap-3">
-            {app.qualification && (
-              <div className="flex items-center gap-1.5 rounded-lg bg-surface px-3 py-1.5">
-                <Icon name="graduate" size={12} className="text-royal/40" />
-                <span className="text-xs text-navy">{QUALIFICATION_LABEL[app.qualification] ?? app.qualification}</span>
+          {app && app.subjectAreas.length > 0 && (
+            <DrawerSection title="Subjects" count={app.subjectAreas.length}>
+              <div className="flex flex-wrap gap-1.5">
+                {app.subjectAreas.map(s => <Badge key={s} variant="default">{s}</Badge>)}
               </div>
-            )}
-            {app.phone && (
-              <div className="flex items-center gap-1.5 rounded-lg bg-surface px-3 py-1.5">
-                <Icon name="phone" size={12} className="text-royal/40" />
-                <span className="text-xs text-navy">{app.phone}</span>
-              </div>
-            )}
-            {app.submittedAt && (
-              <div className="flex items-center gap-1.5 rounded-lg bg-surface px-3 py-1.5">
-                <Icon name="calendar" size={12} className="text-royal/40" />
-                <span className="text-xs text-navy">
-                  Applied {new Date(app.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* All subject chips */}
-          {app.subjectAreas.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {app.subjectAreas.map(s => (
-                <span key={s} className="text-xs font-semibold bg-azure/10 text-azure px-3 py-1 rounded-full">{s}</span>
-              ))}
-            </div>
+            </DrawerSection>
           )}
 
-          {/* Bio */}
-          {app.bio && (
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-royal/40 mb-1.5">BIO</p>
-              <p className="text-sm text-navy/80 leading-relaxed">{app.bio}</p>
-            </div>
+          {app?.bio && (
+            <DrawerSection title="About">
+              <p className="whitespace-pre-line text-sm leading-relaxed text-ink2">{app.bio}</p>
+            </DrawerSection>
           )}
 
-          {/* Rejection reason (for rejected) */}
-          {teacher.approvalStatus === 'REJECTED' && app.rejectionReason && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-red-400 mb-1">REJECTION REASON</p>
-              <p className="text-sm text-red-700">{app.rejectionReason}</p>
-            </div>
+          {teacher.approvalStatus === 'REJECTED' && app?.rejectionReason && (
+            <DrawerSection title="Reason for rejection">
+              <p className="rounded-md border border-line bg-subtle px-3 py-2.5 text-sm text-ink2">{app.rejectionReason}</p>
+            </DrawerSection>
           )}
 
-          {/* Intro video */}
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-royal/40">Intro video</p>
-            {videoUrl && (
-              <video src={videoUrl.startsWith('http') && !videoUrl.includes('youtube') && !videoUrl.includes('vimeo')
-                ? videoUrl : undefined}
-                controls={!videoUrl.includes('youtube') && !videoUrl.includes('vimeo')}
-                className="w-full rounded-xl max-h-40 object-cover bg-black"
-              />
-            )}
-            <div className="flex gap-2">
-              <input
-                value={videoUrl}
-                onChange={e => setVideoUrl(e.target.value)}
-                type="url"
-                placeholder="YouTube, Vimeo, or direct video URL"
-                className="flex-1 rounded-xl border border-cloud bg-white px-3 py-2 text-xs text-navy outline-none focus:border-azure placeholder:text-royal/30"
-              />
-              <Button size="sm" loading={savingVideo} onClick={saveVideoUrl}>
-                {videoUrl ? 'Update' : 'Set'}
-              </Button>
-            </div>
-            <p className="text-[10px] text-royal/40">
-              {videoUrl
-                ? 'Visible on this teacher\'s public profile and in student mentor browse.'
-                : 'Required for WP teachers — paste a YouTube/Vimeo link or a direct upload URL from Cloudflare R2.'}
+          <DrawerSection title="Content agreement">
+            <p className="text-sm text-ink2">
+              {teacher.agreementAcceptedAt
+                ? <>Signed on <strong className="text-navy">{new Date(teacher.agreementAcceptedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>{teacher.agreementVersion ? ` (version ${teacher.agreementVersion})` : ''}.</>
+                : 'Not signed yet. Teachers sign it when they first open their portal after approval.'}
             </p>
-          </div>
+          </DrawerSection>
 
-          {/* Agreement status */}
-          <div className="rounded-xl border border-cloud bg-surface px-4 py-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Icon name="file" size={13} className="text-royal/40" />
-              <p className="text-xs font-semibold text-navy">Content Ownership Agreement</p>
+          <DrawerSection title="Intro video">
+            {videoUrl && isFile && <video src={videoUrl} controls className="max-h-48 w-full rounded-md bg-black" />}
+            <div className="flex gap-2">
+              <input value={videoUrl} onChange={e => setVideoUrl(e.target.value)} type="url" aria-label="Intro video link"
+                placeholder="YouTube, Vimeo or a direct video link" className="input-base" />
+              <Button size="sm" variant="secondary" loading={savingVideo} onClick={saveVideoUrl} className="h-[38px]">Save</Button>
             </div>
-            {teacher.agreementAcceptedAt ? (
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2.5 py-0.5 text-[10px] font-bold text-green-700">
-                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                  Signed {new Date(teacher.agreementAcceptedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </span>
-                {teacher.agreementVersion && (
-                  <span className="text-[10px] text-royal/40">{teacher.agreementVersion}</span>
-                )}
+            <p className="text-xs text-muted">Shown on the teacher&apos;s public profile and when students browse mentors.</p>
+          </DrawerSection>
+
+          {(app?.linkedinUrl || app?.websiteUrl) && (
+            <DrawerSection title="Links">
+              <div className="flex flex-wrap gap-4">
+                {app?.linkedinUrl && <a href={app.linkedinUrl} target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-azure-strong hover:underline">LinkedIn</a>}
+                {app?.websiteUrl && <a href={app.websiteUrl} target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-azure-strong hover:underline">Website</a>}
               </div>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-[10px] font-bold text-amber-700">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-                Not yet signed
-              </span>
-            )}
-          </div>
+            </DrawerSection>
+          )}
 
-          {/* Links */}
-          <div className="flex flex-wrap gap-2">
-            {app.linkedinUrl && (
-              <a href={app.linkedinUrl} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl border border-cloud bg-white px-3 py-2 text-xs font-semibold text-navy hover:bg-cloud transition">
-                <Icon name="mentorship" size={12} /> LinkedIn
-              </a>
-            )}
-            {app.websiteUrl && (
-              <a href={app.websiteUrl} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl border border-cloud bg-white px-3 py-2 text-xs font-semibold text-navy hover:bg-cloud transition">
-                <Icon name="arrowRight" size={12} /> Website
-              </a>
-            )}
-            {app.documentUrl && (
-              <a href={app.documentUrl} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl border border-cloud bg-white px-3 py-2 text-xs font-semibold text-navy hover:bg-cloud transition">
-                <Icon name="file" size={12} /> View CV
-              </a>
-            )}
-          </div>
-
-          {/* Actions — only shown for PENDING */}
-          {teacher.approvalStatus === 'PENDING' && onApprove && onReject && (
-            <div className="flex gap-3 pt-1 border-t border-cloud">
-              <Button size="sm" loading={deciding} onClick={() => onApprove(teacher.id)}>
-                <Icon name="check" size={13} /> Approve
-              </Button>
-              <Button size="sm" loading={deciding}
-                className="bg-red-500 border-red-500 hover:bg-red-600 hover:border-red-600"
-                onClick={() => onReject(teacher)}>
-                <Icon name="close" size={13} /> Reject
-              </Button>
+          {teacher.approvalStatus === 'PENDING' && (
+            <div className="flex gap-2 border-t border-line pt-4">
+              <Button size="sm" loading={deciding} onClick={() => onApprove(teacher.id)}>Approve</Button>
+              <Button size="sm" variant="danger" disabled={deciding} onClick={() => onReject(teacher)}>Reject</Button>
             </div>
           )}
-        </div>
-        </motion.div>
+        </DrawerContent>
       )}
-      </AnimatePresence>
-    </Card>
+    </Drawer>
+  );
+}
+
+// ─── Row ─────────────────────────────────────────────────────────────────────
+
+function TeacherRow({ teacher, onOpen }: { teacher: Teacher; onOpen: () => void }) {
+  const app = teacher.teacherApplication;
+  return (
+    <button type="button" onClick={onOpen}
+      className="flex w-full items-center gap-4 border-b border-line px-5 py-3.5 text-left last:border-b-0 hover:bg-subtle transition-colors">
+      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-[13px] font-bold text-navy">
+        {initials(teacher)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-navy">{displayName(teacher)}</span>
+        <span className="block truncate text-[13px] text-muted">{teacher.email}</span>
+      </span>
+      <span className="hidden min-w-0 max-w-[260px] flex-wrap gap-1 md:flex">
+        {app?.subjectAreas.slice(0, 2).map(s => <Badge key={s} variant="default">{s}</Badge>)}
+        {(app?.subjectAreas.length ?? 0) > 2 && <span className="self-center text-xs text-muted">+{app!.subjectAreas.length - 2}</span>}
+      </span>
+      <span className="hidden w-20 text-[13px] text-ink2 sm:block">{app?.yearsExperience != null ? `${app.yearsExperience} yrs` : '—'}</span>
+      <Badge variant={teacher.approvalStatus === 'APPROVED' ? 'active' : 'default'}>{STATUS_LABEL[teacher.approvalStatus]}</Badge>
+    </button>
   );
 }
 
@@ -344,6 +237,7 @@ export default function AdminTeachersPage() {
   const [tab, setTab] = useState<Status>('PENDING');
   const [deciding, setDeciding] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<Teacher | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -360,10 +254,10 @@ export default function AdminTeachersPage() {
     try {
       await api.patch(`/portals/admin/teachers/${id}/approve`, { decision: 'approve' });
       const teacher = all.find(t => t.id === id);
-      notify.success('Teacher approved', { description: displayName(teacher!) });
+      notify.success('Teacher approved', { description: teacher ? displayName(teacher) : undefined });
       setAll(prev => prev.map(t => t.id === id ? { ...t, approvalStatus: 'APPROVED' } : t));
     } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Action failed');
+      notify.error(err?.response?.data?.message ?? 'Could not approve the application');
     } finally { setDeciding(null); }
   }
 
@@ -378,8 +272,9 @@ export default function AdminTeachersPage() {
         : t
       ));
       setRejectTarget(null);
+      notify.success('Application rejected');
     } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Action failed');
+      notify.error(err?.response?.data?.message ?? 'Could not reject the application');
     } finally { setDeciding(null); }
   }
 
@@ -388,91 +283,55 @@ export default function AdminTeachersPage() {
     APPROVED: all.filter(t => t.approvalStatus === 'APPROVED').length,
     REJECTED: all.filter(t => t.approvalStatus === 'REJECTED').length,
   };
-
   const filtered = all.filter(t => t.approvalStatus === tab);
-
-  const TABS: { key: Status; label: string; color: string }[] = [
-    { key: 'PENDING',  label: 'Pending',  color: 'text-amber-500' },
-    { key: 'APPROVED', label: 'Approved', color: 'text-azure' },
-    { key: 'REJECTED', label: 'Rejected', color: 'text-red-500' },
+  const open = all.find(t => t.id === openId) ?? null;
+  const TABS: { key: Status; label: string }[] = [
+    { key: 'PENDING', label: 'Pending' }, { key: 'APPROVED', label: 'Approved' }, { key: 'REJECTED', label: 'Rejected' },
   ];
 
   if (loading) return (
     <div className="flex flex-col min-h-full">
       <SkeletonTopbar />
-      <div className="flex-1 p-6 space-y-5">
-        <div className="grid grid-cols-3 gap-3">
-          {[1,2,3].map(i => <div key={i} className="rounded-2xl border border-cloud bg-white h-20 animate-pulse" />)}
-        </div>
-        <div className="space-y-3">
-          {[1,2,3].map(i => <SkeletonCard key={i} />)}
-        </div>
+      <div className="flex-1 p-6 space-y-3">
+        {[1, 2, 3].map(i => <SkeletonCard key={i} />)}
       </div>
     </div>
   );
 
   return (
-    <>
-      <div className="flex flex-col min-h-full">
-        <Topbar title="Teachers" subtitle="Review applications and manage the teaching roster" />
-        <div className="flex-1 p-6 space-y-5">
+    <div className="flex flex-col min-h-full">
+      <Topbar title="Teachers" subtitle="Review applications and manage the teaching roster" />
+      <div className="flex-1 space-y-5 p-4 lg:px-7 lg:py-6">
 
-          {/* Stats header */}
-          <div className="grid grid-cols-3 gap-3">
-            {TABS.map(t => (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                className={`rounded-2xl border p-4 text-left transition-all ${tab === t.key ? 'border-azure bg-azure/5' : 'border-cloud bg-white hover:bg-cloud/30'}`}>
-                <p className={`text-2xl font-black ${t.color}`}>{counts[t.key]}</p>
-                <p className="text-xs font-semibold text-royal/50 mt-0.5">{t.label}</p>
-              </button>
-            ))}
-          </div>
-
-          {/* Tab selector */}
-          <div className="flex gap-1 rounded-xl border border-cloud bg-surface p-1 w-fit">
-            {TABS.map(t => (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${tab === t.key ? 'bg-white text-navy shadow-sm border border-cloud' : 'text-royal/50 hover:text-navy'}`}>
-                {t.label}
-                {counts[t.key] > 0 && (
-                  <span className={`ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tab === t.key ? 'bg-azure text-white' : 'bg-cloud text-royal/40'}`}>
-                    {counts[t.key]}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          {/* List */}
-          {filtered.length === 0 ? (
-            <Card padding="lg">
-              <EmptyState
-                icon={tab === 'PENDING' ? 'assignments' : tab === 'APPROVED' ? 'check' : 'close'}
-                title={tab === 'PENDING' ? 'All caught up!' : `No ${tab.toLowerCase()} teachers`}
-                description={tab === 'PENDING' ? 'No pending teacher applications to review' : `There are no ${tab.toLowerCase()} applications yet`}
-              />
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {filtered.map(t => (
-                <TeacherCard key={t.id} teacher={t}
-                  onApprove={tab === 'PENDING' ? approve : undefined}
-                  onReject={tab === 'PENDING' ? setRejectTarget : undefined}
-                  deciding={deciding === t.id} />
-              ))}
-            </div>
-          )}
+        <div className="grid grid-cols-3 gap-4">
+          {TABS.map(t => (
+            <button key={t.key} type="button" onClick={() => setTab(t.key)} aria-pressed={tab === t.key}
+              className={`flex flex-col gap-1 rounded-lg border p-4 text-left transition-colors ${tab === t.key ? 'border-azure bg-accent-soft' : 'border-line bg-white hover:bg-subtle'}`}>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{t.label}</span>
+              <span className="text-2xl font-extrabold text-navy">{counts[t.key]}</span>
+            </button>
+          ))}
         </div>
+
+        {filtered.length === 0 ? (
+          <Card padding="lg">
+            <EmptyState
+              icon={tab === 'PENDING' ? 'assignments' : tab === 'APPROVED' ? 'check' : 'close'}
+              title={tab === 'PENDING' ? 'No applications waiting' : `No ${tab.toLowerCase()} teachers`}
+              description={tab === 'PENDING' ? 'New teacher applications appear here for review.' : `There are no ${tab.toLowerCase()} applications yet.`}
+            />
+          </Card>
+        ) : (
+          <Card padding="none" className="overflow-hidden">
+            {filtered.map(t => <TeacherRow key={t.id} teacher={t} onOpen={() => setOpenId(t.id)} />)}
+          </Card>
+        )}
       </div>
 
-      {/* Rejection modal */}
-      {rejectTarget && (
-        <RejectModal
-          teacher={rejectTarget}
-          onClose={() => setRejectTarget(null)}
-          onConfirm={rejectConfirm}
-          loading={deciding === rejectTarget.id} />
-      )}
-    </>
+      <TeacherDrawer teacher={open} onClose={() => setOpenId(null)}
+        onApprove={approve} onReject={setRejectTarget} deciding={!!open && deciding === open.id} />
+      <RejectDialog teacher={rejectTarget} onClose={() => setRejectTarget(null)}
+        onConfirm={rejectConfirm} loading={!!rejectTarget && deciding === rejectTarget.id} />
+    </div>
   );
 }

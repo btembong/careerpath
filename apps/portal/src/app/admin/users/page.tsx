@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Drawer, DrawerContent, DrawerSection, InfoGrid } from '@/components/ui/Dialog';
 import api from '@/lib/api';
 
 type Role = 'STUDENT' | 'TEACHER' | 'ADMIN' | 'COUNTRY_REP' | 'SUBJECT_REVIEWER';
@@ -90,6 +91,8 @@ export default function AdminUsersPage() {
     load(globalFilter, r);
   }
 
+  function openUser(u: User) { setPromoteId(u.id); setPromoteRole(u.role); setCurrency('USD'); }
+
   async function handlePromote(e: React.FormEvent) {
     e.preventDefault();
     if (!promoteId) return;
@@ -114,12 +117,12 @@ export default function AdminUsersPage() {
       header: 'User',
       cell: info => (
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-azure/10 text-sm font-bold text-azure">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-subtle text-sm font-bold text-ink2">
             {info.getValue()[0].toUpperCase()}
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-navy truncate">{info.getValue()}</p>
-            <p className="text-[10px] text-royal/40 font-mono truncate">{info.row.original.id.slice(0, 8)}…</p>
+            <p className="text-[11px] text-muted font-mono truncate">{info.row.original.id.slice(0, 8)}…</p>
           </div>
         </div>
       ),
@@ -136,16 +139,16 @@ export default function AdminUsersPage() {
       header: 'Status',
       cell: info => info.getValue() === 'PENDING'
         ? <Badge variant="muted">Pending</Badge>
-        : <span className="text-[11px] text-green-600 font-semibold">Active</span>,
+        : <Badge variant="active">Active</Badge>,
     }),
     col.display({
       id: 'actions',
       header: '',
       cell: ({ row }) => (
         <button
-          onClick={() => { setPromoteId(row.original.id); setPromoteRole(row.original.role); setCurrency('USD'); }}
-          className="flex items-center gap-1.5 rounded-xl border border-cloud px-2.5 py-1.5 text-[11px] font-semibold text-navy hover:bg-cloud transition ml-auto">
-          <Icon name="edit" size={12} /> Change Role
+          onClick={e => { e.stopPropagation(); openUser(row.original); }}
+          className="ml-auto flex h-8 items-center gap-1.5 rounded-md border border-line bg-white px-3 text-[13px] font-semibold text-navy hover:bg-subtle transition-colors">
+          Manage
         </button>
       ),
     }),
@@ -169,6 +172,7 @@ export default function AdminUsersPage() {
     return map;
   }, [allUsers]);
 
+  const selected = users.find(u => u.id === promoteId) ?? null;
   return (
     <div className="flex flex-col min-h-full">
       <Topbar title="Users" subtitle="Search, manage roles, and promote accounts" />
@@ -199,15 +203,15 @@ export default function AdminUsersPage() {
 
         {/* Re-login notice after role change */}
         {lastRoleChanged && (
-          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <Icon name="clock" size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 rounded-lg border border-line bg-white px-4 py-3">
+            <Icon name="clock" size={16} className="text-azure-strong flex-shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-amber-900">Role updated for {lastRoleChanged}</p>
-              <p className="text-xs text-amber-700 mt-0.5">
+              <p className="text-sm font-semibold text-navy">Role updated for {lastRoleChanged}</p>
+              <p className="text-xs text-ink2 mt-0.5">
                 The new role takes effect the next time they log in — their current session still uses the old role.
               </p>
             </div>
-            <button onClick={() => setLastRoleChanged(null)} className="text-amber-400 hover:text-amber-600 transition flex-shrink-0">
+            <button onClick={() => setLastRoleChanged(null)} aria-label="Dismiss" className="text-muted hover:text-navy transition-colors flex-shrink-0">
               <Icon name="close" size={14} />
             </button>
           </div>
@@ -232,43 +236,6 @@ export default function AdminUsersPage() {
             ))}
           </div>
         </div>
-
-        {/* Promote panel */}
-        {promoteId && (
-          <Card padding="md" className="border-azure/30 bg-azure/5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-azure mb-3">CHANGE ROLE</p>
-            <p className="text-xs text-royal/60 mb-4">
-              Changing role for: <span className="font-semibold text-navy">{users.find(u => u.id === promoteId)?.email}</span>
-            </p>
-            <form onSubmit={handlePromote} className="space-y-3">
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {PROMOTE_ROLES.map(p => (
-                  <button key={p.role} type="button" onClick={() => setPromoteRole(p.role)}
-                    className={`rounded-xl border py-2.5 text-xs font-semibold transition ${
-                      promoteRole === p.role ? 'border-azure bg-azure text-white' : 'border-cloud bg-white text-navy hover:bg-cloud'
-                    }`}>
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-              {promoteRole === 'SUBJECT_REVIEWER' && (
-                <div className="space-y-1">
-                  <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">
-                    Payout currency <span className="text-red-400">*</span>
-                  </label>
-                  <input value={currency} onChange={e => setCurrency(e.target.value)}
-                    placeholder="USD, NGN, GHS…" maxLength={5}
-                    className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-                  <p className="text-[10px] text-royal/40">Reviewer earnings credited in this currency.</p>
-                </div>
-              )}
-              <div className="flex gap-2 pt-1">
-                <Button type="submit" size="sm" loading={saving}>Save role</Button>
-                <Button type="button" variant="secondary" size="sm" onClick={() => setPromoteId(null)}>Cancel</Button>
-              </div>
-            </form>
-          </Card>
-        )}
 
         {/* Table */}
         {loading ? (
@@ -305,7 +272,8 @@ export default function AdminUsersPage() {
                 </thead>
                 <tbody className="divide-y divide-cloud">
                   {table.getRowModel().rows.map(row => (
-                    <tr key={row.id} className="hover:bg-cloud/20 transition group">
+                    <tr key={row.id} onClick={() => openUser(row.original)}
+                      className="cursor-pointer hover:bg-subtle transition-colors group">
                       {row.getVisibleCells().map(cell => (
                         <td key={cell.id} className="px-4 py-3">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -319,6 +287,48 @@ export default function AdminUsersPage() {
           </Card>
         )}
       </div>
+
+      <Drawer open={!!selected} onOpenChange={o => { if (!o) setPromoteId(null); }}>
+        {selected && (
+          <DrawerContent title={selected.email} description={`${ROLE_LABELS[selected.role]} account`}>
+            <InfoGrid columns={2} items={[
+              { label: 'Role', value: ROLE_LABELS[selected.role] },
+              { label: 'Status', value: selected.approvalStatus === 'PENDING' ? 'Pending approval' : 'Active' },
+              { label: 'Country', value: selected.countryId ? selected.countryId.slice(0, 8) : 'Not set' },
+              { label: 'User ID', value: <span className="font-mono text-[12px]">{selected.id.slice(0, 13)}…</span> },
+            ]} />
+
+            <DrawerSection title="Change role">
+              <form onSubmit={handlePromote} className="space-y-4">
+                <div role="radiogroup" aria-label="New role" className="grid grid-cols-2 gap-2">
+                  {PROMOTE_ROLES.map(p => (
+                    <button key={p.role} type="button" role="radio" aria-checked={promoteRole === p.role}
+                      onClick={() => setPromoteRole(p.role)}
+                      className={`h-9 rounded-md border text-[13px] font-semibold transition-colors ${
+                        promoteRole === p.role ? 'border-azure bg-accent-soft text-navy' : 'border-line bg-white text-ink2 hover:bg-subtle'
+                      }`}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                {promoteRole === 'SUBJECT_REVIEWER' && (
+                  <label className="block space-y-1.5">
+                    <span className="text-[13px] font-semibold text-navy">Payout currency</span>
+                    <input value={currency} onChange={e => setCurrency(e.target.value)} placeholder="USD, NGN, GHS…" maxLength={5}
+                      className="input-base" />
+                    <span className="block text-xs text-muted">Reviewer earnings are credited in this currency.</span>
+                  </label>
+                )}
+                <p className="text-[13px] text-ink2">The new role applies the next time they sign in.</p>
+                <div className="flex gap-2">
+                  <Button type="submit" size="sm" loading={saving} disabled={promoteRole === selected.role}>Save role</Button>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => setPromoteId(null)}>Cancel</Button>
+                </div>
+              </form>
+            </DrawerSection>
+          </DrawerContent>
+        )}
+      </Drawer>
     </div>
   );
 }
