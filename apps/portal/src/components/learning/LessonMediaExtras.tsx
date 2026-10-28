@@ -37,7 +37,7 @@ export function LessonMediaExtras({ chapters, transcript, onSeek }: Props) {
   return (
     <div className="space-y-4">
       {!!chapters?.length && (
-        <div className="rounded-2xl border border-[var(--pl-divider)] bg-[var(--pl-bg2)] overflow-hidden">
+        <div className="rounded-2xl border border-[var(--pl-divider)] bg-[var(--pl-bg2)] overflow-hidden text-white/85">
           <p className="px-5 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--pl-sub)]">Chapters</p>
           <ol className="pb-2">
             {chapters.map((c, i) => (
@@ -46,7 +46,7 @@ export function LessonMediaExtras({ chapters, transcript, onSeek }: Props) {
                   type="button"
                   disabled={!onSeek}
                   onClick={() => onSeek?.(c.startSec)}
-                  className="flex w-full items-center gap-3 px-5 py-2 text-left text-sm hover:bg-[var(--pl-card-h)] disabled:cursor-default disabled:hover:bg-transparent transition"
+                  className="flex w-full items-center gap-3 px-5 py-2 text-left text-sm text-white/85 hover:bg-[var(--pl-card-h)] disabled:cursor-default disabled:hover:bg-transparent transition"
                 >
                   <span className="w-5 text-xs text-[var(--pl-faint)]">{i + 1}</span>
                   <span className="font-mono text-xs text-azure w-12">{fmt(c.startSec)}</span>
@@ -62,12 +62,12 @@ export function LessonMediaExtras({ chapters, transcript, onSeek }: Props) {
       )}
 
       {!!lines.length && (
-        <div className="rounded-2xl border border-[var(--pl-divider)] bg-[var(--pl-bg2)] overflow-hidden">
+        <div className="rounded-2xl border border-[var(--pl-divider)] bg-[var(--pl-bg2)] overflow-hidden text-white/85">
           <button
             type="button"
             onClick={() => setOpen(o => !o)}
             aria-expanded={open}
-            className="flex w-full items-center justify-between px-5 py-4 text-left"
+            className="flex w-full items-center justify-between px-5 py-4 text-left text-white/85"
           >
             <span className="flex items-center gap-2 text-sm font-semibold">
               <Icon name="notebook" size={15} className="text-azure" /> Transcript

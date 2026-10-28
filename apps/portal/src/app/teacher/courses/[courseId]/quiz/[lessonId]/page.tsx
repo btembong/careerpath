@@ -265,9 +265,9 @@ export default function QuizBuilderPage() {
                       <div className="grid grid-cols-2 gap-1.5">
                         {(q.options as Option[]).map(opt => (
                           <div key={opt.id}
-                            className={`rounded-lg border px-3 py-1.5 text-xs ${opt.id === q.correctAnswer ? 'border-green-300 bg-green-50 text-green-800 font-semibold' : 'border-cloud text-navy/70'}`}>
+                            className={`rounded-lg border px-3 py-1.5 text-xs ${opt.id === q.correctAnswer ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-600 font-semibold' : 'border-cloud text-navy/70'}`}>
                             <span className="font-bold uppercase mr-1.5">{opt.id}.</span>{opt.text}
-                            {opt.id === q.correctAnswer && <span className="ml-1 text-green-600">✓</span>}
+                            {opt.id === q.correctAnswer && <span className="ml-1 text-emerald-600">✓</span>}
                           </div>
                         ))}
                       </div>

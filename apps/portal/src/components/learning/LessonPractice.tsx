@@ -54,7 +54,7 @@ export function LessonPractice({ courseId, lessonId, onSeek }: {
   function retry() { setAnswers({}); setResults(null); setScore(null); }
 
   return (
-    <div className="rounded-2xl border border-[var(--pl-divider)] bg-[var(--pl-bg2)] overflow-hidden">
+    <div className="rounded-2xl border border-[var(--pl-divider)] bg-[var(--pl-bg2)] overflow-hidden text-white/85">
       <div className="flex items-center justify-between gap-3 px-5 pt-5">
         <div>
           <p className="text-sm font-bold">Practice</p>
@@ -88,7 +88,7 @@ export function LessonPractice({ courseId, lessonId, onSeek }: {
                       aria-checked={chosen}
                       disabled={!!results}
                       onClick={() => setAnswers(a => ({ ...a, [q.id]: o.id }))}
-                      className={`flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left text-sm transition
+                      className={`flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left text-sm text-white/85 transition
                         ${isRight ? 'border-emerald-500 bg-emerald-500/10'
                           : isWrongPick ? 'border-red-500 bg-red-500/10'
                           : chosen ? 'border-azure bg-azure/10'
@@ -104,7 +104,7 @@ export function LessonPractice({ courseId, lessonId, onSeek }: {
               </div>
               {r && !r.isCorrect && (r.explanation || r.videoAtSec !== null) && (
                 <div className="rounded-xl bg-[var(--pl-card)] px-3.5 py-3 text-xs leading-relaxed text-[var(--pl-sub)] space-y-2">
-                  {r.explanation && <p><strong className="text-[var(--pl-text,inherit)]">Worked solution: </strong>{r.explanation}</p>}
+                  {r.explanation && <p><strong className="text-white/90">Worked solution: </strong>{r.explanation}</p>}
                   {r.videoAtSec !== null && (
                     onSeek ? (
                       <button type="button" onClick={() => onSeek(r.videoAtSec!)}
