@@ -235,23 +235,26 @@ export class PlatformCoursesController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '[Student] Mark lesson as complete' })
   markComplete(
+    @Param('id') courseId: string,
     @Param('lessonId') lessonId: string,
     @CurrentUser() user: UserProfile,
     @Body('watchedSecs') watchedSecs?: number,
   ) {
-    return this.svc.markLessonComplete(user.id, lessonId, watchedSecs);
+    return this.svc.completeLesson(user.id, courseId, lessonId, watchedSecs);
   }
 
   @Post(':id/progress/:lessonId/watch')
   @Roles(UserRole.STUDENT)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '[Student] Update video watch progress' })
+  @ApiOperation({ summary: '[Student] Report playback: positionSecs (resume point) and deltaSecs (seconds played since last report)' })
   updateWatchProgress(
+    @Param('id') courseId: string,
     @Param('lessonId') lessonId: string,
     @CurrentUser() user: UserProfile,
-    @Body('watchedSecs') watchedSecs: number,
+    @Body('positionSecs') positionSecs: number,
+    @Body('deltaSecs') deltaSecs: number,
   ) {
-    return this.svc.updateProgress(user.id, lessonId, watchedSecs);
+    return this.svc.recordWatch(user.id, courseId, lessonId, positionSecs, deltaSecs);
   }
 
   @Get(':id/progress')

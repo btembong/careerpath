@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { UserProfile, CourseStatus, CourseSource, UserRole } from '@prisma/client';
+import { Prisma, UserProfile, CourseStatus, CourseSource, UserRole } from '@prisma/client';
 import { WordPressService } from '../wordpress/wordpress.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { FilesService } from '../files/files.service';
@@ -252,13 +252,28 @@ export class PlatformCoursesService {
   }
 
   async updateLesson(courseId: string, lessonId: string, actor: UserProfile, dto: {
-    title?: string; videoUrl?: string; content?: string;
-    durationSecs?: number; isFree?: boolean;
+    title?: string; videoUrl?: string | null; content?: string | null;
+    durationSecs?: number | null; isFree?: boolean;
+    chapters?: unknown; transcript?: string | null;
   }) {
     await this.assertCourseAccess(courseId, actor);
+    // The lesson must belong to this course — otherwise a teacher could edit another course's lesson
+    const owned = await this.prisma.lesson.count({ where: { id: lessonId, module: { courseId } } });
+    if (!owned) throw new NotFoundException('Lesson not found in this course');
+
+    // Explicit field list: never pass the raw body to Prisma (it would allow moduleId etc.)
+    const data: Prisma.LessonUpdateInput = {
+      ...(dto.title !== undefined && { title: String(dto.title).slice(0, 200) }),
+      ...(dto.videoUrl !== undefined && { videoUrl: dto.videoUrl || null }),
+      ...(dto.content !== undefined && { content: dto.content ?? null }),
+      ...(dto.durationSecs !== undefined && { durationSecs: dto.durationSecs ?? null }),
+      ...(dto.isFree !== undefined && { isFree: !!dto.isFree }),
+      ...(dto.chapters !== undefined && { chapters: normaliseChapters(dto.chapters) ?? Prisma.DbNull }),
+      ...(dto.transcript !== undefined && { transcript: dto.transcript ? String(dto.transcript).slice(0, 100_000) : null }),
+    };
     return this.prisma.lesson.update({
       where: { id: lessonId },
-      data: dto,
+      data,
       include: { attachments: true },
     });
   }
@@ -340,11 +355,27 @@ export class PlatformCoursesService {
     } catch { /* non-critical */ }
   }
 
-  async updateProgress(studentId: string, lessonId: string, watchedSecs: number) {
+  /** Student-facing "mark complete": checks the lesson is theirs to complete before recording it. */
+  async completeLesson(studentId: string, courseId: string, lessonId: string, watchedSecs?: number) {
+    await this.assertStudentLesson(studentId, courseId, lessonId);
+    return this.markLessonComplete(studentId, lessonId, watchedSecs);
+  }
+
+  /**
+   * Called while a video plays. `deltaSecs` (seconds actually played since the last report) is added
+   * to study time — capped so a client can't inflate it — and `positionSecs` is kept for resume.
+   */
+  async recordWatch(studentId: string, courseId: string, lessonId: string, positionSecs: number, deltaSecs: number) {
+    const lesson = await this.assertStudentLesson(studentId, courseId, lessonId);
+    const MAX_DELTA = 90; // client reports every ~30 s; allow slack for slow networks
+    const delta = Math.min(Math.max(0, Math.floor(Number(deltaSecs) || 0)), MAX_DELTA);
+    const limit = lesson.durationSecs ? lesson.durationSecs : Number.MAX_SAFE_INTEGER;
+    const position = Math.min(Math.max(0, Math.floor(Number(positionSecs) || 0)), limit);
     return this.prisma.lessonProgress.upsert({
       where: { studentId_lessonId: { studentId, lessonId } },
-      update: { watchedSecs },
-      create: { studentId, lessonId, watchedSecs, completed: false },
+      update: { watchedSecs: { increment: delta }, positionSecs: position },
+      create: { studentId, lessonId, watchedSecs: delta, positionSecs: position, completed: false },
+      select: { watchedSecs: true, positionSecs: true, completed: true },
     });
   }
 
@@ -366,18 +397,26 @@ export class PlatformCoursesService {
 
     const allLessons = course.modules.flatMap(m => m.lessons);
     const completedCount = allLessons.filter(l => l.progress[0]?.completed).length;
+    const hasAccess = await this.studentHasCourseAccess(studentId, courseId);
 
     return {
       courseId,
+      hasAccess,
       totalLessons: allLessons.length,
       completedLessons: completedCount,
       percentComplete: allLessons.length ? Math.round((completedCount / allLessons.length) * 100) : 0,
       modules: course.modules.map(m => ({
         ...m,
-        lessons: m.lessons.map(l => ({
-          ...l,
-          progress: l.progress[0] ?? null,
-        })),
+        lessons: m.lessons.map(l => {
+          // Without access, only the outline is returned — paid video/text stays locked (free previews excepted)
+          const locked = !hasAccess && !l.isFree;
+          return {
+            ...l,
+            ...(locked && { videoUrl: null, content: null, transcript: null }),
+            locked,
+            progress: l.progress[0] ?? null,
+          };
+        }),
       })),
     };
   }
@@ -390,13 +429,8 @@ export class PlatformCoursesService {
    * Non-R2 URLs (YouTube / Vimeo) pass through unsigned.
    */
   async getSignedVideoUrl(courseId: string, lessonId: string, studentId: string): Promise<{ url: string }> {
-    // Confirm enrollment
-    const enrollment = await this.prisma.courseEnrollment.findFirst({
-      where: { courseId, studentId },
-    });
-    if (!enrollment) throw new ForbiddenException('Not enrolled in this course');
-
-    const lesson = await this.prisma.lesson.findUniqueOrThrow({ where: { id: lessonId } });
+    // Package buyers usually have no CourseEnrollment row, so check real access, not just enrollment
+    const lesson = await this.assertStudentLesson(studentId, courseId, lessonId);
     if (!lesson.videoUrl) throw new NotFoundException('Lesson has no video');
 
     const url = await this.files.signUrl(lesson.videoUrl);
@@ -457,8 +491,8 @@ export class PlatformCoursesService {
   // ── Quiz: Student submit ──────────────────────────────────
 
   async submitQuizAttempt(studentId: string, courseId: string, lessonId: string, answersJson: Record<string, string>) {
-    const lesson = await this.prisma.lesson.findUnique({ where: { id: lessonId } });
-    if (!lesson) throw new NotFoundException('Lesson not found');
+    // Passing marks the lesson complete (XP, certificates), so require course access like any lesson action
+    const lesson = await this.assertStudentLesson(studentId, courseId, lessonId);
 
     // Check attempt limit
     if (lesson.maxAttempts > 0) {
@@ -644,6 +678,32 @@ export class PlatformCoursesService {
     }
     return course;
   }
+
+  /** Whether a student may open a published course's paid lessons. Mirrors the portal's access rules. */
+  async studentHasCourseAccess(studentId: string, courseId: string): Promise<boolean> {
+    const now = new Date();
+    const active = { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
+    const [course, pkg, purchase, enrollment] = await Promise.all([
+      this.prisma.platformCourse.findUnique({ where: { id: courseId }, select: { status: true } }),
+      this.prisma.packagePurchase.findFirst({ where: { studentId, ...active, package: { courseIds: { has: courseId } } }, select: { id: true } }),
+      this.prisma.coursePurchase.findFirst({ where: { studentId, courseId, ...active }, select: { id: true } }),
+      this.prisma.courseEnrollment.findUnique({ where: { studentId_courseId: { studentId, courseId } }, select: { id: true } }),
+    ]);
+    return course?.status === 'PUBLISHED' && !!(pkg || purchase || enrollment);
+  }
+
+  /**
+   * For student actions on a lesson: the lesson must belong to the course, and the student needs
+   * course access unless the lesson is a free preview.
+   */
+  private async assertStudentLesson(studentId: string, courseId: string, lessonId: string) {
+    const lesson = await this.prisma.lesson.findFirst({ where: { id: lessonId, module: { courseId } } });
+    if (!lesson) throw new NotFoundException('Lesson not found in this course');
+    if (!lesson.isFree && !(await this.studentHasCourseAccess(studentId, courseId))) {
+      throw new ForbiddenException('You need access to this course');
+    }
+    return lesson;
+  }
 }
 
 function courseIncludes() {
@@ -662,4 +722,23 @@ function courseIncludes() {
       },
     },
   };
+}
+
+/**
+ * Accept chapters as [{ startSec, title }] (or { start/time, title }) and return a clean, sorted,
+ * de-duplicated list — or null when empty. Rejects anything that isn't a list of chapters.
+ */
+function normaliseChapters(raw: unknown): { startSec: number; title: string }[] | null {
+  if (raw == null || raw === '') return null;
+  if (!Array.isArray(raw)) throw new BadRequestException('chapters must be a list of { startSec, title }');
+  const seen = new Set<number>();
+  const chapters = raw
+    .map((c: any) => ({
+      startSec: Math.max(0, Math.floor(Number(c?.startSec ?? c?.start ?? c?.time))),
+      title: String(c?.title ?? '').trim().slice(0, 120),
+    }))
+    .filter(c => Number.isFinite(c.startSec) && c.title && !seen.has(c.startSec) && seen.add(c.startSec))
+    .sort((a, b) => a.startSec - b.startSec)
+    .slice(0, 100);
+  return chapters.length ? chapters : null;
 }
