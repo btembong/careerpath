@@ -68,8 +68,7 @@ export class PlatformCoursesController {
   @Get(':id')
   @ApiOperation({ summary: 'Get full course with modules and lessons' })
   getCourse(@CurrentUser() user: UserProfile, @Param('id') id: string) {
-    const studentId = user.role === UserRole.STUDENT ? user.id : undefined;
-    return this.svc.getCourse(id, studentId);
+    return this.svc.getCourse(id, user);
   }
 
   @Patch(':id')

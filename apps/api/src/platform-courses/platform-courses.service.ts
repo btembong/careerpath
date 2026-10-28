@@ -142,15 +142,34 @@ export class PlatformCoursesService {
     return { created, updated, total: wpCourses.length };
   }
 
-  async getCourse(id: string, studentId?: string) {
+  async getCourse(id: string, viewer: UserProfile) {
+    const isStudent = (viewer.role as UserRole) === UserRole.STUDENT;
     const course = await this.prisma.platformCourse.findUniqueOrThrow({
       where: { id },
       include: {
         ...courseIncludes(),
-        enrollments: studentId ? { where: { studentId } } : false,
+        enrollments: isStudent ? { where: { studentId: viewer.id } } : false,
       },
     });
-    return course;
+
+    // Admins and the course's own teacher see everything; anyone else only sees paid lesson content
+    // when they have access (free previews excepted) — otherwise this endpoint bypassed the paywall.
+    const isOwnerOrAdmin = (viewer.role as UserRole) === UserRole.ADMIN || course.teacherId === viewer.id;
+    if (isOwnerOrAdmin) return course;
+    const hasAccess = isStudent && (await this.studentHasCourseAccess(viewer.id, id));
+    return {
+      ...course,
+      hasAccess,
+      modules: course.modules.map(m => ({
+        ...m,
+        lessons: m.lessons.map(l => {
+          const locked = !hasAccess && !l.isFree;
+          return locked
+            ? { ...l, videoUrl: null, content: null, transcript: null, attachments: [], locked }
+            : { ...l, locked };
+        }),
+      })),
+    };
   }
 
   async updateCourse(id: string, actor: UserProfile, dto: {
@@ -158,11 +177,34 @@ export class PlatformCoursesService {
     programmeId?: string; subjectId?: string; levelId?: string;
     teacherId?: string; status?: CourseStatus;
     priceAmount?: number | null; priceCurrency?: string | null; isSoldIndividually?: boolean;
+    shortDescription?: string | null; source?: CourseSource; wpCourseUrl?: string | null;
   }) {
     await this.assertCourseAccess(id, actor);
+    const isAdmin = (actor.role as UserRole) === UserRole.ADMIN;
+    // Teachers publish through submit-for-review and can't reassign courses — only admins change these
+    const adminOnly = [dto.status, dto.teacherId, dto.source, dto.wpCourseUrl].some(v => v !== undefined);
+    if (!isAdmin && adminOnly) {
+      throw new ForbiddenException('Only admins can change a course’s status, teacher or source. Submit the course for review instead.');
+    }
+    const data: Prisma.PlatformCourseUncheckedUpdateInput = {
+      ...(dto.title !== undefined && { title: dto.title }),
+      ...(dto.description !== undefined && { description: dto.description }),
+      ...(dto.shortDescription !== undefined && { shortDescription: dto.shortDescription }),
+      ...(isAdmin && dto.source !== undefined && { source: dto.source }),
+      ...(isAdmin && dto.wpCourseUrl !== undefined && { wpCourseUrl: dto.wpCourseUrl }),
+      ...(dto.coverUrl !== undefined && { coverUrl: dto.coverUrl }),
+      ...(dto.programmeId !== undefined && { programmeId: dto.programmeId }),
+      ...(dto.subjectId !== undefined && { subjectId: dto.subjectId }),
+      ...(dto.levelId !== undefined && { levelId: dto.levelId }),
+      ...(dto.priceAmount !== undefined && { priceAmount: dto.priceAmount }),
+      ...(dto.priceCurrency !== undefined && { priceCurrency: dto.priceCurrency }),
+      ...(dto.isSoldIndividually !== undefined && { isSoldIndividually: dto.isSoldIndividually }),
+      ...(isAdmin && dto.status !== undefined && { status: dto.status }),
+      ...(isAdmin && dto.teacherId !== undefined && { teacherId: dto.teacherId }),
+    };
     return this.prisma.platformCourse.update({
       where: { id },
-      data: dto,
+      data,
       include: courseIncludes(),
     });
   }
