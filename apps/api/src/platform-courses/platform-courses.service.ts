@@ -906,6 +906,33 @@ export class PlatformCoursesService {
     return lesson;
   }
 
+  /**
+   * A lesson as seen by someone studying or previewing it: students need access (or a free preview),
+   * teachers only see their own courses, admins see everything. Includes course and module titles.
+   */
+  async lessonForViewer(viewer: UserProfile, courseId: string, lessonId: string) {
+    const role = viewer.role as UserRole;
+    if (role === UserRole.STUDENT) await this.assertStudentLesson(viewer.id, courseId, lessonId);
+    else if (role === UserRole.ADMIN || role === UserRole.TEACHER) await this.assertCourseAccess(courseId, viewer);
+    else throw new ForbiddenException('You do not have access to this lesson');
+    const lesson = await this.prisma.lesson.findFirst({
+      where: { id: lessonId, module: { courseId } },
+      include: { module: { select: { title: true, course: { select: { title: true } } } } },
+    });
+    if (!lesson) throw new NotFoundException('Lesson not found in this course');
+    return lesson;
+  }
+
+  /** A lesson the actor may edit (course teacher or admin), with its course id. */
+  async lessonForEditor(actor: UserProfile, lessonId: string) {
+    const lesson = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: { module: { select: { courseId: true } } },
+    });
+    if (!lesson) throw new NotFoundException('Lesson not found');
+    await this.assertCourseAccess(lesson.module.courseId, actor);
+    return lesson;
+  }
 }
 
 function courseIncludes() {

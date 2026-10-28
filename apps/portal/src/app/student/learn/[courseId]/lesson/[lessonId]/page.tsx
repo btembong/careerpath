@@ -1602,7 +1602,7 @@ function NotesPanel({ courseId, lessonId, progress }: { courseId: string; lesson
 }
 
 // ── AI Assistant Panel ────────────────────────────────────
-interface AIMessage { role: 'user' | 'ai'; text: string; time: string; }
+interface AIMessage { role: 'user' | 'ai'; text: string; time: string; failed?: boolean; }
 
 const AI_PROMPTS: { icon: IconName; label: string; q: string }[] = [
   { icon: 'docLine',      label: 'Summarise this lesson',  q: 'Give me a concise summary of the key points covered in this lesson.' },
@@ -1631,13 +1631,18 @@ function AIAssistantPanel({ courseId, lessonId, lessonTitle }: { courseId: strin
     const q = (question ?? input).trim();
     if (!q || loading) return;
     setInput('');
+    // Earlier turns give the tutor context for follow-ups; failed replies are left out
+    const history = messages
+      .filter(m => !m.failed)
+      .map(m => ({ role: m.role === 'ai' ? 'assistant' : 'user', text: m.text }));
     setMessages(m => [...m, { role: 'user', text: q, time: now() }]);
     setLoading(true);
     try {
-      const r = await api.post('/ai/study-assistant', { courseId, lessonId, question: q });
-      setMessages(m => [...m, { role: 'ai', text: r.data.answer ?? r.data, time: now() }]);
-    } catch {
-      setMessages(m => [...m, { role: 'ai', text: 'Sorry, I could not reach the AI right now. Please try again.', time: now() }]);
+      const r = await api.post('/ai/tutor', { courseId, lessonId, question: q, history });
+      setMessages(m => [...m, { role: 'ai', text: r.data.answer, time: now() }]);
+    } catch (err: any) {
+      const text = err?.response?.data?.message ?? 'Sorry, I could not reach the AI right now. Please try again.';
+      setMessages(m => [...m, { role: 'ai', text: Array.isArray(text) ? text.join(' ') : text, time: now(), failed: true }]);
     } finally { setLoading(false); }
   }
 

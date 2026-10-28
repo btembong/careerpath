@@ -64,6 +64,19 @@ export default function QuizBuilderPage() {
   const [qExpl,    setQExpl]    = useState('');
   const [qAt,      setQAt]      = useState('');
   const [addingQ,  setAddingQ]  = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [genMsg,     setGenMsg]     = useState('');
+
+  async function generateWithAI() {
+    setGenerating(true); setGenMsg('');
+    try {
+      const { data } = await api.post(`/ai/generate-quiz/${lessonId}`, { count: 5 });
+      await load();
+      setGenMsg(`Added ${data.generated} draft question${data.generated === 1 ? '' : 's'} from your lesson. Check each one and fix or delete anything that isn't right.`);
+    } catch (err: any) {
+      setGenMsg(err?.response?.data?.message ?? 'Could not generate questions. Please try again.');
+    } finally { setGenerating(false); }
+  }
 
   async function load() {
     const [qRes, lRes] = await Promise.all([
@@ -344,10 +357,19 @@ export default function QuizBuilderPage() {
             </form>
           </Card>
         ) : (
-          <button onClick={() => setShowAdd(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-cloud py-5 text-sm font-semibold text-royal/50 hover:border-azure hover:text-azure transition">
-            <Icon name="add" size={16} /> Add question
-          </button>
+          <div className="space-y-2">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button onClick={() => setShowAdd(true)}
+                className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-cloud py-5 text-sm font-semibold text-royal/50 hover:border-azure hover:text-azure transition">
+                <Icon name="add" size={16} /> Add question
+              </button>
+              <button onClick={generateWithAI} disabled={generating}
+                className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-cloud py-5 text-sm font-semibold text-royal/50 hover:border-azure hover:text-azure transition disabled:opacity-60">
+                <Icon name="sparkles" size={16} /> {generating ? 'Writing questions…' : 'Draft 5 questions with AI'}
+              </button>
+            </div>
+            {genMsg && <p className="text-xs text-royal/60 px-1">{genMsg}</p>}
+          </div>
         )}
 
       </div>
