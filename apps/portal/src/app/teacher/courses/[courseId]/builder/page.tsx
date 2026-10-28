@@ -175,6 +175,14 @@ function SortableLesson({
                 Questions
               </Link>
             )}
+            {(lesson.type === 'VIDEO' || lesson.type === 'TEXT') && (
+              <Link
+                href={`/teacher/courses/${courseId}/quiz/${lesson.id}`}
+                title="Auto-marked practice questions shown under this lesson"
+                className="rounded-lg border border-cloud px-2 py-1 text-[10px] font-bold text-royal/70 hover:border-azure hover:text-azure transition">
+                Practice
+              </Link>
+            )}
             <button onClick={() => setEditLesson(lesson)}
               className="rounded-lg border border-cloud p-1.5 text-royal/40 hover:text-navy hover:bg-cloud transition">
               <Icon name="edit" size={11} />

@@ -72,6 +72,7 @@ model UserProfile {
   teachingProgrammes  Programme[]              @relation("TeacherProgrammes")
   teachingSubjects    Subject[]                @relation("TeacherSubjects")
   onboardingVideoViews OnboardingVideoView[]
+  practiceAttempts     PracticeAttempt[]
   notifications        Notification[]
   broadcastsSent       Broadcast[]
   /// Shareable code, generated the first time the student opens the referrals page
@@ -452,7 +453,23 @@ model QuestionBank {
   imageUrl       String?
   points         Int                 @default(1)
   tags           String[]            @default([])
+  /// Practice questions on video lessons: where in the video this is explained (seconds)
+  videoAtSec     Int?
   attemptAnswers QuizAttemptAnswer[]
+}
+
+/// Practice on video/text lessons — kept apart from QuizAttempt so it never affects quiz scores or certificates
+model PracticeAttempt {
+  id        String      @id @default(uuid())
+  studentId String
+  lessonId  String
+  score     Int
+  total     Int
+  createdAt DateTime    @default(now())
+  student   UserProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lesson    Lesson      @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([studentId, lessonId])
 }
 
 model QuizAttempt {
@@ -730,6 +747,7 @@ model Lesson {
   transcript       String?
   module           CourseModule       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   attachments      LessonAttachment[]
+  practiceAttempts PracticeAttempt[]
   bookmarks        LessonBookmark[]
   notes            LessonNote[]
   progress         LessonProgress[]

@@ -7,6 +7,7 @@ import type { IconName } from '@/lib/icons';
 import { SkeletonTopbar } from '@/components/ui/Skeleton';
 import { VideoPlayer, type Chapter, type VideoPlayerHandle } from '@/components/ui/VideoPlayer';
 import { LessonMediaExtras } from '@/components/learning/LessonMediaExtras';
+import { LessonPractice } from '@/components/learning/LessonPractice';
 import { parseVideoUrl } from '@cpa/shared';
 import { useAuth } from '@/hooks/useAuth';
 import api from '@/lib/api';
@@ -545,6 +546,13 @@ function VideoContent({ lesson, courseId, allLessons, onMarkComplete, signedVide
           transcript={lesson.transcript}
           onSeek={parseVideoUrl(videoSrc ?? '')?.kind === 'file' ? seek : undefined}
         />
+        <LessonPractice
+          courseId={courseId}
+          lessonId={lesson.id}
+          onSeek={parseVideoUrl(videoSrc ?? '')?.kind === 'file'
+            ? (s) => { seek?.(s); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+            : undefined}
+        />
         <Attachments attachments={lesson.attachments} />
         <LessonCompletionCard lesson={lesson} onMarkComplete={onMarkComplete} nextLesson={nextLesson} courseId={courseId} />
         <DiscussionSection courseId={courseId} lessonId={lesson.id} />
@@ -682,6 +690,8 @@ function TextContent({ lesson, courseId, allLessons, onMarkComplete }: {
           )}
 
           <Attachments attachments={lesson.attachments} />
+
+          <LessonPractice courseId={courseId} lessonId={lesson.id} />
 
           {/* ── End-of-lesson card ── */}
           <LessonCompletionCard lesson={lesson} onMarkComplete={onMarkComplete} nextLesson={nextLesson} courseId={courseId} />

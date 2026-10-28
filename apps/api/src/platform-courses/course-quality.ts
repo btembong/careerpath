@@ -40,6 +40,8 @@ export function courseChecklist(course: ChecklistCourse): ChecklistItem[] {
   const realQuizzes = quizzes.filter(q => q.questionCount >= MIN_QUIZ_QUESTIONS);
   const modulesWithoutQuiz = course.modules.filter(m => m.lessons.length && !m.lessons.some(l => l.type === 'QUIZ'));
   const videosWithoutChapters = videos.filter(l => !Array.isArray(l.chapters) || !l.chapters.length);
+  // On non-quiz lessons, questionCount = practice questions
+  const videosWithPractice = videos.filter(l => l.questionCount >= MIN_QUIZ_QUESTIONS);
   const shortDesc = (course.shortDescription ?? '').trim();
 
   const names = (ls: { title: string }[]) => ls.slice(0, 3).map(l => `"${l.title}"`).join(', ') + (ls.length > 3 ? '…' : '');
@@ -79,6 +81,11 @@ export function courseChecklist(course: ChecklistCourse): ChecklistItem[] {
     {
       key: 'video-chapters', label: 'Chapters on video lessons', required: false, ok: videos.length > 0 && videosWithoutChapters.length === 0,
       detail: videosWithoutChapters.length ? `${plural(videosWithoutChapters.length, 'video')} without chapters` : undefined,
+    },
+    {
+      key: 'practice', label: `Practice questions (${MIN_QUIZ_QUESTIONS}+) on most video lessons`, required: false,
+      ok: videos.length > 0 && videosWithPractice.length * 2 >= videos.length,
+      detail: videos.length ? `${videosWithPractice.length} of ${plural(videos.length, 'video lesson')} have practice` : undefined,
     },
     { key: 'summary', label: 'A summary or revision lesson', required: false, ok: lessons.some(l => /summary|recap|revision|review/i.test(l.title)) },
   ];

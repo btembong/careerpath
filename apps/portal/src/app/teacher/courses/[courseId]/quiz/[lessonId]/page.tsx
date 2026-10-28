@@ -14,11 +14,24 @@ interface Option { id: string; text: string; }
 interface Question {
   id: string; questionText: string; type: 'MCQ' | 'WRITTEN';
   options: Option[] | null; correctAnswer: string; explanation: string | null;
-  sortOrder: number;
+  sortOrder: number; videoAtSec?: number | null;
 }
 interface QuizConfig {
   passMark: number | null; timeLimitSecs: number | null;
   maxAttempts: number; shuffleQuestions: boolean; title: string;
+  /** QUIZ = graded quiz; VIDEO/TEXT = practice questions under the lesson */
+  type: string;
+}
+
+function fmtAt(s: number) { return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+/** "2:15" or "135" → seconds; '' → null; anything else → NaN */
+function parseAt(v: string): number | null {
+  const t = v.trim();
+  if (!t) return null;
+  const m = t.match(/^(?:(d+):)?(d+):(d{2})$|^(d+)$/);
+  if (!m) return NaN;
+  if (m[4] !== undefined) return +m[4];
+  return (+(m[1] ?? 0)) * 3600 + +m[2] * 60 + +m[3];
 }
 
 const EMPTY_OPTIONS: Option[] = [
@@ -49,6 +62,7 @@ export default function QuizBuilderPage() {
   const [qOptions, setQOptions] = useState<Option[]>(EMPTY_OPTIONS.map(o => ({ ...o })));
   const [qCorrect, setQCorrect] = useState('a');
   const [qExpl,    setQExpl]    = useState('');
+  const [qAt,      setQAt]      = useState('');
   const [addingQ,  setAddingQ]  = useState(false);
 
   async function load() {
@@ -61,7 +75,8 @@ export default function QuizBuilderPage() {
     const course = lRes.data;
     const lesson = course.modules?.flatMap((m: any) => m.lessons)?.find((l: any) => l.id === lessonId);
     if (lesson) {
-      setConfig({ passMark: lesson.passMark, timeLimitSecs: lesson.timeLimitSecs, maxAttempts: lesson.maxAttempts, shuffleQuestions: lesson.shuffleQuestions, title: lesson.title });
+      setConfig({ passMark: lesson.passMark, timeLimitSecs: lesson.timeLimitSecs, maxAttempts: lesson.maxAttempts, shuffleQuestions: lesson.shuffleQuestions, title: lesson.title, type: lesson.type });
+      if (lesson.type !== 'QUIZ') setQType('MCQ'); // practice is auto-marked
       setCfgPassMark(lesson.passMark != null ? String(lesson.passMark) : '');
       setCfgTimeLimit(lesson.timeLimitSecs != null ? String(Math.round(lesson.timeLimitSecs / 60)) : '');
       setCfgMaxAttempts(String(lesson.maxAttempts ?? 0));
@@ -90,6 +105,8 @@ export default function QuizBuilderPage() {
 
   async function addQuestion(e: React.FormEvent) {
     e.preventDefault();
+    const videoAtSec = config?.type === 'VIDEO' ? parseAt(qAt) : null;
+    if (Number.isNaN(videoAtSec)) { notify.error('Use mm:ss for the video moment, e.g. 2:15'); return; }
     setAddingQ(true);
     try {
       const options = qType === 'MCQ'
@@ -101,9 +118,10 @@ export default function QuizBuilderPage() {
         options,
         correctAnswer: qType === 'MCQ' ? qCorrect : '',
         explanation: qExpl.trim() || undefined,
+        ...(config?.type === 'VIDEO' && { videoAtSec }),
       });
       notify.success('Question added');
-      setQText(''); setQOptions(EMPTY_OPTIONS.map(o => ({ ...o }))); setQCorrect('a'); setQExpl('');
+      setQText(''); setQOptions(EMPTY_OPTIONS.map(o => ({ ...o }))); setQCorrect('a'); setQExpl(''); setQAt('');
       setShowAdd(false);
       await load();
     } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
@@ -133,6 +151,7 @@ export default function QuizBuilderPage() {
     </div>
   );
 
+  const isPractice = config.type !== 'QUIZ';
   const mcqCount = questions.filter(q => q.type === 'MCQ').length;
   const writtenCount = questions.filter(q => q.type === 'WRITTEN').length;
 
@@ -140,7 +159,7 @@ export default function QuizBuilderPage() {
     <>
     <div className="flex flex-col min-h-full bg-surface">
       <Topbar
-        title={`Quiz: ${config.title}`}
+        title={`${isPractice ? 'Practice' : 'Quiz'}: ${config.title}`}
         subtitle={`${questions.length} question${questions.length !== 1 ? 's' : ''}`}
         backHref={`/teacher/courses/${courseId}/builder`}
         backLabel="Builder"
@@ -148,8 +167,19 @@ export default function QuizBuilderPage() {
 
       <div className="flex-1 p-6 max-w-3xl w-full mx-auto space-y-6">
 
+        {isPractice && (
+          <Card padding="md">
+            <p className="text-sm font-bold text-navy">Practice questions</p>
+            <p className="text-xs text-royal/60 mt-1 leading-relaxed">
+              Shown under this lesson. Students answer, see the worked solution instantly, and can retry as often as they like.
+              Practice never affects quiz scores or certificates. Aim for 3–5 multiple-choice questions
+              {config.type === 'VIDEO' ? ', and add the video moment that explains each one.' : '.'}
+            </p>
+          </Card>
+        )}
+
         {/* Quiz Config */}
-        <Card padding="md">
+        {!isPractice && <Card padding="md">
           <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-4">Quiz Settings</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
             <div className="space-y-1">
@@ -181,7 +211,7 @@ export default function QuizBuilderPage() {
             </div>
           </div>
           <Button size="sm" loading={savingCfg} onClick={saveConfig}>Save settings</Button>
-        </Card>
+        </Card>}
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
@@ -232,6 +262,9 @@ export default function QuizBuilderPage() {
                     {q.explanation && (
                       <p className="text-[11px] text-royal/50 italic">💡 {q.explanation}</p>
                     )}
+                    {q.videoAtSec != null && (
+                      <p className="text-[11px] text-azure font-semibold">▶ Explained at {fmtAt(q.videoAtSec)}</p>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -244,8 +277,8 @@ export default function QuizBuilderPage() {
           <Card padding="md" className="border-azure border">
             <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-4">Add Question</p>
             <form onSubmit={addQuestion} className="space-y-4">
-              {/* Type toggle */}
-              <div className="flex gap-2">
+              {/* Type toggle (quizzes only — practice is multiple choice) */}
+              {!isPractice && <div className="flex gap-2">
                 {(['MCQ', 'WRITTEN'] as const).map(t => (
                   <button key={t} type="button"
                     onClick={() => setQType(t)}
@@ -253,7 +286,7 @@ export default function QuizBuilderPage() {
                     {t === 'MCQ' ? '⚪ Multiple Choice' : '✏️ Written / Essay'}
                   </button>
                 ))}
-              </div>
+              </div>}
 
               {/* Question text */}
               <div>
@@ -295,6 +328,15 @@ export default function QuizBuilderPage() {
                   className="w-full rounded-lg border border-cloud px-3 py-2 text-sm text-navy focus:outline-none focus:border-azure placeholder:text-royal/30" />
               </div>
 
+              {config.type === 'VIDEO' && (
+                <div className="max-w-[220px]">
+                  <label className="text-[10px] font-semibold text-royal/50 uppercase tracking-wider block mb-1">Explained in the video at</label>
+                  <input value={qAt} onChange={e => setQAt(e.target.value)} placeholder="mm:ss, e.g. 2:15"
+                    className="w-full rounded-lg border border-cloud px-3 py-2 text-sm text-navy focus:outline-none focus:border-azure placeholder:text-royal/30" />
+                  <p className="text-[10px] text-royal/40 mt-1">Students who get it wrong can jump straight there.</p>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <Button type="submit" size="sm" loading={addingQ}>Add question</Button>
                 <Button type="button" size="sm" variant="secondary" onClick={() => setShowAdd(false)}>Cancel</Button>
@@ -316,7 +358,7 @@ export default function QuizBuilderPage() {
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/50 px-4">
         <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
           <p className="text-sm font-bold text-navy mb-1">Delete this question?</p>
-          <p className="text-xs text-royal/60 mb-5">This question will be permanently removed from the quiz.</p>
+          <p className="text-xs text-royal/60 mb-5">This question will be permanently removed{isPractice ? ' from the practice set' : ' from the quiz'}.</p>
           <div className="flex gap-2">
             <Button size="sm" onClick={() => executeDeleteQuestion(confirmDel)}>Delete</Button>
             <Button size="sm" variant="secondary" onClick={() => setConfirmDel(null)}>Cancel</Button>

@@ -544,53 +544,149 @@ export class PlatformCoursesService {
 
   // ── Quiz: Questions ──────────────────────────────────────
 
-  async getQuestions(lessonId: string, includeAnswers: boolean) {
+  /** The lesson must belong to the course; used by every teacher-side question action. */
+  private async lessonOfCourse(courseId: string, lessonId: string) {
+    const lesson = await this.prisma.lesson.findFirst({ where: { id: lessonId, module: { courseId } } });
+    if (!lesson) throw new NotFoundException('Lesson not found in this course');
+    return lesson;
+  }
+
+  /**
+   * The course's teacher and admins get answers; students with access get the questions only
+   * (no answers or explanations until they submit). Other teachers get nothing.
+   */
+  async getQuestions(courseId: string, lessonId: string, viewer: UserProfile) {
+    const role = viewer.role as UserRole;
+    if (role === UserRole.STUDENT) {
+      await this.assertStudentLesson(viewer.id, courseId, lessonId);
+    } else {
+      await this.assertCourseAccess(courseId, viewer); // owner teacher or admin
+      await this.lessonOfCourse(courseId, lessonId);
+    }
     const questions = await this.prisma.questionBank.findMany({
       where: { lessonId },
       orderBy: { sortOrder: 'asc' },
     });
-    if (includeAnswers) return questions;
-    return questions.map(({ correctAnswer, ...q }) => q);
+    if (role !== UserRole.STUDENT) return questions;
+    return questions.map(({ correctAnswer, explanation, videoAtSec, ...q }) => q);
   }
 
-  async addQuestion(courseId: string, lessonId: string, actor: UserProfile, dto: {
-    questionText: string; type: string; options?: any; correctAnswer: string; explanation?: string;
-  }) {
+  /** Validates a question body; practice questions (non-quiz lessons) must be auto-markable MCQs. */
+  private questionData(dto: any, lessonType: string, partial: boolean): Prisma.QuestionBankUncheckedUpdateInput {
+    const data: Prisma.QuestionBankUncheckedUpdateInput = {};
+    if (!partial || dto.type !== undefined) {
+      if (!['MCQ', 'WRITTEN'].includes(dto.type)) throw new BadRequestException('type must be MCQ or WRITTEN');
+      if (lessonType !== 'QUIZ' && dto.type !== 'MCQ') throw new BadRequestException('Practice questions must be multiple choice so they can be marked instantly');
+      data.type = dto.type;
+    }
+    if (!partial || dto.questionText !== undefined) {
+      const text = String(dto.questionText ?? '').trim();
+      if (!text || text.length > 2000) throw new BadRequestException('Question text is required (max 2000 characters)');
+      data.questionText = text;
+    }
+    if (dto.options !== undefined) {
+      if (dto.options !== null && (!Array.isArray(dto.options) || dto.options.length > 8)) throw new BadRequestException('options must be a list of up to 8 choices');
+      data.options = dto.options ?? Prisma.DbNull;
+    }
+    if (!partial || dto.correctAnswer !== undefined) data.correctAnswer = String(dto.correctAnswer ?? '');
+    if (dto.explanation !== undefined) data.explanation = dto.explanation ? String(dto.explanation).slice(0, 4000) : null;
+    if (dto.videoAtSec !== undefined) {
+      const v = dto.videoAtSec === null || dto.videoAtSec === '' ? null : Math.floor(Number(dto.videoAtSec));
+      if (v !== null && (!Number.isFinite(v) || v < 0)) throw new BadRequestException('videoAtSec must be a non-negative number of seconds');
+      data.videoAtSec = v;
+    }
+    return data;
+  }
+
+  async addQuestion(courseId: string, lessonId: string, actor: UserProfile, dto: any) {
     await this.assertCourseAccess(courseId, actor);
+    const lesson = await this.lessonOfCourse(courseId, lessonId);
+    const data = this.questionData(dto, lesson.type, false);
     const last = await this.prisma.questionBank.findFirst({
       where: { lessonId }, orderBy: { sortOrder: 'desc' },
     });
     return this.prisma.questionBank.create({
       data: {
+        ...(data as Prisma.QuestionBankUncheckedCreateInput),
         courseId,
         lessonId,
-        questionText: dto.questionText,
-        type: dto.type as any,
-        options: dto.options ?? null,
-        correctAnswer: dto.correctAnswer,
-        explanation: dto.explanation,
         sortOrder: (last?.sortOrder ?? 0) + 1,
       },
     });
   }
 
-  async updateQuestion(courseId: string, questionId: string, actor: UserProfile, dto: {
-    questionText?: string; options?: any; correctAnswer?: string; explanation?: string;
-  }) {
+  async updateQuestion(courseId: string, lessonId: string, questionId: string, actor: UserProfile, dto: any) {
     await this.assertCourseAccess(courseId, actor);
-    return this.prisma.questionBank.update({ where: { id: questionId }, data: dto });
+    const lesson = await this.lessonOfCourse(courseId, lessonId);
+    const owned = await this.prisma.questionBank.count({ where: { id: questionId, lessonId } });
+    if (!owned) throw new NotFoundException('Question not found in this lesson');
+    return this.prisma.questionBank.update({ where: { id: questionId }, data: this.questionData(dto, lesson.type, true) });
   }
 
-  async deleteQuestion(courseId: string, questionId: string, actor: UserProfile) {
+  async deleteQuestion(courseId: string, lessonId: string, questionId: string, actor: UserProfile) {
     await this.assertCourseAccess(courseId, actor);
-    return this.prisma.questionBank.delete({ where: { id: questionId } });
+    await this.lessonOfCourse(courseId, lessonId);
+    const { count } = await this.prisma.questionBank.deleteMany({ where: { id: questionId, lessonId } });
+    if (!count) throw new NotFoundException('Question not found in this lesson');
+    return { deleted: true };
   }
 
   async updateQuizConfig(courseId: string, lessonId: string, actor: UserProfile, dto: {
     passMark?: number | null; timeLimitSecs?: number | null; maxAttempts?: number; shuffleQuestions?: boolean;
   }) {
     await this.assertCourseAccess(courseId, actor);
-    return this.prisma.lesson.update({ where: { id: lessonId }, data: dto });
+    await this.lessonOfCourse(courseId, lessonId);
+    return this.prisma.lesson.update({
+      where: { id: lessonId },
+      data: {
+        ...(dto.passMark !== undefined && { passMark: dto.passMark === null ? null : Math.min(100, Math.max(0, Math.round(Number(dto.passMark)))) }),
+        ...(dto.timeLimitSecs !== undefined && { timeLimitSecs: dto.timeLimitSecs === null ? null : Math.max(0, Math.round(Number(dto.timeLimitSecs))) }),
+        ...(dto.maxAttempts !== undefined && { maxAttempts: Math.max(0, Math.round(Number(dto.maxAttempts))) }),
+        ...(dto.shuffleQuestions !== undefined && { shuffleQuestions: !!dto.shuffleQuestions }),
+      },
+    });
+  }
+
+  // ── Practice (video/text lessons) ────────────────────────
+
+  async getPractice(studentId: string, courseId: string, lessonId: string) {
+    const lesson = await this.assertStudentLesson(studentId, courseId, lessonId);
+    if (lesson.type === 'QUIZ') return { questions: [], best: null };
+    const [questions, attempts] = await Promise.all([
+      this.prisma.questionBank.findMany({
+        where: { lessonId, type: 'MCQ' },
+        orderBy: { sortOrder: 'asc' },
+        select: { id: true, questionText: true, options: true, imageUrl: true },
+      }),
+      this.prisma.practiceAttempt.findMany({ where: { studentId, lessonId }, select: { score: true, total: true } }),
+    ]);
+    const best = attempts.reduce<{ score: number; total: number } | null>(
+      (b, a) => (!b || a.score / a.total > b.score / b.total ? a : b), null,
+    );
+    return { questions, best, attempts: attempts.length };
+  }
+
+  /** Unlimited retries; reveals answers, worked solutions and the video moment that explains each one. */
+  async submitPractice(studentId: string, courseId: string, lessonId: string, answers: Record<string, string>) {
+    const lesson = await this.assertStudentLesson(studentId, courseId, lessonId);
+    if (lesson.type === 'QUIZ') throw new BadRequestException('Use the quiz for quiz lessons');
+    const questions = await this.prisma.questionBank.findMany({
+      where: { lessonId, type: 'MCQ' },
+      orderBy: { sortOrder: 'asc' },
+    });
+    if (!questions.length) throw new BadRequestException('This lesson has no practice questions');
+
+    const results = questions.map(q => ({
+      questionId: q.id,
+      yourAnswer: answers[q.id] ?? null,
+      correctAnswer: q.correctAnswer,
+      isCorrect: answers[q.id] === q.correctAnswer,
+      explanation: q.explanation,
+      videoAtSec: q.videoAtSec,
+    }));
+    const score = results.filter(r => r.isCorrect).length;
+    await this.prisma.practiceAttempt.create({ data: { studentId, lessonId, score, total: questions.length } });
+    return { score, total: questions.length, results };
   }
 
   // ── Quiz: Student submit ──────────────────────────────────
@@ -809,6 +905,7 @@ export class PlatformCoursesService {
     }
     return lesson;
   }
+
 }
 
 function courseIncludes() {

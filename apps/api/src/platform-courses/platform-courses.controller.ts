@@ -289,13 +289,13 @@ export class PlatformCoursesController {
   // ── Quiz: Questions (teacher) ─────────────────────────────
 
   @Get(':id/lessons/:lessonId/questions')
-  @ApiOperation({ summary: 'Get questions for a quiz lesson (teacher = with answers, student = without)' })
+  @ApiOperation({ summary: 'Questions for a lesson (course teacher/admin = with answers; students with access = without)' })
   getQuestions(
+    @Param('id') courseId: string,
     @Param('lessonId') lessonId: string,
     @CurrentUser() user: UserProfile,
   ) {
-    const includeAnswers = user.role === UserRole.TEACHER || user.role === UserRole.ADMIN;
-    return this.svc.getQuestions(lessonId, includeAnswers);
+    return this.svc.getQuestions(courseId, lessonId, user);
   }
 
   @Post(':id/lessons/:lessonId/questions')
@@ -315,11 +315,12 @@ export class PlatformCoursesController {
   @ApiOperation({ summary: '[Teacher] Update a quiz question' })
   updateQuestion(
     @Param('id') courseId: string,
+    @Param('lessonId') lessonId: string,
     @Param('questionId') questionId: string,
     @CurrentUser() user: UserProfile,
     @Body() dto: any,
   ) {
-    return this.svc.updateQuestion(courseId, questionId, user, dto);
+    return this.svc.updateQuestion(courseId, lessonId, questionId, user, dto);
   }
 
   @Delete(':id/lessons/:lessonId/questions/:questionId')
@@ -327,10 +328,37 @@ export class PlatformCoursesController {
   @ApiOperation({ summary: '[Teacher] Delete a quiz question' })
   deleteQuestion(
     @Param('id') courseId: string,
+    @Param('lessonId') lessonId: string,
     @Param('questionId') questionId: string,
     @CurrentUser() user: UserProfile,
   ) {
-    return this.svc.deleteQuestion(courseId, questionId, user);
+    return this.svc.deleteQuestion(courseId, lessonId, questionId, user);
+  }
+
+  // ── Practice on video/text lessons ────────────────────────
+
+  @Get(':id/lessons/:lessonId/practice')
+  @Roles(UserRole.STUDENT)
+  @ApiOperation({ summary: '[Student] Practice questions for a lesson (no answers) and best score so far' })
+  getPractice(
+    @Param('id') courseId: string,
+    @Param('lessonId') lessonId: string,
+    @CurrentUser() user: UserProfile,
+  ) {
+    return this.svc.getPractice(user.id, courseId, lessonId);
+  }
+
+  @Post(':id/lessons/:lessonId/practice/submit')
+  @Roles(UserRole.STUDENT)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[Student] Mark practice answers; returns worked solutions and the video moment for each' })
+  submitPractice(
+    @Param('id') courseId: string,
+    @Param('lessonId') lessonId: string,
+    @CurrentUser() user: UserProfile,
+    @Body('answers') answers: Record<string, string>,
+  ) {
+    return this.svc.submitPractice(user.id, courseId, lessonId, answers ?? {});
   }
 
   @Patch(':id/lessons/:lessonId/quiz-config')
