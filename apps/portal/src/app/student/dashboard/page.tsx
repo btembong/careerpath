@@ -247,7 +247,7 @@ export default function StudentDashboard() {
           )}
           <Link href="/student/calendar" className={btnSecondary}>Study calendar</Link>
           <Link href={resumeHref} className={btnPrimary}>
-            <Glyph d={P.play} size={14} fill="currentColor" /> {resume ? 'Resume lesson' : 'Find a course'}
+            <Glyph d={P.play} size={14} fill="currentColor" /> {resume ? ((resume.pct ?? 0) > 0 ? 'Resume lesson' : 'Start learning') : 'Find a course'}
           </Link>
         </div>
 
@@ -326,7 +326,7 @@ export default function StudentDashboard() {
                     </dl>
                   )}
                   <div className="flex flex-wrap gap-2">
-                    <Link href={resumeHref} className={btnPrimary}>Resume</Link>
+                    <Link href={resumeHref} className={btnPrimary}>{(resume.pct ?? 0) > 0 ? 'Resume' : 'Start'}</Link>
                     <Link href={resumeHref} className={btnSecondary}>Practice</Link>
                   </div>
                 </>

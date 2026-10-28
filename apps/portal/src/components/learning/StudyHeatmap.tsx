@@ -66,7 +66,7 @@ export function StudyHeatmap() {
       ) : (
         <>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] border-separate" style={{ borderSpacing: 4 }}>
+            <table className="w-full min-w-[560px] table-fixed border-separate" style={{ borderSpacing: 4 }}>
               <caption className="sr-only">Study activity by course and month</caption>
               <thead>
                 <tr>
