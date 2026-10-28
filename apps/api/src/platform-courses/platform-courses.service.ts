@@ -6,6 +6,7 @@ import { UserProfile, CourseStatus, CourseSource, UserRole } from '@prisma/clien
 import { WordPressService } from '../wordpress/wordpress.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { FilesService } from '../files/files.service';
+import { GamificationService } from '../gamification/gamification.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -17,6 +18,7 @@ export class PlatformCoursesService {
     private certificates: CertificatesService,
     private wp: WordPressService,
     private files: FilesService,
+    private gamification: GamificationService,
   ) {}
 
   // ── Course CRUD ───────────────────────────────────────────
@@ -289,11 +291,20 @@ export class PlatformCoursesService {
   // ── Student Progress ──────────────────────────────────────
 
   async markLessonComplete(studentId: string, lessonId: string, watchedSecs?: number) {
+    const before = await this.prisma.lessonProgress.findUnique({
+      where: { studentId_lessonId: { studentId, lessonId } },
+      select: { completed: true, watchedSecs: true },
+    });
     const result = await this.prisma.lessonProgress.upsert({
       where: { studentId_lessonId: { studentId, lessonId } },
-      update: { completed: true, watchedSecs: watchedSecs ?? 0 },
+      // Keep the larger watch time — completing without a value must not wipe recorded study time
+      update: { completed: true, watchedSecs: Math.max(before?.watchedSecs ?? 0, watchedSecs ?? 0) },
       create: { studentId, lessonId, completed: true, watchedSecs: watchedSecs ?? 0 },
     });
+
+    if (!before?.completed) {
+      await this.gamification.awardOnce(studentId, 'LESSON_COMPLETE', lessonId);
+    }
 
     // Auto-issue certificate when course reaches 100%
     await this.checkAndIssueCertificate(studentId, lessonId);
@@ -486,6 +497,7 @@ export class PlatformCoursesService {
 
     // Mark lesson complete if passed (or no pass requirement and no written questions)
     if (passed) {
+      await this.gamification.awardOnce(studentId, 'QUIZ_PASS', lessonId, { perfect: percentage === 100 });
       await this.markLessonComplete(studentId, lessonId);
     }
 
@@ -523,6 +535,7 @@ export class PlatformCoursesService {
       update: {},
       create: { studentId, courseId },
     });
+    await this.gamification.awardOnce(studentId, 'ENROLLMENT', courseId);
 
     // For WordPress-sourced courses, also enroll the user in the WP LMS (non-blocking)
     if (wpUserId && wpUserId > 0) {

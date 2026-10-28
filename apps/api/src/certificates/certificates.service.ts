@@ -4,7 +4,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { FilesService } from '../files/files.service';
+import { GamificationService } from '../gamification/gamification.service';
 import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { randomBytes } from 'crypto';
@@ -17,7 +17,7 @@ export class CertificatesService {
 
   constructor(
     private prisma: PrismaService,
-    private files: FilesService,
+    private gamification: GamificationService,
     private mail: MailService,
     private config: ConfigService,
     private notifications: NotificationsService,
@@ -41,7 +41,8 @@ export class CertificatesService {
       courseName: c.course?.title ?? 'Course Completion',
       issuedAt: c.issuedAt,
       verifyCode: c.verifyCode,
-      pdfUrl: c.pdfUrl,
+      // Always the on-demand PDF, so certificates issued before storage was configured still download
+      pdfUrl: `/api/certificates/${c.verifyCode}/pdf`,
     }));
   }
 
@@ -122,28 +123,14 @@ export class CertificatesService {
     const courseTitle = course?.title ?? courseId;
     const verifyCode = randomBytes(8).toString('hex').toUpperCase();
 
-    const pdfBuffer = await this.generateCertificatePdf({
-      studentName,
-      courseTitle,
-      verifyCode,
-      issuedAt: new Date(),
-    });
-
-    const { url: pdfUrl } = await this.files.upload(
-      {
-        fieldname: 'file',
-        originalname: `certificate-${verifyCode}.pdf`,
-        encoding: '7bit',
-        mimetype: 'application/pdf',
-        buffer: pdfBuffer,
-        size: pdfBuffer.length,
-      } as Express.Multer.File,
-      'certificates',
-    );
+    // The PDF is generated on download (getPdf) rather than pre-uploaded to storage, so issuing a
+    // certificate can never fail because R2 is down or unconfigured. Served via the portal's /api proxy.
+    const pdfUrl = `/api/certificates/${verifyCode}/pdf`;
 
     await this.prisma.certificate.create({
       data: { studentId, courseId, verifyCode, pdfUrl },
     });
+    await this.gamification.awardOnce(studentId, 'CERTIFICATE_EARNED', courseId);
 
     // Send certificate earned email — non-critical
     const verifyUrl = `${this.portalUrl}/verify/${verifyCode}`;
@@ -154,6 +141,27 @@ export class CertificatesService {
       body: `Congratulations! Your certificate for "${courseTitle}" is ready.`,
       href: '/student/certificates',
     });
+  }
+
+  /** Public by verify code — the same code already makes the certificate publicly verifiable. */
+  async getPdf(verifyCode: string): Promise<{ buffer: Buffer; filename: string }> {
+    const cert = await this.prisma.certificate.findUnique({
+      where: { verifyCode },
+      include: {
+        student: { select: { email: true, firstName: true, lastName: true } },
+        course: { select: { title: true } },
+      },
+    });
+    if (!cert) throw new NotFoundException('Certificate not found');
+    const s = cert.student;
+    const studentName = s.firstName || s.lastName ? `${s.firstName ?? ''} ${s.lastName ?? ''}`.trim() : s.email;
+    const buffer = await this.generateCertificatePdf({
+      studentName,
+      courseTitle: cert.course?.title ?? cert.courseId,
+      verifyCode: cert.verifyCode,
+      issuedAt: cert.issuedAt,
+    });
+    return { buffer, filename: `CareerPath-Africa-certificate-${cert.verifyCode}.pdf` };
   }
 
   // ── PDF generation ────────────────────────────────────────

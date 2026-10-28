@@ -10,6 +10,7 @@ import { WordPressService } from '../wordpress/wordpress.service';
 import { CouponsService } from '../coupons/coupons.service';
 import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { GamificationService } from '../gamification/gamification.service';
 import { PaystackGateway } from './gateways/paystack.gateway';
 import { TranzakGateway } from './gateways/tranzak.gateway';
 import { StripeGateway } from './gateways/stripe.gateway';
@@ -38,6 +39,7 @@ export class PaymentsService {
     private stripeGw: StripeGateway,
     private mail: MailService,
     private notifications: NotificationsService,
+    private gamification: GamificationService,
   ) {}
 
   // ── Checkout session ─────────────────────────────────────
@@ -309,6 +311,7 @@ export class PaymentsService {
         invoiceNo: null,
       },
     });
+    await this.gamification.awardOnce(student.id, 'ENROLLMENT', courseId);
     return { enrolled: true };
   }
 

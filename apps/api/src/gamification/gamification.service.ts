@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 const XP_TABLE: Record<string, number> = {
@@ -26,7 +26,26 @@ interface UserStats {
 
 @Injectable()
 export class GamificationService {
+  private readonly logger = new Logger(GamificationService.name);
+
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * Award XP at most once per (user, type, key) — e.g. one LESSON_COMPLETE per lesson — so re-marking
+   * or re-submitting can't farm points. Never throws: XP must not break the action that earned it.
+   */
+  async awardOnce(userId: string, type: keyof typeof XP_TABLE, key: string, meta: Record<string, unknown> = {}) {
+    try {
+      const already = await this.prisma.xPEvent.findFirst({
+        where: { userId, type: type as any, meta: { path: ['key'], equals: key } },
+        select: { id: true },
+      });
+      if (already) return;
+      await this.awardXP(userId, type, { ...meta, key });
+    } catch (err: any) {
+      this.logger.warn(`XP ${type} for ${userId} (${key}) failed: ${err.message}`);
+    }
+  }
 
   async awardXP(userId: string, type: string, meta?: any) {
     const points = XP_TABLE[type] ?? 0;

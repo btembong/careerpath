@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { GamificationService } from '../gamification/gamification.service';
 import { SubmitQuizDto } from './dto/submit-quiz.dto';
 import { GradeSubmissionDto } from './dto/grade-submission.dto';
 import { UserProfile } from '@prisma/client';
@@ -19,6 +20,7 @@ export class EducationService {
     private certificates: CertificatesService,
     private mail: MailService,
     private notifications: NotificationsService,
+    private gamification: GamificationService,
   ) {}
 
   // ── Quiz submission ──────────────────────────────────────
@@ -61,6 +63,10 @@ export class EducationService {
       }
     }
 
+    // Auto-issue certificate if all MCQ and score ≥ 70%
+    const passThreshold = Math.ceil(questions.length * 0.7);
+    const passed = !hasWritten && autoScore >= passThreshold;
+
     const attempt = await this.prisma.quizAttempt.create({
       data: {
         studentId: student.id,
@@ -68,14 +74,20 @@ export class EducationService {
         autoScore,
         manualScore: 0,
         finalScore: autoScore, // updated when manual grading completes
+        maxScore: questions.length,
+        passed,
         isFullyGraded: !hasWritten,
         answersJson,
       },
     });
 
-    // Auto-issue certificate if all MCQ and score ≥ 70%
-    const passThreshold = Math.ceil(questions.length * 0.7);
-    if (!hasWritten && autoScore >= passThreshold) {
+    if (passed) {
+      await this.gamification.awardOnce(student.id, 'QUIZ_PASS', `course:${dto.courseId}`, {
+        perfect: autoScore === questions.length,
+      });
+    }
+
+    if (passed) {
       try {
         await this.certificates.issueCertificate(student.id, dto.courseId);
       } catch {
@@ -124,7 +136,7 @@ export class EducationService {
       throw new BadRequestException('The submission deadline has passed');
     }
 
-    return this.prisma.submission.upsert({
+    const submission = await this.prisma.submission.upsert({
       where: { studentId_assignmentId: { studentId: student.id, assignmentId } },
       create: {
         assignmentId,
@@ -138,6 +150,8 @@ export class EducationService {
         feedback: null,
       },
     });
+    await this.gamification.awardOnce(student.id, 'ASSIGNMENT_SUBMIT', assignmentId);
+    return submission;
   }
 
   // ── Assignment grading (teacher) ──────────────────────────
@@ -188,6 +202,9 @@ export class EducationService {
       maxPoints: submission.assignment.maxPoints,
       feedback: dto.feedback ?? undefined,
     }).catch(() => {});
+    if (dto.grade >= submission.assignment.maxPoints / 2) {
+      await this.gamification.awardOnce(submission.studentId, 'ASSIGNMENT_PASS', submission.assignmentId);
+    }
     this.notifications.notify(submission.studentId, {
       type: 'grade',
       title: 'Assignment graded',

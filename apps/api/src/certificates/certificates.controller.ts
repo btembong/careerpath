@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Res, UseGuards } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CertificatesService } from './certificates.service';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
@@ -26,6 +27,18 @@ export class CertificatesController {
   @ApiOperation({ summary: 'Public — verify a certificate is genuine. No auth required.' })
   verifyCertificate(@Param('verifyCode') code: string) {
     return this.certificatesService.verifyCertificate(code);
+  }
+
+  @Get(':verifyCode/pdf')
+  @ApiOperation({ summary: 'Public — download a certificate PDF by its verification code (generated on request).' })
+  async downloadPdf(@Param('verifyCode') code: string, @Res() res: Response) {
+    const { buffer, filename } = await this.certificatesService.getPdf(code);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${filename}"`,
+      'Cache-Control': 'private, max-age=3600',
+    });
+    res.send(buffer);
   }
 
   // ── Admin endpoints ───────────────────────────────────────
