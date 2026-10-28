@@ -1,7 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Avatar } from '../ui/Avatar';
 import { Icon } from '../ui/Icon';
 import { DropdownMenu, DropdownItem, DropdownSeparator, DropdownLabel } from '../ui/DropdownMenu';
 import { useAuth } from '@/hooks/useAuth';
@@ -16,6 +15,11 @@ function useIsMac() {
     setIsMac(navigator.platform?.toLowerCase().includes('mac') || navigator.userAgent?.toLowerCase().includes('mac'));
   }, []);
   return isMac;
+}
+
+function initials(s: string) {
+  const parts = s.replace(/@.*/, '').split(/[s._-]+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'U';
 }
 
 /* ─── Role-based routes ───────────────────────────────────────────────────── */
@@ -60,24 +64,40 @@ export function Topbar({ title, subtitle, backHref, backLabel, actions, breadcru
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
   }, []);
 
+  const bare = !title && !backHref && !breadcrumbs?.length;
+  // Search bar — on the left when the page has no title
+  const searchButton = (
+        <button
+          onClick={openPalette}
+          className="hidden md:flex h-[38px] w-60 xl:w-80 items-center gap-2.5 rounded-md border border-line bg-subtle pl-3 pr-2 text-[13.5px] text-muted hover:text-navy transition-colors">
+          <Icon name="search" size={15} className="text-muted" />
+          <span className="flex-1 text-left truncate">Search or type a command</span>
+          <kbd className="rounded border border-line bg-white px-1.5 py-0.5 text-[11px] font-semibold text-muted">
+            {isMac ? '⌘ K' : 'Ctrl K'}
+          </kbd>
+        </button>
+  );
+
   const notifHref = NOTIFICATION_ROUTES[user?.role ?? ''] ?? '/student/notifications';
   const profileHref = PROFILE_ROUTES[user?.role ?? ''] ?? '/student/profile';
 
   return (
-    <header className="flex h-16 items-center border-b border-cloud bg-white px-4 gap-3">
+    <header className="flex h-16 items-center border-b border-line bg-white px-4 lg:px-7 gap-3">
 
       {/* Left — back button OR title + breadcrumbs */}
       {backHref ? (
         <Link
           href={backHref}
-          className="flex items-center gap-2 rounded-xl px-2 py-2 -ml-1 text-navy hover:bg-cloud transition-all group flex-shrink-0">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-cloud group-hover:bg-azure/15 transition-colors">
-            <Icon name="arrowLeft" size={14} className="text-navy group-hover:text-azure transition-colors" />
+          className="flex items-center gap-2.5 -ml-1 text-navy group flex-shrink-0">
+          <span className="flex h-[38px] w-[38px] items-center justify-center rounded-md border border-line bg-white group-hover:bg-subtle transition-colors">
+            <Icon name="arrowLeft" size={15} className="text-ink2" />
           </span>
-          <span className="text-sm font-semibold text-navy group-hover:text-azure transition-colors hidden sm:block">
+          <span className="text-[15px] font-semibold text-navy hidden sm:block">
             {backLabel ?? title ?? 'Back'}
           </span>
         </Link>
+      ) : bare ? (
+        <div className="flex-1 min-w-0">{searchButton}</div>
       ) : (
         <div className="flex-1 min-w-0">
           {/* Breadcrumbs */}
@@ -85,20 +105,20 @@ export function Topbar({ title, subtitle, backHref, backLabel, actions, breadcru
             <nav className="flex items-center gap-1 mb-0.5">
               {breadcrumbs.map((crumb, i) => (
                 <span key={i} className="flex items-center gap-1">
-                  {i > 0 && <Icon name="chevronRight" size={10} className="text-royal/30" />}
+                  {i > 0 && <span aria-hidden className="text-muted">›</span>}
                   {crumb.href ? (
-                    <Link href={crumb.href} className="text-[11px] font-medium text-royal/50 hover:text-azure transition">
+                    <Link href={crumb.href} className="text-xs font-medium text-muted hover:text-navy transition-colors">
                       {crumb.label}
                     </Link>
                   ) : (
-                    <span className="text-[11px] font-medium text-navy">{crumb.label}</span>
+                    <span className="text-xs font-medium text-ink2">{crumb.label}</span>
                   )}
                 </span>
               ))}
             </nav>
           )}
-          {title && <h1 className="text-base font-bold text-navy leading-tight truncate">{title}</h1>}
-          {subtitle && <p className="text-xs text-royal/50 truncate">{subtitle}</p>}
+          {title && <h1 className="text-[17px] font-bold text-navy leading-tight truncate">{title}</h1>}
+          {subtitle && <p className="text-[13px] text-muted truncate">{subtitle}</p>}
         </div>
       )}
 
@@ -106,7 +126,7 @@ export function Topbar({ title, subtitle, backHref, backLabel, actions, breadcru
       {backHref && title && (
         <div className="flex-1 min-w-0 text-center">
           <p className="text-sm font-bold text-navy truncate">{title}</p>
-          {subtitle && <p className="text-[11px] text-royal/50 truncate">{subtitle}</p>}
+          {subtitle && <p className="text-xs text-muted truncate">{subtitle}</p>}
         </div>
       )}
 
@@ -114,19 +134,7 @@ export function Topbar({ title, subtitle, backHref, backLabel, actions, breadcru
       <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
         {actions && <div className="flex items-center gap-2">{actions}</div>}
 
-        {/* Search bar */}
-        <button
-          onClick={openPalette}
-          className="hidden md:flex items-center gap-2 rounded-xl border border-cloud bg-surface px-3 py-2 text-xs text-royal/50 hover:border-azure/30 hover:text-navy transition w-44 group">
-          <Icon name="search" size={13} className="text-royal/40 group-hover:text-azure transition" />
-          <span className="flex-1 text-left">Search…</span>
-          <div className="flex items-center gap-0.5">
-            <kbd className="rounded border border-cloud bg-white px-1 py-0.5 text-[9px] font-mono text-royal/40">
-              {isMac ? '⌘' : 'Ctrl'}
-            </kbd>
-            <kbd className="rounded border border-cloud bg-white px-1 py-0.5 text-[9px] font-mono text-royal/40">K</kbd>
-          </div>
-        </button>
+        {!bare && searchButton}
 
         <div className="hidden lg:block">
           <LanguageSwitcher />
@@ -135,22 +143,27 @@ export function Topbar({ title, subtitle, backHref, backLabel, actions, breadcru
         {/* Dark mode toggle */}
         <button
           onClick={toggleDark}
-          className="hidden md:flex h-9 w-9 items-center justify-center rounded-lg text-royal/40 hover:bg-cloud hover:text-navy transition"
-          title={dark ? 'Light mode' : 'Dark mode'}>
+          className="hidden md:flex h-[38px] w-[38px] items-center justify-center rounded-md border border-line bg-white text-ink2 hover:bg-subtle hover:text-navy transition-colors"
+          aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
           <Icon name={dark ? 'sunLine' : 'moonLine'} size={17} />
         </button>
 
         {/* Notifications */}
-        <Link href={notifHref} className="relative flex h-9 w-9 items-center justify-center rounded-lg text-royal/40 hover:bg-cloud hover:text-navy transition">
-          <Icon name="bell" size={18} />
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-azure ring-2 ring-white" />
+        <Link href={notifHref} aria-label="Notifications" className="relative flex h-[38px] w-[38px] items-center justify-center rounded-md border border-line bg-white text-ink2 hover:bg-subtle hover:text-navy transition-colors">
+          <Icon name="bell" size={17} />
+          <span className="absolute right-2 top-2 h-[7px] w-[7px] rounded-full bg-azure" />
         </Link>
+
+        <span aria-hidden className="mx-1 hidden h-6 w-px bg-line md:block" />
 
         {/* Avatar dropdown */}
         <DropdownMenu
           trigger={
-            <button className="rounded-full outline-none focus:ring-2 focus:ring-azure/20">
-              <Avatar name={user?.name ?? user?.email} size="sm" />
+            <button aria-label="Account menu" className="flex items-center gap-1.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-azure/40">
+              <span className="flex h-[34px] w-[34px] items-center justify-center rounded-md bg-accent-soft text-[13px] font-bold text-navy">
+                {initials(user?.name ?? user?.email ?? '')}
+              </span>
+              <Icon name="chevronDown" size={14} className="text-muted" />
             </button>
           }
         >

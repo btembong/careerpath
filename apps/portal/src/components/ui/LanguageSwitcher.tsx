@@ -22,12 +22,13 @@ export function LanguageSwitcher() {
   }
 
   return (
-    <div className="flex items-center gap-1 rounded-xl border border-cloud bg-white p-1">
+    <div role="group" aria-label="Language" className="flex items-center gap-0.5 rounded-md border border-line bg-white p-0.5">
       {LOCALES.map(l => (
         <button key={l.code} onClick={() => switchLocale(l.code)}
           title={l.full}
-          className={`rounded-lg px-2.5 py-1 text-[10px] font-bold transition ${
-            current === l.code ? 'bg-azure text-white' : 'text-royal/50 hover:text-navy'
+          aria-pressed={current === l.code}
+          className={`h-7 rounded px-2.5 text-xs font-bold transition-colors ${
+            current === l.code ? 'bg-accent-soft text-navy' : 'text-muted hover:text-navy'
           }`}>
           {l.label}
         </button>

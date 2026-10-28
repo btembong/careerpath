@@ -3,281 +3,280 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { clsx } from 'clsx';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Avatar } from '../ui/Avatar';
-import { Icon } from '../ui/Icon';
 import { useAuth } from '@/hooks/useAuth';
-import type { IconName } from '@/lib/icons';
 
-/* ─── Nav item type ───────────────────────────────────────────────────────── */
+/* ─── Outline icons (stroke, 24 grid) — the menu uses its own lighter set ─────── */
 
-interface NavItem { label: string; href: string; icon: IconName; badge?: number | boolean; }
-interface NavGroup { title: string; items: NavItem[]; }
+const ICONS = {
+  dashboard: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  book:      'M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5zM5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3M9 7h6',
+  calendar:  'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
+  chart:     'M5 20v-8M12 20V5M19 20v-5M3 20h18',
+  message:   'M4 5h16v11H9l-5 4z',
+  users:     'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14a6 6 0 0 1 3.5 6',
+  wallet:    'M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H3zM3 7l12-3v3M16 13.5h2',
+  clipboard: 'M8 4h8v3H8zM6 5H5v16h14V5h-1M9 12h6M9 16h4',
+  box:       'M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10',
+  globe:     'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18',
+  inbox:     'M4 13l2-8h12l2 8v6H4zM4 13h5l1 2h4l1-2h5',
+  user:      'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
+  settings:  'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.5-2.4 1a7.5 7.5 0 0 0-1.7-1L15 3h-4l-.3 2.5a7.5 7.5 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7.5 7.5 0 0 0 1.7 1L11 21h4l.3-2.5a7.5 7.5 0 0 0 1.7-1l2.4 1 2-3.5z',
+  help:      'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01',
+  chevDown:  'M6 9l6 6 6-6',
+  chevLeft:  'M15 6l-6 6 6 6',
+} as const;
+type IconKey = keyof typeof ICONS;
 
-/* ─── Student navigation ──────────────────────────────────────────────────── */
+function Glyph({ name, size = 18, className }: { name: IconKey; size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden className={className}>
+      <path d={ICONS[name]} />
+    </svg>
+  );
+}
 
-const STUDENT_NAV: NavGroup[] = [
-  { title: 'Learn', items: [
-    { label: 'Dashboard',      href: '/student/dashboard',    icon: 'dashboard' },
-    { label: 'My Courses',     href: '/student/courses',      icon: 'courses' },
-    { label: 'My Cohorts',     href: '/student/cohorts',      icon: 'mentorship' },
-    { label: 'Live Classes',   href: '/student/live',         icon: 'live' },
-    { label: 'Study Calendar', href: '/student/calendar',     icon: 'calendar' },
-    { label: 'Assignments',    href: '/student/assignments',  icon: 'assignments' },
+/* ─── Menus: a few top-level items, related pages folded underneath ────────── */
+
+interface Leaf { label: string; href: string; /** extra paths that also count as this page */ also?: string[]; }
+interface Item { label: string; icon: IconKey; href?: string; also?: string[]; children?: Leaf[]; }
+
+const STUDENT: Item[] = [
+  { label: 'Dashboard', icon: 'dashboard', href: '/student/dashboard' },
+  { label: 'Learning', icon: 'book', children: [
+    { label: 'My Courses',   href: '/student/courses', also: ['/student/learn'] },
+    { label: 'Catalogue',    href: '/student/catalogue' },
+    { label: 'Quiz History', href: '/student/quiz-history', also: ['/student/quiz'] },
+    { label: 'Flashcards',   href: '/student/flashcards' },
+    { label: 'Roadmap',      href: '/student/roadmap' },
   ]},
-  { title: 'Discover', items: [
-    { label: 'Search',         href: '/student/search',       icon: 'search' },
-    { label: 'Catalogue',      href: '/student/catalogue',    icon: 'notebook' },
-    { label: 'Teachers',       href: '/student/teachers',     icon: 'graduate' },
-    { label: 'Packages',       href: '/packages',             icon: 'packages' },
+  { label: 'Classes', icon: 'calendar', children: [
+    { label: 'My Cohorts',     href: '/student/cohorts', also: ['/student/cohort'] },
+    { label: 'Live Classes',   href: '/student/live' },
+    { label: 'Study Calendar', href: '/student/calendar' },
+    { label: 'Assignments',    href: '/student/assignments' },
   ]},
-  { title: 'Connect', items: [
-    { label: 'Messages',       href: '/student/messages',     icon: 'messages' },
-    { label: 'Mentorship',     href: '/student/mentorship',   icon: 'mentorship' },
-    { label: 'Community',      href: '/student/community',    icon: 'community' },
+  { label: 'Progress', icon: 'chart', children: [
+    { label: 'My Progress',  href: '/student/progress', also: ['/student/analytics'] },
+    { label: 'Certificates', href: '/student/certificates' },
+    { label: 'Leaderboard',  href: '/student/leaderboard' },
   ]},
-  { title: 'Account', items: [
-    { label: 'Notifications',  href: '/student/notifications', icon: 'bell' },
-    { label: 'Certificates',   href: '/student/certificates', icon: 'certificates' },
-    { label: 'Wallet',         href: '/student/wallet',       icon: 'wallet' },
-    { label: 'Billing',        href: '/student/billing',      icon: 'card' },
-    { label: 'Progress',       href: '/student/progress',     icon: 'reports' },
-    { label: 'Roadmap',        href: '/student/roadmap',      icon: 'roadmap' },
-    { label: 'Refer & Earn',   href: '/student/referrals',    icon: 'heart' },
-    { label: 'My Profile',     href: '/student/profile',      icon: 'user' },
+  { label: 'Messages', icon: 'message', href: '/student/messages' },
+  { label: 'Community', icon: 'users', children: [
+    { label: 'Community',  href: '/student/community' },
+    { label: 'Mentorship', href: '/student/mentorship' },
+    { label: 'Teachers',   href: '/student/teachers' },
   ]},
-  { title: 'Help', items: [
-    { label: 'Help & Support', href: '/student/support',      icon: 'shield' },
+  { label: 'Wallet', icon: 'wallet', children: [
+    { label: 'Wallet',       href: '/student/wallet' },
+    { label: 'Billing',      href: '/student/billing' },
+    { label: 'Packages',     href: '/packages' },
+    { label: 'Refer & Earn', href: '/student/referrals' },
   ]},
 ];
 
-/* ─── Teacher navigation ──────────────────────────────────────────────────── */
+const TEACHER: Item[] = [
+  { label: 'Dashboard', icon: 'dashboard', href: '/teacher/dashboard' },
+  { label: 'Teaching', icon: 'book', children: [
+    { label: 'My Courses',   href: '/teacher/courses', also: ['/teacher/quiz-builder'] },
+    { label: 'Live Classes', href: '/teacher/live' },
+  ]},
+  { label: 'Classes', icon: 'calendar', children: [
+    { label: 'Cohorts',     href: '/teacher/cohorts' },
+    { label: 'Assignments', href: '/teacher/assignments', also: ['/teacher/rubrics', '/teacher/grade'] },
+  ]},
+  { label: 'Grading', icon: 'clipboard', href: '/teacher/quiz-grading' },
+  { label: 'Students', icon: 'users', children: [
+    { label: 'Student Alerts', href: '/teacher/alerts' },
+    { label: 'Mentorship',     href: '/teacher/mentorship' },
+  ]},
+  { label: 'Messages', icon: 'message', href: '/teacher/messages' },
+  { label: 'Earnings', icon: 'wallet', href: '/teacher/wallet' },
+];
 
-const TEACHER_NAV: NavGroup[] = [
-  { title: 'Teach', items: [
-    { label: 'Dashboard',      href: '/teacher/dashboard',    icon: 'dashboard' },
-    { label: 'My Courses',     href: '/teacher/courses',      icon: 'courses' },
-    { label: 'Cohorts',        href: '/teacher/cohorts',      icon: 'mentorship' },
-    { label: 'Live Classes',   href: '/teacher/live',         icon: 'live' },
-    { label: 'Assignments',    href: '/teacher/assignments',  icon: 'assignments' },
-    { label: 'Quiz Grading',   href: '/teacher/quiz-grading', icon: 'notebook' },
+const ADMIN: Item[] = [
+  { label: 'Dashboard', icon: 'dashboard', href: '/admin/dashboard' },
+  { label: 'Reports',   icon: 'chart',     href: '/admin/reports' },
+  { label: 'Content', icon: 'box', children: [
+    { label: 'Courses',         href: '/admin/courses' },
+    { label: 'Packages',        href: '/admin/packages' },
+    { label: 'Coupons',         href: '/admin/coupons' },
+    { label: 'Live Classes',    href: '/admin/live' },
+    { label: 'Website Reviews', href: '/admin/reviews' },
   ]},
-  { title: 'Connect', items: [
-    { label: 'Mentorship',     href: '/teacher/mentorship',   icon: 'graduate' },
-    { label: 'Messages',       href: '/teacher/messages',     icon: 'messages' },
-    { label: 'Notifications',  href: '/teacher/notifications', icon: 'bell' },
-    { label: 'Alerts',         href: '/teacher/alerts',       icon: 'alert' },
+  { label: 'People', icon: 'users', children: [
+    { label: 'Users',         href: '/admin/users' },
+    { label: 'Teachers',      href: '/admin/teachers' },
+    { label: 'Cohorts',       href: '/admin/cohorts' },
+    { label: 'Mentorship',    href: '/admin/mentorship' },
+    { label: 'Organisations', href: '/admin/org' },
   ]},
-  { title: 'Account', items: [
-    { label: 'Earnings',       href: '/teacher/wallet',       icon: 'wallet' },
-    { label: 'My Profile',     href: '/teacher/profile',      icon: 'user' },
+  { label: 'Platform', icon: 'globe', children: [
+    { label: 'Countries',     href: '/admin/countries', also: ['/admin/country'] },
+    { label: 'Welcome Video', href: '/admin/onboarding-video' },
+    { label: 'Notifications', href: '/admin/notifications' },
+    { label: 'Community',     href: '/admin/community' },
+  ]},
+  { label: 'Finance', icon: 'wallet', children: [
+    { label: 'Payouts', href: '/admin/payouts' },
+    { label: 'Wallets', href: '/admin/wallets' },
   ]},
 ];
 
-/* ─── Admin navigation ────────────────────────────────────────────────────── */
-
-const ADMIN_NAV: NavGroup[] = [
-  { title: 'Overview', items: [
-    { label: 'Dashboard',      href: '/admin/dashboard',      icon: 'dashboard' },
-    { label: 'Reports',        href: '/admin/reports',        icon: 'reports' },
-  ]},
-  { title: 'Content', items: [
-    { label: 'Courses',        href: '/admin/courses',        icon: 'courses' },
-    { label: 'Packages',       href: '/admin/packages',       icon: 'packages' },
-    { label: 'Coupons',        href: '/admin/coupons',        icon: 'tag' },
-    { label: 'Live Classes',   href: '/admin/live',           icon: 'live' },
-    { label: 'WP Reviews',     href: '/admin/reviews',        icon: 'assignments' },
-  ]},
-  { title: 'People', items: [
-    { label: 'Users',          href: '/admin/users',          icon: 'user' },
-    { label: 'Teachers',       href: '/admin/teachers',       icon: 'mentorship' },
-    { label: 'Teacher Welcome Video', href: '/admin/onboarding-video', icon: 'play' },
-    { label: 'Cohorts',        href: '/admin/cohorts',        icon: 'community' },
-    { label: 'Mentorship',     href: '/admin/mentorship',     icon: 'mentorship' },
-    { label: 'Countries',      href: '/admin/countries',      icon: 'countries' },
-    { label: 'Org',            href: '/admin/org',            icon: 'graduate' },
-  ]},
-  { title: 'Finance', items: [
-    { label: 'Payouts',        href: '/admin/payouts',        icon: 'payouts' },
-    { label: 'Wallets',        href: '/admin/wallets',        icon: 'wallet' },
-  ]},
-  { title: 'Platform', items: [
-    { label: 'Community',      href: '/admin/community',      icon: 'community' },
-    { label: 'Notifications',  href: '/admin/notifications',  icon: 'bell' },
-    { label: 'Support',        href: '/admin/support',        icon: 'shield' },
-  ]},
+const REVIEWER: Item[] = [
+  { label: 'Review Queue', icon: 'inbox',  href: '/reviewer/dashboard', also: ['/reviewer/courses'] },
+  { label: 'Earnings',     icon: 'wallet', href: '/reviewer/wallet' },
+  { label: 'My Profile',   icon: 'user',   href: '/reviewer/profile' },
 ];
 
-/* ─── Country rep navigation ──────────────────────────────────────────────── */
-
-const COUNTRY_REP_NAV: NavGroup[] = [
-  { title: 'Overview', items: [
-    { label: 'Dashboard',      href: '/country-rep/dashboard', icon: 'dashboard' },
-    { label: 'Packages',       href: '/country-rep/packages',  icon: 'packages' },
-    { label: 'Students',       href: '/country-rep/students',  icon: 'graduate' },
-    { label: 'Wallet',         href: '/country-rep/wallet',    icon: 'wallet' },
-    { label: 'My Profile',     href: '/country-rep/profile',   icon: 'user' },
-  ]},
+const COUNTRY_REP: Item[] = [
+  { label: 'Dashboard',  icon: 'dashboard', href: '/country-rep/dashboard' },
+  { label: 'Packages',   icon: 'box',       href: '/country-rep/packages' },
+  { label: 'Students',   icon: 'users',     href: '/country-rep/students' },
+  { label: 'Wallet',     icon: 'wallet',    href: '/country-rep/wallet' },
+  { label: 'My Profile', icon: 'user',      href: '/country-rep/profile' },
 ];
 
-/* ─── Reviewer navigation ─────────────────────────────────────────────────── */
-
-const REVIEWER_NAV: NavGroup[] = [
-  { title: 'Overview', items: [
-    { label: 'Review Queue',   href: '/reviewer/dashboard',   icon: 'assignments' },
-    { label: 'Earnings',       href: '/reviewer/wallet',      icon: 'wallet' },
-    { label: 'My Profile',     href: '/reviewer/profile',     icon: 'user' },
-  ]},
-];
-
-/* ─── Map ─────────────────────────────────────────────────────────────────── */
-
-const NAV_MAP: Record<string, NavGroup[]> = {
-  STUDENT:          STUDENT_NAV,
-  TEACHER:          TEACHER_NAV,
-  ADMIN:            ADMIN_NAV,
-  COUNTRY_REP:      COUNTRY_REP_NAV,
-  SUBJECT_REVIEWER: REVIEWER_NAV,
+const MENUS: Record<string, { items: Item[]; name: string; help?: string }> = {
+  STUDENT:          { items: STUDENT,     name: 'Student portal',         help: '/student/support' },
+  TEACHER:          { items: TEACHER,     name: 'Teacher portal' },
+  ADMIN:            { items: ADMIN,       name: 'Administration',         help: '/admin/support' },
+  SUBJECT_REVIEWER: { items: REVIEWER,    name: 'Subject reviewer' },
+  COUNTRY_REP:      { items: COUNTRY_REP, name: 'Country representative' },
 };
+
+function matches(pathname: string, href: string, also?: string[]) {
+  return [href, ...(also ?? [])].some(p => pathname === p || pathname.startsWith(p + '/'));
+}
 
 /* ─── Collapsed state persistence ─────────────────────────────────────────── */
 
-function useSidebarCollapsed() {
-  const [collapsed, setCollapsed] = useState(false);
+function usePersisted(key: string, initial: boolean) {
+  const [v, setV] = useState(initial);
   useEffect(() => {
-    const saved = localStorage.getItem('sidebar-collapsed');
-    if (saved === 'true') setCollapsed(true);
-  }, []);
+    try { const s = localStorage.getItem(key); if (s !== null) setV(s === 'true'); } catch {}
+  }, [key]);
   function toggle() {
-    setCollapsed(v => {
-      localStorage.setItem('sidebar-collapsed', String(!v));
-      return !v;
-    });
+    setV(prev => { try { localStorage.setItem(key, String(!prev)); } catch {} return !prev; });
   }
-  return { collapsed, toggle };
+  return [v, toggle] as const;
 }
 
-/* ─── Sidebar component ───────────────────────────────────────────────────── */
+/* ─── Sidebar ─────────────────────────────────────────────────────────────── */
+
+const row = 'flex w-full items-center gap-3 rounded-md px-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-azure/40';
 
 export function Sidebar() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const pathname = usePathname();
-  const { collapsed, toggle } = useSidebarCollapsed();
-  const nav = NAV_MAP[user?.role ?? 'STUDENT'] ?? STUDENT_NAV;
+  const [collapsed, toggleCollapsed] = usePersisted('sidebar-collapsed', false);
+  // Until the signed-in user loads, show placeholders rather than another role's menu
+  const menu = user ? (MENUS[user.role] ?? MENUS.STUDENT) : { items: [] as Item[], name: '' };
+  // Groups the person opened or closed by hand; otherwise a group is open when it holds the current page
+  const [manual, setManual] = useState<Record<string, boolean>>({});
 
   return (
     <aside className={clsx(
-      'hidden lg:flex h-screen flex-col border-r border-cloud bg-white transition-all duration-300',
-      collapsed ? 'w-[68px]' : 'w-64',
+      'relative hidden lg:flex h-screen flex-shrink-0 flex-col border-r border-line bg-white transition-[width] duration-200',
+      collapsed ? 'w-[68px]' : 'w-[248px]',
     )}>
-      {/* Logo + collapse toggle */}
-      <div className="flex items-center gap-3 border-b border-cloud px-4 py-4">
-        <Link href="/" className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-navy">
-            <span className="text-sm font-black text-white">C</span>
-          </div>
+      <button type="button" onClick={toggleCollapsed}
+        aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
+        className="absolute -right-3 top-[76px] z-10 flex h-6 w-6 items-center justify-center rounded-md border border-line bg-white text-muted hover:text-navy transition-colors">
+        <Glyph name="chevLeft" size={14} className={clsx('transition-transform', collapsed && 'rotate-180')} />
+      </button>
+
+      {/* Brand */}
+      <div className={clsx('pt-5 pb-1', collapsed ? 'px-[19px]' : 'px-6')}>
+        <Link href="/" className="flex items-center gap-2.5">
+          <span className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[7px] bg-navy text-[15px] font-extrabold text-white dark-invert-logo">C</span>
           {!collapsed && (
-            <span className="text-sm font-bold text-navy truncate">
+            <span className="text-[17px] font-extrabold tracking-[-0.01em] text-navy">
               CareerPath<span className="text-azure">Africa</span>
             </span>
           )}
         </Link>
-        <button
-          onClick={toggle}
-          className={clsx(
-            'flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-royal/40 hover:bg-cloud hover:text-navy transition',
-            collapsed ? 'mx-auto' : 'ml-auto',
-          )}>
-          <svg className={clsx('h-4 w-4 transition-transform', collapsed && 'rotate-180')} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7" />
-          </svg>
-        </button>
+        {!collapsed && <p className="mt-1.5 pl-10 text-xs text-muted">{menu.name}</p>}
       </div>
 
-      {/* Nav groups */}
-      <nav className="flex-1 overflow-y-auto px-2.5 py-2 no-scrollbar">
-        {nav.map((group) => (
-          <div key={group.title} className="mb-1">
-            {!collapsed && (
-              <p className="px-2.5 pt-4 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-royal/40">
-                {group.title}
-              </p>
-            )}
-            {collapsed && <div className="h-2" />}
-            <ul className="space-y-0.5">
-              {group.items.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(item.href + '/');
-                return (
-                  <li key={item.href}>
-                    <Link href={item.href}
-                      title={collapsed ? item.label : undefined}
-                      className={clsx(
-                        'flex items-center gap-2.5 rounded-xl px-2.5 py-2 transition-all',
-                        active ? 'bg-azure text-white' : 'text-navy hover:bg-cloud',
-                        collapsed && 'justify-center px-0',
-                      )}>
-                      <span className={clsx(
-                        'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg',
-                        active ? 'bg-white/20 text-white' : 'bg-cloud text-azure',
-                      )}>
-                        <Icon name={item.icon} size={16} />
-                      </span>
-                      {!collapsed && (
-                        <>
-                          <span className={clsx('text-[13px] font-semibold leading-tight truncate', active ? 'text-white' : 'text-navy')}>
-                            {item.label}
-                          </span>
-                          {item.badge && (
-                            <span className={clsx(
-                              'ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold',
-                              active ? 'bg-white/25 text-white' : 'bg-azure/10 text-azure',
-                            )}>
-                              {typeof item.badge === 'number' ? item.badge : ''}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+      {/* Menu */}
+      <nav aria-label="Main menu" className="flex-1 overflow-y-auto px-3.5 pt-5 pb-2 no-scrollbar">
+        {!user && (
+          <div aria-hidden className="space-y-2 px-1">
+            {[0, 1, 2, 3, 4, 5].map(i => <div key={i} className="h-8 rounded-md bg-subtle animate-pulse" />)}
           </div>
-        ))}
+        )}
+        <ul className="space-y-0.5">
+          {menu.items.map(item => {
+            const kids = item.children ?? [];
+            const childActive = kids.some(c => matches(pathname, c.href, c.also));
+            const selfActive = !!item.href && matches(pathname, item.href, item.also);
+            const open = (manual[item.label] ?? childActive) && !collapsed;
+
+            if (!kids.length || collapsed) {
+              const href = item.href ?? kids[0]?.href ?? '#';
+              const active = selfActive || childActive;
+              return (
+                <li key={item.label}>
+                  <Link href={href} title={collapsed ? item.label : undefined}
+                    aria-current={active ? 'page' : undefined}
+                    className={clsx(row, 'min-h-[38px] text-sm',
+                      collapsed && 'justify-center px-0',
+                      active ? 'bg-accent-soft font-semibold text-navy' : 'font-medium text-ink2 hover:bg-subtle hover:text-navy')}>
+                    <Glyph name={item.icon} />
+                    {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+                  </Link>
+                </li>
+              );
+            }
+
+            return (
+              <li key={item.label}>
+                <button type="button" aria-expanded={open}
+                  onClick={() => setManual(m => ({ ...m, [item.label]: !open }))}
+                  className={clsx(row, 'min-h-[38px] text-sm hover:bg-subtle hover:text-navy',
+                    childActive && !open ? 'font-semibold text-navy' : 'font-medium text-ink2')}>
+                  <Glyph name={item.icon} />
+                  <span className="flex-1 truncate">{item.label}</span>
+                  <Glyph name="chevDown" size={16} className={clsx('text-muted transition-transform', open && 'rotate-180')} />
+                </button>
+                {open && (
+                  <ul className="ml-[19px] mt-0.5 mb-1.5 space-y-0.5 border-l border-line pl-2.5">
+                    {kids.map(c => {
+                      const a = matches(pathname, c.href, c.also);
+                      return (
+                        <li key={c.href}>
+                          <Link href={c.href} aria-current={a ? 'page' : undefined}
+                            className={clsx(row, 'min-h-[34px] text-[13.5px]',
+                              a ? 'bg-accent-soft font-semibold text-navy' : 'font-medium text-ink2 hover:bg-subtle hover:text-navy')}>
+                            <span className="truncate">{c.label}</span>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       </nav>
 
-      {/* Settings + User */}
-      <div className="border-t border-cloud px-2.5 py-2.5 space-y-0.5">
-        <Link href="/settings"
-          title={collapsed ? 'Settings' : undefined}
-          className={clsx(
-            'flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-navy transition-all hover:bg-cloud',
-            collapsed && 'justify-center px-0',
-          )}>
-          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-cloud text-azure">
-            <Icon name="settings" size={16} />
-          </span>
-          {!collapsed && <span className="text-[13px] font-semibold">Settings</span>}
-        </Link>
-
-        {/* User row */}
-        <div className={clsx(
-          'flex items-center gap-2.5 rounded-xl px-2.5 py-2',
-          collapsed && 'justify-center px-0',
-        )}>
-          <Avatar name={user?.name ?? user?.email} size="sm" />
-          {!collapsed && (
-            <>
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold text-navy truncate">{user?.name ?? 'User'}</p>
-                <p className="text-[11px] text-royal/50 truncate">{user?.email}</p>
-              </div>
-              <button onClick={logout} className="text-royal/40 transition hover:text-azure flex-shrink-0">
-                <Icon name="logout" size={15} />
-              </button>
-            </>
-          )}
-        </div>
+      {/* Pinned */}
+      <div className="mx-3.5 border-t border-line pt-2.5 pb-4 space-y-0.5">
+        {user && [{ label: 'Settings', icon: 'settings' as IconKey, href: '/settings' },
+          ...(menu.help ? [{ label: 'Help & Support', icon: 'help' as IconKey, href: menu.help }] : [])].map(f => {
+          const a = matches(pathname, f.href);
+          return (
+            <Link key={f.href} href={f.href} title={collapsed ? f.label : undefined}
+              aria-current={a ? 'page' : undefined}
+              className={clsx(row, 'min-h-[38px] text-sm', collapsed && 'justify-center px-0',
+                a ? 'bg-accent-soft font-semibold text-navy' : 'font-medium text-ink2 hover:bg-subtle hover:text-navy')}>
+              <Glyph name={f.icon} />
+              {!collapsed && <span className="flex-1 truncate">{f.label}</span>}
+            </Link>
+          );
+        })}
       </div>
     </aside>
   );

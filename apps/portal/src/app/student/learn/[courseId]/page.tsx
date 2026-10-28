@@ -1,9 +1,10 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { clsx } from 'clsx';
 import { Icon } from '@/components/ui/Icon';
-import { SkeletonTopbar } from '@/components/ui/Skeleton';
+import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
 
 interface ActivePackage { id: string; name: string; expiresAt: string | null; }
@@ -14,7 +15,11 @@ interface Lesson {
   type: string;
   durationSecs: number | null;
   isFree?: boolean;
-  progress: { completed: boolean } | null;
+  locked?: boolean;
+  passMark?: number | null;
+  maxAttempts?: number | null;
+  chapters?: { startSec: number; title: string }[] | null;
+  progress: { completed: boolean; watchedSecs?: number; positionSecs?: number } | null;
 }
 interface Module { id: string; title: string; sortOrder: number; lessons: Lesson[]; }
 interface CourseDetail {
@@ -26,25 +31,84 @@ interface CourseDetail {
   programme: { name: string; shortName: string | null } | null;
   subject: { name: string } | null;
   level: { name: string } | null;
-  teacher: { firstName?: string | null; lastName?: string | null; email: string };
+  teacher: { firstName?: string | null; lastName?: string | null; name?: string | null; email: string };
 }
 interface ProgressData {
   courseId: string;
+  hasAccess?: boolean;
   totalLessons: number;
   completedLessons: number;
   percentComplete: number;
   modules: Module[];
 }
 
+/* ─── Small helpers ───────────────────────────────────────────────────────── */
+
+function clock(secs: number | null | undefined) {
+  if (!secs) return '—';
+  return `${Math.floor(secs / 60)}:${String(Math.floor(secs % 60)).padStart(2, '0')}`;
+}
+function minutes(secs: number | null | undefined) {
+  if (!secs) return '—';
+  return `${Math.max(1, Math.round(secs / 60))} min`;
+}
+
+type LessonState = 'done' | 'doing' | 'todo' | 'locked';
+function lessonState(l: Lesson): LessonState {
+  if (l.locked) return 'locked';
+  if (l.progress?.completed) return 'done';
+  if ((l.progress?.watchedSecs ?? 0) > 0 || (l.progress?.positionSecs ?? 0) > 0) return 'doing';
+  return 'todo';
+}
+const STATE_LABEL: Record<LessonState, string> = { done: 'Completed', doing: 'In progress', todo: 'Not started', locked: 'Locked' };
+
+const P = {
+  play:  'M8 5v14l11-7z',
+  text:  'M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6',
+  quiz:  'M4 4h16v16H4zM8 12l3 3 5-6',
+  check: 'M5 12.5l4.5 4.5L19 7.5',
+  dot:   'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  ring:  'M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14z',
+  lock:  'M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 0 1 7 0V11',
+  book:  'M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5zM5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3M9 7h6',
+  badge: 'M12 15a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM8.5 14l-1.5 7 5-3 5 3-1.5-7',
+  grid:  'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  layers:'M12 3l9 5-9 5-9-5zM3 13l9 5 9-5',
+  clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
+  user:  'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
+  mail:  'M3 6h18v12H3zM3 7l9 6 9-6',
+  back:  'M19 12H5M11 6l-6 6 6 6',
+  alert: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 8v5M12 16.5v.01',
+};
+
+function Glyph({ d, size = 18, fill = 'none', className, strokeWidth = 1.6 }: { d: string; size?: number; fill?: string; className?: string; strokeWidth?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth={strokeWidth}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden className={className}>
+      <path d={d} />
+    </svg>
+  );
+}
+
+const label = 'text-[11px] font-semibold uppercase tracking-[0.06em] text-muted';
+const btn = 'inline-flex h-[34px] items-center justify-center gap-2 rounded-md px-3.5 text-[13px] font-semibold transition-colors';
+const btnPrimary = `${btn} border border-azure-strong bg-azure-strong text-on-accent hover:brightness-95`;
+const btnSecondary = `${btn} border border-line bg-white text-navy hover:bg-subtle`;
+const btnDisabled = `${btn} cursor-not-allowed border border-line bg-subtle text-muted`;
+
+/* ─── Page ────────────────────────────────────────────────────────────────── */
+
 export default function StudentCourseLandingPage() {
   const { courseId } = useParams<{ courseId: string }>();
   const [course,          setCourse]          = useState<CourseDetail | null>(null);
   const [progress,        setProgress]        = useState<ProgressData | null>(null);
   const [loading,         setLoading]         = useState(true);
-  const [expanded,        setExpanded]        = useState<Set<string>>(new Set());
   const [accessDenied,    setAccessDenied]    = useState(false);
   const [expiringPackage, setExpiringPackage] = useState<ActivePackage | null>(null);
   const [isDirectPurchase, setIsDirectPurchase] = useState(false);
+  const [moduleIdx,       setModuleIdx]       = useState<number | null>(null);
+  const [sideTab,         setSideTab]         = useState<'info' | 'teacher'>('info');
+  const [mainTab,         setMainTab]         = useState<'lessons' | 'about'>('lessons');
 
   useEffect(() => {
     async function load() {
@@ -74,7 +138,6 @@ export default function StudentCourseLandingPage() {
           p => activePkgIds.has(p.id) && Array.isArray(p.courseIds) && p.courseIds.includes(courseId)
         );
         const directPurchase = coursePurchases.find((cp: any) => cp.courseId === courseId);
-        if (!hasPackageAccess && !directPurchase) { setAccessDenied(true); return; }
         if (!hasPackageAccess && directPurchase) setIsDirectPurchase(true);
 
         const now = Date.now();
@@ -95,11 +158,13 @@ export default function StudentCourseLandingPage() {
           }
         }
 
-        await api.post(`/platform-courses/${courseId}/enroll`).catch(() => {});
+        // The server decides access (package, purchase, school seat or enrolment) — the same check that guards the lessons
         const pr = await api.get(`/platform-courses/${courseId}/progress`);
+        const hasFreeLesson = (pr.data.modules as Module[]).some(m => m.lessons.some(l => l.isFree));
+        if (!pr.data.hasAccess && !hasFreeLesson) { setAccessDenied(true); return; }
+        if (pr.data.hasAccess) await api.post(`/platform-courses/${courseId}/enroll`).catch(() => {});
         setCourse(courseData ?? courseRes.data);
         setProgress(pr.data);
-        setExpanded(new Set((pr.data.modules as Module[]).map(m => m.id)));
       } finally {
         setLoading(false);
       }
@@ -107,16 +172,24 @@ export default function StudentCourseLandingPage() {
     load();
   }, [courseId]);
 
+  const allLessons = useMemo(() => progress?.modules.flatMap(m => m.lessons) ?? [], [progress]);
+  const resumeLesson = allLessons.find(l => !l.locked && !l.progress?.completed) ?? allLessons[0];
+  // Open on the module the student is working in
+  const defaultModule = Math.max(0, progress?.modules.findIndex(m => m.lessons.some(l => l.id === resumeLesson?.id)) ?? 0);
+  const activeModule = moduleIdx ?? defaultModule;
+
   if (loading) return (
-    <div className="flex flex-col min-h-full bg-surface">
-      <SkeletonTopbar />
-      <div className="flex-1 p-4 md:p-6 max-w-5xl mx-auto w-full space-y-5">
-        <div className="h-40 rounded-2xl bg-navy/60 animate-pulse" />
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[0,1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-cloud animate-pulse" />)}
+    <div className="flex min-h-full flex-col bg-white">
+      <Topbar />
+      <div className="h-[69px] border-b border-line" />
+      <div className="flex flex-1 flex-wrap">
+        <div className="w-[320px] border-r border-line p-6 space-y-4">
+          <div className="mx-auto h-16 w-16 rounded-lg bg-subtle animate-pulse" />
+          <div className="h-5 rounded bg-subtle animate-pulse" />
+          <div className="h-24 rounded bg-subtle animate-pulse" />
         </div>
-        <div className="space-y-2">
-          {[0,1,2].map(i => <div key={i} className="h-12 rounded-xl bg-cloud animate-pulse" />)}
+        <div className="flex-1 p-6 grid gap-4 sm:grid-cols-2 content-start">
+          {[0, 1, 2, 3].map(i => <div key={i} className="h-56 rounded-lg border border-line bg-subtle animate-pulse" />)}
         </div>
       </div>
     </div>
@@ -125,356 +198,363 @@ export default function StudentCourseLandingPage() {
   // ── Access denied ──
   if (accessDenied) {
     return (
-      <div className="flex min-h-full flex-col items-center justify-center bg-surface p-6 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-cloud mb-4">
-          <Icon name="packages" size={28} className="text-azure" />
-        </div>
-        <h1 className="text-xl font-black text-navy mb-2">Access required</h1>
-        <p className="text-sm text-royal/60 mb-6 max-w-sm leading-relaxed">
-          You need either an active package containing this course or a direct purchase to access it.
-        </p>
-        <div className="flex flex-col sm:flex-row items-center gap-3">
-          {/* Fixed: was /courses which could 404 */}
-          <Link href="/student/catalogue"
-            className="inline-flex items-center gap-2 rounded-xl bg-azure px-5 py-2.5 text-sm font-bold text-white hover:bg-royal transition">
-            <Icon name="packages" size={14} /> Buy this course
+      <div className="flex min-h-full flex-col bg-white">
+        <Topbar />
+        <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
+          <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-lg bg-accent-soft text-azure-strong">
+            <Glyph d={P.lock} size={26} />
+          </span>
+          <h1 className="mb-2 text-xl font-bold text-navy">You don&apos;t have access to this course yet</h1>
+          <p className="mb-6 max-w-sm text-sm leading-relaxed text-ink2">
+            Buy the course, or a package that includes it, to open its lessons.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Link href="/student/catalogue" className={btnPrimary}>Buy this course</Link>
+            <Link href="/packages" className={btnSecondary}>Browse packages</Link>
+          </div>
+          <Link href="/student/courses" className="mt-5 text-[13px] font-medium text-muted hover:text-navy transition-colors">
+            Back to My Courses
           </Link>
-          <Link href="/packages"
-            className="inline-flex items-center gap-2 rounded-xl border border-azure px-5 py-2.5 text-sm font-semibold text-azure hover:bg-azure hover:text-white transition">
-            Browse packages
-          </Link>
         </div>
-        <Link href="/student/courses" className="mt-4 text-xs text-royal/40 hover:text-navy transition">
-          ← Back to my courses
-        </Link>
       </div>
     );
   }
 
   if (!course || !progress) return null;
 
-  // ── WordPress embed ──
+  // ── Course hosted on the website ──
   if (course.source === 'WORDPRESS') {
     return (
       <div className="flex flex-col" style={{ height: '100dvh' }}>
-        <div className="flex items-center justify-between gap-3 bg-white border-b border-cloud px-5 py-3 flex-shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link href="/student/courses"
-              className="flex-shrink-0 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-azure/60 hover:text-azure hover:bg-azure/8 transition">
-              <Icon name="arrowLeft" size={12} /> My Courses
-            </Link>
-            <div className="h-4 w-px bg-cloud flex-shrink-0" />
-            <div className="flex items-center gap-2 min-w-0">
-              {course.programme && (
-                <span className="rounded-full bg-azure/10 px-2.5 py-0.5 text-[10px] font-bold text-azure uppercase tracking-widest flex-shrink-0">
-                  {course.programme.shortName ?? course.programme.name}
-                </span>
-              )}
-              <p className="text-xs font-semibold text-[#0f172a] truncate">{course.title}</p>
-            </div>
-          </div>
+        <div className="flex flex-shrink-0 items-center gap-3 border-b border-line bg-white px-5 py-3">
+          <Link href="/student/courses" aria-label="Back to My Courses"
+            className="flex h-[34px] w-[34px] items-center justify-center rounded-md border border-line text-ink2 hover:bg-subtle transition-colors">
+            <Glyph d={P.back} size={16} />
+          </Link>
+          <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+            <Link href="/student/courses" className="font-semibold text-navy">My Courses</Link>
+            <span aria-hidden className="text-muted">›</span>
+            <span className="truncate text-ink2">{course.title}</span>
+          </nav>
           {course.wpCourseUrl && (
-            <a href={course.wpCourseUrl} target="_blank" rel="noopener noreferrer"
-              className="flex-shrink-0 flex items-center gap-1.5 rounded-lg border border-azure/20 bg-azure/5 px-3 py-1.5 text-[11px] font-semibold text-azure hover:bg-azure hover:text-white hover:border-azure transition">
-              <Icon name="live" size={11} /> Open in new tab
-            </a>
+            <a href={course.wpCourseUrl} target="_blank" rel="noopener noreferrer" className={btnSecondary}>Open in new tab</a>
           )}
         </div>
-
         {course.wpCourseUrl && (
-          <div className="flex items-center gap-3 bg-[#EEF3FF] border-b border-azure/20 px-5 py-2.5 flex-shrink-0">
-            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-azure/20 flex-shrink-0">
-              <Icon name="clock" size={11} className="text-azure" />
-            </div>
-            <p className="text-xs text-azure/70 flex-1 leading-relaxed">
-              Hosted on an external platform. If it doesn&apos;t load, sign in there first.
-            </p>
-            <a href={course.wpCourseUrl} target="_blank" rel="noopener noreferrer"
-              className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-azure px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-royal transition whitespace-nowrap">
-              Sign in <Icon name="arrowRight" size={10} />
-            </a>
+          <div className="flex flex-shrink-0 items-center gap-3 border-b border-line bg-subtle px-5 py-2.5">
+            <Glyph d={P.alert} size={16} className="text-azure-strong" />
+            <p className="flex-1 text-[13px] text-ink2">This course is hosted on our website. If it doesn&apos;t load, sign in there first.</p>
+            <a href={course.wpCourseUrl} target="_blank" rel="noopener noreferrer" className={btnPrimary}>Sign in</a>
           </div>
         )}
-
         {course.wpCourseUrl ? (
-          <iframe
-            src={course.wpCourseUrl}
-            className="flex-1 w-full border-0 bg-white"
-            allow="fullscreen; autoplay; clipboard-write"
-            title={course.title}
-          />
+          <iframe src={course.wpCourseUrl} className="w-full flex-1 border-0 bg-white"
+            allow="fullscreen; autoplay; clipboard-write" title={course.title} />
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center p-6">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-azure/10">
-              <Icon name="courses" size={28} className="text-azure" />
-            </div>
-            <p className="text-sm font-bold text-[#0f172a]">Course link unavailable</p>
-            <p className="text-xs text-azure/50 max-w-xs leading-relaxed">
-              This course has no external URL configured. Contact your admin to fix this.
-            </p>
-            <Link href="/student/courses"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-azure/10 border border-azure/20 px-4 py-2 text-xs font-semibold text-azure hover:bg-azure hover:text-white transition">
-              <Icon name="arrowLeft" size={12} /> Back to my courses
-            </Link>
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+            <p className="text-sm font-semibold text-navy">This course has no link yet</p>
+            <p className="max-w-xs text-[13px] text-ink2">Please contact support so we can fix it.</p>
+            <Link href="/student/courses" className={btnSecondary}>Back to My Courses</Link>
           </div>
         )}
       </div>
     );
   }
 
-  const allLessons   = progress.modules.flatMap(m => m.lessons);
-  const resumeLesson = allLessons.find(l => !l.progress?.completed) ?? allLessons[0];
+  const modules = progress.modules;
+  const current = modules[activeModule] ?? modules[0];
+  const pct = progress.percentComplete;
+  const courseStatus = pct >= 100 ? 'Completed' : pct > 0 || allLessons.some(l => lessonState(l) === 'doing') ? 'In progress' : 'Not started';
 
-  // Total duration across all lessons
-  const totalSecs  = allLessons.reduce((s, l) => s + (l.durationSecs ?? 0), 0);
-  const totalHours = Math.floor(totalSecs / 3600);
-  const totalMins  = Math.round((totalSecs % 3600) / 60);
-  const durationLabel = totalSecs > 0
-    ? totalHours > 0 ? `${totalHours}h ${totalMins}m` : `${totalMins}m`
-    : null;
+  const totalSecs = allLessons.reduce((s, l) => s + (l.durationSecs ?? 0), 0);
+  const totalLength = totalSecs
+    ? totalSecs >= 3600 ? `${Math.floor(totalSecs / 3600)} h ${Math.round((totalSecs % 3600) / 60)} min` : `${Math.round(totalSecs / 60)} min`
+    : '—';
+  const teacherName = course.teacher
+    ? course.teacher.name || [course.teacher.firstName, course.teacher.lastName].filter(Boolean).join(' ') || course.teacher.email
+    : '—';
+  const programme = course.programme ? (course.programme.shortName ?? course.programme.name) : null;
+  const subtitleParts = [`${modules.length} module${modules.length === 1 ? '' : 's'}`, `${progress.totalLessons} lesson${progress.totalLessons === 1 ? '' : 's'}`];
+  const resumeHref = resumeLesson ? `/student/learn/${courseId}/lesson/${resumeLesson.id}` : undefined;
 
-  // Teacher display name: prefer firstName + lastName, fall back to email
-  const teacherDisplay = course.teacher
-    ? [course.teacher.firstName, course.teacher.lastName].filter(Boolean).join(' ') || course.teacher.email
+  const facts = [
+    { label: 'Programme', value: [programme, course.level?.name].filter(Boolean).join(' · ') || '—', d: P.layers },
+    { label: 'Subject', value: course.subject?.name ?? '—', d: P.book },
+    { label: 'Total length', value: totalLength, d: P.clock },
+    { label: 'Certificate', value: pct >= 100 ? 'Earned — view in Certificates' : 'Earned when all lessons are complete', d: P.badge },
+  ];
+
+  const moduleDone = current ? current.lessons.filter(l => l.progress?.completed).length : 0;
+  const moduleSummary = current
+    ? `${current.lessons.length} lesson${current.lessons.length === 1 ? '' : 's'} · ${moduleDone} completed`
     : '';
 
-  function fmtDuration(secs: number | null) {
-    if (!secs) return '';
-    return `${Math.floor(secs / 60)}m`;
-  }
-
-  const typeIcon  = (type: string) => type === 'VIDEO' ? 'play' : type === 'TEXT' ? 'file' : 'assignments';
-  const typeLabel = (type: string) => type === 'VIDEO' ? 'Video' : type === 'TEXT' ? 'Text' : 'Quiz';
-
   return (
-    <div className="flex flex-col min-h-full bg-surface">
+    <div className="flex min-h-full flex-col bg-white">
+      <Topbar />
 
-      {/* ── Hero ── */}
-      <div className="bg-navy px-6 pt-6 pb-10">
-        <Link href="/student/courses"
-          className="inline-flex items-center gap-1.5 text-white/40 hover:text-white text-xs font-semibold mb-5 transition">
-          <Icon name="arrowLeft" size={12} /> My Courses
+      {/* Page header */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-[17px] lg:px-7">
+        <Link href="/student/courses" aria-label="Back to My Courses"
+          className="flex h-[38px] w-[38px] items-center justify-center rounded-md border border-line bg-white text-ink2 hover:bg-subtle transition-colors">
+          <Glyph d={P.back} size={18} strokeWidth={1.7} />
         </Link>
-
-        <div className="flex items-start justify-between gap-6 flex-wrap">
-          <div className="min-w-0 flex-1">
-            {/* Tags */}
-            <div className="flex items-center gap-2 flex-wrap mb-3">
-              {course.programme && (
-                <span className="rounded-md bg-azure/20 px-2.5 py-0.5 text-[10px] font-bold text-azure uppercase tracking-widest">
-                  {course.programme.shortName ?? course.programme.name}
-                </span>
-              )}
-              {course.subject && (
-                <span className="rounded-md bg-white/10 px-2.5 py-0.5 text-[10px] font-semibold text-white/60">
-                  {course.subject.name}
-                </span>
-              )}
-              {course.level && (
-                <span className="rounded-md bg-white/10 px-2.5 py-0.5 text-[10px] font-semibold text-white/60">
-                  {course.level.name}
-                </span>
-              )}
-            </div>
-
-            <h1 className="text-2xl font-black text-white leading-snug">{course.title}</h1>
-            {course.description && (
-              <p className="text-sm text-white/50 mt-2 max-w-2xl line-clamp-2">{course.description}</p>
-            )}
-
-            {/* Instructor — full name with email fallback */}
-            {teacherDisplay && (
-              <p className="text-[11px] text-white/30 mt-3 flex items-center gap-1">
-                <Icon name="mentorship" size={10} className="inline flex-shrink-0" />
-                Instructor: {teacherDisplay}
-              </p>
-            )}
-          </div>
-
-          {/* Progress ring */}
-          <div className="flex flex-col items-center gap-2 flex-shrink-0">
-            <ProgressRing pct={progress.percentComplete} />
-            <p className="text-[10px] text-white/40 text-center">
-              {progress.completedLessons} / {progress.totalLessons} lessons
-            </p>
-          </div>
-        </div>
-
-        {/* Expiry warning */}
-        {expiringPackage && (
-          <div className="mt-5 flex items-center gap-3 rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 py-2.5">
-            <Icon name="clock" size={13} className="text-amber-300 flex-shrink-0" />
-            <p className="text-xs text-amber-200">
-              Your package <span className="font-semibold">{expiringPackage.name}</span> expires on{' '}
-              {new Date(expiringPackage.expiresAt!).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}.{' '}
-              <Link href="/packages" className="font-semibold underline hover:opacity-80 transition">Renew now</Link>
-            </p>
-          </div>
-        )}
-
-        {/* Resume / start CTA */}
-        {resumeLesson && (
-          <div className="mt-6 flex items-center gap-3 flex-wrap">
-            {/* Fixed: rounded-xl instead of rounded-md for consistency */}
-            <Link href={`/student/learn/${courseId}/lesson/${resumeLesson.id}`}
-              className="inline-flex items-center gap-2 rounded-xl bg-azure px-6 py-2.5 text-sm font-bold text-white hover:bg-royal transition">
-              <Icon name="play" size={14} />
-              {progress.percentComplete > 0 ? 'Resume learning' : 'Start learning'}
-            </Link>
-            {progress.percentComplete > 0 && progress.percentComplete < 100 && (
-              <p className="text-xs text-white/30">Next: {resumeLesson.title}</p>
-            )}
-            {progress.percentComplete === 100 && (
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-azure">
-                <Icon name="check" size={13} /> Course complete!
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Certificate CTA — shown when course is 100% complete */}
-        {progress.percentComplete === 100 && (
-          <div className="mt-4">
-            <Link href="/student/certificates"
-              className="inline-flex items-center gap-2 rounded-xl border border-azure/40 bg-azure/15 px-5 py-2 text-sm font-semibold text-azure hover:bg-azure hover:text-white transition">
-              <Icon name="check" size={13} /> View your certificate
-            </Link>
-          </div>
-        )}
+        <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-2 text-[15px]">
+          <Link href="/student/courses" className="font-semibold text-navy hover:text-azure-strong transition-colors">My Courses</Link>
+          <span aria-hidden className="text-muted">›</span>
+          <span className="truncate text-ink2">{course.title}</span>
+        </nav>
+        <span className="text-[13px] text-muted">Status:</span>
+        <span className="inline-flex h-6 items-center rounded bg-accent-soft px-2 text-xs font-semibold text-navy">{courseStatus}</span>
       </div>
 
-      {/* Package upsell banner (direct-purchase students only) */}
-      {isDirectPurchase && (
-        <div className="bg-gradient-to-r from-azure/10 to-royal/10 border-y border-azure/20 px-6 py-4">
-          <div className="max-w-3xl mx-auto flex items-center gap-4 flex-wrap">
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-azure/20">
-              <Icon name="packages" size={18} className="text-azure" />
+      <div className="flex flex-1 flex-wrap">
+
+        {/* ── Course panel ── */}
+        <aside className="flex w-full flex-col border-b border-line md:w-[320px] md:flex-shrink-0 md:border-b-0 md:border-r">
+          <div className="flex flex-col items-center gap-3 px-6 pt-7 pb-[22px] text-center">
+            <span className="flex h-16 w-16 items-center justify-center rounded-lg bg-accent-soft text-azure-strong">
+              <Glyph d={P.book} size={28} strokeWidth={1.5} />
+            </span>
+            <div>
+              <h1 className="text-[19px] font-bold tracking-[-0.01em] text-navy">{course.title}</h1>
+              <p className="mt-1 text-[13px] text-muted">{subtitleParts.join(' · ')}</p>
             </div>
-            <div className="flex-1 min-w-[200px]">
-              <p className="text-sm font-bold text-navy">Unlock live classes &amp; mentorship</p>
-              <p className="text-xs text-royal/60 mt-0.5">
-                Upgrade to a package for real-time instruction, 1-on-1 mentorship, and the full course library.
+            <div className="mt-1 flex gap-[18px]">
+              {[
+                { label: pct > 0 ? 'Continue' : 'Start', d: P.play, href: resumeHref, primary: true },
+                { label: 'Certificates', d: P.badge, href: '/student/certificates' },
+                { label: 'All courses', d: P.grid, href: '/student/courses' },
+              ].map(a => (
+                <Link key={a.label} href={a.href ?? '#'} className="flex flex-col items-center gap-1.5 text-[12.5px] text-ink2 hover:text-navy transition-colors">
+                  <span className={clsx('flex h-[42px] w-[42px] items-center justify-center rounded-md border',
+                    a.primary ? 'border-transparent bg-accent-soft text-azure-strong' : 'border-line bg-white text-ink2')}>
+                    <Glyph d={a.d} size={18} fill={a.primary ? 'currentColor' : 'none'} />
+                  </span>
+                  {a.label}
+                </Link>
+              ))}
+            </div>
+            {resumeLesson && pct < 100 && (
+              <p className="mt-1 flex items-center gap-1.5 text-[12.5px] text-muted">
+                <span className="h-1.5 w-1.5 rounded-full bg-azure" />
+                Next: <strong className="font-semibold text-navy">{resumeLesson.title}</strong>
               </p>
-            </div>
-            <Link href="/packages"
-              className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-azure px-4 py-2 text-xs font-bold text-white hover:bg-royal transition">
-              View packages <Icon name="arrowRight" size={11} />
-            </Link>
+            )}
           </div>
-        </div>
-      )}
 
-      {/* ── Curriculum ── */}
-      <div className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-6 space-y-3">
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-azure">
-            Curriculum &mdash; {progress.modules.length} module{progress.modules.length !== 1 ? 's' : ''} &middot; {progress.totalLessons} lesson{progress.totalLessons !== 1 ? 's' : ''}
-            {durationLabel && <> &middot; {durationLabel}</>}
-          </p>
-          <button
-            onClick={() => {
-              const allIds = new Set(progress.modules.map(m => m.id));
-              setExpanded(prev => prev.size === allIds.size ? new Set() : allIds);
-            }}
-            className="text-[10px] font-semibold text-royal/40 hover:text-azure transition">
-            {expanded.size > 0 ? 'Collapse all' : 'Expand all'}
-          </button>
-        </div>
-
-        {progress.modules.map((mod, idx) => {
-          const done   = mod.lessons.filter(l => l.progress?.completed).length;
-          const isOpen = expanded.has(mod.id);
-          const modPct = mod.lessons.length > 0 ? Math.round((done / mod.lessons.length) * 100) : 0;
-          return (
-            <div key={mod.id} className="rounded-md border border-cloud bg-white overflow-hidden">
-              <button
-                onClick={() => setExpanded(s => { const n = new Set(s); n.has(mod.id) ? n.delete(mod.id) : n.add(mod.id); return n; })}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface transition">
-                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-cloud text-[10px] font-black text-navy">
-                  {idx + 1}
-                </span>
-                <span className="flex-1 text-sm font-semibold text-navy">{mod.title}</span>
-                <span className="text-[10px] text-royal/40 font-semibold flex-shrink-0">{done}/{mod.lessons.length}</span>
-                <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={13} className="text-royal/30 flex-shrink-0" />
+          <div role="tablist" aria-label="Course details" className="grid grid-cols-2 border-y border-line">
+            {([['info', 'Course info'], ['teacher', 'Teacher']] as const).map(([k, l]) => (
+              <button key={k} type="button" role="tab" aria-selected={sideTab === k} onClick={() => setSideTab(k)}
+                className={clsx('h-11 border-b-2 text-[13.5px] transition-colors -mb-px',
+                  sideTab === k ? 'border-azure font-semibold text-navy' : 'border-transparent font-medium text-muted hover:text-navy')}>
+                {l}
               </button>
+            ))}
+          </div>
 
-              {/* Module progress bar — always visible under the header */}
-              <div className="h-0.5 w-full" style={{ background: '#5889FA10' }}>
-                <div
-                  className="h-full bg-azure transition-all duration-500"
-                  style={{ width: `${modPct}%` }}
-                />
+          {sideTab === 'info' ? (
+            <div className="flex flex-col gap-[22px] px-6 pt-[22px] pb-7">
+              <div className="flex flex-col gap-2.5">
+                <div className="flex items-baseline justify-between">
+                  <p className={label}>Progress</p>
+                  <span className="rounded bg-accent-soft px-1.5 py-0.5 text-xs font-bold text-navy">{pct}%</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-[3px] bg-subtle" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                  <div className="h-1.5 bg-azure transition-[width] duration-500" style={{ width: `${pct}%` }} />
+                </div>
+                <p className="text-[13px] text-ink2">{progress.completedLessons} of {progress.totalLessons} lessons complete</p>
               </div>
 
-              {isOpen && (
-                <div className="border-t border-cloud divide-y divide-cloud/60">
-                  {mod.lessons.map(lesson => {
-                    const completed = lesson.progress?.completed;
-                    return (
-                      <Link key={lesson.id}
-                        href={`/student/learn/${courseId}/lesson/${lesson.id}`}
-                        className="flex min-w-0 items-center gap-3 px-4 py-3 hover:bg-azure/5 transition group">
-                        {/* Completion circle with lesson type icon */}
-                        <div className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border transition ${
-                          completed ? 'border-azure bg-azure' : 'border-cloud group-hover:border-azure'
-                        }`}>
-                          {completed
-                            ? <Icon name="check" size={10} className="text-white" />
-                            : <Icon name={typeIcon(lesson.type)} size={9} className="text-royal/40 group-hover:text-azure transition" />
-                          }
-                        </div>
+              <div className="h-px bg-line" />
 
-                        {/* Title — min-w-0 ensures truncation works in flex context */}
-                        <span className={`flex-1 min-w-0 text-xs font-medium overflow-hidden text-ellipsis whitespace-nowrap ${completed ? 'text-azure' : 'text-navy'}`}>
-                          {lesson.title}
-                        </span>
+              <dl className="grid gap-3.5">
+                {facts.map(f => (
+                  <div key={f.label} className="flex items-center gap-3">
+                    <span className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-md bg-subtle text-ink2">
+                      <Glyph d={f.d} size={16} />
+                    </span>
+                    <div className="min-w-0">
+                      <dt className="text-xs text-muted">{f.label}</dt>
+                      <dd className="mt-px text-[13.5px] font-semibold text-navy">{f.value}</dd>
+                    </div>
+                  </div>
+                ))}
+              </dl>
 
-                        {/* Lesson type label */}
-                        <span className="flex-shrink-0 text-[10px] text-royal/30 font-medium hidden sm:block">
-                          {typeLabel(lesson.type)}
-                        </span>
-
-                        {/* Free preview badge */}
-                        {lesson.isFree && !completed && (
-                          <span className="flex-shrink-0 inline-flex items-center rounded-full bg-azure/10 px-1.5 py-0.5 text-[9px] font-bold text-azure border border-azure/20">
-                            Free
-                          </span>
-                        )}
-
-                        {/* Duration */}
-                        {lesson.durationSecs && (
-                          <span className="text-[10px] text-royal/30 flex-shrink-0">{fmtDuration(lesson.durationSecs)}</span>
-                        )}
-
-                        <Icon name="chevronRight" size={11} className="text-royal/20 group-hover:text-azure transition flex-shrink-0" />
-                      </Link>
-                    );
-                  })}
+              {progress.hasAccess === false && (
+                <div className="flex flex-col gap-2.5 rounded-md border border-line bg-subtle p-3">
+                  <p className="text-[13px] text-ink2">
+                    You can watch the free preview lessons. Buy the course to unlock the rest.
+                  </p>
+                  <Link href="/student/catalogue" className={clsx(btnPrimary, 'self-start')}>Buy this course</Link>
+                </div>
+              )}
+              {expiringPackage && (
+                <div className="flex gap-2.5 rounded-md border border-line bg-subtle p-3">
+                  <Glyph d={P.clock} size={16} className="mt-0.5 flex-shrink-0 text-azure-strong" />
+                  <p className="text-[13px] text-ink2">
+                    {expiringPackage.name} ends on{' '}
+                    <strong className="font-semibold text-navy">
+                      {new Date(expiringPackage.expiresAt!).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
+                    </strong>.{' '}
+                    <Link href="/packages" className="font-semibold text-azure-strong hover:underline">Renew</Link>
+                  </p>
+                </div>
+              )}
+              {isDirectPurchase && (
+                <div className="flex gap-2.5 rounded-md border border-line p-3">
+                  <Glyph d={P.layers} size={16} className="mt-0.5 flex-shrink-0 text-azure-strong" />
+                  <p className="text-[13px] text-ink2">
+                    A package adds live classes and mentorship to this course.{' '}
+                    <Link href="/packages" className="font-semibold text-azure-strong hover:underline">See packages</Link>
+                  </p>
                 </div>
               )}
             </div>
-          );
-        })}
+          ) : (
+            <div className="flex flex-col gap-3.5 px-6 pt-[22px] pb-7">
+              {[{ label: 'Teacher', value: teacherName, d: P.user }, { label: 'Email', value: course.teacher?.email ?? '—', d: P.mail }].map(f => (
+                <div key={f.label} className="flex items-center gap-3">
+                  <span className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-md bg-subtle text-ink2">
+                    <Glyph d={f.d} size={16} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted">{f.label}</p>
+                    <p className="mt-px truncate text-[13.5px] font-semibold text-navy">{f.value}</p>
+                  </div>
+                </div>
+              ))}
+              <Link href="/student/messages" className={clsx(btnSecondary, 'mt-1 self-start')}>Message the teacher</Link>
+            </div>
+          )}
+        </aside>
+
+        {/* ── Lessons ── */}
+        <section aria-label="Course content" className="flex min-w-0 flex-1 flex-col">
+          <div role="tablist" aria-label="Course sections" className="flex gap-1 overflow-x-auto border-b border-line px-4 lg:px-6">
+            {([['lessons', 'Lessons', progress.totalLessons], ['about', 'About', null]] as const).map(([k, l, n]) => (
+              <button key={k} type="button" role="tab" aria-selected={mainTab === k} onClick={() => setMainTab(k)}
+                className={clsx('-mb-px inline-flex h-12 items-center gap-2 whitespace-nowrap border-b-2 px-3 text-[13.5px] transition-colors',
+                  mainTab === k ? 'border-azure font-semibold text-navy' : 'border-transparent font-medium text-muted hover:text-navy')}>
+                {l}
+                {n !== null && (
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded bg-accent-soft px-1.5 text-[11.5px] font-bold text-navy">{n}</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {mainTab === 'about' ? (
+            <div className="max-w-2xl space-y-4 px-4 py-6 lg:px-6">
+              <h2 className="text-[17px] font-bold text-navy">About this course</h2>
+              <p className="whitespace-pre-line text-sm leading-relaxed text-ink2">
+                {course.description || 'The teacher has not added a description yet.'}
+              </p>
+            </div>
+          ) : !modules.length ? (
+            <div className="px-6 py-12 text-center text-sm text-muted">The teacher hasn&apos;t added any lessons yet.</div>
+          ) : (
+            <div className="flex flex-col gap-5 px-4 pt-5 pb-8 lg:px-6">
+              <div role="tablist" aria-label="Modules" className="flex flex-wrap gap-1 rounded-lg border border-line bg-subtle p-1">
+                {modules.map((m, i) => (
+                  <button key={m.id} type="button" role="tab" aria-selected={i === activeModule} onClick={() => setModuleIdx(i)}
+                    className={clsx('h-8 rounded-md px-3 text-[13px] transition-colors',
+                      i === activeModule ? 'bg-accent-soft font-semibold text-navy' : 'font-medium text-ink2 hover:text-navy')}>
+                    {m.title}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-[17px] font-bold text-navy">{current?.title}</h2>
+                <p className="text-[13px] text-muted">{moduleSummary}</p>
+              </div>
+
+              <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(290px,1fr))]">
+                {current?.lessons.map(l => <LessonCard key={l.id} lesson={l} courseId={courseId} />)}
+              </div>
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );
 }
 
+/* ─── Lesson card ─────────────────────────────────────────────────────────── */
 
-function ProgressRing({ pct }: { pct: number }) {
-  const r    = 30;
-  const circ = 2 * Math.PI * r;
-  const dash = (pct / 100) * circ;
+function LessonCard({ lesson, courseId }: { lesson: Lesson; courseId: string }) {
+  const st = lessonState(lesson);
+  const href = `/student/learn/${courseId}/lesson/${lesson.id}`;
+  const kind = lesson.type === 'VIDEO' ? 'video' : lesson.type === 'QUIZ' ? 'quiz' : 'text';
+
+  const meta = kind === 'video' ? `Video · ${clock(lesson.durationSecs)}`
+    : kind === 'quiz' ? 'Quiz'
+    : `Reading · ${minutes(lesson.durationSecs)}`;
+  const cells = kind === 'video'
+    ? [['Length', clock(lesson.durationSecs)], ['Chapters', lesson.chapters?.length ? String(lesson.chapters.length) : '—']]
+    : kind === 'quiz'
+    ? [['Pass mark', lesson.passMark ? `${lesson.passMark}%` : '—'], ['Attempts', lesson.maxAttempts ? String(lesson.maxAttempts) : 'Unlimited']]
+    : [['Length', minutes(lesson.durationSecs)], ['Preview', lesson.isFree ? 'Free' : '—']];
+  const covers = lesson.chapters?.length ? lesson.chapters.map(c => c.title).join(', ') : null;
+
+  const primaryLabel = st === 'locked' ? 'Locked'
+    : st === 'done' ? (kind === 'video' ? 'Rewatch' : kind === 'quiz' ? 'Review answers' : 'Review')
+    : st === 'doing' ? 'Continue'
+    : kind === 'text' ? 'Read' : 'Start';
+
+  const statusTone = st === 'done' ? 'text-azure-strong' : st === 'doing' ? 'text-azure' : 'text-muted';
+  const statusIcon = st === 'done' ? P.check : st === 'doing' ? P.dot : st === 'locked' ? P.lock : P.ring;
+
   return (
-    <svg width={76} height={76} viewBox="0 0 76 76">
-      <circle cx={38} cy={38} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={7} />
-      <circle cx={38} cy={38} r={r} fill="none" stroke="#5889FA" strokeWidth={7}
-        strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-        transform="rotate(-90 38 38)" />
-      <text x={38} y={38} textAnchor="middle" dominantBaseline="central"
-        fill="white" fontSize={13} fontWeight={800}>
-        {pct}%
-      </text>
-    </svg>
+    <article className="flex flex-col gap-3.5 rounded-lg border border-line bg-white p-4">
+      <div className="flex items-center gap-3">
+        <span className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-md bg-subtle text-ink2">
+          <Glyph d={kind === 'video' ? P.play : kind === 'quiz' ? P.quiz : P.text} size={18} />
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-[14.5px] font-semibold leading-snug text-navy">{lesson.title}</h3>
+          <p className="mt-0.5 text-[12.5px] text-muted">{meta}</p>
+        </div>
+      </div>
+
+      <dl className="grid grid-cols-3 gap-2">
+        <div>
+          <dt className={label}>Status</dt>
+          <dd className={clsx('mt-[5px] flex items-center gap-1.5 text-[13px] font-semibold', statusTone)}>
+            <Glyph d={statusIcon} size={14} strokeWidth={2} fill={st === 'doing' ? 'currentColor' : 'none'} />
+            {STATE_LABEL[st]}
+          </dd>
+        </div>
+        {cells.map(([l, v]) => (
+          <div key={l}>
+            <dt className={label}>{l}</dt>
+            <dd className="mt-[5px] text-[13px] font-semibold text-navy">{v}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {covers && (
+        <>
+          <div className="h-px bg-line" />
+          <div>
+            <p className={label}>Covers</p>
+            <p className="mt-[5px] text-[13px] leading-normal text-ink2">{covers}</p>
+          </div>
+        </>
+      )}
+
+      <div className="mt-auto flex flex-wrap gap-2">
+        {st === 'locked' ? (
+          <span className={btnDisabled} aria-disabled="true">Locked</span>
+        ) : (
+          <Link href={href} className={btnPrimary}>{primaryLabel}</Link>
+        )}
+        {st !== 'locked' && kind !== 'quiz' && (
+          <Link href={href} className={btnSecondary}>Practice</Link>
+        )}
+      </div>
+    </article>
   );
 }
