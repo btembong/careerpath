@@ -28,8 +28,31 @@ interface Lesson {
   content: string | null; sortOrder: number; isFree: boolean; durationSecs: number | null;
   passMark: number | null; timeLimitSecs: number | null; maxAttempts: number;
   attachments: Attachment[];
+  chapters?: { startSec: number; title: string }[] | null;
+  transcript?: string | null;
+  /** Editor-only: the chapters textarea while editing */
+  chaptersText?: string;
 }
 interface Module { id: string; title: string; sortOrder: number; lessons: Lesson[]; }
+
+function fmtTime(s: number) {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+}
+const chaptersToText = (c?: Lesson['chapters']) => (c ?? []).map(x => `${fmtTime(x.startSec)} ${x.title}`).join('\n');
+
+/** "2:15 Factorising" per line (YouTube-style). Returns the chapters, or the first line it couldn't read. */
+function parseChapters(text: string): { chapters: { startSec: number; title: string }[] } | { error: string } {
+  const chapters: { startSec: number; title: string }[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(/^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\s*[-–:]?\s*(.+)$/);
+    if (!m) return { error: line };
+    chapters.push({ startSec: (+(m[1] ?? 0)) * 3600 + +m[2] * 60 + +m[3], title: m[4].trim() });
+  }
+  return { chapters };
+}
 interface Course {
   id: string; title: string; description: string | null;
   shortDescription: string | null; coverUrl: string | null; status: string;
@@ -76,6 +99,28 @@ function SortableLesson({
               onChange={e => setEditLesson({ ...editLesson, videoUrl: e.target.value })}
               placeholder="Video URL (YouTube, Vimeo, direct…)"
               className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
+          )}
+          {editLesson.type === 'VIDEO' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <label className="block space-y-1">
+                <span className="text-[11px] font-semibold text-navy">Chapters <span className="font-normal text-royal/40">(optional · one per line)</span></span>
+                <textarea
+                  value={editLesson.chaptersText ?? chaptersToText(editLesson.chapters)}
+                  onChange={e => setEditLesson({ ...editLesson, chaptersText: e.target.value })}
+                  placeholder={'0:00 Introduction\n2:15 Factorising\n9:40 Worked example'}
+                  rows={4}
+                  className="w-full rounded-xl border border-cloud bg-white px-3 py-2 font-mono text-xs text-navy outline-none focus:border-azure placeholder:text-royal/40" />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-semibold text-navy">Transcript <span className="font-normal text-royal/40">(optional · [mm:ss] lines are clickable)</span></span>
+                <textarea
+                  value={editLesson.transcript ?? ''}
+                  onChange={e => setEditLesson({ ...editLesson, transcript: e.target.value })}
+                  placeholder={'[0:00] Welcome to this lesson…\n[0:42] First, recall the formula…'}
+                  rows={4}
+                  className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-xs text-navy outline-none focus:border-azure placeholder:text-royal/40" />
+              </label>
+            </div>
           )}
           {editLesson.type === 'TEXT' && (
             <RichTextEditor
@@ -431,11 +476,20 @@ export default function CourseBuilderPage() {
   }
 
   async function updateLesson(lesson: Lesson, moduleId: string) {
+    const isVideo = editLesson!.type === 'VIDEO';
+    let chapters: { startSec: number; title: string }[] | undefined;
+    if (isVideo && editLesson!.chaptersText !== undefined) {
+      const parsed = parseChapters(editLesson!.chaptersText);
+      if ('error' in parsed) { notify.error(`Couldn't read chapter line: "${parsed.error}". Use "2:15 Title".`); return; }
+      chapters = parsed.chapters;
+    }
     setActing('edit-' + lesson.id);
     try {
       await api.patch(`/platform-courses/${courseId}/modules/${moduleId}/lessons/${lesson.id}`, {
         title: editLesson!.title, videoUrl: editLesson!.videoUrl,
         content: editLesson!.content, isFree: editLesson!.isFree,
+        ...(chapters !== undefined && { chapters }),
+        ...(isVideo && { transcript: editLesson!.transcript?.trim() || null }),
       });
       setEditLesson(null); notify.success('Lesson saved'); await load();
     } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }

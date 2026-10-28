@@ -1,11 +1,13 @@
 'use client';
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@/components/ui/Icon';
 import type { IconName } from '@/lib/icons';
 import { SkeletonTopbar } from '@/components/ui/Skeleton';
-import { VideoPlayer } from '@/components/ui/VideoPlayer';
+import { VideoPlayer, type Chapter, type VideoPlayerHandle } from '@/components/ui/VideoPlayer';
+import { LessonMediaExtras } from '@/components/learning/LessonMediaExtras';
+import { parseVideoUrl } from '@cpa/shared';
 import { useAuth } from '@/hooks/useAuth';
 import api from '@/lib/api';
 import _ReactMarkdown from 'react-markdown';
@@ -21,7 +23,9 @@ interface Lesson {
   content: string | null; sortOrder: number; isFree: boolean; durationSecs: number | null;
   passMark: number | null; timeLimitSecs: number | null; maxAttempts: number; shuffleQuestions: boolean;
   attachments: Attachment[];
-  progress: { completed: boolean; watchedSecs: number } | null;
+  chapters?: Chapter[] | null;
+  transcript?: string | null;
+  progress: { completed: boolean; watchedSecs: number; positionSecs?: number } | null;
 }
 interface Module { id: string; title: string; sortOrder: number; lessons: Lesson[]; }
 interface ProgressData {
@@ -56,7 +60,6 @@ export default function StudentLessonPlayerPage() {
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightPanel, setRightPanel] = useState<RightPanel>('none');
-  const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Dark / light player theme
   const [playerTheme, setPlayerTheme] = useState<'dark' | 'light'>(() => {
@@ -150,20 +153,10 @@ export default function StudentLessonPlayerPage() {
     setTimeLeft(null);
   }, [lessonId]);
 
-  // Auto-ping watch progress every 30s for video lessons
-  useEffect(() => {
-    const lesson = progress?.modules.flatMap(m => m.lessons).find(l => l.id === lessonId);
-    if (!lesson || lesson.type !== 'VIDEO') return;
-    if (progressTimer.current) clearInterval(progressTimer.current);
-    progressTimer.current = setInterval(async () => {
-      try { await api.post(`/platform-courses/${courseId}/progress/${lesson.id}/watch`, { watchedSecs: 30 }); } catch {}
-    }, 30000);
-    return () => { if (progressTimer.current) clearInterval(progressTimer.current); };
-  }, [lessonId, progress]);
-
   async function markComplete(lesson: Lesson) {
     try {
-      await api.post(`/platform-courses/${courseId}/progress/${lesson.id}/complete`, { watchedSecs: lesson.durationSecs ?? 0 });
+      // Study time comes from real playback reports, not the lesson length
+      await api.post(`/platform-courses/${courseId}/progress/${lesson.id}/complete`, {});
       await loadProgress();
       // Auto-advance to next lesson
       const allLessons = progress?.modules.flatMap(m => m.lessons) ?? [];
@@ -484,6 +477,13 @@ function VideoContent({ lesson, courseId, allLessons, onMarkComplete, signedVide
   signedVideoUrl: string | null;
 }) {
   const videoSrc = signedVideoUrl ?? lesson.videoUrl;
+  const playerRef = useRef<VideoPlayerHandle>(null);
+
+  const reportProgress = useCallback((positionSecs: number, deltaSecs: number) => {
+    api.post(`/platform-courses/${courseId}/progress/${lesson.id}/watch`, { positionSecs, deltaSecs }).catch(() => {});
+  }, [courseId, lesson.id]);
+
+  const seek = playerRef.current?.canSeek === false ? undefined : (s: number) => playerRef.current?.seekTo(s);
 
   const nextLesson = useMemo(() => {
     const i = allLessons.findIndex(l => l.id === lesson.id);
@@ -501,7 +501,15 @@ function VideoContent({ lesson, courseId, allLessons, onMarkComplete, signedVide
       {/* Video — right-click blocked */}
       <div className="select-none" onContextMenu={e => e.preventDefault()}>
         {videoSrc
-          ? <VideoPlayer key={signedVideoUrl ?? lesson.id} src={videoSrc} title={lesson.title} />
+          ? <VideoPlayer
+              ref={playerRef}
+              key={signedVideoUrl ?? lesson.id}
+              src={videoSrc}
+              title={lesson.title}
+              startAt={lesson.progress?.positionSecs}
+              chapters={lesson.chapters}
+              onProgress={reportProgress}
+            />
           : <div className="bg-black flex items-center justify-center" style={{ minHeight: 300 }}><p className="text-white/40 text-sm">No video URL set</p></div>
         }
       </div>
@@ -532,6 +540,11 @@ function VideoContent({ lesson, courseId, allLessons, onMarkComplete, signedVide
           </h1>
         </div>
 
+        <LessonMediaExtras
+          chapters={lesson.chapters}
+          transcript={lesson.transcript}
+          onSeek={parseVideoUrl(videoSrc ?? '')?.kind === 'file' ? seek : undefined}
+        />
         <Attachments attachments={lesson.attachments} />
         <LessonCompletionCard lesson={lesson} onMarkComplete={onMarkComplete} nextLesson={nextLesson} courseId={courseId} />
         <DiscussionSection courseId={courseId} lessonId={lesson.id} />
