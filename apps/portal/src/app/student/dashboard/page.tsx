@@ -1,1486 +1,507 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  AreaChart, Area,
-} from 'recharts';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { SkeletonTopbar, SkeletonStat } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
-import { StaggerList, StaggerItem, FadeUp, AnimatedNumber } from '@/components/ui/Motion';
-import { spring } from '@/lib/motion';
+import { StudyHeatmap } from '@/components/learning/StudyHeatmap';
 import { useAuth } from '@/hooks/useAuth';
-import { useDarkMode } from '@/hooks/useDarkMode';
 import api from '@/lib/api';
 
-/* ─── SVG Progress Ring ─────────────────────────────────────────────────── */
-function ProgressRing({ pct, size = 72, stroke = 6, color = '#5889FA', trackColor = '#E6ECFD' }:
-  { pct: number; size?: number; stroke?: number; color?: string; trackColor?: string }) {
-  const r = (size - stroke) / 2;
-  const circ = 2 * Math.PI * r;
-  const dash = Math.min(100, Math.max(0, pct)) / 100 * circ;
+/* ─── Types (shapes returned by the student endpoints) ────────────────────── */
+
+interface Package { id: string; name: string; expiresAt?: string | null; }
+interface Me { email: string; firstName?: string | null; name?: string | null; activePackages?: Package[]; }
+interface Stats { totalCourses: number; completedCourses: number; streak: number; }
+interface WeekHours { week: string; hours: number; lessons: number; }
+interface CourseProgress {
+  courseId: string; courseTitle: string; percentComplete?: number; certificateEarned?: boolean;
+  lessonsCompleted?: number; totalLessons?: number; quizzesPassed?: number; totalQuizzes?: number;
+  assignmentsGraded?: number; totalAssignments?: number;
+}
+interface LastLesson { courseId: string; courseTitle?: string; lessonId?: string; lessonTitle?: string; pct?: number; }
+interface LiveSession { id: string; title: string; scheduledAt: string; status?: string; durationMins?: number | null; }
+interface Assignment { id: string; title: string; dueAt?: string | null; dueDate?: string | null; status?: string; course?: { title?: string }; cohort?: { name?: string }; }
+interface Leader { id: string; name: string; xpTotal: number; rank: number; }
+
+/* ─── Icons and shared styles ─────────────────────────────────────────────── */
+
+const P = {
+  play:  'M8 5v14l11-7z',
+  book:  'M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5zM5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3M9 7h6',
+  clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
+  video: 'M3 6h12v12H3zM15 10l6-3v10l-6-3',
+  badge: 'M12 15a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM8.5 14l-1.5 7 5-3 5 3-1.5-7',
+  alert: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 8v5M12 16.5v.01',
+  flame: 'M12 3c1 3 4 5 4 9a4 4 0 0 1-8 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 0-8z',
+  check: 'M5 12.5l4.5 4.5L19 7.5',
+  ring:  'M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14z',
+};
+function Glyph({ d, size = 16, fill = 'none', className, strokeWidth = 1.6 }: { d: string; size?: number; fill?: string; className?: string; strokeWidth?: number }) {
   return (
-    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={trackColor} strokeWidth={stroke} />
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
-        strokeDasharray={`${dash} ${circ - dash}`} strokeLinecap="round"
-        style={{ transition: 'stroke-dasharray 1s ease' }} />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth={strokeWidth}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden className={className}>
+      <path d={d} />
     </svg>
   );
 }
 
-/* ─── Daily motivational quotes ─────────────────────────────────────────── */
-const QUOTES = [
-  { text: 'Education is the most powerful weapon which you can use to change the world.', author: 'Nelson Mandela' },
-  { text: 'The beautiful thing about learning is that no one can take it away from you.', author: 'B.B. King' },
-  { text: 'An investment in knowledge pays the best interest.', author: 'Benjamin Franklin' },
-  { text: 'Education is not the filling of a pail, but the lighting of a fire.', author: 'W.B. Yeats' },
-  { text: 'Tell me and I forget. Teach me and I remember. Involve me and I learn.', author: 'Benjamin Franklin' },
-  { text: 'It does not matter how slowly you go as long as you do not stop.', author: 'Confucius' },
-  { text: 'Live as if you were to die tomorrow. Learn as if you were to live forever.', author: 'Mahatma Gandhi' },
-  { text: 'Success is not final, failure is not fatal: it is the courage to continue that counts.', author: 'Winston Churchill' },
-  { text: 'Knowledge is power. Information is liberating.', author: 'Kofi Annan' },
-  { text: 'Strive not to be a success, but rather to be of value.', author: 'Albert Einstein' },
-  { text: 'In learning you will teach, and in teaching you will learn.', author: 'Phil Collins' },
-  { text: 'The capacity to learn is a gift; the ability to learn is a skill; the willingness to learn is a choice.', author: 'Brian Herbert' },
-];
+const card = 'flex flex-col gap-3.5 rounded-lg border border-line bg-white p-[18px]';
+const h2 = 'flex items-center gap-2 text-base font-bold text-navy';
+const count = 'inline-flex h-5 min-w-5 items-center justify-center rounded bg-accent-soft px-1.5 text-[11.5px] font-bold text-navy';
+const label = 'text-[11px] font-semibold uppercase tracking-[0.06em] text-muted';
+const btn = 'inline-flex items-center justify-center gap-2 rounded-md font-semibold transition-colors';
+const btnPrimary = `${btn} h-9 px-4 text-[13.5px] border border-azure-strong bg-azure-strong text-on-accent hover:brightness-95`;
+const btnSecondary = `${btn} h-9 px-4 text-[13.5px] border border-line bg-white text-navy hover:bg-subtle`;
+const btnSecondarySm = `${btn} h-8 px-3 text-[13px] border border-line bg-white text-navy hover:bg-subtle`;
+const btnPrimarySm = `${btn} h-8 px-3 text-[13px] border border-azure-strong bg-azure-strong text-on-accent hover:brightness-95`;
+const link = 'text-[13px] font-semibold text-azure-strong hover:underline';
 
-/* ─── Onboarding steps ───────────────────────────────────────────────────── */
 const ONBOARD_STEPS = [
-  { title: 'Welcome to your dashboard!', body: 'Everything you need to learn, track progress, and connect with teachers — all in one place.' },
-  { title: 'Resume your learning', body: 'The blue card at the top takes you straight back to your last lesson. Never lose your place.' },
-  { title: 'Track your progress', body: 'Your overall progress ring and activity charts update in real time as you complete lessons.' },
-  { title: 'Never miss a deadline', body: 'Your study calendar and deadline radar show live classes and assignments at a glance.' },
-  { title: "You're all set!", body: 'Start learning and watch your dashboard come alive with your activity and achievements.' },
+  { title: 'Welcome to your dashboard', body: 'Your next lesson, what is due, and how your courses are going, on one page.' },
+  { title: 'Pick up where you left off', body: 'Continue learning takes you straight back to your last lesson.' },
+  { title: 'Never miss a deadline', body: 'Up next lists overdue work, live classes and what is coming, with a button for each.' },
 ];
-
-/* ─── Colour palette ────────────────────────────────────────────────────── */
-const COURSE_COLORS = [
-  // One accent: shades of the brand blue only
-  { bg: 'bg-accent-soft', text: 'text-azure-strong', bar: '#5889FA' },
-  { bg: 'bg-accent-soft', text: 'text-azure-strong', bar: '#405FAD' },
-  { bg: 'bg-accent-soft', text: 'text-azure-strong', bar: '#3F6FE8' },
-  { bg: 'bg-accent-soft', text: 'text-azure-strong', bar: '#7FA3FB' },
-  { bg: 'bg-accent-soft', text: 'text-azure-strong', bar: '#2F57C9' },
-  { bg: 'bg-accent-soft', text: 'text-azure-strong', bar: '#9DB8FC' },
-];
-
-/* ─── Interfaces ─────────────────────────────────────────────────────────── */
-interface Package { id: string; name: string; courseIds?: string[]; expiresAt?: string | null; }
-interface Me {
-  email: string; firstName?: string | null; lastName?: string | null;
-  name?: string | null; walletBalance?: number; walletCurrency?: string;
-  activePackages?: Package[];
-}
-interface LiveSession { id: string; title: string; scheduledAt: string; status?: string; }
-interface CoursePurchase {
-  id: string; courseId: string;
-  course?: { title?: string; coverUrl?: string; subject?: { name: string }; programme?: { shortName?: string } };
-}
-interface CertProgress {
-  courseId: string; courseTitle: string; percentComplete?: number;
-  certificateEarned?: boolean; lessonsCompleted?: number; totalLessons?: number;
-  quizzesPassed?: number; totalQuizzes?: number;
-  assignmentsGraded?: number; totalAssignments?: number;
-}
-interface Rec { courseId: string; title: string; coverUrl?: string; subjectName?: string; tip?: string; }
-interface AssignmentDue { id: string; title: string; dueAt?: string | null; course?: { title?: string }; status?: string; }
-interface LastLesson { courseId: string; courseTitle?: string; lessonId?: string; lessonTitle?: string; pct?: number; coverUrl?: string; }
-interface LeaderboardEntry { userId: string; name: string; xpTotal: number; rank: number; }
-interface ActivityItem { userId: string; name: string; action: string; target: string; timestamp: string; }
-interface Teacher { id: string; name: string; avatarUrl?: string; subject?: string; }
-interface WeekSnap { sessions: number; certs: number; packages: number; }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 export default function StudentDashboard() {
   const { user } = useAuth();
-  const { dark, toggle: toggleDark } = useDarkMode();
+  const [me, setMe] = useState<Me | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [weekly, setWeekly] = useState<WeekHours[]>([]);
+  const [courses, setCourses] = useState<CourseProgress[]>([]);
+  const [lastLesson, setLastLesson] = useState<LastLesson | null>(null);
+  const [live, setLive] = useState<LiveSession[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [leaders, setLeaders] = useState<Leader[]>([]);
+  const [hasCohort, setHasCohort] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [onboardStep, setOnboardStep] = useState<number | null>(null);
 
-  /* ── existing data state ── */
-  const [me, setMe]                       = useState<Me | null>(null);
-  const [certs, setCerts]                 = useState<unknown[]>([]);
-  const [liveSessions, setLiveSessions]   = useState<LiveSession[]>([]);
-  const [coursePurchases, setCoursePurchases] = useState<CoursePurchase[]>([]);
-  const [progressMap, setProgressMap]     = useState<Record<string, number>>({});
-  const [certProgress, setCertProgress]   = useState<CertProgress[]>([]);
-  const [recs, setRecs]                   = useState<Rec[]>([]);
-  const [assignments, setAssignments]     = useState<AssignmentDue[]>([]);
-  const [loading, setLoading]             = useState(true);
-  const [loadError, setLoadError]         = useState(false);
-  const [searchQuery, setSearchQuery]     = useState('');
-
-  /* ── feature state ── */
-  const [streak, setStreak]               = useState(0);
-  const [studiedDays, setStudiedDays]     = useState<Set<string>>(new Set());
-  const [countdown, setCountdown]         = useState('');
-  const [lastLesson, setLastLesson]       = useState<LastLesson | null>(null);
-  const [leaderboard, setLeaderboard]     = useState<LeaderboardEntry[]>([]);
-  const [activityFeed, setActivityFeed]   = useState<ActivityItem[]>([]);
-  const [teachers, setTeachers]           = useState<Teacher[]>([]);
-  const [weekTrend, setWeekTrend]         = useState<WeekSnap | null>(null);
-  const [recentLessons, setRecentLessons] = useState<LastLesson[]>([]);
-
-  /* ── pomodoro ── */
-  const [pomMode, setPomMode]       = useState<'idle' | 'work' | 'break'>('idle');
+  // Focus timer
+  const [pomMode, setPomMode] = useState<'idle' | 'work' | 'break'>('idle');
   const [pomSeconds, setPomSeconds] = useState(25 * 60);
   const [pomSessions, setPomSessions] = useState(0);
 
-  /* ── confetti / onboarding ── */
-  const [showConfetti, setShowConfetti]   = useState(false);
-  const [onboardStep, setOnboardStep]     = useState<number | null>(null);
-
-  /* ── study reminder ── */
-  const [reminderOn, setReminderOn]     = useState(false);
-  const [reminderTime, setReminderTime] = useState('09:00');
-
-  /* ── pull-to-refresh ── */
-  const [refreshing, setRefreshing]       = useState(false);
-  const touchStartY                       = useRef(0);
-
-  /* ── data fetch ── */
   useEffect(() => {
     Promise.all([
-      api.get('/auth/me').then(r => setMe(r.data)).catch(() => { setLoadError(true); }),
-      api.get('/certificates').then(r => setCerts(r.data ?? [])).catch(() => {}),
-      api.get('/portals/student/certificate-progress').then(r => setCertProgress(r.data ?? [])).catch(() => {}),
-      api.get('/live/student/upcoming').then(r => setLiveSessions(r.data ?? [])).catch(() => {}),
-      api.get('/portals/student/course-purchases').then(r => {
-        const purchases: CoursePurchase[] = r.data ?? [];
-        setCoursePurchases(purchases);
-        purchases.slice(0, 8).forEach(p => {
-          api.get(`/platform-courses/${p.courseId}/progress`)
-            .then(pr => setProgressMap(m => ({ ...m, [p.courseId]: pr.data?.percentComplete ?? 0 })))
-            .catch(() => {});
-        });
-      }).catch(() => {}),
+      api.get('/auth/me').then(r => setMe(r.data)).catch(() => setLoadError(true)),
+      api.get('/portals/student/stats').then(r => setStats(r.data)).catch(() => {}),
+      api.get('/portals/student/weekly-hours').then(r => setWeekly(r.data ?? [])).catch(() => {}),
+      api.get('/portals/student/certificate-progress').then(r => setCourses(r.data ?? [])).catch(() => {}),
+      api.get('/portals/student/last-lesson').then(r => setLastLesson(r.data ?? null)).catch(() => {}),
+      api.get('/live/student/upcoming').then(r => setLive(r.data ?? [])).catch(() => {}),
+      api.get('/education/assignments/mine').then(r => setAssignments((r.data ?? []).filter((a: Assignment) => a.status === 'NOT_SUBMITTED'))).catch(() => {}),
     ]).finally(() => setLoading(false));
 
-    api.get('/ai/recommendations').then(r => setRecs(r.data?.slice(0, 4) ?? [])).catch(() => {});
-    api.get('/education/assignments/mine').then(r => {
-      const all: AssignmentDue[] = r.data ?? [];
-      setAssignments(all.filter(a => a.status !== 'GRADED').slice(0, 6));
-    }).catch(() => {});
-    api.get('/portals/student/last-lesson').then(r => setLastLesson(r.data ?? null)).catch(() => {});
-    api.get('/portals/student/activity-feed').then(r => setActivityFeed((r.data ?? []).slice(0, 5))).catch(() => {});
     api.get('/portals/student/cohorts').then(r => {
-      const firstCohortId: string | undefined = r.data?.[0]?.id;
-      if (firstCohortId) {
-        api.get(`/gamification/leaderboard/${firstCohortId}`)
-          .then(lb => setLeaderboard((lb.data ?? []).map((e: { id: string; name: string; xpTotal: number; rank: number }) => ({
-            userId: e.id, name: e.name, xpTotal: e.xpTotal ?? 0, rank: e.rank,
-          }))))
+      const cohortId: string | undefined = r.data?.[0]?.id;
+      setHasCohort(!!cohortId);
+      if (cohortId) {
+        api.get(`/gamification/leaderboard/${cohortId}`)
+          .then(lb => setLeaders((lb.data ?? []).slice(0, 5)))
           .catch(() => {});
       }
-      const seen = new Set<string>();
-      const unique: Teacher[] = [];
-      (r.data ?? []).forEach((c: any) => {
-        if (c.teacher && !seen.has(c.teacher.id)) {
-          seen.add(c.teacher.id);
-          unique.push({
-            id: c.teacher.id,
-            name: `${c.teacher.firstName ?? ''} ${c.teacher.lastName ?? ''}`.trim() || c.teacher.email,
-            avatarUrl: c.teacher.avatarUrl,
-            subject: c.subject?.name,
-          });
-        }
-      });
-      setTeachers(unique.slice(0, 5));
     }).catch(() => {});
   }, []);
 
-  /* ── countdown timer ── */
-  useEffect(() => {
-    const next = liveSessions
-      .filter(s => s.status !== 'ACTIVE' && new Date(s.scheduledAt) > new Date())
-      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
-    if (!next) return;
-    const tick = () => {
-      const diff = new Date(next.scheduledAt).getTime() - Date.now();
-      if (diff <= 0) { setCountdown('Starting now!'); return; }
-      const d = Math.floor(diff / 86400000);
-      const h = Math.floor((diff % 86400000) / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setCountdown(d > 0
-        ? `${d}d ${String(h).padStart(2,'0')}h ${String(m).padStart(2,'0')}m`
-        : `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [liveSessions]);
-
-  /* ── pomodoro timer ── */
   useEffect(() => {
     if (pomMode === 'idle') return;
     const id = setInterval(() => {
       setPomSeconds(s => {
-        if (s <= 1) {
-          if (pomMode === 'work') {
-            setPomSessions(n => n + 1);
-            setPomMode('break');
-            return 5 * 60;
-          }
-          setPomMode('idle');
-          return 25 * 60;
-        }
-        return s - 1;
+        if (s > 1) return s - 1;
+        if (pomMode === 'work') { setPomSessions(n => n + 1); setPomMode('break'); return 5 * 60; }
+        setPomMode('idle');
+        return 25 * 60;
       });
     }, 1000);
     return () => clearInterval(id);
   }, [pomMode]);
 
-  /* ── streak tracker ── */
-  useEffect(() => {
-    const todayStr = new Date().toDateString();
-    const raw: string[] = JSON.parse(localStorage.getItem('cpa_study_days') ?? '[]');
-    const days = new Set<string>(raw);
-    days.add(todayStr);
-    localStorage.setItem('cpa_study_days', JSON.stringify(Array.from(days).slice(-60)));
-    setStudiedDays(days);
-    let s = 0; const d = new Date();
-    while (days.has(d.toDateString())) { s++; d.setDate(d.getDate() - 1); }
-    setStreak(s);
-
-    // week trend snapshot
-    const snap: WeekSnap | null = JSON.parse(localStorage.getItem('cpa_week_snap') ?? 'null');
-    if (snap) setWeekTrend(snap);
-
-    // recent lessons from localStorage
-    const rl: LastLesson[] = JSON.parse(localStorage.getItem('cpa_recent_lessons') ?? '[]');
-    setRecentLessons(rl);
-
-    // reminder settings
-    const rem = JSON.parse(localStorage.getItem('cpa_reminder') ?? '{}');
-    setReminderOn(rem.enabled ?? false);
-    setReminderTime(rem.time ?? '09:00');
-  }, []);
-
-  /* ── confetti on new certificate ── */
   useEffect(() => {
     if (loading) return;
-    const cached = parseInt(localStorage.getItem('cpa_cert_count') ?? '-1', 10);
-    if (cached >= 0 && certs.length > cached) {
-      setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 4500);
-    }
-    localStorage.setItem('cpa_cert_count', String(certs.length));
-  }, [certs.length, loading]);
-
-  /* ── onboarding tour (first visit) ── */
-  useEffect(() => {
-    if (loading) return;
-    const done = localStorage.getItem('cpa_onboarded');
-    if (!done) setTimeout(() => setOnboardStep(0), 1200);
+    try { if (!localStorage.getItem('cpa_onboarded')) setTimeout(() => setOnboardStep(0), 800); } catch {}
   }, [loading]);
 
-  /* ── save week snapshot after data loads ── */
-  useEffect(() => {
-    if (loading) return;
-    const lastTime = parseInt(localStorage.getItem('cpa_week_snap_time') ?? '0', 10);
-    if (Date.now() - lastTime > 7 * 86400000) {
-      const snap: WeekSnap = { sessions: liveSessions.length, certs: certs.length, packages: (me?.activePackages ?? []).length };
-      localStorage.setItem('cpa_week_snap', JSON.stringify(snap));
-      localStorage.setItem('cpa_week_snap_time', String(Date.now()));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
-
-  /* ── helpers ── */
-  function advanceOnboard() {
+  function nextOnboard() {
     if (onboardStep === null) return;
-    if (onboardStep < ONBOARD_STEPS.length - 1) { setOnboardStep(onboardStep + 1); }
-    else { setOnboardStep(null); localStorage.setItem('cpa_onboarded', '1'); }
+    if (onboardStep < ONBOARD_STEPS.length - 1) setOnboardStep(onboardStep + 1);
+    else { setOnboardStep(null); try { localStorage.setItem('cpa_onboarded', '1'); } catch {} }
   }
-  function handleTouchStart(e: React.TouchEvent) { touchStartY.current = e.touches[0].clientY; }
-  function handleTouchEnd(e: React.TouchEvent) {
-    const diff = e.changedTouches[0].clientY - touchStartY.current;
-    if (diff > 90 && window.scrollY === 0 && !refreshing) {
-      setRefreshing(true);
-      window.location.reload();
-    }
-  }
-  function toggleReminder(newOn: boolean) {
-    setReminderOn(newOn);
-    localStorage.setItem('cpa_reminder', JSON.stringify({ enabled: newOn, time: reminderTime }));
-    if (newOn && 'Notification' in window) Notification.requestPermission();
-  }
+  function skipOnboard() { setOnboardStep(null); try { localStorage.setItem('cpa_onboarded', '1'); } catch {} }
 
-  /* ── loading / error ── */
   if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 p-4 md:p-6 space-y-6">
-        <div className="h-20 rounded-2xl bg-cloud animate-pulse" />
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[1,2,3,4].map(i => <SkeletonStat key={i} />)}
+    <div className="flex min-h-full flex-col">
+      <Topbar />
+      <div className="space-y-5 p-4 lg:px-7 lg:py-6">
+        <div className="h-14 w-72 rounded-md bg-white animate-pulse" />
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+          {[0, 1, 2, 3].map(i => <div key={i} className="h-28 rounded-lg border border-line bg-white animate-pulse" />)}
         </div>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-          <div className="lg:col-span-3 space-y-4">
-            <div className="h-24 rounded-2xl bg-cloud animate-pulse" />
-            <div className="flex gap-3 overflow-hidden">
-              {[1,2,3].map(i => <div key={i} className="flex-shrink-0 w-48 rounded-2xl bg-cloud h-44 animate-pulse" />)}
-            </div>
-          </div>
-          <div className="lg:col-span-2 space-y-4">
-            {[1,2,3,4].map(i => <div key={i} className="h-32 rounded-2xl bg-cloud animate-pulse" />)}
-          </div>
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="h-80 rounded-lg border border-line bg-white animate-pulse" />
+          <div className="h-80 rounded-lg border border-line bg-white animate-pulse" />
         </div>
       </div>
     </div>
   );
 
   if (loadError && !me) return (
-    <div className="flex min-h-full flex-col items-center justify-center p-6 text-center">
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cloud">
-        <Icon name="wifi" size={24} className="text-royal/40" />
+    <div className="flex min-h-full flex-col">
+      <Topbar />
+      <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
+        <p className="text-base font-bold text-navy">Your dashboard didn&apos;t load</p>
+        <p className="mt-1 text-sm text-ink2">Check your connection, then refresh the page.</p>
+        <button type="button" onClick={() => window.location.reload()} className={clsx(btnPrimary, 'mt-5')}>Refresh</button>
       </div>
-      <p className="text-base font-bold text-navy">Unable to load dashboard</p>
-      <p className="mt-1 text-sm text-royal/60">Check your connection and try refreshing.</p>
-      <button onClick={() => window.location.reload()}
-        className="mt-5 rounded-xl bg-azure px-5 py-2.5 text-sm font-semibold text-white hover:bg-royal transition">
-        Refresh
-      </button>
     </div>
   );
 
-  /* ── computed ── */
+  /* ── Derived ── */
+  const now = new Date();
   const firstName = me?.firstName ?? me?.name?.split(' ')[0] ?? user?.name?.split(' ')[0] ?? me?.email?.split('@')[0] ?? 'there';
-  const today     = new Date();
-  const hour      = today.getHours();
-  const greeting  = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const packages  = me?.activePackages ?? [];
-  const hasCourses = packages.length > 0 || coursePurchases.length > 0;
-  const now       = today.getTime();
-  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  const hour = now.getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const dateLabel = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  const streak = stats?.streak ?? 0;
 
-  const expiringPkgs = packages.filter(p =>
-    p.expiresAt && new Date(p.expiresAt).getTime() - now < sevenDays && new Date(p.expiresAt).getTime() > now
-  );
-  const overdueAssignments = assignments.filter(a => a.dueAt && new Date(a.dueAt).getTime() < now);
-  const allPcts   = Object.values(progressMap);
-  const overallPct = allPcts.length > 0 ? Math.round(allPcts.reduce((a, b) => a + b, 0) / allPcts.length) : 0;
-  const coursesInProgress = allPcts.filter(p => p > 0 && p < 100).length;
-  const dailyGoalPct = Math.min(100, Math.round((coursesInProgress / Math.max(1, allPcts.length)) * 100));
+  const dueOf = (a: Assignment) => a.dueAt ?? a.dueDate ?? null;
+  const overdue = assignments.filter(a => { const d = dueOf(a); return d && new Date(d) < now; });
+  const upcomingLive = live
+    .filter(s => s.status === 'ACTIVE' || new Date(s.scheduledAt) > now)
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+  const nextLive = upcomingLive[0];
+  const expiring = (me?.activePackages ?? []).filter(p =>
+    p.expiresAt && new Date(p.expiresAt) > now && new Date(p.expiresAt).getTime() - now.getTime() < 7 * 86400000);
 
-  // Achievements
-  const achievements = [
-    { id: 'enrolled',  icon: 'courses'      as const, label: 'Enrolled',       color: 'bg-azure/10 text-azure',         earned: coursePurchases.length > 0 },
-    { id: 'started',   icon: 'play'         as const, label: 'First Lesson',   color: 'bg-emerald-50 text-emerald-500', earned: allPcts.some(p => p > 0) },
-    { id: 'halfway',   icon: 'trending'     as const, label: 'Halfway',        color: 'bg-royal/10 text-royal',         earned: allPcts.some(p => p >= 50) },
-    { id: 'done',      icon: 'check'        as const, label: 'Completed',      color: 'bg-green-50 text-green-500',     earned: allPcts.some(p => p >= 100) },
-    { id: 'cert',      icon: 'certificates' as const, label: 'Certified',      color: 'bg-amber-50 text-amber-500',     earned: certs.length > 0 },
-    { id: 'streak3',   icon: 'star'         as const, label: '3-Day Streak',   color: 'bg-orange-50 text-orange-500',   earned: streak >= 3 },
-    { id: 'streak7',   icon: 'star'         as const, label: 'Week Streak',    color: 'bg-red-50 text-red-400',         earned: streak >= 7 },
-    { id: 'scholar',   icon: 'graduate'     as const, label: 'Scholar',        color: 'bg-purple-50 text-purple-500',   earned: coursePurchases.length >= 3 },
+  const inProgress = courses.filter(c => !c.certificateEarned && (c.percentComplete ?? 0) < 100);
+  const certificates = courses.filter(c => c.certificateEarned);
+  const thisWeekHours = weekly.length ? weekly[weekly.length - 1].hours : 0;
+  const resume = lastLesson ?? (inProgress[0] ? { courseId: inProgress[0].courseId, courseTitle: inProgress[0].courseTitle, pct: inProgress[0].percentComplete } : null);
+  const resumeCourse = resume ? courses.find(c => c.courseId === resume.courseId) : undefined;
+  const resumeHref = resume
+    ? resume.lessonId ? `/student/learn/${resume.courseId}/lesson/${resume.lessonId}` : `/student/learn/${resume.courseId}`
+    : '/student/catalogue';
+  const nextCert = inProgress[0];
+
+  const fmtHours = (h: number) => {
+    const mins = Math.round(h * 60);
+    return mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : `${mins} min`;
+  };
+  const day = (iso: string) => new Date(iso);
+
+  const statCards = [
+    { label: 'Courses in progress', value: String(inProgress.length), sub: `of ${courses.length} course${courses.length === 1 ? '' : 's'}`, d: P.book },
+    { label: 'Study time this week', value: fmtHours(thisWeekHours), sub: 'Real watching only', d: P.clock },
+    {
+      label: 'Next live class',
+      value: nextLive ? day(nextLive.scheduledAt).toLocaleDateString('en-GB', { weekday: 'short' }) + ' ' + day(nextLive.scheduledAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : 'None',
+      sub: nextLive?.title ?? 'Nothing scheduled', d: P.video,
+    },
+    { label: 'Certificates', value: String(certificates.length), sub: certificates[0]?.courseTitle ?? 'Finish a course to earn one', d: P.badge },
   ];
 
-  // Daily quote (rotated by day of year)
-  const dayOfYear = Math.floor((now - new Date(today.getFullYear(), 0, 0).getTime()) / 86400000);
-  const quote = QUOTES[dayOfYear % QUOTES.length];
+  type AgendaItem = { key: string; at: Date; kind: string; tone: 'error' | 'accent' | 'muted'; title: string; meta: string; action?: { label: string; href: string } };
+  const agenda: AgendaItem[] = [
+    ...assignments.filter(a => dueOf(a)).map(a => {
+      const due = new Date(dueOf(a)!);
+      const late = due < now;
+      return {
+        key: 'a' + a.id, at: due, kind: late ? 'Overdue assignment' : 'Assignment due', tone: late ? 'error' as const : 'muted' as const,
+        title: a.title,
+        meta: `${a.course?.title ?? a.cohort?.name ?? 'Assignment'} · ${late ? 'was due' : 'due'} ${due.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`,
+        action: { label: 'Submit', href: '/student/assignments' },
+      };
+    }),
+    ...upcomingLive.map(s => ({
+      key: 'l' + s.id, at: new Date(s.scheduledAt), kind: s.status === 'ACTIVE' ? 'Live now' : 'Live class', tone: 'accent' as const,
+      title: s.title,
+      meta: new Date(s.scheduledAt).toLocaleString('en-GB', { weekday: 'long', hour: '2-digit', minute: '2-digit' }) + (s.durationMins ? ` · ${s.durationMins} min` : ''),
+      action: { label: 'Join', href: '/student/live' },
+    })),
+  ].sort((a, b) => a.at.getTime() - b.at.getTime()).slice(0, 5);
 
-  // Resume learning card data
-  const resumeCourse: LastLesson | null = (() => {
-    const base: LastLesson | null = lastLesson ?? (() => {
-      const p = coursePurchases
-        .filter(p => (progressMap[p.courseId] ?? 0) > 0 && (progressMap[p.courseId] ?? 0) < 100)
-        .sort((a, b) => (progressMap[b.courseId] ?? 0) - (progressMap[a.courseId] ?? 0))[0];
-      if (!p) return null;
-      return { courseId: p.courseId, courseTitle: p.course?.title, pct: progressMap[p.courseId] };
-    })();
-    if (!base) return null;
-    // Attach coverUrl from course purchases if available
-    if (!base.coverUrl) {
-      const match = coursePurchases.find(cp => cp.courseId === base.courseId);
-      if (match?.course?.coverUrl) return { ...base, coverUrl: match.course.coverUrl };
-    }
-    return base;
-  })();
+  const pomDisplay = `${String(Math.floor(pomSeconds / 60)).padStart(2, '0')}:${String(pomSeconds % 60).padStart(2, '0')}`;
 
-  // Next live session
-  const nextLiveSession = liveSessions
-    .filter(s => s.status !== 'ACTIVE' && new Date(s.scheduledAt) > today)
-    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
-
-  // Cert checklist (first in-progress cert)
-  const checklistCert = certProgress.find(cp => !cp.certificateEarned);
-  const checklistItems = checklistCert ? [
-    { label: 'Lessons',     done: checklistCert.lessonsCompleted ?? 0,    total: checklistCert.totalLessons ?? 0 },
-    { label: 'Quizzes',     done: checklistCert.quizzesPassed ?? 0,       total: checklistCert.totalQuizzes ?? 0 },
-    { label: 'Assignments', done: checklistCert.assignmentsGraded ?? 0,   total: checklistCert.totalAssignments ?? 0 },
-  ].filter(i => i.total > 0) : [];
-  const checklistRemaining = checklistItems.reduce((sum, i) => sum + Math.max(0, i.total - i.done), 0);
-
-  // Skill tags (unique subjects)
-  const skillTags = Array.from(new Set(
-    coursePurchases.map(p => p.course?.subject?.name).filter(Boolean) as string[]
-  ));
-
-  // Trend badges
-  const sessionTrend  = weekTrend ? liveSessions.length - weekTrend.sessions : null;
-  const certTrend     = weekTrend ? certs.length - weekTrend.certs : null;
-
-  // Chart data
-  const chartData = certProgress.length > 0
-    ? certProgress.slice(0, 6).map(cp => ({ name: cp.courseTitle.split(' ').slice(0, 2).join(' '), progress: Math.round(cp.percentComplete ?? 0) }))
-    : coursePurchases.slice(0, 6).map(p => ({ name: (p.course?.title ?? 'Course').split(' ').slice(0, 2).join(' '), progress: progressMap[p.courseId] ?? 0 }));
-
-  const weekDayLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const weekData = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(today); d.setDate(today.getDate() - (6 - i));
-    return { day: weekDayLabels[d.getDay()], hours: 0 };
-  });
-
-  const filteredCourses = searchQuery.trim()
-    ? coursePurchases.filter(p =>
-        p.course?.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.course?.subject?.name?.toLowerCase().includes(searchQuery.toLowerCase()))
-    : coursePurchases;
-
-  // Calendar
-  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const calYear = today.getFullYear(), calMonth = today.getMonth();
-  const calFirstDay = new Date(calYear, calMonth, 1).getDay();
-  const calDaysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
-  const liveSessionDateSet   = new Set(liveSessions.map(s => new Date(s.scheduledAt).toDateString()));
-  const assignmentDueDateSet = new Set(assignments.map(a => a.dueAt ? new Date(a.dueAt).toDateString() : '').filter(Boolean));
-
-  const last7Days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(today); d.setDate(today.getDate() - (6 - i)); return d.toDateString();
-  });
-
-  // Pomodoro display
-  const pomPct = pomMode === 'work'  ? ((25*60 - pomSeconds) / (25*60)) * 100
-               : pomMode === 'break' ? ((5*60  - pomSeconds) / (5*60))  * 100 : 0;
-  const pomDisplay = `${String(Math.floor(pomSeconds / 60)).padStart(2,'0')}:${String(pomSeconds % 60).padStart(2,'0')}`;
-
-  const QUICK_LINKS = [
-    { label: 'My Courses',   icon: 'courses'      as const, href: '/student/courses'      },
-    { label: 'Assignments',  icon: 'assignments'  as const, href: '/student/assignments'  },
-    { label: 'Calendar',     icon: 'calendar'     as const, href: '/student/calendar'     },
-    { label: 'Certificates', icon: 'certificates' as const, href: '/student/certificates' },
-    { label: 'Wallet',       icon: 'wallet'       as const, href: '/student/wallet'       },
-    { label: 'Mentorship',   icon: 'mentorship'   as const, href: '/student/mentorship'   },
-  ];
-
-  /* ═══════════════════════════════════════════════════════════════════════ */
   return (
-    <div className="flex flex-col gap-5 p-4 md:p-6"
-      onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+    <div className="flex min-h-full flex-col">
+      <Topbar />
 
-      {/* Pull-to-refresh indicator */}
-      {refreshing && (
-        <div className="flex justify-center py-1">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-azure border-t-transparent" />
-        </div>
-      )}
+      <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
 
-      <Topbar title="Dashboard" />
-
-      {/* ① HERO GREETING + STREAK + DAILY GOAL RING ─────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold text-royal/50 uppercase tracking-widest">{greeting}</p>
-          <h1 className="mt-1 text-2xl font-bold text-navy truncate">Hello, {firstName}!</h1>
-          <p className="mt-1.5 text-sm text-royal/60 max-w-lg">
-            {packages.length > 0
-              ? `Nice to have you back. You have ${packages.length} active package${packages.length !== 1 ? 's' : ''} and ${coursePurchases.length} course${coursePurchases.length !== 1 ? 's' : ''} enrolled.`
-              : 'Nice to have you back. Get ready and continue your lesson today.'}
-          </p>
-          {/* Streak bar */}
-          <div className="mt-3 flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <Icon name="star" size={14} className="text-amber-400" />
-              <span className="text-xs font-bold text-navy">{streak} day{streak !== 1 ? 's' : ''}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              {last7Days.map((d, i) => (
-                <div key={i} className={`h-2 w-2 rounded-full transition-colors ${studiedDays.has(d) ? 'bg-amber-400' : 'bg-cloud'}`} />
-              ))}
-            </div>
-            <span className="text-[10px] text-royal/40">this week</span>
+        {/* Greeting */}
+        <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] text-muted">{dateLabel}</p>
+            <h1 className="mt-1 text-2xl font-extrabold tracking-[-0.01em] text-navy">{greeting}, {firstName}</h1>
           </div>
+          {streak > 0 && (
+            <span className="inline-flex h-7 items-center gap-1.5 rounded bg-accent-soft px-2.5 text-[12.5px] font-semibold text-navy">
+              <Glyph d={P.flame} size={14} strokeWidth={1.8} /> {streak}-day streak
+            </span>
+          )}
+          <Link href="/student/calendar" className={btnSecondary}>Study calendar</Link>
+          <Link href={resumeHref} className={btnPrimary}>
+            <Glyph d={P.play} size={14} fill="currentColor" /> {resume ? 'Resume lesson' : 'Find a course'}
+          </Link>
         </div>
 
-        {/* ② Daily Goal Ring + dark mode toggle */}
-        <div className="flex flex-col items-center gap-2">
-          <div className="relative" title={`${dailyGoalPct}% courses active`}>
-            <ProgressRing pct={dailyGoalPct} size={64} stroke={5} />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="h-11 w-11 rounded-full bg-azure/10 flex items-center justify-center text-base font-bold text-azure">
-                {firstName[0]?.toUpperCase()}
-              </div>
-            </div>
-          </div>
-          {/* ⑭ Dark mode toggle */}
-          <button onClick={toggleDark} title={dark ? 'Light mode' : 'Dark mode'}
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-cloud bg-white hover:bg-cloud transition">
-            <Icon name={dark ? 'sunLine' : 'moonLine'} size={13} className="text-royal/60" />
-          </button>
-        </div>
-      </div>
-
-      {/* STATS GRID + ⑦ TREND BADGES ────────────────────────────────────── */}
-      <StaggerList className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { icon: 'packages'     as const, value: packages.length,     label: 'Active packages',   iconCls: 'bg-subtle text-ink2', trend: null },
-          { icon: 'live'         as const, value: liveSessions.length,  label: 'Upcoming sessions', iconCls: 'bg-subtle text-ink2', trend: sessionTrend },
-          { icon: 'certificates' as const, value: certs.length,         label: 'Certificates',      iconCls: 'bg-subtle text-ink2', trend: certTrend },
-        ].map(stat => (
-          <StaggerItem key={stat.label}>
-            <motion.div
-              className="rounded-lg border border-line bg-white p-4 flex flex-col gap-2.5 relative">
-              <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${stat.iconCls}`}>
-                <Icon name={stat.icon} size={17} />
-              </div>
-              {stat.trend !== null && stat.trend !== 0 && (
-                <span className={`absolute top-3 right-3 text-[10px] font-bold px-1.5 py-0.5 rounded
-                  ${stat.trend > 0 ? 'bg-accent-soft text-navy' : 'bg-subtle text-ink2'}`}>
-                  {stat.trend > 0 ? '+' : ''}{stat.trend}
-                </span>
+        {/* One alert line, only when something needs action */}
+        {(overdue.length > 0 || expiring.length > 0) && (
+          <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-white px-4 py-3">
+            <span className="flex h-[30px] w-[30px] items-center justify-center rounded-md bg-red-50 text-error">
+              <Glyph d={P.alert} size={16} strokeWidth={1.8} />
+            </span>
+            <p className="min-w-0 flex-1 text-[13.5px] text-ink2">
+              {overdue.length > 0 ? (
+                <><strong className="text-navy">{overdue.length} assignment{overdue.length === 1 ? ' is' : 's are'} overdue.</strong> Submit before your teacher closes submissions.</>
+              ) : (
+                <><strong className="text-navy">{expiring[0].name}</strong> ends on {new Date(expiring[0].expiresAt!).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}. Renew to keep your access.</>
               )}
-              <p className="text-2xl font-bold text-navy leading-none"><AnimatedNumber value={stat.value} /></p>
-              <p className="text-xs text-royal/50 font-medium">{stat.label}</p>
-            </motion.div>
-          </StaggerItem>
-        ))}
-        <StaggerItem>
-          <motion.div whileHover={{ y: -2, boxShadow: '0 6px 24px rgba(88,137,250,0.10)', transition: spring.crisp }}
-            className="rounded-2xl border border-cloud bg-white shadow-card p-4 flex flex-col gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-500">
-              <Icon name="wallet" size={17} />
-            </div>
-            <p className="text-2xl font-bold text-navy leading-none">
-              <span className="text-sm font-semibold text-royal/50 mr-0.5">{me?.walletCurrency ?? 'XAF'}</span>
-              <AnimatedNumber value={me?.walletBalance ?? 0} />
             </p>
-            <p className="text-xs text-royal/50 font-medium">Wallet balance</p>
-          </motion.div>
-        </StaggerItem>
-      </StaggerList>
-
-      {/* ⑥ OVERDUE ALERT ────────────────────────────────────────────────── */}
-      {overdueAssignments.length > 0 && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 flex items-center gap-3">
-          <Icon name="close" size={18} className="text-red-500 flex-shrink-0" />
-          <p className="text-sm text-red-800 flex-1">
-            <strong>{overdueAssignments.length} assignment{overdueAssignments.length !== 1 ? 's' : ''} overdue</strong>
-            {' '}— submit before your teacher closes submissions.
-          </p>
-          <Link href="/student/assignments"><Button size="sm" variant="primary" className="bg-red-500 hover:bg-red-600">View</Button></Link>
-        </div>
-      )}
-
-      {/* EXPIRY WARNING */}
-      {expiringPkgs.length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
-          <Icon name="clock" size={18} className="text-amber-500 flex-shrink-0" />
-          <p className="text-sm text-amber-800 flex-1">
-            <strong>{expiringPkgs.map(p => p.name).join(', ')}</strong>{' '}
-            expires {new Date(expiringPkgs[0].expiresAt!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-          </p>
-          <Link href="/packages"><Button size="sm" variant="primary">Renew</Button></Link>
-        </div>
-      )}
-
-      {/* ENROLL BANNER */}
-      {!hasCourses && (
-        <Card className="bg-navy p-6 text-white">
-          <p className="text-lg font-bold mb-1">Start your learning journey</p>
-          <p className="text-sm text-white/60 mb-4">Enroll in a package to unlock courses, live classes and mentorship.</p>
-          <div className="flex gap-3">
-            <Link href="/packages"><Button size="sm" variant="primary">Browse packages</Button></Link>
-            <Link href="/courses"><Button size="sm" variant="ghost" className="text-white/70 border-white/20 hover:bg-white/10">View courses</Button></Link>
-          </div>
-        </Card>
-      )}
-
-      {/* MAIN 2-COL LAYOUT */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-
-        {/* ── LEFT COL (3/5) ─────────────────────────────────────────────── */}
-        <div className="lg:col-span-3 space-y-5">
-
-          {/* ④ RESUME LEARNING */}
-          {resumeCourse && (
-            <Link href={`/student/learn/${resumeCourse.courseId}${resumeCourse.lessonId ? `/lesson/${resumeCourse.lessonId}` : ''}`}
-              onClick={() => {
-                // Track recent lessons
-                const rl: LastLesson[] = JSON.parse(localStorage.getItem('cpa_recent_lessons') ?? '[]');
-                const filtered = rl.filter(x => x.courseId !== resumeCourse.courseId);
-                localStorage.setItem('cpa_recent_lessons', JSON.stringify([resumeCourse, ...filtered].slice(0, 3)));
-              }}>
-              <motion.div whileHover={{ y: -2, boxShadow: '0 8px 32px rgba(88,137,250,0.18)', transition: spring.crisp }}
-                className="rounded-2xl bg-azure-strong text-white relative overflow-hidden flex">
-                {/* Course cover thumbnail */}
-                {resumeCourse.coverUrl && (
-                  <div className="hidden sm:block w-32 flex-shrink-0 relative">
-                    <img src={resumeCourse.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent to-azure/80" />
-                  </div>
-                )}
-                <div className="flex-1 p-5 min-w-0">
-                  <div className="pointer-events-none absolute right-0 top-0 h-28 w-28 translate-x-8 -translate-y-8 rounded-full bg-white/10" />
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-1">Continue Learning</p>
-                  <p className="text-base font-bold text-white mb-0.5 truncate">{resumeCourse.courseTitle ?? 'Your course'}</p>
-                  {resumeCourse.lessonTitle && <p className="text-xs text-white/70 mb-3 truncate">{resumeCourse.lessonTitle}</p>}
-                  {resumeCourse.pct !== undefined && (
-                    <div className="space-y-1 mb-4">
-                      <div className="flex justify-between">
-                        <p className="text-[10px] text-white/60">Progress</p>
-                        <p className="text-[10px] font-bold text-white">{resumeCourse.pct}%</p>
-                      </div>
-                      <div className="h-1 w-full rounded-full bg-white/20">
-                        <div className="h-full rounded-full bg-white" style={{ width: `${resumeCourse.pct}%` }} />
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20">
-                      <Icon name="play" size={14} className="text-white" />
-                    </div>
-                    <span className="text-sm font-bold text-white">Resume lesson</span>
-                    <Icon name="arrowRight" size={14} className="text-white/70 ml-auto" />
-                  </div>
-                </div>
-              </motion.div>
+            <Link href={overdue.length > 0 ? '/student/assignments' : '/packages'} className={btnSecondarySm}>
+              {overdue.length > 0 ? 'View assignments' : 'Renew'}
             </Link>
-          )}
-
-          {/* ⑧ RECENT LESSON HISTORY */}
-          {recentLessons.length > 0 && (
-            <div className="rounded-xl border border-cloud bg-white p-3">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-royal/40 mb-2">Recently visited</p>
-              <div className="space-y-1">
-                {recentLessons.map((rl, i) => {
-                  const c = COURSE_COLORS[i % COURSE_COLORS.length];
-                  return (
-                    <Link key={rl.courseId} href={`/student/learn/${rl.courseId}`}
-                      className="flex items-center gap-3 rounded-lg p-2 hover:bg-cloud/50 transition group">
-                      <div className={`h-2 w-2 rounded-full flex-shrink-0 ${c.text.replace('text-', 'bg-')}`} />
-                      <p className="text-xs font-semibold text-navy flex-1 truncate">{rl.courseTitle ?? 'Course'}</p>
-                      <Icon name="arrowRight" size={11} className="text-royal/20 group-hover:text-azure transition" />
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Search bar */}
-          <div className="relative">
-            <Icon name="search" size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-royal/40 pointer-events-none" />
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search your courses..."
-              className="w-full rounded-xl border border-cloud bg-white pl-10 pr-4 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/30 transition-colors" />
           </div>
+        )}
 
-          {/* Continue Classes strip */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-4 w-1 rounded-full bg-azure" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Continue Classes</h2>
+        {/* Stats */}
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+          {statCards.map(s => (
+            <div key={s.label} className="flex flex-col gap-1.5 rounded-lg border border-line bg-white p-4">
+              <div className="flex items-center justify-between">
+                <p className={label}>{s.label}</p>
+                <span className="flex h-[30px] w-[30px] items-center justify-center rounded-md bg-subtle text-ink2"><Glyph d={s.d} /></span>
               </div>
-              {hasCourses && <Link href="/student/courses" className="text-xs font-semibold text-azure hover:text-royal transition">See All</Link>}
+              <p className="text-2xl font-extrabold tracking-[-0.01em] text-navy">{s.value}</p>
+              <p className="truncate text-[12.5px] text-muted">{s.sub}</p>
             </div>
-            {hasCourses ? (
-              <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2
-                              [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 md:mx-0 md:px-0">
-                {packages.map((pkg, i) => {
-                  const c = COURSE_COLORS[i % COURSE_COLORS.length];
-                  const started = certProgress.filter(cp => pkg.courseIds?.includes(cp.courseId) && (cp.percentComplete ?? 0) > 0).length;
-                  const total = pkg.courseIds?.length ?? 0;
-                  const pkgPct = total > 0 ? Math.round((started / total) * 100) : 0;
-                  return (
-                    <Link key={pkg.id} href="/student/courses" className="snap-start flex-shrink-0 w-[190px]">
-                      <motion.div whileHover={{ y: -3, boxShadow: '0 8px 28px rgba(88,137,250,0.15)', transition: spring.crisp }}
-                        whileTap={{ scale: 0.97, transition: spring.snappy }}
-                        className="h-full rounded-2xl border border-cloud bg-white overflow-hidden">
-                        <div className={`h-24 ${c.bg} flex items-center justify-center`}>
-                          <div className={`h-14 w-14 rounded-2xl bg-white/60 flex items-center justify-center ${c.text}`}>
-                            <Icon name="packages" size={28} />
-                          </div>
-                        </div>
-                        <div className="p-3">
-                          <p className="text-xs font-bold text-navy line-clamp-1 mb-1">{pkg.name}</p>
-                          <div className="space-y-1 mb-2">
-                            <div className="flex justify-between">
-                              <p className="text-[10px] text-royal/40">{started}/{total} started</p>
-                              <p className="text-[10px] font-bold" style={{ color: c.bar }}>{pkgPct}%</p>
-                            </div>
-                            <div className="h-1 w-full rounded-full bg-cloud overflow-hidden">
-                              <div className="h-full rounded-full transition-all" style={{ width: `${pkgPct}%`, backgroundColor: c.bar }} />
-                            </div>
-                          </div>
-                          <Badge variant="active">Active</Badge>
-                        </div>
-                      </motion.div>
-                    </Link>
-                  );
-                })}
-                {coursePurchases.slice(0, 6).map((p, i) => {
-                  const pct = progressMap[p.courseId] ?? 0;
-                  const c = COURSE_COLORS[(i + packages.length) % COURSE_COLORS.length];
-                  return (
-                    <Link key={p.id} href={`/student/learn/${p.courseId}`} className="snap-start flex-shrink-0 w-[190px]">
-                      <motion.div whileHover={{ y: -3, boxShadow: '0 8px 28px rgba(88,137,250,0.15)', transition: spring.crisp }}
-                        whileTap={{ scale: 0.97, transition: spring.snappy }}
-                        className="h-full rounded-2xl border border-cloud bg-white overflow-hidden">
-                        {p.course?.coverUrl
-                          ? <img src={p.course.coverUrl} alt={p.course.title} className="h-24 w-full object-cover" />
-                          : (
-                            <div className={`h-24 ${c.bg} flex items-center justify-center`}>
-                              <div className={`h-14 w-14 rounded-2xl bg-white/60 flex items-center justify-center text-2xl font-bold ${c.text}`}>
-                                {(p.course?.title ?? 'C')[0].toUpperCase()}
-                              </div>
-                            </div>
-                          )}
-                        <div className="p-3">
-                          <p className="text-xs font-bold text-navy line-clamp-1 mb-0.5">{p.course?.title ?? 'Course'}</p>
-                          <p className="text-[10px] text-royal/40 mb-2">{p.course?.subject?.name ?? 'Self-paced'}</p>
-                          <div className="space-y-1">
-                            <div className="flex justify-between">
-                              <p className="text-[10px] text-royal/40 font-semibold">Progress</p>
-                              <p className="text-[10px] font-bold text-azure">{pct}%</p>
-                            </div>
-                            <div className="h-1 w-full rounded-full bg-cloud overflow-hidden">
-                              <div className="h-full rounded-full bg-azure" style={{ width: `${pct}%` }} />
-                            </div>
-                          </div>
-                          <div className="mt-2 flex items-center gap-1 text-azure">
-                            <span className="text-[11px] font-bold">{pct === 100 ? 'Review' : 'Continue'}</span>
-                            <Icon name="arrowRight" size={11} />
-                          </div>
-                        </div>
-                      </motion.div>
-                    </Link>
-                  );
-                })}
-                <Link href="/packages"
-                  className="snap-start flex-shrink-0 w-[140px] min-h-[180px] flex flex-col items-center justify-center gap-3
-                             rounded-2xl bg-navy hover:opacity-90 active:scale-[0.97] transition-all p-4 text-center">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10">
-                    <Icon name="packages" size={20} className="text-azure" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-white leading-tight">{packages.length > 0 ? 'More packages' : 'Browse packages'}</p>
-                    <p className="text-[10px] text-white/40 mt-0.5">Explore all</p>
-                  </div>
-                </Link>
-              </div>
-            ) : (
-              <EmptyState icon="courses" title="No courses yet" description="Browse packages to start learning"
-                action={{ label: 'Browse packages', href: '/packages' }} />
-            )}
-          </div>
+          ))}
+        </div>
 
-          {/* ③ ACHIEVEMENT BADGES */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-4 w-1 rounded-full bg-amber-400" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Achievements</h2>
-              </div>
-              <span className="text-xs font-semibold text-royal/40">{achievements.filter(a => a.earned).length}/{achievements.length} earned</span>
-            </div>
-            <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 md:mx-0 md:px-0 pb-1">
-              {achievements.map(a => (
-                <div key={a.id} className={`flex-shrink-0 flex flex-col items-center gap-1.5 rounded-xl p-3 w-[78px] border relative transition-all
-                  ${a.earned ? 'bg-white border-cloud shadow-sm' : 'bg-cloud/30 border-transparent opacity-50'}`}>
-                  <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${a.earned ? a.color : 'bg-cloud text-royal/30'}`}>
-                    <Icon name={a.icon} size={18} />
-                  </div>
-                  <p className="text-[10px] font-semibold text-navy text-center leading-tight">{a.label}</p>
-                  {a.earned
-                    ? <div className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-amber-400" />
-                    : <div className="absolute top-1.5 right-1.5"><Icon name="lock" size={9} className="text-royal/30" /></div>}
-                </div>
-              ))}
-            </div>
-          </div>
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
 
-          {/* ③ DEADLINE RADAR — 14-day strip */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-4 w-1 rounded-full bg-red-400" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Deadline Radar</h2>
+          {/* ── Main column ── */}
+          <div className="flex min-w-0 flex-col gap-5">
+
+            <section className={card}>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className={h2}>Continue learning</h2>
+                {resume && <Link href={`/student/learn/${resume.courseId}`} className={link}>Open course</Link>}
               </div>
-              <span className="text-[10px] text-royal/40 font-medium">Next 14 days</span>
-            </div>
-            <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 md:mx-0 md:px-0 pb-1">
-              {Array.from({ length: 14 }, (_, i) => {
-                const d = new Date(today); d.setDate(today.getDate() + i);
-                const dStr = d.toDateString();
-                const isToday = i === 0;
-                const hasLive = liveSessionDateSet.has(dStr);
-                const hasDue  = assignmentDueDateSet.has(dStr);
-                return (
-                  <Link key={i} href="/student/calendar"
-                    className={`flex-shrink-0 flex flex-col items-center gap-1 rounded-xl p-2 min-w-[44px] transition
-                      ${isToday ? 'bg-azure text-white' : (hasLive || hasDue) ? 'bg-cloud' : 'hover:bg-cloud/60'}`}>
-                    <p className={`text-[10px] font-semibold ${isToday ? 'text-white/70' : 'text-royal/50'}`}>
-                      {d.toLocaleDateString('en-GB', { weekday: 'short' })}
-                    </p>
-                    <p className={`text-sm font-bold ${isToday ? 'text-white' : 'text-navy'}`}>{d.getDate()}</p>
-                    <div className="flex gap-0.5 h-2 items-center">
-                      {hasLive && <div className={`h-1.5 w-1.5 rounded-full ${isToday ? 'bg-white/70' : 'bg-red-400'}`} />}
-                      {hasDue  && <div className={`h-1.5 w-1.5 rounded-full ${isToday ? 'bg-white/70' : 'bg-amber-400'}`} />}
+              {resume ? (
+                <>
+                  <div className="flex items-center gap-3.5">
+                    <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-azure-strong">
+                      <Glyph d={P.play} size={22} fill="currentColor" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-[12.5px] text-muted">{resume.courseTitle}</p>
+                      <p className="mt-0.5 truncate text-base font-bold text-navy">{resume.lessonTitle ?? 'Start the next lesson'}</p>
                     </div>
-                  </Link>
-                );
-              })}
-            </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-[3px] bg-subtle">
+                      <div className="h-1.5 bg-azure" style={{ width: `${resume.pct ?? 0}%` }} />
+                    </div>
+                    <span className="text-[12.5px] text-ink2">{resume.pct ?? 0}% of the course</span>
+                  </div>
+                  {resumeCourse && (
+                    <dl className="grid grid-cols-3 overflow-hidden rounded-md border border-line">
+                      {[
+                        ['Lessons', `${resumeCourse.lessonsCompleted ?? 0} of ${resumeCourse.totalLessons ?? 0}`],
+                        ['Quizzes passed', `${resumeCourse.quizzesPassed ?? 0} of ${resumeCourse.totalQuizzes ?? 0}`],
+                        ['Course progress', `${resumeCourse.percentComplete ?? 0}%`],
+                      ].map(([l, v]) => (
+                        <div key={l} className="-mr-px border-r border-line px-3 py-2.5">
+                          <dt className="text-[11.5px] text-muted">{l}</dt>
+                          <dd className="mt-0.5 text-[13.5px] font-semibold text-navy">{v}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Link href={resumeHref} className={btnPrimary}>Resume</Link>
+                    <Link href={resumeHref} className={btnSecondary}>Practice</Link>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="flex-1 text-[13.5px] text-ink2">You haven&apos;t started a course yet. Browse the catalogue to find one for your exam.</p>
+                  <Link href="/student/catalogue" className={btnPrimary}>Browse courses</Link>
+                </div>
+              )}
+            </section>
+
+            <section className={card}>
+              <div className="flex items-center justify-between">
+                <h2 className={h2}>Your courses {courses.length > 0 && <span className={count}>{courses.length}</span>}</h2>
+                <Link href="/student/courses" className={link}>All courses</Link>
+              </div>
+              {courses.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[560px] border-collapse text-[13.5px]">
+                    <thead>
+                      <tr className="text-left">
+                        {['Course', 'Progress', 'Lessons', 'Status'].map(h => (
+                          <th key={h} className={clsx(label, 'border-b border-line py-2 pr-3 font-semibold', h === 'Progress' && 'w-[30%]')}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {courses.slice(0, 6).map(c => {
+                        const pct = c.percentComplete ?? 0;
+                        const done = c.certificateEarned || pct >= 100;
+                        return (
+                          <tr key={c.courseId}>
+                            <td className="border-b border-line py-3 pr-3 font-semibold text-navy">
+                              <Link href={`/student/learn/${c.courseId}`} className="hover:text-azure-strong">{c.courseTitle}</Link>
+                            </td>
+                            <td className="border-b border-line py-3 pr-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="h-1.5 flex-1 overflow-hidden rounded-[3px] bg-subtle">
+                                  <div className="h-1.5 bg-azure" style={{ width: `${pct}%` }} />
+                                </div>
+                                <span className="min-w-[34px] text-[12.5px] text-ink2">{pct}%</span>
+                              </div>
+                            </td>
+                            <td className="border-b border-line py-3 pr-3 text-ink2">{c.lessonsCompleted ?? 0} of {c.totalLessons ?? 0}</td>
+                            <td className="border-b border-line py-3">
+                              <span className={clsx('inline-flex h-6 items-center rounded px-2 text-xs font-semibold',
+                                done ? 'border border-line bg-subtle text-ink2' : 'bg-accent-soft text-navy')}>
+                                {done ? 'Completed' : pct > 0 ? 'In progress' : 'Not started'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-[13.5px] text-ink2">Courses you buy, or get through a package or school, appear here.</p>
+              )}
+            </section>
+
+            <StudyHeatmap />
           </div>
 
-          {/* ④ CERTIFICATE CHECKLIST */}
-          {checklistCert && checklistItems.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="inline-block h-4 w-1 rounded-full bg-azure" />
-                  <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Toward Certificate</h2>
-                </div>
-                <Link href={`/student/learn/${checklistCert.courseId}`} className="text-xs font-semibold text-azure hover:text-royal transition">Study now</Link>
-              </div>
-              <div className="rounded-2xl border border-cloud bg-white p-4">
-                <p className="text-xs font-semibold text-navy mb-3 truncate">{checklistCert.courseTitle}</p>
-                <div className="space-y-2.5">
-                  {checklistItems.map(item => {
-                    const done = item.done >= item.total && item.total > 0;
-                    return (
-                      <div key={item.label} className="flex items-center gap-3">
-                        <div className={`h-6 w-6 rounded-full flex items-center justify-center flex-shrink-0
-                          ${done ? 'bg-emerald-50 text-emerald-500' : 'bg-cloud text-royal/40'}`}>
-                          <Icon name={done ? 'check' : 'clock'} size={11} />
-                        </div>
-                        <p className="text-xs text-navy flex-1">{item.label}</p>
-                        <div className="flex items-center gap-2">
-                          <div className="w-20 h-1 rounded-full bg-cloud overflow-hidden">
-                            <div className={`h-full rounded-full ${done ? 'bg-emerald-400' : 'bg-azure'}`}
-                              style={{ width: item.total > 0 ? `${Math.min(100, (item.done / item.total) * 100)}%` : '0%' }} />
-                          </div>
-                          <p className={`text-[10px] font-bold w-8 text-right ${done ? 'text-emerald-500' : 'text-azure'}`}>
-                            {item.done}/{item.total}
-                          </p>
-                        </div>
+          {/* ── Right column ── */}
+          <div className="flex min-w-0 flex-col gap-5">
+
+            <section className={card}>
+              <h2 className={h2}>Up next {agenda.length > 0 && <span className={count}>{agenda.length}</span>}</h2>
+              {agenda.length ? (
+                <ul>
+                  {agenda.map(a => (
+                    <li key={a.key} className="flex gap-3 border-t border-line py-3">
+                      <span className="w-10 flex-shrink-0 rounded-md border border-line py-1 text-center">
+                        <span className="block text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted">{a.at.toLocaleDateString('en-GB', { month: 'short' })}</span>
+                        <span className="block text-base font-extrabold text-navy">{String(a.at.getDate()).padStart(2, '0')}</span>
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className={clsx('text-[11.5px] font-semibold uppercase tracking-[0.04em]',
+                          a.tone === 'error' ? 'text-error' : a.tone === 'accent' ? 'text-azure-strong' : 'text-muted')}>{a.kind}</p>
+                        <p className="mt-0.5 text-[13.5px] font-semibold text-navy">{a.title}</p>
+                        <p className="mt-0.5 truncate text-[12.5px] text-muted">{a.meta}</p>
                       </div>
+                      {a.action && <Link href={a.action.href} className={clsx(btnSecondarySm, 'self-center')}>{a.action.label}</Link>}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-[13.5px] text-ink2">Nothing due and no live classes scheduled.</p>
+              )}
+            </section>
+
+            {hasCohort && (
+              <section className={card}>
+                <div className="flex items-center justify-between">
+                  <h2 className={h2}>Cohort leaderboard</h2>
+                  <Link href="/student/leaderboard" className={link}>Full board</Link>
+                </div>
+                {leaders.length ? (
+                  <ol className="flex flex-col gap-0.5">
+                    {leaders.map(p => {
+                      const isYou = p.id === user?.id;
+                      const initials = p.name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+                      return (
+                        <li key={p.id} className={clsx('flex items-center gap-2.5 rounded-md px-2 py-1.5', isYou && 'bg-accent-soft')}>
+                          <span className="w-[18px] text-[12.5px] font-bold text-muted">{p.rank}</span>
+                          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-subtle text-[11.5px] font-bold text-ink2">{initials}</span>
+                          <span className={clsx('flex-1 truncate text-[13.5px] text-navy', isYou ? 'font-bold' : 'font-medium')}>{p.name}{isYou && ' (you)'}</span>
+                          <span className="text-[12.5px] font-semibold text-ink2">{p.xpTotal.toLocaleString()} XP</span>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ) : (
+                  <p className="text-[13.5px] text-ink2">Points appear as your cohort completes lessons and quizzes.</p>
+                )}
+              </section>
+            )}
+
+            <section className={card}>
+              <div className="flex items-center justify-between">
+                <h2 className={h2}>Focus timer</h2>
+                <span className="text-[12.5px] text-muted">
+                  {pomMode === 'break' ? 'Break' : `${pomSessions} session${pomSessions === 1 ? '' : 's'} today`}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-4">
+                <p className="text-[34px] font-extrabold tracking-[-0.02em] text-navy tabular-nums" aria-live="polite">{pomDisplay}</p>
+                <div className="ml-auto flex gap-2">
+                  {pomMode === 'idle' ? (
+                    <button type="button" onClick={() => { setPomSeconds(25 * 60); setPomMode('work'); }} className={btnPrimarySm}>Start focus</button>
+                  ) : (
+                    <button type="button" onClick={() => setPomMode('idle')} className={btnPrimarySm}>Pause</button>
+                  )}
+                  <button type="button" onClick={() => { setPomMode('idle'); setPomSeconds(25 * 60); }} className={btnSecondarySm}>Reset</button>
+                </div>
+              </div>
+            </section>
+
+            {nextCert && (
+              <section className={card}>
+                <h2 className={h2}>Next certificate</h2>
+                <p className="-mt-1.5 text-[13px] text-ink2">{nextCert.courseTitle}</p>
+                <ul className="flex flex-col gap-2">
+                  {[
+                    { l: 'lessons complete', done: nextCert.lessonsCompleted ?? 0, total: nextCert.totalLessons ?? 0 },
+                    { l: 'quizzes passed', done: nextCert.quizzesPassed ?? 0, total: nextCert.totalQuizzes ?? 0 },
+                    { l: 'assignments graded', done: nextCert.assignmentsGraded ?? 0, total: nextCert.totalAssignments ?? 0 },
+                  ].filter(i => i.total > 0).map(i => {
+                    const ok = i.done >= i.total;
+                    return (
+                      <li key={i.l} className={clsx('flex items-center gap-2.5 text-[13.5px]', ok ? 'text-azure-strong' : 'text-ink2')}>
+                        <Glyph d={ok ? P.check : P.ring} strokeWidth={2} />
+                        {i.done} of {i.total} {i.l}
+                      </li>
                     );
                   })}
-                </div>
-                {checklistRemaining > 0 && (
-                  <p className="text-[10px] text-royal/40 mt-3 pt-3 border-t border-cloud text-center">
-                    {checklistRemaining} item{checklistRemaining !== 1 ? 's' : ''} left to earn this certificate
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Your Courses list */}
-          {filteredCourses.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="inline-block h-4 w-1 rounded-full bg-royal" />
-                  <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Your Courses</h2>
-                </div>
-                <Link href="/student/courses" className="text-xs font-semibold text-azure hover:text-royal transition">See All</Link>
-              </div>
-              <div className="space-y-2">
-                {filteredCourses.slice(0, 5).map((p, i) => {
-                  const pct = progressMap[p.courseId] ?? 0;
-                  const c = COURSE_COLORS[i % COURSE_COLORS.length];
-                  return (
-                    <Link key={p.id} href={`/student/learn/${p.courseId}`}>
-                      <motion.div whileHover={{ x: 2, transition: spring.snappy }}
-                        className="flex items-center gap-4 rounded-xl border border-cloud bg-white p-3 hover:border-azure/30 hover:shadow-sm transition-all cursor-pointer">
-                        <div className={`flex-shrink-0 h-12 w-12 rounded-xl ${c.bg} flex items-center justify-center ${c.text} text-base font-bold`}>
-                          {(p.course?.title ?? 'C')[0].toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-navy truncate">{p.course?.title ?? 'Course'}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            {p.course?.subject?.name && <span className={`text-[10px] font-semibold ${c.text}`}>{p.course.subject.name}</span>}
-                            {p.course?.subject?.name && <span className="text-royal/20">·</span>}
-                            <span className="text-[10px] text-royal/40">{pct === 100 ? 'Completed' : pct > 0 ? `${pct}% done` : 'Not started'}</span>
-                          </div>
-                          <div className="mt-1.5 h-1 w-full rounded-full bg-cloud overflow-hidden">
-                            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: c.bar }} />
-                          </div>
-                        </div>
-                        <Icon name="arrowRight" size={14} className="text-royal/20 flex-shrink-0" />
-                      </motion.div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* ② YOUR TEACHERS */}
-          {teachers.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="inline-block h-4 w-1 rounded-full bg-royal" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Your Teachers</h2>
-              </div>
-              <div className="flex gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 md:mx-0 md:px-0 pb-1">
-                {teachers.map((t, i) => {
-                  const c = COURSE_COLORS[i % COURSE_COLORS.length];
-                  return (
-                    <div key={t.id} className="flex-shrink-0 w-[140px] rounded-2xl border border-cloud bg-white p-4 flex flex-col items-center gap-2 text-center">
-                      <div className={`h-12 w-12 rounded-full ${c.bg} flex items-center justify-center text-base font-bold ${c.text}`}>
-                        {t.name[0]?.toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-navy leading-tight truncate">{t.name}</p>
-                        {t.subject && <p className={`text-[10px] font-semibold mt-0.5 ${c.text}`}>{t.subject}</p>}
-                      </div>
-                      <Link href="/student/messages"
-                        className="w-full rounded-lg bg-azure/10 py-1.5 text-[11px] font-semibold text-azure hover:bg-azure/20 transition text-center">
-                        Message
-                      </Link>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* ⑤ SKILL TAGS */}
-          {skillTags.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="inline-block h-4 w-1 rounded-full bg-emerald-400" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Skills & Topics</h2>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {skillTags.map((tag, i) => {
-                  const c = COURSE_COLORS[i % COURSE_COLORS.length];
-                  return (
-                    <Link key={tag} href={`/student/catalogue?q=${encodeURIComponent(tag)}`}>
-                      <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold
-                        ${c.bg} ${c.text} border-current/20 hover:opacity-80 transition cursor-pointer`}>
-                        <Icon name="tag" size={10} />
-                        {tag}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+                </ul>
+              </section>
+            )}
+          </div>
         </div>
-
-        {/* ── RIGHT COL (2/5) ─────────────────────────────────────────────── */}
-        <FadeUp delay={0.1} className="lg:col-span-2 space-y-5">
-
-          {/* Date + icons header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-base font-bold text-navy">{today.toLocaleDateString('en-GB', { weekday: 'long' })}</p>
-              <p className="text-xs text-royal/40">{today.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link href="/student/notifications" className="flex h-9 w-9 items-center justify-center rounded-xl border border-cloud bg-white hover:border-azure/30 transition">
-                <Icon name="bell" size={16} className="text-royal/60" />
-              </Link>
-              <div className="h-9 w-9 rounded-xl bg-azure/10 flex items-center justify-center text-sm font-bold text-azure">
-                {firstName[0]?.toUpperCase()}
-              </div>
-            </div>
-          </div>
-
-          {/* ⑤ COUNTDOWN TO NEXT LIVE CLASS */}
-          {nextLiveSession && countdown && (
-            <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-                <p className="text-[10px] font-bold uppercase tracking-widest text-red-400">Next Live Class</p>
-              </div>
-              <p className="text-xs font-semibold text-navy truncate mb-2">{nextLiveSession.title}</p>
-              <p className="text-2xl font-bold text-navy font-mono tracking-wider">{countdown}</p>
-              <Link href={`/student/live/${nextLiveSession.id}`}
-                className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-600 transition">
-                Join class <Icon name="arrowRight" size={11} />
-              </Link>
-            </div>
-          )}
-
-          {/* ① POMODORO STUDY TIMER */}
-          <div className="rounded-2xl border border-cloud bg-white p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-4 w-1 rounded-full bg-azure" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Study Timer</h2>
-              </div>
-              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full
-                ${pomMode === 'work' ? 'bg-azure/10 text-azure' : pomMode === 'break' ? 'bg-emerald-50 text-emerald-500' : 'bg-cloud text-royal/40'}`}>
-                {pomMode === 'work' ? 'Focus' : pomMode === 'break' ? 'Break' : 'Ready'}
-              </span>
-            </div>
-            <div className="flex items-center justify-center mb-3 relative">
-              <ProgressRing pct={pomPct} size={96} stroke={7}
-                color={pomMode === 'break' ? '#405FAD' : '#5889FA'} trackColor="#E6ECFD" />
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <p className="text-xl font-bold text-navy font-mono">{pomDisplay}</p>
-                <p className="text-[10px] text-royal/40">{pomMode === 'break' ? 'break' : 'focus'}</p>
-              </div>
-            </div>
-            <div className="flex justify-center gap-1.5 mb-3">
-              {Array.from({ length: 4 }, (_, i) => (
-                <div key={i} className={`h-2 w-2 rounded-full ${i < pomSessions % 4 ? 'bg-azure' : 'bg-cloud'}`} />
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => {
-                if (pomMode !== 'idle') { setPomMode('idle'); setPomSeconds(25 * 60); }
-                else setPomMode('work');
-              }} className={`flex-1 rounded-xl py-2 text-xs font-bold transition
-                ${pomMode !== 'idle' ? 'bg-red-50 text-red-400 hover:bg-red-100' : 'bg-azure text-white hover:bg-azure/90'}`}>
-                {pomMode !== 'idle' ? 'Stop' : 'Start focus'}
-              </button>
-              <button onClick={() => { setPomMode('idle'); setPomSeconds(25 * 60); }}
-                className="rounded-xl border border-cloud px-3 py-2 text-xs font-bold text-royal/50 hover:bg-cloud transition">
-                Reset
-              </button>
-            </div>
-            {pomSessions > 0 && (
-              <p className="text-[10px] text-royal/40 text-center mt-2">{pomSessions} session{pomSessions !== 1 ? 's' : ''} completed today</p>
-            )}
-          </div>
-
-          {/* ⑦ OVERALL PROGRESS RING */}
-          {allPcts.length > 0 && (
-            <div className="rounded-2xl border border-cloud bg-white p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="inline-block h-4 w-1 rounded-full bg-azure" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Overall Progress</h2>
-              </div>
-              <div className="flex items-center gap-5">
-                <div className="relative flex-shrink-0">
-                  <ProgressRing pct={overallPct} size={96} stroke={9} />
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <p className="text-xl font-bold text-navy leading-none">{overallPct}%</p>
-                    <p className="text-[10px] text-royal/40">overall</p>
-                  </div>
-                </div>
-                <div className="flex-1 space-y-2">
-                  {[
-                    { label: 'Active',     val: `${allPcts.filter(p => p > 0).length}/${allPcts.length}`, color: 'bg-azure' },
-                    { label: 'Completed',  val: `${allPcts.filter(p => p >= 100).length}`,                color: 'bg-emerald-400' },
-                    { label: 'Certs',      val: `${certs.length}`,                                        color: 'bg-amber-400' },
-                  ].map(row => (
-                    <div key={row.label} className="flex items-center gap-2">
-                      <div className={`h-2 w-2 rounded-full flex-shrink-0 ${row.color}`} />
-                      <p className="text-[11px] text-royal/50 flex-1">{row.label}</p>
-                      <p className="text-[11px] font-bold text-navy">{row.val}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Mini Study Calendar */}
-          <div className="rounded-2xl border border-cloud bg-white p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-4 w-1 rounded-full bg-azure" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Study Calendar</h2>
-              </div>
-              <Link href="/student/calendar" className="text-xs font-semibold text-azure hover:text-royal transition">Full view</Link>
-            </div>
-            <p className="text-xs font-semibold text-navy text-center mb-2">{MONTH_NAMES[calMonth]} {calYear}</p>
-            <div className="grid grid-cols-7 mb-1">
-              {['S','M','T','W','T','F','S'].map((d, i) => (
-                <div key={i} className="text-center text-[10px] font-bold text-royal/40">{d}</div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-y-0.5">
-              {Array.from({ length: calFirstDay }, (_, i) => <div key={`e-${i}`} />)}
-              {Array.from({ length: calDaysInMonth }, (_, i) => {
-                const dayNum = i + 1;
-                const dateStr = new Date(calYear, calMonth, dayNum).toDateString();
-                const isToday = dayNum === today.getDate();
-                const hasLive = liveSessionDateSet.has(dateStr);
-                const hasDue  = assignmentDueDateSet.has(dateStr);
-                return (
-                  <Link key={dayNum} href="/student/calendar"
-                    className="flex flex-col items-center py-0.5 rounded-lg hover:bg-cloud/60 transition">
-                    <span className={`h-6 w-6 flex items-center justify-center rounded-full text-[11px] font-semibold
-                      ${isToday ? 'bg-azure text-white' : 'text-navy'}`}>{dayNum}</span>
-                    {(hasLive || hasDue) && (
-                      <div className="flex gap-0.5 mt-0.5">
-                        {hasLive && <div className="h-1 w-1 rounded-full bg-red-400" />}
-                        {hasDue  && <div className="h-1 w-1 rounded-full bg-amber-400" />}
-                      </div>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-cloud">
-              <div className="flex items-center gap-1.5"><div className="h-1.5 w-1.5 rounded-full bg-red-400" /><span className="text-[10px] text-royal/50">Live</span></div>
-              <div className="flex items-center gap-1.5"><div className="h-1.5 w-1.5 rounded-full bg-amber-400" /><span className="text-[10px] text-royal/50">Due</span></div>
-            </div>
-          </div>
-
-          {/* Learning Activity BarChart */}
-          <div className="rounded-2xl border border-cloud bg-white p-4">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-4 w-1 rounded-full bg-azure" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Learning Activity</h2>
-              </div>
-              <Link href="/student/progress" className="text-[10px] font-semibold text-azure hover:text-royal transition">Full report</Link>
-            </div>
-            {chartData.some(d => d.progress > 0) ? (
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={chartData} barSize={14} margin={{ top: 8, right: 0, left: -24, bottom: 0 }}>
-                  <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#405FAD99' }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 9, fill: '#405FAD99' }} tickLine={false} axisLine={false} domain={[0, 100]} />
-                  <Tooltip contentStyle={{ fontSize: 11, borderRadius: 10, border: '1px solid #E6ECFD', boxShadow: 'none', padding: '6px 10px' }}
-                    formatter={(v) => [`${v ?? 0}%`, 'Progress']} cursor={{ fill: 'rgba(88,137,250,0.05)' }} />
-                  <Bar dataKey="progress" fill="#5889FA" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-44 flex flex-col items-center justify-center gap-2">
-                <Icon name="trending" size={32} className="text-cloud" />
-                <p className="text-xs text-royal/40">Start a course to see activity</p>
-              </div>
-            )}
-          </div>
-
-          {/* My Progress AreaChart */}
-          <div className="rounded-2xl border border-cloud bg-white p-4">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2">
-                <span className="inline-block h-4 w-1 rounded-full bg-emerald-400" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">My Progress</h2>
-              </div>
-              <span className="text-[10px] font-semibold text-royal/40 uppercase">Weekly</span>
-            </div>
-            <ResponsiveContainer width="100%" height={110}>
-              <AreaChart data={weekData} margin={{ top: 6, right: 0, left: -24, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="progressGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#5889FA" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#5889FA" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="day" tick={{ fontSize: 9, fill: '#405FAD99' }} tickLine={false} axisLine={false} />
-                <YAxis hide domain={[0, 8]} />
-                <Tooltip contentStyle={{ fontSize: 11, borderRadius: 10, border: '1px solid #E6ECFD', boxShadow: 'none', padding: '6px 10px' }}
-                  formatter={(v) => [`${v ?? 0}h`, 'Study hours']} />
-                <Area type="monotone" dataKey="hours" stroke="#5889FA" strokeWidth={2}
-                  fill="url(#progressGrad)" dot={false} activeDot={{ r: 4, fill: '#5889FA' }} />
-              </AreaChart>
-            </ResponsiveContainer>
-            <p className="mt-1 text-[10px] text-royal/40 text-center">Hours tracked as you complete lessons</p>
-          </div>
-
-          {/* Assignments */}
-          {assignments.filter(a => !overdueAssignments.includes(a)).length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="inline-block h-4 w-1 rounded-full bg-amber-400" />
-                  <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Assignments</h2>
-                </div>
-                <Link href="/student/assignments" className="text-xs font-semibold text-azure hover:text-royal transition">See All</Link>
-              </div>
-              <div className="space-y-2">
-                {assignments.filter(a => !overdueAssignments.includes(a)).slice(0, 3).map((a, i) => {
-                  const c = COURSE_COLORS[i % COURSE_COLORS.length];
-                  const dueIn = a.dueAt ? Math.ceil((new Date(a.dueAt).getTime() - now) / 86400000) : null;
-                  return (
-                    <Link key={a.id} href="/student/assignments">
-                      <motion.div whileHover={{ x: 2, transition: spring.snappy }}
-                        className="flex items-center gap-3 rounded-xl border border-cloud bg-white p-3 hover:border-azure/30 hover:shadow-sm transition-all">
-                        <div className={`flex-shrink-0 h-9 w-9 rounded-xl ${c.bg} flex items-center justify-center ${c.text}`}>
-                          <Icon name="assignments" size={15} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-navy truncate">{a.title}</p>
-                          <p className="text-[10px] text-royal/40">
-                            {dueIn !== null ? dueIn === 0 ? 'Due today' : `Due in ${dueIn}d` : a.course?.title ?? ''}
-                          </p>
-                        </div>
-                        <div className="flex-shrink-0 h-7 w-7 rounded-full bg-azure flex items-center justify-center">
-                          <Icon name="arrowRight" size={12} className="text-white" />
-                        </div>
-                      </motion.div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Leaderboard */}
-          {leaderboard.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="inline-block h-4 w-1 rounded-full bg-purple-400" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Cohort Rank</h2>
-              </div>
-              <div className="rounded-2xl border border-cloud bg-white p-4 space-y-3">
-                {leaderboard.slice(0, 3).map((entry, i) => (
-                  <div key={entry.userId} className="flex items-center gap-3">
-                    <span className={`text-xs font-bold w-5 text-center flex-shrink-0
-                      ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-royal/50' : 'text-orange-400'}`}>#{entry.rank}</span>
-                    <div className="h-8 w-8 rounded-full bg-azure/10 flex items-center justify-center text-xs font-bold text-azure flex-shrink-0">
-                      {entry.name[0]?.toUpperCase()}
-                    </div>
-                    <p className="text-xs font-semibold text-navy flex-1 truncate">{entry.name}</p>
-                    <div className="flex items-center gap-2">
-                      {/* Bar is relative to the cohort leader's XP */}
-                      <div className="h-1 w-16 rounded-full bg-cloud overflow-hidden">
-                        <div className="h-full rounded-full bg-azure"
-                          style={{ width: `${leaderboard[0]?.xpTotal ? Math.round((entry.xpTotal / leaderboard[0].xpTotal) * 100) : 0}%` }} />
-                      </div>
-                      <p className="text-[10px] font-bold text-azure w-12 text-right">{entry.xpTotal} XP</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Class Activity Feed */}
-          {activityFeed.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="inline-block h-4 w-1 rounded-full bg-emerald-400" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Class Activity</h2>
-              </div>
-              <div className="space-y-2">
-                {activityFeed.map((item, i) => (
-                  <div key={i} className="flex items-start gap-3 rounded-xl border border-cloud bg-white p-3">
-                    <div className="flex-shrink-0 h-7 w-7 rounded-full bg-cloud flex items-center justify-center text-xs font-bold text-royal">
-                      {item.name[0]?.toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[11px] text-navy">
-                        <span className="font-semibold">{item.name}</span> {item.action} <span className="font-semibold">{item.target}</span>
-                      </p>
-                      <p className="text-[10px] text-royal/40 mt-0.5">{item.timestamp}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Live sessions */}
-          {liveSessions.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="inline-block h-4 w-1 rounded-full bg-red-400" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Upcoming Live</h2>
-              </div>
-              <div className="space-y-2">
-                {liveSessions.slice(0, 3).map(session => (
-                  <Link key={session.id} href={`/student/live/${session.id}`}>
-                    <Card className="flex items-center gap-3 p-3 hover:shadow-sm transition cursor-pointer">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 flex-shrink-0">
-                        <Icon name="live" size={16} className="text-red-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-navy truncate">{session.title}</p>
-                        <p className="text-[11px] text-royal/50">
-                          {session.status === 'ACTIVE'
-                            ? <span className="inline-flex items-center gap-1 text-red-500 font-semibold">
-                                <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse inline-block" /> Live now
-                              </span>
-                            : new Date(session.scheduledAt).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                    </Card>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* AI Recommendations */}
-          {recs.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="inline-block h-4 w-1 rounded-full bg-azure" />
-                <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Recommended</h2>
-                <Icon name="sparkles" size={13} className="text-azure/60" />
-              </div>
-              <div className="space-y-2">
-                {recs.map(rec => (
-                  <Link key={rec.courseId} href="/courses"
-                    className="flex items-start gap-3 rounded-xl border border-cloud bg-white p-3 hover:border-azure/40 hover:shadow-sm transition-all group">
-                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-cloud overflow-hidden">
-                      {rec.coverUrl ? <img src={rec.coverUrl} alt={rec.title} className="h-full w-full object-cover" />
-                        : <Icon name="courses" size={16} className="text-royal" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-navy truncate">{rec.title}</p>
-                      {rec.subjectName && <p className="text-[10px] text-royal/40">{rec.subjectName}</p>}
-                      {rec.tip && <p className="text-[10px] text-azure/70 mt-0.5 line-clamp-1">{rec.tip}</p>}
-                    </div>
-                    <Icon name="arrowRight" size={12} className="text-royal/20 group-hover:text-azure transition flex-shrink-0 mt-0.5" />
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ⑥ STUDY REMINDER */}
-          <div className="rounded-2xl border border-cloud bg-white p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="inline-block h-4 w-1 rounded-full bg-amber-400" />
-              <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Study Reminder</h2>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold text-navy">Daily reminder</p>
-                <p className="text-[10px] text-royal/40 mt-0.5">Get notified to study every day</p>
-              </div>
-              <button onClick={() => toggleReminder(!reminderOn)}
-                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${reminderOn ? 'bg-azure' : 'bg-cloud'}`}>
-                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${reminderOn ? 'translate-x-5' : 'translate-x-0'}`} />
-              </button>
-            </div>
-            {reminderOn && (
-              <div className="mt-3 flex items-center gap-2 pt-3 border-t border-cloud">
-                <Icon name="clock" size={13} className="text-royal/40" />
-                <input type="time" value={reminderTime}
-                  onChange={e => { setReminderTime(e.target.value); localStorage.setItem('cpa_reminder', JSON.stringify({ enabled: true, time: e.target.value })); }}
-                  className="text-xs font-semibold text-navy bg-transparent outline-none" />
-                <span className="text-[10px] text-royal/40">daily</span>
-              </div>
-            )}
-          </div>
-
-          {/* ⑫ MOTIVATIONAL QUOTE */}
-          <div className="rounded-2xl border-l-4 border-azure bg-azure/5 p-4">
-            <Icon name="sparkles" size={14} className="text-azure mb-2" />
-            <p className="text-sm text-navy italic leading-relaxed">"{quote.text}"</p>
-            <p className="text-[11px] font-semibold text-royal/50 mt-2">— {quote.author}</p>
-          </div>
-
-          {/* ⑬ KEEP LEARNING PROMO CARD */}
-          <div className="rounded-2xl bg-navy p-5 relative overflow-hidden">
-            <div className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/5" />
-            <div className="pointer-events-none absolute -left-4 bottom-0 h-16 w-16 translate-y-4 rounded-full bg-azure/25" />
-            <div className="relative z-10">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 mb-3">
-                <Icon name="graduate" size={24} className="text-white" />
-              </div>
-              <p className="text-sm font-bold text-white leading-snug mb-1">Keep Learning,<br />Go Ahead...</p>
-              <p className="text-[11px] text-white/60 mb-4">Explore programmes with CareerPath Africa and unlock your potential.</p>
-              <Link href="/packages">
-                <button className="w-full rounded-xl bg-azure px-4 py-2 text-xs font-bold text-white hover:bg-azure/90 transition">
-                  Get Access
-                </button>
-              </Link>
-            </div>
-          </div>
-
-          {/* Quick links */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="inline-block h-4 w-1 rounded-full bg-royal" />
-              <h2 className="text-sm font-bold text-navy uppercase tracking-wide">Quick Links</h2>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {QUICK_LINKS.map(link => (
-                <Link key={link.label} href={link.href}>
-                  <motion.div whileHover={{ y: -2, boxShadow: '0 4px 16px rgba(88,137,250,0.12)', transition: spring.crisp }}
-                    whileTap={{ scale: 0.95, transition: spring.snappy }}
-                    className="flex flex-col items-center gap-2 rounded-xl border border-cloud bg-white p-3 text-center hover:border-azure/30 transition-colors">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-azure/8">
-                      <Icon name={link.icon} size={16} className="text-azure" />
-                    </div>
-                    <span className="text-[11px] font-semibold text-navy leading-tight">{link.label}</span>
-                  </motion.div>
-                </Link>
-              ))}
-            </div>
-          </div>
-
-        </FadeUp>
       </div>
 
-      {/* ⑬ CONFETTI — fires when a new certificate is earned */}
-      <AnimatePresence>
-        {showConfetti && (
-          <>
-            {Array.from({ length: 55 }, (_, i) => (
-              <motion.div key={i} className="confetti-piece"
-                style={{
-                  left: `${Math.random() * 100}%`,
-                  width: `${6 + Math.random() * 7}px`,
-                  height: `${6 + Math.random() * 7}px`,
-                  borderRadius: Math.random() > 0.5 ? '50%' : '2px',
-                  backgroundColor: ['#5889FA','#f59e0b','#10b981','#f87171','#a855f7','#ec4899'][i % 6],
-                  animationDuration: `${2 + Math.random() * 2.5}s`,
-                  animationDelay: `${Math.random() * 1.2}s`,
-                }}
-                initial={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-              />
-            ))}
-            <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }} transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-              className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-              <div className="bg-white rounded-2xl p-6 shadow-2xl text-center border border-cloud mx-4">
-                <Icon name="certificates" size={36} className="text-amber-500 mx-auto mb-2" />
-                <p className="text-lg font-bold text-navy">Certificate Earned!</p>
-                <p className="text-sm text-royal/60 mt-1">Congratulations on your achievement</p>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* ⑱ ONBOARDING TOUR */}
-      <AnimatePresence>
-        {onboardStep !== null && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-navy/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
-            <motion.div initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
-              className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl">
-              {/* Step dots */}
-              <div className="flex justify-center gap-1.5 mb-4">
-                {ONBOARD_STEPS.map((_, i) => (
-                  <div key={i} className={`h-1.5 rounded-full transition-all ${i === onboardStep ? 'w-6 bg-azure' : 'w-1.5 bg-cloud'}`} />
-                ))}
-              </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-azure/10 mb-4 mx-auto">
-                <Icon name="dashboard" size={22} className="text-azure" />
-              </div>
-              <h3 className="text-base font-bold text-navy text-center mb-2">{ONBOARD_STEPS[onboardStep].title}</h3>
-              <p className="text-sm text-royal/60 text-center leading-relaxed mb-5">{ONBOARD_STEPS[onboardStep].body}</p>
-              <div className="flex gap-2">
-                <button onClick={() => { setOnboardStep(null); localStorage.setItem('cpa_onboarded', '1'); }}
-                  className="flex-1 rounded-xl border border-cloud py-2.5 text-sm font-semibold text-royal/60 hover:bg-cloud transition">
-                  Skip
-                </button>
-                <button onClick={advanceOnboard}
-                  className="flex-1 rounded-xl bg-azure py-2.5 text-sm font-bold text-white hover:bg-royal transition">
-                  {onboardStep < ONBOARD_STEPS.length - 1 ? 'Next' : "Let's go!"}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* First-visit tour */}
+      {onboardStep !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/30 p-4" role="dialog" aria-modal="true" aria-labelledby="tour-title">
+          <div className="w-full max-w-sm rounded-lg border border-line bg-white p-6 shadow-card-lg">
+            <p className="text-xs text-muted">Step {onboardStep + 1} of {ONBOARD_STEPS.length}</p>
+            <h2 id="tour-title" className="mt-1 text-[17px] font-bold text-navy">{ONBOARD_STEPS[onboardStep].title}</h2>
+            <p className="mt-1.5 text-sm text-ink2">{ONBOARD_STEPS[onboardStep].body}</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={skipOnboard} className={btnSecondarySm}>Skip</button>
+              <button type="button" onClick={nextOnboard} className={btnPrimarySm}>
+                {onboardStep < ONBOARD_STEPS.length - 1 ? 'Next' : 'Done'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
