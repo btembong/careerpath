@@ -28,6 +28,8 @@ model UserProfile {
   videoIntroUrl       String?
   googleId            String?                  @unique
   lastActiveDate      DateTime?
+  /// When the account was created (backfilled for older accounts from their first activity)
+  createdAt           DateTime            @default(now())
   microsoftId         String?                  @unique
   streak              Int                      @default(0)
   xpTotal             Int                      @default(0)
