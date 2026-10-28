@@ -21,7 +21,7 @@ export function StatCard({ icon, label, value, trend, trendUp, className }: Stat
         </div>
         {trend && (
           <span className={clsx(
-            'inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold',
+            'inline-flex items-center gap-0.5 rounded-md px-2 py-0.5 text-[10px] font-bold',
             trendUp !== false ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700',
           )}>
             <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">

@@ -52,7 +52,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
   if (status === 'pending') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#030e30] via-[#072061] to-[#0d2f8a] flex items-center justify-center p-6">
+      <div className="min-h-screen bg-navy flex items-center justify-center p-6">
         <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 text-center space-y-5">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 mx-auto">
             <svg className="h-8 w-8 text-amber-500" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">

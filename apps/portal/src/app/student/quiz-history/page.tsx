@@ -131,7 +131,7 @@ export default function QuizHistoryPage() {
                     {/* Score */}
                     <div className="text-right flex-shrink-0">
                       {!attempt.isFullyGraded ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-600">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-600">
                           Pending review
                         </span>
                       ) : (

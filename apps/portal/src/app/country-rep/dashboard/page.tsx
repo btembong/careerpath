@@ -235,7 +235,7 @@ export default function CountryRepDashboard() {
                   <Icon name={m.icon} size={36} className="text-azure" />
                   <p className="text-[10px] text-royal/50 leading-tight">{m.label}</p>
                   <p className="text-xs font-black text-navy leading-tight">{m.value}</p>
-                  <span className="rounded-full bg-azure/10 px-2 py-0.5 text-[9px] font-semibold text-azure">
+                  <span className="rounded-md bg-azure/10 px-2 py-0.5 text-[9px] font-semibold text-azure">
                     ↑ Active
                   </span>
                 </div>

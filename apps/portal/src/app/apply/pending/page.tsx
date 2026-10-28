@@ -164,7 +164,7 @@ export default function ApplyPendingPage() {
                   <div className="pt-1 pb-4">
                     <p className={`text-sm font-semibold ${item.done ? 'text-navy' : item.active ? 'text-amber-600' : 'text-royal/40'}`}>
                       {item.label}
-                      {item.active && <span className="ml-2 text-[10px] font-bold text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full">In progress</span>}
+                      {item.active && <span className="ml-2 text-[10px] font-bold text-amber-500 bg-amber-50 px-2 py-0.5 rounded-md">In progress</span>}
                     </p>
                     <p className="text-xs text-royal/40 mt-0.5">{item.note}</p>
                   </div>

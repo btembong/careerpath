@@ -162,7 +162,7 @@ export default function TeacherDashboard() {
         {/* Getting started (new teacher) */}
         {cohorts.length === 0 && (
           <Card padding="none" className="overflow-hidden">
-            <div className="bg-gradient-to-r from-navy to-[#0d2f8a] px-6 py-5">
+            <div className="bg-navy px-6 py-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-1">Getting started</p>

@@ -331,7 +331,7 @@ export default function TeacherProfilePage() {
               )}
             </div>
             {hasVideo && (
-              <span className="flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-[10px] font-bold text-green-700 flex-shrink-0">
+              <span className="flex items-center gap-1 rounded-md bg-green-100 px-2.5 py-1 text-[10px] font-bold text-green-700 flex-shrink-0">
                 <Icon name="check" size={11} />
                 Live on your profile
               </span>
@@ -513,7 +513,7 @@ export default function TeacherProfilePage() {
                   <p className="text-xs text-royal/50 flex-shrink-0">Subject areas</p>
                   <div className="flex flex-wrap gap-1.5 justify-end">
                     {(me?.subjectAreas ?? []).map((s: string) => (
-                      <span key={s} className="rounded-full bg-cloud px-2.5 py-1 text-[10px] font-semibold text-navy">{s}</span>
+                      <span key={s} className="rounded-md bg-cloud px-2.5 py-1 text-[10px] font-semibold text-navy">{s}</span>
                     ))}
                   </div>
                 </div>
@@ -559,12 +559,12 @@ export default function TeacherProfilePage() {
               <p className="text-xs text-royal/50 mt-0.5">Tutor Offer Letter &amp; Content Ownership Agreement {me?.agreementVersion ?? 'v1.0 · 2026'}</p>
             </div>
             {me?.agreementAcceptedAt ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-3 py-1 text-xs font-bold text-green-700 flex-shrink-0">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-green-50 border border-green-200 px-3 py-1 text-xs font-bold text-green-700 flex-shrink-0">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                 Signed
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-xs font-bold text-amber-700 flex-shrink-0">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-3 py-1 text-xs font-bold text-amber-700 flex-shrink-0">
                 <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
                 Not signed
               </span>

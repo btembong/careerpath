@@ -63,7 +63,7 @@ export function LessonPractice({ courseId, lessonId, onSeek }: {
           </p>
         </div>
         {best && (
-          <span className="rounded-full bg-azure/15 px-2.5 py-1 text-[11px] font-bold text-azure">
+          <span className="rounded-md bg-azure/15 px-2.5 py-1 text-[11px] font-bold text-azure">
             Best {best.score}/{best.total}
           </span>
         )}

@@ -164,7 +164,7 @@ function MentorshipContent() {
               className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${tab === t ? 'bg-white text-navy shadow-sm border border-cloud' : 'text-royal/50 hover:text-navy'}`}>
               {label}
               {t === 'bookings' && upcomingBookings.length > 0 && (
-                <span className="ml-2 rounded-full bg-azure px-1.5 py-0.5 text-[10px] font-bold text-white">{upcomingBookings.length}</span>
+                <span className="ml-2 rounded-md bg-azure px-1.5 py-0.5 text-[10px] font-bold text-white">{upcomingBookings.length}</span>
               )}
             </button>
           ))}

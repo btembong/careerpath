@@ -366,7 +366,7 @@ function CoursesContent() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="text-sm font-bold text-[#0f172a]">{pkg.name}</p>
-                              <span className="rounded-full bg-azure/10 px-2 py-0.5 text-[10px] font-bold text-azure">
+                              <span className="rounded-md bg-azure/10 px-2 py-0.5 text-[10px] font-bold text-azure">
                                 {pkgCourses.length} course{pkgCourses.length !== 1 ? 's' : ''}
                               </span>
                             </div>
@@ -522,15 +522,15 @@ function CourseCard({ course, showLifetimeBadge, nextLesson }: {
         {/* Status badge — top right */}
         <div className="absolute top-3 right-3">
           {isComplete ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
+            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
               <Icon name="check" size={9} /> Done
             </span>
           ) : isStarted ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-azure px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
+            <span className="inline-flex items-center gap-1 rounded-md bg-azure px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
               In progress
             </span>
           ) : isWP ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-white/90 backdrop-blur px-2.5 py-1 text-[10px] font-bold text-azure border border-azure/20 shadow-sm">
+            <span className="inline-flex items-center gap-1 rounded-md bg-white/90 backdrop-blur px-2.5 py-1 text-[10px] font-bold text-azure border border-azure/20 shadow-sm">
               Free
             </span>
           ) : null}
@@ -539,7 +539,7 @@ function CourseCard({ course, showLifetimeBadge, nextLesson }: {
         {/* Lifetime badge — top left */}
         {showLifetimeBadge && (
           <div className="absolute top-3 left-3">
-            <span className="inline-flex items-center gap-1 rounded-full bg-white/90 backdrop-blur px-2.5 py-1 text-[10px] font-bold text-azure border border-azure/20 shadow-sm">
+            <span className="inline-flex items-center gap-1 rounded-md bg-white/90 backdrop-blur px-2.5 py-1 text-[10px] font-bold text-azure border border-azure/20 shadow-sm">
               <Icon name="shield" size={9} /> Lifetime
             </span>
           </div>
@@ -548,7 +548,7 @@ function CourseCard({ course, showLifetimeBadge, nextLesson }: {
         {/* Expiry warning badge — bottom left, only when within 7 days */}
         {isExpiringSoon && (
           <div className="absolute bottom-3 left-3">
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
+            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
               <Icon name="clock" size={9} /> Expires soon
             </span>
           </div>
@@ -560,7 +560,7 @@ function CourseCard({ course, showLifetimeBadge, nextLesson }: {
 
         {/* Package pill */}
         {course.packageName && (
-          <span className="self-start rounded-full bg-azure/8 px-2.5 py-0.5 text-[10px] font-bold text-azure truncate max-w-full">
+          <span className="self-start rounded-md bg-azure/8 px-2.5 py-0.5 text-[10px] font-bold text-azure truncate max-w-full">
             {course.packageName}
           </span>
         )}

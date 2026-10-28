@@ -22,7 +22,7 @@ export default function TutorAgreementPage() {
             Tutor Offer Letter &amp;<br />Content Ownership Agreement
           </h1>
           <div className="flex flex-wrap items-center gap-4 mt-4">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white/80">
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white/80">
               {VERSION}
             </span>
             <span className="text-xs text-white/40">Effective from date of countersignature</span>

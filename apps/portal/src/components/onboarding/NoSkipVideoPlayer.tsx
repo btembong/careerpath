@@ -168,7 +168,7 @@ export function NoSkipVideoPlayer({ src, captionsUrl, initialMaxSec, onReport, o
         )}
 
         {notice && (
-          <div role="status" className="absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-black/75 px-3 py-1.5 text-xs font-medium text-white">
+          <div role="status" className="absolute left-1/2 top-4 -translate-x-1/2 rounded-md bg-black/75 px-3 py-1.5 text-xs font-medium text-white">
             {notice}
           </div>
         )}

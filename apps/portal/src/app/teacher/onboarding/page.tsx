@@ -199,7 +199,7 @@ export default function TeacherOnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#030e30] via-[#072061] to-[#0d2f8a] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-navy flex items-center justify-center p-4">
       <div className="w-full max-w-2xl">
         <div className="text-center mb-6">
           <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 backdrop-blur mb-4">
@@ -373,7 +373,7 @@ export default function TeacherOnboardingPage() {
                 <div className="rounded-2xl border-2 border-azure/30 bg-azure/5 overflow-hidden">
                   <div className="px-4 py-3 border-b border-azure/20 flex items-center gap-2">
                     <p className="text-xs font-bold text-navy">Tutor Offer Letter &amp; Content Ownership Agreement</p>
-                    <span className="ml-auto text-[10px] font-semibold text-azure bg-azure/10 px-2 py-0.5 rounded-full">Required</span>
+                    <span className="ml-auto text-[10px] font-semibold text-azure bg-azure/10 px-2 py-0.5 rounded-md">Required</span>
                   </div>
                   <div className="px-4 py-3 space-y-3">
                     <p className="text-xs text-royal/70 leading-relaxed">

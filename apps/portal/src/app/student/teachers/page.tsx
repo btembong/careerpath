@@ -171,12 +171,12 @@ function TeacherCard({ teacher }: { teacher: Teacher }) {
         {teacher.subjectAreas.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-4">
             {teacher.subjectAreas.slice(0, 3).map(s => (
-              <span key={s} className="text-xs bg-cloud text-royal px-2 py-0.5 rounded-full font-medium">
+              <span key={s} className="text-xs bg-cloud text-royal px-2 py-0.5 rounded-md font-medium">
                 {s}
               </span>
             ))}
             {teacher.subjectAreas.length > 3 && (
-              <span className="text-xs bg-cloud text-royal/50 px-2 py-0.5 rounded-full">
+              <span className="text-xs bg-cloud text-royal/50 px-2 py-0.5 rounded-md">
                 +{teacher.subjectAreas.length - 3}
               </span>
             )}

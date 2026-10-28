@@ -402,7 +402,7 @@ export default function AdminCoursesLandingPage() {
                   <Icon name="clock" size={15} className="text-amber-500" />
                   <p className="text-sm font-bold text-navy">Pending Review</p>
                   {pending.length > 0 && (
-                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-black text-white">
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-md bg-amber-500 px-1.5 text-[10px] font-black text-white">
                       {pending.length}
                     </span>
                   )}

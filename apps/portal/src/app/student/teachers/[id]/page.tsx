@@ -171,7 +171,7 @@ export default function TeacherProfilePage() {
               <div className="flex items-center gap-2 mb-1">
                 <h1 className="text-2xl font-bold text-navy">{teacher.name}</h1>
                 {teacher.badge && (
-                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${BADGE_COLORS[teacher.badge]}`}>
+                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-md ${BADGE_COLORS[teacher.badge]}`}>
                     {BADGE_LABELS[teacher.badge]}
                   </span>
                 )}
@@ -203,24 +203,24 @@ export default function TeacherProfilePage() {
               {/* Stats pills */}
               <div className="flex flex-wrap gap-2 mb-4">
                 {teacher.yearsExperience && (
-                  <span className="inline-flex items-center gap-1.5 bg-cloud text-navy text-xs font-semibold px-3 py-1.5 rounded-full">
+                  <span className="inline-flex items-center gap-1.5 bg-cloud text-navy text-xs font-semibold px-3 py-1.5 rounded-md">
                     <Icon name="badge" size={13} className="text-azure" />
                     {teacher.yearsExperience} years exp.
                   </span>
                 )}
                 {teacher.qualification && (
-                  <span className="inline-flex items-center gap-1.5 bg-cloud text-navy text-xs font-semibold px-3 py-1.5 rounded-full">
+                  <span className="inline-flex items-center gap-1.5 bg-cloud text-navy text-xs font-semibold px-3 py-1.5 rounded-md">
                     <Icon name="graduate" size={13} className="text-azure" />
                     {teacher.qualification}
                   </span>
                 )}
                 {teacher.teachingModality && (
-                  <span className="inline-flex items-center gap-1.5 bg-cloud text-navy text-xs font-semibold px-3 py-1.5 rounded-full">
+                  <span className="inline-flex items-center gap-1.5 bg-cloud text-navy text-xs font-semibold px-3 py-1.5 rounded-md">
                     <Icon name="mentorship" size={13} className="text-azure" />
                     {teacher.teachingModality}
                   </span>
                 )}
-                <span className="inline-flex items-center gap-1.5 bg-cloud text-navy text-xs font-semibold px-3 py-1.5 rounded-full">
+                <span className="inline-flex items-center gap-1.5 bg-cloud text-navy text-xs font-semibold px-3 py-1.5 rounded-md">
                   <Icon name="courses" size={13} className="text-azure" />
                   {teacher.courseCount} course{teacher.courseCount !== 1 ? 's' : ''}
                 </span>
@@ -230,7 +230,7 @@ export default function TeacherProfilePage() {
               {teacher.subjectAreas.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {teacher.subjectAreas.map(s => (
-                    <span key={s} className="text-xs bg-azure/10 text-azure px-2.5 py-1 rounded-full font-medium">
+                    <span key={s} className="text-xs bg-azure/10 text-azure px-2.5 py-1 rounded-md font-medium">
                       {s}
                     </span>
                   ))}
@@ -355,12 +355,12 @@ export default function TeacherProfilePage() {
                     )}
                     <div className="flex items-center gap-3">
                       {course.programme && (
-                        <span className="text-xs bg-cloud text-royal px-2 py-0.5 rounded-full font-medium">
+                        <span className="text-xs bg-cloud text-royal px-2 py-0.5 rounded-md font-medium">
                           {course.programme.name}
                         </span>
                       )}
                       {course.subject && (
-                        <span className="text-xs bg-cloud text-royal px-2 py-0.5 rounded-full font-medium">
+                        <span className="text-xs bg-cloud text-royal px-2 py-0.5 rounded-md font-medium">
                           {course.subject.name}
                         </span>
                       )}

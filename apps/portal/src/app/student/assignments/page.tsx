@@ -414,7 +414,7 @@ function AssignmentsContent() {
                               Submitted {new Date(sub.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </p>
                             {submittedLate && (
-                              <span className="text-[10px] font-semibold text-amber-500 bg-amber-50 border border-amber-100 rounded-full px-2 py-0.5">
+                              <span className="text-[10px] font-semibold text-amber-500 bg-amber-50 border border-amber-100 rounded-md px-2 py-0.5">
                                 Late
                               </span>
                             )}

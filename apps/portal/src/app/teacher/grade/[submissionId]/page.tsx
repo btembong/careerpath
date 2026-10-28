@@ -99,7 +99,7 @@ export default function RubricGradePage() {
                   <p className="text-sm text-muted">{studentName}</p>
                 </div>
                 {submission.grade != null && (
-                  <span className="text-sm font-bold text-azure bg-azure/10 rounded-full px-3 py-1">
+                  <span className="text-sm font-bold text-azure bg-azure/10 rounded-md px-3 py-1">
                     {submission.grade} / {submission.assignment.maxPoints}
                   </span>
                 )}

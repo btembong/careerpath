@@ -377,7 +377,7 @@ export default function StudentProfilePage() {
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ delay: i * 0.05 }}
-                      className="relative rounded-xl border border-azure/20 bg-gradient-to-br from-azure/5 to-royal/5 p-4"
+                      className="relative rounded-xl border border-azure/20 bg-subtle p-4"
                     >
                       <div className="absolute top-0 right-0 w-0 h-0 border-t-[32px] border-r-[32px] border-t-transparent border-r-azure/20 rounded-tr-xl" />
                       <Icon name="certificates" size={20} className="text-azure mb-2" />
@@ -418,7 +418,7 @@ export default function StudentProfilePage() {
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: i * 0.04 }}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ${SKILL_COLORS[i % SKILL_COLORS.length]}`}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold ${SKILL_COLORS[i % SKILL_COLORS.length]}`}
                   >
                     {skill}
                     <button
@@ -465,7 +465,7 @@ export default function StudentProfilePage() {
             </Card>
 
             {/* Share card */}
-            <Card padding="md" className="bg-gradient-to-br from-azure to-royal text-white border-0">
+            <Card padding="md" className="bg-azure-strong text-white border-0">
               <Icon name="community" size={20} className="mb-2 text-white/80" />
               <p className="text-sm font-bold">Share your profile</p>
               <p className="text-[11px] text-white/70 mt-0.5 leading-snug">

@@ -216,7 +216,7 @@ export default function AlertsPage() {
                         {s.daysInactive === null ? 'Never active' : s.daysInactive > 0 ? `Inactive ${s.daysInactive}d` : 'Active recently'} · {s.xpTotal} XP
                       </p>
                     </div>
-                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 capitalize ${RISK_COLORS[s.riskLevel]}`}>
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-md flex-shrink-0 capitalize ${RISK_COLORS[s.riskLevel]}`}>
                       {s.riskLevel}
                     </span>
                   </div>

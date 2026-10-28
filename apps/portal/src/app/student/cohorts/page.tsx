@@ -149,7 +149,7 @@ export default function StudentCohortsPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-bold text-navy truncate">{c.name}</p>
                           {liveNow && (
-                            <span className="flex items-center gap-1 rounded-full bg-azure px-2 py-0.5 text-[10px] font-bold text-white">
+                            <span className="flex items-center gap-1 rounded-md bg-azure px-2 py-0.5 text-[10px] font-bold text-white">
                               <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
                               LIVE NOW
                             </span>

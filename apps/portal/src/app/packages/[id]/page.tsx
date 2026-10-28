@@ -232,22 +232,22 @@ export default function PackageDetailPage() {
             {/* ── Quick scroll nav — jump to sections ── */}
             <nav className="flex items-center gap-1 py-3 border-b border-cloud overflow-x-auto -mx-1 px-1">
               <button onClick={() => scrollTo('section-learn')}
-                className="flex-shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium text-royal/60 hover:text-navy hover:bg-cloud transition">
+                className="flex-shrink-0 rounded-md px-3.5 py-1.5 text-xs font-medium text-royal/60 hover:text-navy hover:bg-cloud transition">
                 What you&apos;ll learn
               </button>
               <button onClick={() => scrollTo('section-content')}
-                className="flex-shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium text-royal/60 hover:text-navy hover:bg-cloud transition">
+                className="flex-shrink-0 rounded-md px-3.5 py-1.5 text-xs font-medium text-royal/60 hover:text-navy hover:bg-cloud transition">
                 Course content
               </button>
               {pkg.categoryTags?.length > 0 && (
                 <button onClick={() => scrollTo('section-topics')}
-                  className="flex-shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium text-royal/60 hover:text-navy hover:bg-cloud transition">
+                  className="flex-shrink-0 rounded-md px-3.5 py-1.5 text-xs font-medium text-royal/60 hover:text-navy hover:bg-cloud transition">
                   Topics covered
                 </button>
               )}
               {hasInstructors && (
                 <button onClick={() => scrollTo('section-instructors')}
-                  className="flex-shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium text-royal/60 hover:text-navy hover:bg-cloud transition">
+                  className="flex-shrink-0 rounded-md px-3.5 py-1.5 text-xs font-medium text-royal/60 hover:text-navy hover:bg-cloud transition">
                   Instructor{teachers.length > 1 ? 's' : ''}
                 </button>
               )}

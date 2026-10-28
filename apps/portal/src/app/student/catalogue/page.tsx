@@ -309,7 +309,7 @@ function CatalogueContent() {
                       <p className="text-[10px] font-bold text-azure">{course.progress}%</p>
                     </div>
                     <div className="h-1.5 w-full rounded-full bg-cloud overflow-hidden">
-                      <div className="h-full rounded-full bg-gradient-to-r from-azure to-royal transition-all"
+                      <div className="h-full rounded-full bg-azure-strong transition-all"
                         style={{ width: `${course.progress}%` }} />
                     </div>
                   </div>
@@ -528,21 +528,21 @@ function CatalogueContent() {
                         {course.subject && <Badge>{course.subject.name}</Badge>}
                         {/* New badge: all courses under 30 days, not just interest-matched */}
                         {isNew && !hasAccess && (
-                          <span className="ml-auto flex items-center gap-1 rounded-full bg-azure/10 border border-azure/20 px-2 py-0.5 text-[10px] font-bold text-azure flex-shrink-0">
+                          <span className="ml-auto flex items-center gap-1 rounded-md bg-azure/10 border border-azure/20 px-2 py-0.5 text-[10px] font-bold text-azure flex-shrink-0">
                             New
                           </span>
                         )}
                         {hasAccess && (
                           progress > 0 && progress < 100 ? (
-                            <span className="ml-auto flex items-center gap-1 rounded-full bg-amber-50 border border-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 flex-shrink-0">
+                            <span className="ml-auto flex items-center gap-1 rounded-md bg-amber-50 border border-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 flex-shrink-0">
                               In progress
                             </span>
                           ) : progress === 100 ? (
-                            <span className="ml-auto flex items-center gap-1 rounded-full bg-green-50 border border-green-100 px-2 py-0.5 text-xs font-medium text-green-700 flex-shrink-0">
+                            <span className="ml-auto flex items-center gap-1 rounded-md bg-green-50 border border-green-100 px-2 py-0.5 text-xs font-medium text-green-700 flex-shrink-0">
                               <Icon name="check" size={11} /> Done
                             </span>
                           ) : (
-                            <span className="ml-auto flex items-center gap-1 rounded-full bg-green-50 border border-green-100 px-2 py-0.5 text-xs font-medium text-green-700 flex-shrink-0">
+                            <span className="ml-auto flex items-center gap-1 rounded-md bg-green-50 border border-green-100 px-2 py-0.5 text-xs font-medium text-green-700 flex-shrink-0">
                               <Icon name="check" size={11} /> Enrolled
                             </span>
                           )
@@ -583,7 +583,7 @@ function CatalogueContent() {
                             <p className="text-[10px] font-bold text-azure">{progress}%</p>
                           </div>
                           <div className="h-1.5 w-full rounded-full bg-cloud overflow-hidden">
-                            <div className="h-full rounded-full bg-gradient-to-r from-azure to-royal transition-all"
+                            <div className="h-full rounded-full bg-azure-strong transition-all"
                               style={{ width: `${progress}%` }} />
                           </div>
                         </div>
@@ -648,7 +648,7 @@ function CatalogueContent() {
                         {course.subject && <span className="text-xs text-royal/50">{course.subject.name}</span>}
                         {course.level && <span className="text-xs text-royal/40">· {course.level.name}</span>}
                         {isNew && !hasAccess && (
-                          <span className="rounded-full bg-azure/10 px-1.5 py-0.5 text-[10px] font-bold text-azure">New</span>
+                          <span className="rounded-md bg-azure/10 px-1.5 py-0.5 text-[10px] font-bold text-azure">New</span>
                         )}
                       </div>
                       {/* Title link — same unenrolledHref logic as grid */}
@@ -747,7 +747,7 @@ function PackageCtaButton({
       <Icon name="packages" size={12} className="flex-shrink-0" />
       Get via package
       {count > 0 && (
-        <span className="flex-shrink-0 rounded-full bg-cloud px-1.5 py-0.5 text-[10px] font-bold text-royal/50">
+        <span className="flex-shrink-0 rounded-md bg-cloud px-1.5 py-0.5 text-[10px] font-bold text-royal/50">
           {count}
         </span>
       )}

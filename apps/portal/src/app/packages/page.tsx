@@ -237,7 +237,7 @@ function PackagesPageInner() {
                           {fmtPrice(pkg.priceAmount, pkg.currency)}
                         </p>
                         {enrollment && (
-                          <span className="flex items-center gap-1 rounded-full bg-green-50 border border-green-100 px-2.5 py-1 text-xs font-medium text-green-700">
+                          <span className="flex items-center gap-1 rounded-md bg-green-50 border border-green-100 px-2.5 py-1 text-xs font-medium text-green-700">
                             <Icon name="check" size={11} /> Enrolled
                           </span>
                         )}

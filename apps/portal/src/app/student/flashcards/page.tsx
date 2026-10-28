@@ -41,7 +41,7 @@ export default function FlashcardsPage() {
                 className="bg-white rounded-2xl border border-cloud p-5 hover:border-azure/40 hover:shadow-sm transition group">
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="w-10 h-10 bg-azure/10 rounded-xl flex items-center justify-center text-lg flex-shrink-0">🃏</div>
-                  <span className="text-xs font-semibold text-azure bg-azure/10 rounded-full px-2.5 py-1">
+                  <span className="text-xs font-semibold text-azure bg-azure/10 rounded-md px-2.5 py-1">
                     {deck.cardCount ?? '?'} cards
                   </span>
                 </div>

@@ -32,12 +32,13 @@ interface Cohort {
 }
 
 const COURSE_COLORS = [
-  'from-blue-400 to-azure',
-  'from-purple-400 to-violet-500',
-  'from-emerald-400 to-teal-500',
-  'from-amber-400 to-orange-500',
-  'from-rose-400 to-pink-500',
-  'from-cyan-400 to-sky-500',
+  // One accent: flat shades of the brand blue
+  'from-azure to-azure',
+  'from-royal to-royal',
+  'from-azure-strong to-azure-strong',
+  'from-azure to-azure',
+  'from-royal to-royal',
+  'from-azure-strong to-azure-strong',
 ];
 
 function StatusBadge({ status }: { status: Course['status'] }) {
@@ -49,7 +50,7 @@ function StatusBadge({ status }: { status: Course['status'] }) {
   };
   const s = map[status ?? 'locked'];
   return (
-    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.bg}`}>{s.label}</span>
+    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${s.bg}`}>{s.label}</span>
   );
 }
 
@@ -218,7 +219,7 @@ export default function RoadmapPage() {
                 </div>
                 <div className="h-2 w-full rounded-full bg-cloud overflow-hidden">
                   <motion.div
-                    className="h-full rounded-full bg-gradient-to-r from-azure to-royal"
+                    className="h-full rounded-full bg-azure-strong"
                     initial={{ width: 0 }}
                     animate={{ width: `${pct}%` }}
                     transition={{ duration: 0.8, ease: 'easeOut' }}

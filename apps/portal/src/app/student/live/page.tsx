@@ -139,7 +139,7 @@ export default function StudentLivePage() {
               <div className="flex items-center gap-2 flex-wrap mb-0.5">
                 <p className="text-sm font-bold text-navy leading-tight truncate">{s.title}</p>
                 {today && !isLive && (
-                  <span className="rounded-full bg-azure/10 border border-azure/20 px-2 py-0.5 text-[10px] font-semibold text-azure flex-shrink-0">
+                  <span className="rounded-md bg-azure/10 border border-azure/20 px-2 py-0.5 text-[10px] font-semibold text-azure flex-shrink-0">
                     Today
                   </span>
                 )}

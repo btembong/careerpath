@@ -149,7 +149,7 @@ function TabItem({ item, active }: { item: NavItem; active: boolean }) {
         <motion.span
           layoutId="mobile-tab-pill"
           transition={spring.snappy}
-          className="flex items-center gap-1.5 rounded-full bg-azure px-3.5 py-1.5"
+          className="flex items-center gap-1.5 rounded-md bg-azure px-3.5 py-1.5"
         >
           <Icon name={item.icon} size={16} className="text-white flex-shrink-0" />
           <span className="text-[11px] font-bold text-white leading-none whitespace-nowrap">{item.label}</span>
@@ -209,7 +209,7 @@ export function MobileNav() {
           onClick={() => setMoreOpen(true)}
           className="flex flex-1 items-center justify-center py-2">
           {moreOpen ? (
-            <span className="flex items-center gap-1.5 rounded-full bg-navy px-3.5 py-1.5">
+            <span className="flex items-center gap-1.5 rounded-md bg-navy px-3.5 py-1.5">
               <Icon name="grid" size={16} className="text-white flex-shrink-0" />
               <span className="text-[11px] font-bold text-white leading-none">More</span>
             </span>

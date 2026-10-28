@@ -421,7 +421,7 @@ export default function StudentCohortPage() {
                             {isCancelled ? (
                               <Badge variant="muted">Cancelled</Badge>
                             ) : wasPresent ? (
-                              <span className="flex items-center gap-1 rounded-full bg-green-50 border border-green-100 px-2.5 py-1 text-xs font-medium text-green-700">
+                              <span className="flex items-center gap-1 rounded-md bg-green-50 border border-green-100 px-2.5 py-1 text-xs font-medium text-green-700">
                                 <Icon name="check" size={11} /> Present
                               </span>
                             ) : wasAbsent ? (
@@ -452,7 +452,7 @@ export default function StudentCohortPage() {
                       <p className="text-[10px] font-bold uppercase tracking-widest text-azure">Assignments</p>
                       <Badge>{cohortAssignments.length}</Badge>
                       {overdueList.length > 0 && (
-                        <span className="rounded-full bg-red-50 border border-red-100 px-2 py-0.5 text-xs font-medium text-red-600">
+                        <span className="rounded-md bg-red-50 border border-red-100 px-2 py-0.5 text-xs font-medium text-red-600">
                           {overdueList.length} overdue
                         </span>
                       )}

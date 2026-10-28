@@ -160,7 +160,7 @@ function LeftVisual({ visual }: { visual: string }) {
             <p className="text-sm font-semibold text-white leading-tight">{p.name}</p>
             <p className="text-[11px] text-white/40 truncate">{p.role}</p>
           </div>
-          <span className="text-[10px] font-semibold text-azure bg-azure/15 px-2 py-0.5 rounded-full">{p.tag}</span>
+          <span className="text-[10px] font-semibold text-azure bg-azure/15 px-2 py-0.5 rounded-md">{p.tag}</span>
         </div>
       ))}
     </div>
@@ -195,7 +195,7 @@ function LeftVisual({ visual }: { visual: string }) {
   if (visual === 'teaching') return (
     <div className="flex flex-wrap gap-2">
       {['Python', 'Data Science', 'Business Dev', 'UI/UX Design', 'Marketing', 'Finance', 'Leadership', 'Project Mgmt', 'Cybersecurity', 'AI & ML', 'Public Speaking', 'Entrepreneurship'].map((s, i) => (
-        <span key={s} className="rounded-full border border-white/15 bg-white/8 px-3 py-1.5 text-xs font-medium text-white/70"
+        <span key={s} className="rounded-md border border-white/15 bg-white/8 px-3 py-1.5 text-xs font-medium text-white/70"
           style={{ opacity: 0.4 + (i % 4) * 0.2 }}>
           {s}
         </span>
@@ -215,7 +215,7 @@ function LeftVisual({ visual }: { visual: string }) {
       </div>
       <div className="flex flex-wrap gap-1.5">
         {['Python', 'Data Science', 'ML'].map(s => (
-          <span key={s} className="rounded-full bg-azure/20 px-2.5 py-0.5 text-[10px] font-semibold text-azure">{s}</span>
+          <span key={s} className="rounded-md bg-azure/20 px-2.5 py-0.5 text-[10px] font-semibold text-azure">{s}</span>
         ))}
       </div>
       <p className="text-[11px] text-white/50 leading-relaxed line-clamp-3">
@@ -339,7 +339,7 @@ function CountrySelect({ value, onChange, countries }: {
           {selected ? selected.name : 'Select your country…'}
         </span>
         {selected && (
-          <span className="flex-shrink-0 rounded-full bg-azure/10 px-2 py-0.5 text-[10px] font-bold text-azure font-mono">
+          <span className="flex-shrink-0 rounded-md bg-azure/10 px-2 py-0.5 text-[10px] font-bold text-azure font-mono">
             {selected.currency}
           </span>
         )}
@@ -795,7 +795,7 @@ function TeacherWizard({ countries, onStepChange }: { countries: Country[]; onSt
                           if (sel) setField('teachingSubjectIds', form.teachingSubjectIds.filter(x => x !== s.id));
                           else if (form.teachingSubjectIds.length < 8) setField('teachingSubjectIds', [...form.teachingSubjectIds, s.id]);
                         }}
-                        className="rounded-full border px-3 py-1 text-xs font-semibold transition-all"
+                        className="rounded-md border px-3 py-1 text-xs font-semibold transition-all"
                         style={{
                           borderColor: sel ? '#5889FA' : '#E6ECFD',
                           background: sel ? 'rgba(88,137,250,0.1)' : '#fff',
@@ -831,7 +831,7 @@ function TeacherWizard({ countries, onStepChange }: { countries: Country[]; onSt
                         if (sel) setField('teachingProgrammeIds', form.teachingProgrammeIds.filter(x => x !== p.id));
                         else setField('teachingProgrammeIds', [...form.teachingProgrammeIds, p.id]);
                       }}
-                      className="rounded-full border px-3 py-1 text-xs font-semibold transition-all"
+                      className="rounded-md border px-3 py-1 text-xs font-semibold transition-all"
                       style={{
                         borderColor: sel ? '#072061' : '#E6ECFD',
                         background: sel ? 'rgba(7,32,97,0.07)' : '#fff',
@@ -1077,20 +1077,20 @@ function TeacherWizard({ countries, onStepChange }: { countries: Country[]; onSt
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                   <p className="text-xs text-royal/50">{form.email}</p>
                   {form.teachingModality && (
-                    <span className="text-[10px] font-semibold bg-cloud text-royal/60 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] font-semibold bg-cloud text-royal/60 px-2 py-0.5 rounded-md">
                       {MODALITIES.find(m => m.value === form.teachingModality)?.label}
                     </span>
                   )}
                 </div>
               </div>
-              <span className="rounded-full bg-azure/10 px-3 py-1 text-[10px] font-bold text-azure">PENDING</span>
+              <span className="rounded-md bg-azure/10 px-3 py-1 text-[10px] font-bold text-azure">PENDING</span>
             </div>
 
             {/* Subject chips */}
             {form.subjectAreas.length > 0 && (
               <div className="px-5 py-3 flex flex-wrap gap-1.5 border-b border-cloud">
                 {form.subjectAreas.map(s => (
-                  <span key={s} className="rounded-full bg-azure/10 px-2.5 py-0.5 text-xs font-semibold text-azure">{s}</span>
+                  <span key={s} className="rounded-md bg-azure/10 px-2.5 py-0.5 text-xs font-semibold text-azure">{s}</span>
                 ))}
               </div>
             )}
@@ -1143,7 +1143,7 @@ function TeacherWizard({ countries, onStepChange }: { countries: Country[]; onSt
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               <p className="text-xs font-bold text-navy">Tutor Offer Letter &amp; Content Ownership Agreement</p>
-              <span className="ml-auto text-[10px] font-semibold text-azure bg-azure/10 px-2 py-0.5 rounded-full">Required</span>
+              <span className="ml-auto text-[10px] font-semibold text-azure bg-azure/10 px-2 py-0.5 rounded-md">Required</span>
             </div>
             <div className="px-4 py-3 space-y-3">
               <p className="text-xs text-royal/70 leading-relaxed">
@@ -1481,7 +1481,7 @@ function RegisterPageInner() {
               className="space-y-6"
             >
               <div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-azure/30 bg-azure/10 px-4 py-1.5 mb-4">
+                <div className="inline-flex items-center gap-2 rounded-md border border-azure/30 bg-azure/10 px-4 py-1.5 mb-4">
                   <span className="h-1.5 w-1.5 rounded-full bg-azure" />
                   <span className="text-[11px] font-semibold text-azure tracking-wider">{left.eyebrow.toUpperCase()}</span>
                 </div>

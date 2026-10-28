@@ -117,12 +117,12 @@ export default function CertificatesPage() {
                         Issued {new Date(cert.issuedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
                       </p>
                       {cert.grade && (
-                        <span className="rounded-full bg-azure/20 px-2 py-0.5 text-[10px] font-bold text-azure">
+                        <span className="rounded-md bg-azure/20 px-2 py-0.5 text-[10px] font-bold text-azure">
                           {cert.grade}
                         </span>
                       )}
                       {scorePct !== null && (
-                        <span className="rounded-full bg-azure/20 px-2 py-0.5 text-[10px] font-bold text-azure">
+                        <span className="rounded-md bg-azure/20 px-2 py-0.5 text-[10px] font-bold text-azure">
                           {scorePct}%
                         </span>
                       )}

@@ -272,7 +272,7 @@ function MentorshipContent() {
             <div className="flex items-center gap-2 flex-wrap mb-0.5">
               <p className="text-sm font-semibold text-navy">{displayName(b.slot?.teacher ?? {})}</p>
               {isLiveNow && status === 'CONFIRMED' ? (
-                <span className="flex items-center gap-1 rounded-full bg-red-50 border border-red-100 px-2 py-0.5 text-xs font-medium text-red-600">
+                <span className="flex items-center gap-1 rounded-md bg-red-50 border border-red-100 px-2 py-0.5 text-xs font-medium text-red-600">
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
@@ -283,7 +283,7 @@ function MentorshipContent() {
                 <Badge variant={sl.variant}>{sl.label}</Badge>
               )}
               {today && !isLiveNow && status === 'CONFIRMED' && (
-                <span className="rounded-full bg-azure/10 border border-azure/20 px-2 py-0.5 text-[10px] font-semibold text-azure">
+                <span className="rounded-md bg-azure/10 border border-azure/20 px-2 py-0.5 text-[10px] font-semibold text-azure">
                   Today
                 </span>
               )}

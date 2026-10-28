@@ -35,7 +35,7 @@ export default function TeacherWelcomePage() {
   const onCompleted = useCallback(() => setCompleted(true), []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#030e30] via-[#072061] to-[#0d2f8a] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-navy flex items-center justify-center p-4">
       <div className="w-full max-w-3xl">
         <div className="text-center mb-6">
           <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 backdrop-blur mb-4">
