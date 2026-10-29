@@ -15,6 +15,7 @@ interface Course {
   teacher?: { id: string; email: string; name?: string | null; firstName?: string | null; lastName?: string | null } | null;
   programme?: { id: string; name: string; shortName: string | null } | null;
   priceAmount: number | null; priceCurrency: string | null; isSoldIndividually: boolean;
+  accessMonths: number | null; language: string | null;
   proposedPriceAmount: number | null; proposedPriceCurrency: string | null; priceProposedAt: string | null;
   updatedAt?: string;
   _count?: { modules?: number; enrollments?: number };
@@ -26,6 +27,10 @@ interface ChecklistItem { key: string; label: string; ok: boolean; required: boo
 
 type Tab = 'all' | 'review' | 'price' | 'published' | 'drafts';
 const CURRENCIES = ['GHS', 'XAF', 'NGN', 'USD', 'XOF', 'LRD'];
+const LANGUAGES = ['English', 'French', 'Portuguese', 'Arabic'];
+/** '6' | '12' | 'custom' | 'none' for the access select */
+const accessChoice = (m: number | null) => m == null ? 'none' : m === 6 || m === 12 ? String(m) : 'custom';
+const accessLabel = (m: number | null) => m == null ? 'No time limit' : `${m} month${m === 1 ? '' : 's'}`;
 
 const money = (minor: number | null, cur: string | null) =>
   minor == null || !cur ? '—' : `${cur} ${minorToMajor(minor, cur).toLocaleString()}`;
@@ -116,7 +121,7 @@ export default function AdminCoursesPage() {
     <div className="flex min-h-full flex-col">
       <Topbar title="Courses" subtitle="Publish, price and organise every course on the platform"
         actions={<>
-          <Button size="sm" variant="secondary" onClick={() => setDialog('defaults')}>Default prices</Button>
+          <Button size="sm" variant="secondary" onClick={() => setDialog('defaults')}>Pricing settings</Button>
           <Button size="sm" variant="secondary" loading={syncing} onClick={syncWebsite}>Import from website</Button>
         </>} />
 
@@ -231,10 +236,21 @@ function CourseDrawer({ course, packages, onClose, onChanged }: { course: Course
   const [notes, setNotes] = useState('');
   const [sendingBack, setSendingBack] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [access, setAccess] = useState('12');
+  const [customMonths, setCustomMonths] = useState('');
+  const [language, setLanguage] = useState('');
+  const [commission, setCommission] = useState('');
+  const [defaultPct, setDefaultPct] = useState<number | null>(null);
 
   useEffect(() => {
     if (!course) return;
     setSell(course.isSoldIndividually);
+    setAccess(accessChoice(course.accessMonths));
+    setCustomMonths(course.accessMonths != null && accessChoice(course.accessMonths) === 'custom' ? String(course.accessMonths) : '');
+    setLanguage(course.language ?? '');
+    setCommission('');
+    api.get(`/platform-courses/${course.id}/teacher-share`).then(r => setCommission(r.data?.teacherCommissionPct != null ? String(r.data.teacherCommissionPct) : '')).catch(() => {});
+    api.get('/platform-courses/pricing-settings').then(r => setDefaultPct(r.data?.defaultTeacherCommissionPct ?? null)).catch(() => {});
     setCurrency(course.priceCurrency ?? course.proposedPriceCurrency ?? 'GHS');
     setAmount(course.priceAmount != null && course.priceCurrency ? String(minorToMajor(course.priceAmount, course.priceCurrency)) : '');
     setNotes(''); setSendingBack(false); setChecklist(null);
@@ -253,6 +269,9 @@ function CourseDrawer({ course, packages, onClose, onChanged }: { course: Course
   const met = required.filter(i => i.ok).length;
   const step = course.status === 'PUBLISHED' ? 4 : course.status === 'PENDING_REVIEW' ? 3 : required.length && met === required.length ? 2 : 1;
   const priceValid = Number(amount) > 0;
+  const accessMonths = access === 'none' ? null : access === 'custom' ? Number(customMonths) : Number(access);
+  const accessValid = accessMonths === null || (Number.isInteger(accessMonths) && accessMonths >= 1 && accessMonths <= 120);
+  const pctValid = commission.trim() === '' || (Number(commission) >= 0 && Number(commission) <= 100);
 
   return (
     <Drawer open={!!course} onOpenChange={o => { if (!o) onClose(); }}>
@@ -268,6 +287,9 @@ function CourseDrawer({ course, packages, onClose, onChanged }: { course: Course
           { label: 'Checklist', value: checklist ? `${met} of ${required.length}` : '…' },
           { label: 'Source', value: course.source === 'WORDPRESS' ? 'Website' : 'Platform' },
           { label: 'Packages', value: packages.length },
+          { label: 'Language', value: course.language ?? 'Not set' },
+          { label: 'Access', value: accessLabel(course.accessMonths) },
+          { label: 'Teacher', value: teacherName(course) },
         ]} />
 
         {checklist && required.some(i => !i.ok) && (
@@ -295,6 +317,23 @@ function CourseDrawer({ course, packages, onClose, onChanged }: { course: Course
               </label>
             </div>
           )}
+          {sell && (
+            <div className="flex items-end gap-2">
+              <label className="flex flex-1 flex-col gap-1.5"><span className={label}>Access after buying</span>
+                <select value={access} onChange={e => setAccess(e.target.value)} className="input-base">
+                  <option value="6">6 months</option>
+                  <option value="12">12 months</option>
+                  <option value="custom">Other length</option>
+                  <option value="none">No time limit</option>
+                </select>
+              </label>
+              {access === 'custom' && (
+                <label className="flex w-32 flex-col gap-1.5"><span className={label}>Months</span>
+                  <input inputMode="numeric" value={customMonths} onChange={e => setCustomMonths(e.target.value)} placeholder="3" className="input-base" />
+                </label>
+              )}
+            </div>
+          )}
           {course.proposedPriceAmount != null && (
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-azure bg-accent-soft px-3 py-2.5">
               <p className="min-w-0 flex-1 text-[13px] text-ink2">
@@ -314,12 +353,48 @@ function CourseDrawer({ course, packages, onClose, onChanged }: { course: Course
             <p className="text-[12.5px] text-muted">Also in: {packages.map(p => `${p.name} (${money(p.priceAmount, p.currency)})`).join(', ')}.</p>
           )}
           <div>
-            <Button size="sm" variant="secondary" loading={busy === 'price'} disabled={sell && !priceValid}
+            <Button size="sm" variant="secondary" loading={busy === 'price'} disabled={sell && (!priceValid || !accessValid)}
               onClick={() => run('price', () => api.patch(`/platform-courses/${course.id}`, sell
-                ? { isSoldIndividually: true, priceCurrency: currency, priceAmount: majorToMinor(Number(amount), currency) }
+                ? { isSoldIndividually: true, priceCurrency: currency, priceAmount: majorToMinor(Number(amount), currency), accessMonths }
                 : { isSoldIndividually: false }), 'Pricing saved')}>
               Save pricing
             </Button>
+          </div>
+        </DrawerSection>
+
+        <DrawerSection title="Teacher commission">
+          <div className="flex items-end gap-2">
+            <label className="flex w-32 flex-col gap-1.5"><span className={label}>Share of each sale</span>
+              <span className="flex items-center gap-1.5">
+                <input inputMode="decimal" value={commission} onChange={e => setCommission(e.target.value)} placeholder={defaultPct != null ? String(defaultPct) : '—'} className="input-base" />
+                <span className="text-sm text-ink2">%</span>
+              </span>
+            </label>
+            {defaultPct != null && commission !== String(defaultPct) && (
+              <Button size="sm" variant="ghost" onClick={() => setCommission(String(defaultPct))}>Use default ({defaultPct}%)</Button>
+            )}
+          </div>
+          <p className="text-[12.5px] text-muted">
+            {commission.trim() === '' ? 'Empty means the teacher is paid outside the platform, so sales add nothing to their wallet.'
+              : 'Credited to the teacher’s wallet on every sale of this course, alone or in a package.'}
+          </p>
+          <div>
+            <Button size="sm" variant="secondary" loading={busy === 'commission'} disabled={!pctValid}
+              onClick={() => run('commission', () => api.patch(`/platform-courses/${course.id}/commission`, { teacherCommissionPct: commission.trim() === '' ? null : Number(commission) }), 'Commission saved')}>
+              Save commission
+            </Button>
+          </div>
+        </DrawerSection>
+
+        <DrawerSection title="Language">
+          <div className="flex items-end gap-2">
+            <select aria-label="Teaching language" value={language} onChange={e => setLanguage(e.target.value)} className="input-base flex-1">
+              <option value="">Not set (hidden from students)</option>
+              {LANGUAGES.map(l => <option key={l}>{l}</option>)}
+              {language && !LANGUAGES.includes(language) && <option>{language}</option>}
+            </select>
+            <Button size="sm" variant="secondary" loading={busy === 'language'} disabled={(course.language ?? '') === language}
+              onClick={() => run('language', () => api.patch(`/platform-courses/${course.id}`, { language: language || null }), 'Language saved')}>Save</Button>
           </div>
         </DrawerSection>
 
@@ -434,9 +509,11 @@ function DefaultPricesDialog({ open, programmes, packageOnly, onClose, onApplied
   const [rows, setRows] = useState<{ programmeId: string; currency: string; amount: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [applyCurrency, setApplyCurrency] = useState('GHS');
+  const [pct, setPct] = useState('');
 
   useEffect(() => {
     if (!open) return;
+    api.get('/platform-courses/pricing-settings').then(r => setPct(r.data?.defaultTeacherCommissionPct != null ? String(r.data.defaultTeacherCommissionPct) : '')).catch(() => {});
     api.get('/platform-courses/price-defaults').then(r => setRows((r.data as DefaultRow[]).map(d => ({
       programmeId: d.programmeId ?? '', currency: d.currency, amount: String(minorToMajor(d.amount, d.currency)),
     })))).catch(() => setRows([]));
@@ -455,6 +532,17 @@ function DefaultPricesDialog({ open, programmes, packageOnly, onClose, onApplied
     } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not save default prices'); }
     finally { setBusy(false); }
   }
+  async function saveCommission(applyToo: boolean) {
+    setBusy(true);
+    try {
+      await api.patch('/platform-courses/pricing-settings', { defaultTeacherCommissionPct: pct.trim() === '' ? null : Number(pct) });
+      if (applyToo) {
+        const r = await api.post('/platform-courses/pricing-settings/apply-commission');
+        notify.success(`${r.data.updated} courses now pay ${pct}%`, { description: r.data.skipped ? `${r.data.skipped} already had their own commission` : undefined });
+      } else notify.success('Default commission saved');
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not save the commission'); }
+    finally { setBusy(false); }
+  }
   async function apply() {
     setBusy(true);
     try {
@@ -469,8 +557,10 @@ function DefaultPricesDialog({ open, programmes, packageOnly, onClose, onApplied
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
       {open && (
-        <DialogContent size="lg" title="Default single-course prices"
-          description="Used when you put package-only courses on sale. A programme's own price wins over “Every programme”.">
+        <DialogContent size="lg" title="Pricing settings"
+          description="Default prices per programme, and the teacher commission new courses start with.">
+          <h3 className="text-[14px] font-semibold text-navy">Default single-course prices</h3>
+          <p className="mb-2 text-[12.5px] text-muted">Used when you put package-only courses on sale. A programme’s own price wins over “Every programme”.</p>
           <div className="space-y-2">
             {rows.map((r, i) => (
               <div key={i} className="flex items-center gap-2">
@@ -493,6 +583,16 @@ function DefaultPricesDialog({ open, programmes, packageOnly, onClose, onApplied
               {CURRENCIES.map(c => <option key={c}>{c}</option>)}
             </select>
             <Button size="sm" variant="secondary" loading={busy} onClick={apply}>Apply</Button>
+          </div>
+          <h3 className="mt-6 text-[14px] font-semibold text-navy">Teacher commission</h3>
+          <p className="mb-2 text-[12.5px] text-muted">The share of each sale credited to the course’s teacher. Each course can have its own in the course drawer.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="flex items-center gap-1.5">
+              <input aria-label="Default commission" inputMode="decimal" value={pct} onChange={e => setPct(e.target.value)} placeholder="e.g. 40" className="input-base w-24" />
+              <span className="text-sm text-ink2">%</span>
+            </span>
+            <Button size="sm" variant="secondary" loading={busy} onClick={() => saveCommission(false)}>Save</Button>
+            <Button size="sm" variant="ghost" loading={busy} disabled={pct.trim() === ''} onClick={() => saveCommission(true)}>Save and give it to courses without one</Button>
           </div>
           <DialogFooter>
             <Button size="sm" variant="secondary" onClick={onClose}>Close</Button>

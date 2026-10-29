@@ -19,12 +19,12 @@ interface Pkg {
   id: string; name: string; description: string | null;
   priceAmount: number; currency: string; courseIds: string[];
   validityDays: number | null; categoryTags: string[]; isPublished: boolean;
-  cohortId: string | null; cohort?: Cohort | null;
+  cohortId: string | null; cohort?: Cohort | null; mentorship: string | null;
   _count?: { purchases: number };
 }
 interface Form {
   name: string; description: string; currency: string; price: string; validityDays: string;
-  courseIds: string[]; tags: string; cohortId: string; isPublished: boolean;
+  courseIds: string[]; tags: string; cohortId: string; mentorship: string; isPublished: boolean;
 }
 
 const CURRENCIES = ['GHS', 'XAF', 'NGN', 'USD', 'XOF', 'LRD', 'KES', 'ZAR', 'RWF', 'UGX'];
@@ -40,8 +40,8 @@ function toForm(p?: Pkg): Form {
   return p ? {
     name: p.name, description: p.description ?? '', currency: p.currency,
     price: String(minorToMajor(p.priceAmount, p.currency)), validityDays: p.validityDays ? String(p.validityDays) : '',
-    courseIds: p.courseIds, tags: p.categoryTags.join(', '), cohortId: p.cohortId ?? '', isPublished: p.isPublished,
-  } : { name: 'New package', description: '', currency: 'GHS', price: '', validityDays: '365', courseIds: [], tags: '', cohortId: '', isPublished: false };
+    courseIds: p.courseIds, tags: p.categoryTags.join(', '), cohortId: p.cohortId ?? '', mentorship: p.mentorship ?? '', isPublished: p.isPublished,
+  } : { name: 'New package', description: '', currency: 'GHS', price: '', validityDays: '365', courseIds: [], tags: '', cohortId: '', mentorship: '', isPublished: false };
 }
 
 export default function AdminPackagesPage() {
@@ -95,6 +95,7 @@ export default function AdminPackagesPage() {
       courseIds: form.courseIds,
       categoryTags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
       cohortId: form.cohortId || null,
+      mentorship: form.mentorship.trim() || null,
       ...(publish !== undefined && { isPublished: publish }),
     };
     try {
@@ -233,6 +234,11 @@ export default function AdminPackagesPage() {
                 {cohorts.map(c => <option key={c.id} value={c.id}>Cohort: {c.name}</option>)}
               </select>
               <span className="text-xs text-muted">Buyers join this cohort and its live classes.</span>
+            </label>
+
+            <label className="flex flex-col gap-1.5"><span className={label}>Mentorship</span>
+              <input value={form.mentorship} onChange={e => set({ mentorship: e.target.value })} maxLength={80} placeholder="For example: Monthly 1-to-1 session" className="input-base" />
+              <span className="text-xs text-muted">Leave empty if the package has no mentorship. Students only see it when it’s filled in.</span>
             </label>
 
             <div className="flex flex-wrap gap-2 border-t border-line pt-4">
