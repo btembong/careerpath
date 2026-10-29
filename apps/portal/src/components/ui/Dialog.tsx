@@ -121,12 +121,14 @@ interface DrawerContentProps {
   description?: string;
   /** Header button on the right, e.g. "View full details" */
   action?: React.ReactNode;
+  /** Pinned under the scrolling body, e.g. the main buttons */
+  footer?: React.ReactNode;
   children: React.ReactNode;
   width?: 'md' | 'lg';
   className?: string;
 }
 
-export function DrawerContent({ title, description, action, children, width = 'md', className }: DrawerContentProps) {
+export function DrawerContent({ title, description, action, footer, children, width = 'md', className }: DrawerContentProps) {
   return (
     <RadixDialog.Portal forceMount>
       <RadixDialog.Overlay asChild>
@@ -157,6 +159,7 @@ export function DrawerContent({ title, description, action, children, width = 'm
             {action}
           </div>
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">{children}</div>
+          {footer && <div className="flex flex-wrap gap-2 border-t border-line px-6 py-3.5">{footer}</div>}
         </motion.div>
       </RadixDialog.Content>
     </RadixDialog.Portal>
