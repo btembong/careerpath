@@ -1,634 +1,196 @@
 'use client';
-import { Suspense as _Suspense, useEffect, useState, useMemo } from 'react';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const Suspense = _Suspense as any;
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Icon } from '@/components/ui/Icon';
+import { clsx } from 'clsx';
+import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
 
-interface Course {
-  id: string;
-  title: string;
-  description?: string;
-  source: string;
-  wpCourseUrl?: string;
-  coverUrl?: string;
-  progress?: number;
-  packageName?: string;
-  packageId?: string;
-  packageExpiresAt?: string | null;
-  isIndividual?: boolean;
-  _count?: { modules: number };
-  teacher?: { name?: string | null; firstName?: string | null; lastName?: string | null; email: string };
+type State = 'going' | 'new' | 'done';
+type Access =
+  | { kind: 'package'; packageId: string; name: string; expiresAt: string | null }
+  | { kind: 'single'; expiresAt: string | null; purchasedAt: string }
+  | { kind: 'free' | 'website'; expiresAt: null };
+interface Row {
+  id: string; title: string; source: string; programme: string | null; teacher: string | null;
+  lessons: number; done: number; pct: number; state: State; lastOpened: string | null;
+  next: { id: string; title: string; type: string; durationSecs: number | null; module: string } | null;
+  access: Access; endsInDays: number | null;
+  certificate: { id: string; verifyCode: string; pdfUrl: string } | null;
+}
+interface Library {
+  stats: { courses: number; packages: number; single: number; free: number; lessonsDone?: number; lessonsThisWeek: number; studySecs30d: number; certificates: number; latestCertificate?: string | null };
+  resume: { id: string; title: string; pct: number; next: Row['next'] } | null;
+  courses: Row[];
+}
+type Tab = 'all' | State;
+type Sort = 'recent' | 'progress' | 'az';
+
+const abbr = (t: string) => t.split(/[\s·—-]+/).filter(w => /^[A-Za-z]/.test(w)).slice(0, 2).map(w => w[0]).join('').toUpperCase() || 'C';
+const date = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const studyTime = (secs: number) => { const m = Math.round(secs / 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`; };
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+function viaText(r: Row) {
+  const a = r.access;
+  const where = a.kind === 'package' ? `From ${a.name}` : a.kind === 'single' ? 'Bought on its own' : a.kind === 'website' ? 'From the website' : 'Free course';
+  const when = r.state === 'done' && r.certificate ? 'completed'
+    : !a.expiresAt ? 'no time limit'
+    : r.endsInDays != null && r.endsInDays <= 14 ? `access ends in ${plural(Math.max(0, r.endsInDays), 'day')}`
+    : `access until ${date(a.expiresAt)}`;
+  return `${where} · ${when}`;
 }
 
-type Tab = 'packages' | 'individual' | 'free';
-type SortOption = 'default' | 'progress-desc' | 'progress-asc' | 'az' | 'za';
-
-// Suspense wrapper required for useSearchParams in Next.js App Router
-export default function StudentCoursesPage() {
-  return (
-    <Suspense>
-      <CoursesContent />
-    </Suspense>
-  );
-}
-
-function CoursesContent() {
-  const searchParams = useSearchParams();
-  const router       = useRouter();
-  const pathname     = usePathname();
-
-  const [data,          setData]          = useState<any>(null);
-  const [progressMap,   setProgressMap]   = useState<Record<string, number>>({});
-  const [nextLessonMap, setNextLessonMap] = useState<Record<string, { id: string; title: string } | null>>({});
-  const [loading,       setLoading]       = useState(true);
-  const [search,        setSearch]        = useState('');
-  const [sort,          setSort]          = useState<SortOption>('default');
-
-  // Tab persisted in ?tab= URL param
-  const urlTab = searchParams.get('tab') as Tab;
-  const [tab, setTabState] = useState<Tab>(
-    ['packages', 'individual', 'free'].includes(urlTab) ? urlTab : 'packages'
-  );
-
-  function setTab(t: Tab) {
-    setTabState(t);
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('tab', t);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  }
+export default function MyCoursesPage() {
+  const [lib, setLib] = useState<Library | null>(null);
+  const [tab, setTab] = useState<Tab>('all');
+  const [q, setQ] = useState('');
+  const [sort, setSort] = useState<Sort>('recent');
 
   useEffect(() => {
-    api.get('/portals/student/courses')
-      .then(async r => {
-        setData(r.data);
-        const pkgCourses: string[] = (r.data?.packages ?? []).flatMap((p: any) =>
-          (p.courses ?? []).filter((c: any) => c.source !== 'WORDPRESS').map((c: any) => c.id)
-        );
-        const indCourses: string[] = (r.data?.individualCourses ?? [])
-          .filter((c: any) => c.source !== 'WORDPRESS')
-          .map((c: any) => c.id);
-        const allIds = [...new Set([...pkgCourses, ...indCourses])];
-        if (allIds.length > 0) {
-          const results = await Promise.allSettled(
-            allIds.map(id =>
-              api.get(`/platform-courses/${id}/progress`).then(pr => {
-                const allLessons = (pr.data?.modules ?? []).flatMap((m: any) => m.lessons);
-                const next = allLessons.find((l: any) => !l.progress?.completed) ?? null;
-                return {
-                  id,
-                  pct: pr.data?.percentComplete ?? 0,
-                  nextLesson: next ? { id: next.id, title: next.title } : null,
-                };
-              })
-            )
-          );
-          const map:  Record<string, number> = {};
-          const nlMap: Record<string, { id: string; title: string } | null> = {};
-          results.forEach(r => {
-            if (r.status === 'fulfilled') {
-              map[r.value.id]   = r.value.pct;
-              nlMap[r.value.id] = r.value.nextLesson;
-            }
-          });
-          setProgressMap(map);
-          setNextLessonMap(nlMap);
-        }
-        // Auto-select tab if only one type of courses exists
-        if (!(r.data?.packages?.length > 0) && r.data?.individualCourses?.length > 0) {
-          setTab('individual');
-        } else if (!(r.data?.packages?.length > 0) && !(r.data?.individualCourses?.length > 0) && r.data?.wpCourses?.length > 0) {
-          setTab('free');
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    api.get('/portals/student/library').then(r => setLib(r.data))
+      .catch(() => setLib({ stats: { courses: 0, packages: 0, single: 0, free: 0, lessonsThisWeek: 0, studySecs30d: 0, certificates: 0 }, resume: null, courses: [] }));
   }, []);
 
-  const packageCourses: (Course & { progress: number })[] = useMemo(() => {
-    if (!data) return [];
-    return (data.packages ?? []).flatMap((pkg: any) =>
-      (pkg.courses ?? []).map((c: any) => ({
-        ...c,
-        packageName:      pkg.name,
-        packageId:        pkg.id,
-        packageExpiresAt: pkg.expiresAt ?? null,
-        progress:         progressMap[c.id] ?? 0,
-      }))
-    );
-  }, [data, progressMap]);
+  const count = (t: Tab) => (lib?.courses ?? []).filter(c => t === 'all' || c.state === t).length;
+  const shown = useMemo(() => {
+    const list = (lib?.courses ?? []).filter(c => (tab === 'all' || c.state === tab)
+      && (!q.trim() || `${c.title} ${c.teacher ?? ''} ${c.programme ?? ''}`.toLowerCase().includes(q.trim().toLowerCase())));
+    if (sort === 'progress') return [...list].sort((a, b) => b.pct - a.pct);
+    if (sort === 'az') return [...list].sort((a, b) => a.title.localeCompare(b.title));
+    return list;
+  }, [lib, tab, q, sort]);
 
-  const individualCourses: (Course & { progress: number })[] = useMemo(() => {
-    if (!data) return [];
-    return (data.individualCourses ?? []).map((c: any) => ({
-      ...c,
-      isIndividual: true,
-      progress: progressMap[c.id] ?? 0,
-    }));
-  }, [data, progressMap]);
-
-  const wpCourses: Course[] = useMemo(() => data?.wpCourses ?? [], [data]);
-
-  const packages: any[] = data?.packages ?? [];
-
-  function sortCourses<T extends Course & { progress: number }>(list: T[]): T[] {
-    switch (sort) {
-      case 'progress-desc': return [...list].sort((a, b) => b.progress - a.progress);
-      case 'progress-asc':  return [...list].sort((a, b) => a.progress - b.progress);
-      case 'az': return [...list].sort((a, b) => a.title.localeCompare(b.title));
-      case 'za': return [...list].sort((a, b) => b.title.localeCompare(a.title));
-      default: return list;
-    }
-  }
-
-  function filterCourses(list: Course[]) {
-    if (!search.trim()) return list;
-    const q = search.toLowerCase();
-    return list.filter(c =>
-      (c.title ?? '').toLowerCase().includes(q) ||
-      ((c as any).packageName ?? '').toLowerCase().includes(q)
-    );
-  }
-
-  const filteredPackageCourses    = sortCourses(filterCourses(packageCourses) as (Course & { progress: number })[]);
-  const filteredIndividualCourses = sortCourses(filterCourses(individualCourses) as (Course & { progress: number })[]);
-  const filteredWpCourses         = filterCourses(wpCourses);
-
-  const hasCourses   = packageCourses.length > 0 || individualCourses.length > 0 || wpCourses.length > 0;
-  const tabCount     = (packageCourses.length > 0 ? 1 : 0) + (individualCourses.length > 0 ? 1 : 0) + (wpCourses.length > 0 ? 1 : 0);
-  const hasBoth      = tabCount > 1;
-  const totalCourses = packageCourses.length + individualCourses.length + wpCourses.length;
-
-  const nativeCourses  = [...packageCourses, ...individualCourses];
-  const avgProgress    = nativeCourses.length > 0
-    ? Math.round(nativeCourses.reduce((s, c) => s + c.progress, 0) / nativeCourses.length)
-    : 0;
-  const completedCount = nativeCourses.filter(c => c.progress === 100).length;
-
-  // Search result count for active tab
-  const activeFiltered = tab === 'packages' ? filteredPackageCourses.length
-    : tab === 'individual' ? filteredIndividualCourses.length
-    : filteredWpCourses.length;
-  const activeTotal = tab === 'packages' ? packageCourses.length
-    : tab === 'individual' ? individualCourses.length
-    : wpCourses.length;
-
-  // ── Skeleton loading ──
-  if (loading) {
-    return (
-      <div className="flex flex-col min-h-full bg-surface">
-        <div className="bg-white border-b border-cloud">
-          <div className="max-w-5xl mx-auto px-5 sm:px-8 py-7">
-            <div className="h-3 w-20 rounded-full bg-cloud animate-pulse mb-2" />
-            <div className="h-7 w-40 rounded-full bg-cloud animate-pulse mb-4" />
-            <div className="flex gap-4">
-              <div className="h-4 w-28 rounded-full bg-cloud animate-pulse" />
-              <div className="h-4 w-20 rounded-full bg-cloud animate-pulse" />
-              <div className="h-4 w-32 rounded-full bg-cloud animate-pulse" />
-            </div>
-          </div>
-        </div>
-        <div className="flex-1 max-w-5xl mx-auto w-full px-5 sm:px-8 py-7">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="rounded-2xl border border-cloud bg-white overflow-hidden animate-pulse">
-                <div className="h-40 bg-cloud" />
-                <div className="p-4 space-y-3">
-                  <div className="h-3 w-20 rounded-full bg-cloud" />
-                  <div className="h-4 w-3/4 rounded-full bg-cloud" />
-                  <div className="h-3 w-1/3 rounded-full bg-cloud" />
-                  <div className="h-3 w-1/2 rounded-full bg-cloud" />
-                  <div className="mt-1 h-1.5 w-full rounded-full bg-cloud" />
-                  <div className="h-9 rounded-xl bg-cloud" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const TABS: { key: Tab; label: string; count: number; icon: string }[] = [
-    ...(packageCourses.length    > 0 ? [{ key: 'packages'   as Tab, label: 'Packages',  count: packageCourses.length,    icon: 'packages' }] : []),
-    ...(individualCourses.length > 0 ? [{ key: 'individual' as Tab, label: 'Purchased', count: individualCourses.length, icon: 'shield'   }] : []),
-    ...(wpCourses.length         > 0 ? [{ key: 'free'       as Tab, label: 'Free',      count: wpCourses.length,         icon: 'courses'  }] : []),
-  ];
+  const s = lib?.stats;
+  const latestCert = lib?.courses.find(c => c.id === s?.latestCertificate)?.title;
 
   return (
-    <div className="flex flex-col min-h-full bg-surface">
+    <div className="flex min-h-full flex-col">
+      <Topbar title="My courses" subtitle="Everything you have access to, from packages and single courses"
+        actions={<Link href="/student/catalogue" className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Browse catalogue</Link>} />
 
-      {/* ── Hero header ── */}
-      <div className="bg-white border-b border-cloud">
-        <div className="max-w-5xl mx-auto px-5 sm:px-8 py-7">
-          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-
-            {/* Left: title + stats */}
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-1">My Learning</p>
-              <h1 className="text-2xl font-black text-[#0f172a] leading-tight">My Courses</h1>
-
-              {hasCourses && (
-                <div className="mt-3 flex items-center gap-5 flex-wrap">
-                  <div className="flex items-center gap-1.5 text-xs text-azure/80 font-medium">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-azure/10">
-                      <Icon name="courses" size={11} className="text-azure" />
-                    </span>
-                    {totalCourses} course{totalCourses !== 1 ? 's' : ''}
-                  </div>
-                  {completedCount > 0 && (
-                    <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50">
-                        <Icon name="check" size={11} className="text-emerald-500" />
-                      </span>
-                      {completedCount} completed
-                    </div>
-                  )}
-                  {nativeCourses.length > 0 && (
-                    <div className="flex items-center gap-2 text-xs text-azure/60">
-                      <div className="h-1.5 w-24 rounded-full bg-azure/10 overflow-hidden">
-                        <div className="h-full rounded-full bg-azure transition-all" style={{ width: `${avgProgress}%` }} />
-                      </div>
-                      <span className="font-semibold text-azure">{avgProgress}% avg</span>
-                    </div>
-                  )}
-                </div>
-              )}
+      <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        {!lib ? (
+          <>
+            <div className="h-36 rounded-lg border border-line bg-white animate-pulse" />
+            <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">{[0, 1, 2].map(i => <div key={i} className="h-56 rounded-lg border border-line bg-white animate-pulse" />)}</div>
+          </>
+        ) : !lib.courses.length ? (
+          <div className="rounded-lg border border-line bg-white p-10 text-center">
+            <p className="text-sm font-semibold text-navy">You don’t have any courses yet</p>
+            <p className="mx-auto mt-1 max-w-md text-[13px] text-ink2">Buy a single course, get a package, or start one of the free courses in the catalogue.</p>
+            <div className="mt-4 flex justify-center gap-2">
+              <Link href="/student/catalogue" className="inline-flex h-9 items-center rounded-md bg-azure-strong px-4 text-[13.5px] font-semibold text-on-accent">Browse catalogue</Link>
+              <Link href="/packages" className="inline-flex h-9 items-center rounded-md border border-line px-4 text-[13.5px] font-semibold text-navy hover:bg-subtle">See packages</Link>
             </div>
-
-            {/* Right: sort + search */}
-            {hasCourses && (
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Sort select */}
-                <div className="relative">
-                  <Icon name="sort" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-azure/40 pointer-events-none" />
-                  <select
-                    value={sort}
-                    onChange={e => setSort(e.target.value as SortOption)}
-                    className="appearance-none rounded-xl border border-cloud bg-surface pl-9 pr-8 py-2.5 text-sm text-[#0f172a] outline-none focus:border-azure focus:ring-2 focus:ring-azure/10 transition cursor-pointer"
-                  >
-                    <option value="default">Default</option>
-                    <option value="progress-desc">Progress ↓</option>
-                    <option value="progress-asc">Progress ↑</option>
-                    <option value="az">A → Z</option>
-                    <option value="za">Z → A</option>
-                  </select>
-                  <Icon name="chevronDown" size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-azure/40 pointer-events-none" />
-                </div>
-
-                {/* Search */}
-                <div className="relative w-full sm:w-56">
-                  <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-azure/40 pointer-events-none" />
-                  <input
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    placeholder="Search courses…"
-                    className="w-full rounded-xl border border-cloud bg-surface pl-9 pr-8 py-2.5 text-sm text-[#0f172a] placeholder:text-azure/30 outline-none focus:border-azure focus:ring-2 focus:ring-azure/10 transition"
-                  />
-                  {search && (
-                    <button
-                      onClick={() => setSearch('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-cloud hover:bg-azure/20 transition"
-                    >
-                      <Icon name="close" size={10} className="text-royal/60" />
-                    </button>
-                  )}
+          </div>
+        ) : <>
+          {lib.resume && (
+            <section className="flex flex-wrap items-center gap-5 rounded-lg border border-azure bg-white p-5">
+              <span className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-lg font-extrabold text-azure-strong">{abbr(lib.resume.title)}</span>
+              <div className="min-w-0 flex-[999_1_320px]">
+                <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">Pick up where you left off</p>
+                <p className="mt-1 text-[19px] font-extrabold text-navy">{lib.resume.title}</p>
+                {lib.resume.next && (
+                  <p className="mt-0.5 text-[13.5px] text-ink2">
+                    Next: {lib.resume.next.module} · {lib.resume.next.title}{lib.resume.next.durationSecs ? ` · ${Math.max(1, Math.round(lib.resume.next.durationSecs / 60))} min` : ''}
+                  </p>
+                )}
+                <div className="mt-2.5 flex max-w-[420px] items-center gap-2.5">
+                  <span className="h-1.5 flex-1 overflow-hidden rounded-[3px] bg-subtle"><span className="block h-1.5 bg-azure" style={{ width: `${lib.resume.pct}%` }} /></span>
+                  <strong className="text-[13px] text-navy">{lib.resume.pct}%</strong>
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* Search result count — scoped to active tab */}
-          {search.trim() && hasCourses && (
-            <p className="mt-2 text-xs text-azure/50">
-              {activeFiltered} of {activeTotal} course{activeTotal !== 1 ? 's' : ''} match &ldquo;{search}&rdquo;
-            </p>
+              <Link href={lib.resume.next ? `/student/learn/${lib.resume.id}/lesson/${lib.resume.next.id}` : `/student/learn/${lib.resume.id}`}
+                className="inline-flex h-10 items-center rounded-md bg-azure-strong px-5 text-sm font-semibold text-on-accent">Continue lesson</Link>
+            </section>
           )}
 
-          {/* Tab bar */}
-          {hasBoth && (
-            <div className="mt-6 flex items-center gap-1 border-b border-cloud -mb-px">
-              {TABS.map(t => (
-                <button key={t.key} onClick={() => setTab(t.key)}
-                  className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
-                    tab === t.key
-                      ? 'text-azure border-b-2 border-azure -mb-px pb-[9px]'
-                      : 'text-azure/50 hover:text-azure'
-                  }`}>
-                  <Icon name={t.icon as any} size={14} />
-                  {t.label}
-                  <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
-                    tab === t.key ? 'bg-azure text-white' : 'bg-azure/10 text-azure/60'
-                  }`}>
-                    {t.count}
-                  </span>
+          {s && (
+            <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+              {[
+                { l: 'Courses', v: String(s.courses), sub: [s.packages && plural(s.packages, 'package'), s.single && `${s.single} single`, s.free && `${s.free} free`].filter(Boolean).join(' · ') || '—' },
+                { l: 'Lessons done', v: String(s.lessonsDone ?? lib.courses.reduce((n, c) => n + c.done, 0)), sub: `${s.lessonsThisWeek} this week` },
+                { l: 'Study time', v: s.studySecs30d ? studyTime(s.studySecs30d) : '—', sub: 'Last 30 days' },
+                { l: 'Certificates', v: String(s.certificates), sub: latestCert ?? 'Finish a course to earn one' },
+              ].map(x => (
+                <div key={x.l} className="rounded-lg border border-line bg-white p-4">
+                  <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{x.l}</dt>
+                  <dd className="mt-1.5 text-[22px] font-extrabold text-navy">{x.v}</dd>
+                  <dd className="mt-0.5 truncate text-[12.5px] text-muted">{x.sub}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div role="tablist" aria-label="Filter" className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-line bg-white p-1">
+              {([['all', 'All'], ['going', 'In progress'], ['new', 'Not started'], ['done', 'Completed']] as [Tab, string][]).map(([k, l]) => (
+                <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+                  className={clsx('h-8 whitespace-nowrap rounded-md px-3 text-[13px] transition-colors', tab === k ? 'bg-accent-soft font-semibold text-navy' : 'font-medium text-ink2 hover:text-navy')}>
+                  {l} <span className="font-medium text-muted">{count(k)}</span>
                 </button>
               ))}
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── Content ── */}
-      <div className="flex-1 max-w-5xl mx-auto w-full px-5 sm:px-8 py-7 pb-28 lg:pb-10 space-y-8">
-
-        {!hasCourses ? (
-          <div className="rounded-2xl border border-cloud bg-white p-8">
-            <EmptyState
-              icon="courses"
-              title="No courses yet"
-              description="Enroll in a package to start learning, or buy an individual course from the catalogue."
-              action={{ label: 'Browse packages', href: '/packages' }}
-              secondaryAction={{ label: 'Browse courses', href: '/student/catalogue' }}
-            />
+            <span className="flex-1" />
+            <label className="flex h-[38px] min-w-0 flex-[0_1_280px] items-center gap-2 rounded-md border border-line bg-white px-3 focus-within:border-azure">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" aria-hidden className="text-muted"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" /></svg>
+              <input type="search" aria-label="Search my courses" value={q} onChange={e => setQ(e.target.value)} placeholder="Search my courses" className="min-w-0 flex-1 bg-transparent text-[13.5px] text-navy outline-none placeholder:text-muted" />
+            </label>
+            <select aria-label="Sort" value={sort} onChange={e => setSort(e.target.value as Sort)} className="h-[38px] rounded-md border border-line bg-white pl-3 pr-8 text-[13px] text-navy outline-none">
+              <option value="recent">Sort: Recently opened</option>
+              <option value="progress">Most progress</option>
+              <option value="az">A to Z</option>
+            </select>
           </div>
-        ) : (
-          <>
-            {/* PACKAGES TAB */}
-            {(tab === 'packages' || !hasBoth) && packageCourses.length > 0 && (
-              <div className="space-y-8">
-                {filteredPackageCourses.length === 0 ? (
-                  <p className="text-sm text-azure/40 text-center py-12">No courses match your search.</p>
-                ) : (
-                  packages.map((pkg: any) => {
-                    const pkgCourses = filteredPackageCourses.filter(c => c.packageId === pkg.id);
-                    if (pkgCourses.length === 0) return null;
-                    return (
-                      <div key={pkg.id}>
-                        {/* Package label */}
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-azure/10 flex-shrink-0">
-                            <Icon name="packages" size={14} className="text-azure" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="text-sm font-bold text-[#0f172a]">{pkg.name}</p>
-                              <span className="rounded-md bg-azure/10 px-2 py-0.5 text-[10px] font-bold text-azure">
-                                {pkgCourses.length} course{pkgCourses.length !== 1 ? 's' : ''}
-                              </span>
-                            </div>
-                            {pkg.expiresAt && (
-                              <p className="text-[11px] text-azure/50 mt-0.5">
-                                Access until {new Date(pkg.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                          {pkgCourses.map((course, idx) => (
-                            <CourseCard key={course.id ?? idx} course={course} nextLesson={nextLessonMap[course.id] ?? null} />
-                          ))}
-                        </div>
+
+          {!shown.length ? <p className="rounded-lg border border-line bg-white p-8 text-center text-[13px] text-ink2">No courses here.</p> : (
+            <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
+              {shown.map(c => {
+                const warn = c.endsInDays != null && c.endsInDays <= 14 && c.state !== 'done';
+                const href = c.state !== 'done' && c.next && c.source !== 'WORDPRESS' ? `/student/learn/${c.id}/lesson/${c.next.id}` : `/student/learn/${c.id}`;
+                const renew = warn ? (c.access.kind === 'package' ? `/packages/${c.access.packageId}` : c.access.kind === 'single' ? `/student/courses/${c.id}` : null) : null;
+                return (
+                  <article key={c.id} className="flex flex-col gap-3 rounded-lg border border-line bg-white p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-[13px] font-extrabold text-azure-strong">{abbr(c.title)}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-2 text-[14.5px] font-semibold leading-snug text-navy">{c.title}</p>
+                        <p className="mt-0.5 truncate text-[12.5px] text-muted">{[c.teacher, c.programme].filter(Boolean).join(' · ') || 'CareerPath Africa'}</p>
                       </div>
-                    );
-                  })
-                )}
-
-                {!hasBoth && (
-                  <div className="flex items-center gap-4 rounded-2xl bg-[#EEF3FF] border border-azure/20 px-5 py-4">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-azure/20 flex-shrink-0">
-                      <Icon name="courses" size={16} className="text-azure" />
+                      <span className={clsx('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs font-semibold', c.state === 'new' ? 'border border-line bg-subtle text-ink2' : 'bg-accent-soft text-navy')}>
+                        {c.state === 'done' ? 'Completed' : c.state === 'going' ? 'In progress' : 'Not started'}
+                      </span>
                     </div>
-                    <p className="text-sm text-azure/70 flex-1">
-                      Buy individual courses with lifetime access — no package required.
-                    </p>
-                    <Link href="/student/catalogue" className="flex-shrink-0 text-sm font-bold text-azure hover:text-royal transition flex items-center gap-1">
-                      Browse <Icon name="arrowRight" size={13} />
-                    </Link>
-                  </div>
-                )}
-              </div>
-            )}
+                    {c.lessons > 0 ? (
+                      <div>
+                        <div className="flex justify-between text-[12.5px]"><span className="text-ink2">{c.done ? `${c.done} of ${plural(c.lessons, 'lesson')}` : plural(c.lessons, 'lesson')}</span><strong className="text-navy">{c.pct}%</strong></div>
+                        <span className="mt-1.5 block h-1.5 overflow-hidden rounded-[3px] bg-subtle"><span className="block h-1.5 bg-azure" style={{ width: `${c.pct}%` }} /></span>
+                      </div>
+                    ) : <p className="text-[12.5px] text-ink2">Opens on the CareerPath Africa website</p>}
+                    <p className={clsx('text-[12.5px]', warn ? 'font-semibold text-navy' : 'text-muted')}>{viaText(c)}</p>
+                    <div className="mt-auto flex gap-2 border-t border-line pt-3">
+                      <Link href={href} className={clsx('inline-flex h-[34px] flex-1 items-center justify-center rounded-md border text-[13px] font-semibold',
+                        c.state === 'done' ? 'border-line bg-white text-navy hover:bg-subtle' : 'border-azure-strong bg-azure-strong text-on-accent')}>
+                        {c.state === 'done' ? 'Review' : c.state === 'new' ? 'Start course' : 'Continue'}
+                      </Link>
+                      {c.certificate && (
+                        <a href={c.certificate.pdfUrl || '/student/certificates'} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex h-[34px] items-center rounded-md border border-line bg-white px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Certificate</a>
+                      )}
+                      {renew && <Link href={renew} className="inline-flex h-[34px] items-center rounded-md border border-line bg-white px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Renew</Link>}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
 
-            {/* FREE COURSES TAB */}
-            {(tab === 'free' || !hasBoth) && wpCourses.length > 0 && (
-              <div className="space-y-5">
-                <div className="flex items-center gap-4 rounded-2xl bg-[#EEF3FF] border border-azure/20 px-5 py-4">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-azure/20 flex-shrink-0">
-                    <Icon name="courses" size={16} className="text-azure" />
-                  </div>
-                  <p className="text-sm text-azure/70 flex-1">
-                    <span className="font-bold text-[#0f172a]">Free access</span> — these courses are included in your account.
-                  </p>
-                  <Link href="/student/catalogue" className="flex-shrink-0 text-sm font-bold text-azure hover:text-royal transition flex items-center gap-1">
-                    More <Icon name="arrowRight" size={13} />
-                  </Link>
-                </div>
-
-                {filteredWpCourses.length === 0 ? (
-                  <p className="text-sm text-azure/40 text-center py-12">No courses match your search.</p>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {filteredWpCourses.map((course, idx) => (
-                      <CourseCard key={course.id ?? idx} course={course as any} nextLesson={null} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* INDIVIDUAL TAB */}
-            {(tab === 'individual' || !hasBoth) && individualCourses.length > 0 && (
-              <div className="space-y-5">
-                <div className="flex items-center gap-4 rounded-2xl bg-[#EEF3FF] border border-azure/20 px-5 py-4">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-azure/20 flex-shrink-0">
-                    <Icon name="shield" size={16} className="text-azure" />
-                  </div>
-                  <p className="text-sm text-azure/70 flex-1">
-                    <span className="font-bold text-[#0f172a]">Lifetime access</span> — purchased directly, they never expire.
-                  </p>
-                  <Link href="/student/catalogue" className="flex-shrink-0 text-sm font-bold text-azure hover:text-royal transition flex items-center gap-1">
-                    Buy more <Icon name="arrowRight" size={13} />
-                  </Link>
-                </div>
-
-                {filteredIndividualCourses.length === 0 ? (
-                  <p className="text-sm text-azure/40 text-center py-12">No courses match your search.</p>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {filteredIndividualCourses.map((course, idx) => (
-                      <CourseCard key={course.id ?? idx} course={course} nextLesson={nextLessonMap[course.id] ?? null} showLifetimeBadge />
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex items-start gap-4 rounded-2xl bg-[#EEF3FF] border border-azure/20 px-5 py-5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-azure/10 flex-shrink-0">
-                    <Icon name="packages" size={18} className="text-azure" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-bold text-[#0f172a]">Get live classes &amp; mentorship too</p>
-                    <p className="text-xs text-azure/50 mt-1 leading-relaxed">
-                      Individual courses don&apos;t include live sessions. A package gives you everything in one place.
-                    </p>
-                    <Link href="/packages" className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-azure px-4 py-2 text-xs font-bold text-white hover:bg-royal transition">
-                      View packages <Icon name="arrowRight" size={13} />
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+          <section className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-white px-4 py-3.5">
+            <p className="min-w-0 flex-1 text-[13.5px] text-ink2"><strong className="text-navy">Want live classes and a teacher?</strong> Packages add a cohort with weekly classes to the courses you study.</p>
+            <Link href="/packages" className="inline-flex h-8 items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy hover:bg-subtle">See packages</Link>
+          </section>
+        </>}
       </div>
     </div>
-  );
-}
-
-function CourseCard({ course, showLifetimeBadge, nextLesson }: {
-  course: Course & { progress: number };
-  showLifetimeBadge?: boolean;
-  nextLesson: { id: string; title: string } | null;
-}) {
-  const title      = course.title ?? 'Course';
-  const progress   = course.progress ?? 0;
-  const isComplete = progress === 100;
-  const isStarted  = progress > 0 && progress < 100;
-  const isWP       = course.source === 'WORDPRESS';
-
-  // Per-card expiry: warn if access expires within 7 days
-  const isExpiringSoon = (() => {
-    const exp = course.packageExpiresAt;
-    if (!exp) return false;
-    const msLeft = new Date(exp).getTime() - Date.now();
-    return msLeft > 0 && msLeft < 7 * 24 * 60 * 60 * 1000;
-  })();
-
-  const teacherName = course.teacher
-    ? course.teacher.name || [course.teacher.firstName, course.teacher.lastName].filter(Boolean).join(' ') || null
-    : null;
-
-  return (
-    <Link
-      href={`/student/learn/${course.id}`}
-      className="group flex flex-col rounded-2xl border border-cloud bg-white overflow-hidden hover:border-azure/40 hover:shadow-lg hover:shadow-azure/8 transition-all duration-200"
-    >
-      {/* Cover / thumbnail */}
-      <div className="relative h-40 w-full flex-shrink-0 overflow-hidden">
-        {course.coverUrl ? (
-          <img src={course.coverUrl} alt={title} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
-        ) : (
-          <div className="h-full w-full flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg, #5889FA18 0%, #5889FA08 100%)' }}>
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-azure/15">
-              <Icon name="courses" size={24} className="text-azure" />
-            </div>
-          </div>
-        )}
-
-        {/* Status badge — top right */}
-        <div className="absolute top-3 right-3">
-          {isComplete ? (
-            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
-              <Icon name="check" size={9} /> Done
-            </span>
-          ) : isStarted ? (
-            <span className="inline-flex items-center gap-1 rounded-md bg-azure px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
-              In progress
-            </span>
-          ) : isWP ? (
-            <span className="inline-flex items-center gap-1 rounded-md bg-white/90 backdrop-blur px-2.5 py-1 text-[10px] font-bold text-azure border border-azure/20 shadow-sm">
-              Free
-            </span>
-          ) : null}
-        </div>
-
-        {/* Lifetime badge — top left */}
-        {showLifetimeBadge && (
-          <div className="absolute top-3 left-3">
-            <span className="inline-flex items-center gap-1 rounded-md bg-white/90 backdrop-blur px-2.5 py-1 text-[10px] font-bold text-azure border border-azure/20 shadow-sm">
-              <Icon name="shield" size={9} /> Lifetime
-            </span>
-          </div>
-        )}
-
-        {/* Expiry warning badge — bottom left, only when within 7 days */}
-        {isExpiringSoon && (
-          <div className="absolute bottom-3 left-3">
-            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
-              <Icon name="clock" size={9} /> Expires soon
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Card body */}
-      <div className="flex flex-col flex-1 gap-3 p-4">
-
-        {/* Package pill */}
-        {course.packageName && (
-          <span className="self-start rounded-md bg-azure/8 px-2.5 py-0.5 text-[10px] font-bold text-azure truncate max-w-full">
-            {course.packageName}
-          </span>
-        )}
-
-        {/* Title + meta */}
-        <div className="flex-1">
-          <h3 className="text-sm font-bold text-[#0f172a] leading-snug line-clamp-2 group-hover:text-azure transition-colors">
-            {title}
-          </h3>
-          <div className="mt-1.5 flex items-center gap-3 flex-wrap">
-            {course._count?.modules != null && (
-              <p className="text-[11px] text-azure/50">
-                {course._count.modules} module{course._count.modules !== 1 ? 's' : ''}
-              </p>
-            )}
-            {teacherName && (
-              <p className="text-[11px] text-azure/40 flex items-center gap-0.5 truncate min-w-0">
-                <Icon name="mentorship" size={9} className="flex-shrink-0" />
-                {teacherName}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Next lesson hint — in-progress native courses only */}
-        {isStarted && nextLesson && !isWP && (
-          <p className="text-[11px] text-azure/50 truncate flex items-center gap-1">
-            <Icon name="play" size={9} className="text-azure/40 flex-shrink-0" />
-            Next: {nextLesson.title}
-          </p>
-        )}
-
-        {/* Progress bar (native) or External label (WP) */}
-        {!isWP ? (
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] text-azure/50">
-                {isComplete ? 'Completed' : isStarted ? 'In progress' : 'Not started'}
-              </span>
-              <span className={`text-[11px] font-bold tabular-nums ${isComplete ? 'text-emerald-500' : 'text-azure'}`}>
-                {progress}%
-              </span>
-            </div>
-            <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: '#5889FA18' }}>
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-emerald-400' : 'bg-azure'}`}
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
-        ) : (
-          /* WP courses have no progress tracking — show platform label instead of empty gap */
-          <div className="flex items-center gap-1.5 text-[11px] text-azure/40">
-            <Icon name="live" size={10} className="flex-shrink-0 text-azure/30" />
-            External platform — opens in portal
-          </div>
-        )}
-
-        {/* CTA */}
-        <div className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold transition-colors ${
-          isComplete
-            ? 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white'
-            : 'bg-azure/10 text-azure group-hover:bg-azure group-hover:text-white'
-        }`}>
-          <Icon name={isComplete ? 'check' : 'play'} size={13} />
-          {isComplete ? 'Review' : isStarted ? 'Continue' : 'Start learning'}
-        </div>
-      </div>
-    </Link>
   );
 }
