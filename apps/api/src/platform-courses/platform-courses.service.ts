@@ -187,6 +187,11 @@ export class PlatformCoursesService {
     if (!isAdmin && adminOnly) {
       throw new ForbiddenException('Only admins can change a course’s status, teacher or source. Submit the course for review instead.');
     }
+    // Prices are set by admins; teachers propose one through /price-proposal
+    const pricing = [dto.priceAmount, dto.priceCurrency, dto.isSoldIndividually].some(v => v !== undefined);
+    if (!isAdmin && pricing) {
+      throw new ForbiddenException('Propose a price for approval instead of setting it directly.');
+    }
     const data: Prisma.PlatformCourseUncheckedUpdateInput = {
       ...(dto.title !== undefined && { title: dto.title }),
       ...(dto.description !== undefined && { description: dto.description }),
@@ -197,9 +202,9 @@ export class PlatformCoursesService {
       ...(dto.programmeId !== undefined && { programmeId: dto.programmeId }),
       ...(dto.subjectId !== undefined && { subjectId: dto.subjectId }),
       ...(dto.levelId !== undefined && { levelId: dto.levelId }),
-      ...(dto.priceAmount !== undefined && { priceAmount: dto.priceAmount }),
-      ...(dto.priceCurrency !== undefined && { priceCurrency: dto.priceCurrency }),
-      ...(dto.isSoldIndividually !== undefined && { isSoldIndividually: dto.isSoldIndividually }),
+      ...(isAdmin && dto.priceAmount !== undefined && { priceAmount: dto.priceAmount }),
+      ...(isAdmin && dto.priceCurrency !== undefined && { priceCurrency: dto.priceCurrency ? dto.priceCurrency.toUpperCase() : null }),
+      ...(isAdmin && dto.isSoldIndividually !== undefined && { isSoldIndividually: !!dto.isSoldIndividually }),
       ...(isAdmin && dto.status !== undefined && { status: dto.status }),
       ...(isAdmin && dto.teacherId !== undefined && { teacherId: dto.teacherId }),
     };
@@ -870,6 +875,109 @@ export class PlatformCoursesService {
     }
     await this.prisma.courseDiscussionPost.deleteMany({ where: { parentId: postId } });
     return this.prisma.courseDiscussionPost.delete({ where: { id: postId } });
+  }
+
+  // ── Single-course pricing ───────────────────────────────────
+
+  private validPrice(amount: unknown, currency: unknown) {
+    const a = Number(amount);
+    const c = typeof currency === 'string' ? currency.trim().toUpperCase() : '';
+    if (!Number.isInteger(a) || a <= 0) throw new BadRequestException('Price must be a whole number above zero (in minor units)');
+    if (!/^[A-Z]{3}$/.test(c)) throw new BadRequestException('Currency must be a 3-letter code such as GHS or XAF');
+    return { amount: a, currency: c };
+  }
+
+  /** The course's teacher proposes a single-course price; an admin approves it before it goes live. */
+  async proposePrice(courseId: string, actor: UserProfile, dto: { amount: number; currency: string }) {
+    await this.assertCourseAccess(courseId, actor);
+    const { amount, currency } = this.validPrice(dto?.amount, dto?.currency);
+    return this.prisma.platformCourse.update({
+      where: { id: courseId },
+      data: { proposedPriceAmount: amount, proposedPriceCurrency: currency, priceProposedAt: new Date() },
+      select: { id: true, proposedPriceAmount: true, proposedPriceCurrency: true, priceProposedAt: true },
+    });
+  }
+
+  /** Admin decides on a proposal; approving can use the proposed price or a different one. */
+  async decidePrice(courseId: string, dto: { approve: boolean; amount?: number; currency?: string }) {
+    const course = await this.prisma.platformCourse.findUnique({
+      where: { id: courseId },
+      select: { proposedPriceAmount: true, proposedPriceCurrency: true },
+    });
+    if (!course) throw new NotFoundException('Course not found');
+    const clear = { proposedPriceAmount: null, proposedPriceCurrency: null, priceProposedAt: null };
+    if (!dto?.approve) {
+      return this.prisma.platformCourse.update({ where: { id: courseId }, data: clear, select: { id: true } });
+    }
+    const { amount, currency } = this.validPrice(dto.amount ?? course.proposedPriceAmount, dto.currency ?? course.proposedPriceCurrency);
+    return this.prisma.platformCourse.update({
+      where: { id: courseId },
+      data: { ...clear, priceAmount: amount, priceCurrency: currency, isSoldIndividually: true },
+      select: { id: true, priceAmount: true, priceCurrency: true, isSoldIndividually: true },
+    });
+  }
+
+  /** Admin sets (or stops) single-course sales on many courses at once. */
+  async bulkPrice(dto: { courseIds: string[]; sell: boolean; amount?: number; currency?: string }) {
+    const ids = Array.isArray(dto?.courseIds) ? dto.courseIds.filter(i => typeof i === 'string').slice(0, 500) : [];
+    if (!ids.length) throw new BadRequestException('Choose at least one course');
+    if (!dto.sell) {
+      const r = await this.prisma.platformCourse.updateMany({ where: { id: { in: ids } }, data: { isSoldIndividually: false } });
+      return { updated: r.count };
+    }
+    const { amount, currency } = this.validPrice(dto.amount, dto.currency);
+    const r = await this.prisma.platformCourse.updateMany({
+      where: { id: { in: ids } },
+      data: { priceAmount: amount, priceCurrency: currency, isSoldIndividually: true },
+    });
+    return { updated: r.count };
+  }
+
+  listPriceDefaults() {
+    return this.prisma.coursePriceDefault.findMany({
+      include: { programme: { select: { id: true, name: true, shortName: true } } },
+      orderBy: [{ programmeId: 'asc' }, { currency: 'asc' }],
+    });
+  }
+
+  /** Replace the default price table. Each row: programme (none = every programme), currency, amount in minor units. */
+  async setPriceDefaults(rows: { programmeId?: string | null; currency: string; amount: number }[]) {
+    const clean = (Array.isArray(rows) ? rows : []).map(r => ({ programmeId: r.programmeId || null, ...this.validPrice(r.amount, r.currency) }));
+    await this.prisma.$transaction([
+      this.prisma.coursePriceDefault.deleteMany({}),
+      ...clean.map(r => this.prisma.coursePriceDefault.create({ data: r })),
+    ]);
+    return this.listPriceDefaults();
+  }
+
+  /**
+   * Put package-only published courses on sale at their programme's default price in one currency
+   * (a programme-specific default wins over the every-programme one). Courses already on sale are left alone.
+   */
+  async applyPriceDefaults(currency: string, courseIds?: string[]) {
+    const cur = String(currency ?? '').toUpperCase();
+    const defaults = await this.prisma.coursePriceDefault.findMany({ where: { currency: cur } });
+    if (!defaults.length) throw new BadRequestException(`Set a default price in ${cur || 'a currency'} first`);
+    const byProgramme = new Map(defaults.map(d => [d.programmeId, d.amount]));
+    const courses = await this.prisma.platformCourse.findMany({
+      where: { status: 'PUBLISHED', isSoldIndividually: false, ...(courseIds?.length ? { id: { in: courseIds } } : {}) },
+      select: { id: true, programmeId: true },
+    });
+    let updated = 0;
+    for (const c of courses) {
+      const amount = (c.programmeId ? byProgramme.get(c.programmeId) : undefined) ?? byProgramme.get(null);
+      if (!amount) continue;
+      await this.prisma.platformCourse.update({ where: { id: c.id }, data: { priceAmount: amount, priceCurrency: cur, isSoldIndividually: true } });
+      updated++;
+    }
+    return { updated, skipped: courses.length - updated };
+  }
+
+  /** The teacher's commission on this course (from their course assignment), for the pricing screen. */
+  async teacherShare(courseId: string, actor: UserProfile) {
+    await this.assertCourseAccess(courseId, actor);
+    const a = await this.prisma.courseAssignment.findUnique({ where: { courseId }, select: { teacherCommissionPct: true } });
+    return { teacherCommissionPct: a?.teacherCommissionPct ?? null };
   }
 
   // ── Helpers ───────────────────────────────────────────────

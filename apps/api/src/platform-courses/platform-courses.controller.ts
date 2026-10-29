@@ -65,6 +65,62 @@ export class PlatformCoursesController {
     return this.svc.bulkAssignCourses(dto);
   }
 
+  // ── Single-course pricing ──
+
+  @Patch('bulk-price')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[Admin] Put many courses on sale at one price, or take them off sale' })
+  bulkPrice(@Body() dto: { courseIds: string[]; sell: boolean; amount?: number; currency?: string }) {
+    return this.svc.bulkPrice(dto);
+  }
+
+  @Get('price-defaults')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Default single-course prices per programme and currency' })
+  listPriceDefaults() {
+    return this.svc.listPriceDefaults();
+  }
+
+  @Patch('price-defaults')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[Admin] Replace the default price table' })
+  setPriceDefaults(@Body() dto: { rows: { programmeId?: string | null; currency: string; amount: number }[] }) {
+    return this.svc.setPriceDefaults(dto?.rows);
+  }
+
+  @Post('price-defaults/apply')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[Admin] Put package-only courses on sale at their programme default price' })
+  applyPriceDefaults(@Body() dto: { currency: string; courseIds?: string[] }) {
+    return this.svc.applyPriceDefaults(dto?.currency, dto?.courseIds);
+  }
+
+  @Post(':id/price-proposal')
+  @Roles(UserRole.ADMIN, UserRole.TEACHER)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[Teacher] Propose a single-course price for admin approval' })
+  proposePrice(@Param('id') id: string, @CurrentUser() user: UserProfile, @Body() dto: { amount: number; currency: string }) {
+    return this.svc.proposePrice(id, user, dto);
+  }
+
+  @Post(':id/price-proposal/decision')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[Admin] Approve (optionally at another price) or reject a proposed price' })
+  decidePrice(@Param('id') id: string, @Body() dto: { approve: boolean; amount?: number; currency?: string }) {
+    return this.svc.decidePrice(id, dto);
+  }
+
+  @Get(':id/teacher-share')
+  @Roles(UserRole.ADMIN, UserRole.TEACHER)
+  @ApiOperation({ summary: '[Teacher] Commission the teacher earns on sales of this course' })
+  teacherShare(@Param('id') id: string, @CurrentUser() user: UserProfile) {
+    return this.svc.teacherShare(id, user);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get full course with modules and lessons' })
   getCourse(@CurrentUser() user: UserProfile, @Param('id') id: string) {

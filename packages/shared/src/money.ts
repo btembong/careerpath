@@ -8,3 +8,8 @@ export const ZERO_DECIMAL_CURRENCIES = new Set([
 export function minorToMajor(amount: number, currency: string | null | undefined): number {
   return currency && ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase()) ? amount : amount / 100;
 }
+
+/** Convert a human amount to stored minor units, e.g. 150 GHS → 15000; 6500 XAF → 6500. */
+export function majorToMinor(amount: number, currency: string | null | undefined): number {
+  return Math.round(currency && ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase()) ? amount : amount * 100);
+}

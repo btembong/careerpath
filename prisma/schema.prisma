@@ -216,6 +216,7 @@ model Programme {
   subjects          Subject[]        @relation("ProgrammeSubjects")
   studentInterests  UserProfile[]    @relation("StudentProgrammeInterests")
   teacherProfiles   UserProfile[]    @relation("TeacherProgrammes")
+  priceDefaults CoursePriceDefault[]
 }
 
 model Subject {
@@ -706,6 +707,10 @@ model PlatformCourse {
   wpCourseId         Int?               @unique
   wpCourseUrl        String?
   isSoldIndividually Boolean            @default(false)
+  /// A teacher's proposed single-course price (minor units), waiting for an admin decision
+  proposedPriceAmount   Int?
+  proposedPriceCurrency String?
+  priceProposedAt       DateTime?
   priceAmount        Int?
   priceCurrency      String?
   shortDescription   String?
@@ -1156,4 +1161,16 @@ enum PayoutRecipientType {
   TEACHER
   SUBJECT_REVIEWER
   COUNTRY_REP
+}
+
+/// Default single-course price for a programme (null programme = every programme), applied by admins in bulk
+model CoursePriceDefault {
+  id          String     @id @default(uuid())
+  programmeId String?
+  currency    String
+  amount      Int
+  updatedAt   DateTime   @updatedAt
+  programme   Programme? @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+
+  @@unique([programmeId, currency])
 }
