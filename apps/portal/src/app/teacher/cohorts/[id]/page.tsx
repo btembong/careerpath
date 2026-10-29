@@ -1,710 +1,550 @@
 'use client';
-import { notify } from '@/lib/notify';
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card, IconBox } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
+import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent, DrawerSection, InfoGrid } from '@/components/ui/Dialog';
+import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-interface Student {
-  id: string;
-  email: string;
-  firstName?: string | null;
-  lastName?: string | null;
+interface ClassRow { id: string; title: string; description: string | null; scheduledAt: string; durationMins: number; status: string; recordingUrl: string | null; live: boolean; ended: boolean; attendedCount: number; rosterSize: number }
+interface StudentRow { id: string; name: string; progress: number; attended: number; held: number; submitted: number; assignments: number; lastActive: string | null; flag: string | null }
+interface AssignmentRow { id: string; title: string; dueDate: string; maxPoints: number; submitted: number; graded: number; total: number }
+interface Overview {
+  cohort: { id: string; name: string; sittingLabel: string | null; examDate: string | null; startDate: string | null };
+  next: (ClassRow & { live: boolean }) | null;
+  stats: { students: number; attention: number; avgProgress: number | null; courses: number; attendancePct: number | null; toGrade: number; toGradeTitle: string | null };
+  students: StudentRow[];
+  classes: ClassRow[];
+  assignments: AssignmentRow[];
 }
-
-interface CohortStudent {
-  student: Student;
+interface StudentDetail {
+  student: { id: string; name: string; joinedAt: string; lastActive: string | null };
+  flag: string | null; flagReason: string | null; progress: number; attended: number; held: number; avgGradePct: number | null;
+  courses: { id: string; title: string; pct: number }[];
+  recentClasses: { id: string; title: string; scheduledAt: string; attended: boolean }[];
+  assignments: { id: string; title: string; maxPoints: number; state: string; grade: number | null }[];
 }
+interface SubRow { student: { id: string; email: string; firstName?: string | null; lastName?: string | null; name?: string | null }; submission?: { id: string; grade?: number | null; feedback?: string | null; fileUrl?: string | null } | null }
 
-interface Cohort {
-  id: string;
-  name: string;
-  examDate?: string | null;
-  sittingLabel?: string | null;
-  startDate?: string | null;
-}
+type Tab = 'students' | 'classes' | 'work';
+const DAY = 86_400_000;
+const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+const time = (d: string) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+const short = (d: string) => new Date(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+const ago = (d: string | null) => {
+  if (!d) return 'Never';
+  const days = Math.floor((Date.now() - new Date(d).getTime()) / DAY);
+  return days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : `${days} days ago`;
+};
+const when = (d: string) => {
+  const days = Math.round((new Date(new Date(d).toDateString()).getTime() - new Date(new Date().toDateString()).getTime()) / DAY);
+  return `${days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : short(d)} ${time(d)}`;
+};
+const personName = (s: SubRow['student']) => s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email.split('@')[0];
+const btn = (primary: boolean) => clsx('inline-flex h-8 items-center whitespace-nowrap rounded-md border px-3 text-[13px] font-semibold disabled:opacity-60',
+  primary ? 'border-azure-strong bg-azure-strong text-on-accent' : 'border-line bg-white text-navy hover:bg-subtle');
+const label = 'text-[13px] font-semibold text-navy';
+const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
-interface Roster {
-  cohort?: Cohort;
-  name?: string;
-  examDate?: string | null;
-  sittingLabel?: string | null;
-  startDate?: string | null;
-  students: CohortStudent[];
-}
-
-interface LiveClass {
-  id: string;
-  title: string;
-  scheduledAt: string;
-  status: 'SCHEDULED' | 'ACTIVE' | 'COMPLETED';
-}
-
-interface AttendanceRecord {
-  id: string;
-  durationSecs?: number | null;
-  student?: { firstName?: string | null; lastName?: string | null; email?: string };
-}
-
-interface Assignment {
-  id: string;
-  title: string;
-  description?: string;
-  maxPoints: number;
-  dueDate: string;
-}
-
-interface Submission {
-  id: string;
-  status: 'PENDING' | 'GRADED';
-  grade?: number | null;
-  feedback?: string | null;
-  fileUrl?: string | null;
-}
-
-interface SubmissionRow {
-  student: Student;
-  submission?: Submission | null;
-}
-
-interface AssignmentSubmissions {
-  assignment?: { title: string; maxPoints: number };
-  students: SubmissionRow[];
-}
-
-export default function CohortDetailPage() {
+export default function TeacherCohortPage() {
   const { id } = useParams<{ id: string }>();
-  const [roster,       setRoster]       = useState<Roster | null>(null);
-  const [classes,      setClasses]      = useState<LiveClass[]>([]);
-  const [progress,     setProgress]     = useState<Record<string, number>>({});
-  const [loading,      setLoading]      = useState(true);
-  const [starting,     setStarting]     = useState<string | null>(null);
-  const [ending,       setEnding]       = useState<string | null>(null);
-  const [newClass,     setNewClass]     = useState({ title: '', scheduledAt: '' });
-  const [scheduling,   setScheduling]   = useState(false);
-  const [showSchedule, setShowSchedule] = useState(false);
+  const [data, setData] = useState<Overview | null>(null);
+  const [tab, setTab] = useState<Tab>('students');
+  const [openStudent, setOpenStudent] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<null | 'schedule' | 'assignment'>(null);
+  const [editClass, setEditClass] = useState<ClassRow | null>(null);
+  const [attendanceFor, setAttendanceFor] = useState<ClassRow | null>(null);
+  const [gradeFor, setGradeFor] = useState<AssignmentRow | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  // Attendance state
-  const [attendance, setAttendance] = useState<Record<string, AttendanceRecord[]>>({});
-  const [loadingAtt, setLoadingAtt] = useState<string | null>(null);
-  const [showAtt, setShowAtt] = useState<string | null>(null);
+  async function load() {
+    const r = await api.get(`/portals/teacher/cohorts/${id}/overview`);
+    setData(r.data);
+  }
+  useEffect(() => { load().catch(() => notify.error('Could not load this cohort')); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function toggleAttendance(classId: string) {
-    if (showAtt === classId) { setShowAtt(null); return; }
-    if (attendance[classId]) { setShowAtt(classId); return; }
-    setLoadingAtt(classId);
+  async function start(c: { id: string; live: boolean }) {
+    if (c.live) { window.open(`/teacher/live/${c.id}`, '_blank'); return; }
+    setBusy(c.id);
     try {
-      const r = await api.get(`/live/classes/${classId}/attendance`);
-      setAttendance(a => ({ ...a, [classId]: r.data ?? [] }));
-      setShowAtt(classId);
-    } catch { notify.error('Failed to load attendance'); }
-    finally { setLoadingAtt(null); }
+      await api.patch(`/live/classes/${c.id}/start`);
+      window.open(`/teacher/live/${c.id}`, '_blank');
+      await load();
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not start the class'); }
+    finally { setBusy(null); }
+  }
+  async function end(c: ClassRow) {
+    setBusy(c.id);
+    try { await api.patch(`/live/classes/${c.id}/end`); notify.success('Class ended'); await load(); }
+    catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not end the class'); }
+    finally { setBusy(null); }
   }
 
-  // Assignment state
-  const [assignments,    setAssignments]    = useState<Assignment[]>([]);
-  const [showNewAsgn,    setShowNewAsgn]    = useState(false);
-  const [creatingAsgn,   setCreatingAsgn]   = useState(false);
-  const [asgnForm,       setAsgnForm]       = useState({ title: '', description: '', maxPoints: '100', dueDate: '' });
-  const [viewAsgn,       setViewAsgn]       = useState<string | null>(null); // assignmentId for submissions view
-  const [asgnSubs,       setAsgnSubs]       = useState<AssignmentSubmissions | null>(null);
-  const [gradingAsgn,    setGradingAsgn]    = useState<string | null>(null); // submissionId
-  const [asgnGrades,     setAsgnGrades]     = useState<Record<string, { score: string; feedback: string }>>({});
-
-  async function loadData() {
-    try {
-      const [rr, cr, ar] = await Promise.all([
-        api.get(`/portals/teacher/rosters/${id}`),
-        api.get(`/live/cohorts/${id}/classes`),
-        api.get(`/education/cohorts/${id}/assignments`).catch(() => ({ data: [] })),
-      ]);
-      setRoster(rr.data);
-      setClasses(cr.data ?? []);
-      setAssignments(ar.data ?? []);
-
-      // Load progress for each student's courses
-      const students: CohortStudent[] = rr.data?.students ?? [];
-      const progressMap: Record<string, number> = {};
-      await Promise.all(students.map(async (s) => {
-        const sid = s.student?.id ?? (s as unknown as Student).id;
-        try {
-          const pr = await api.get(`/portals/teacher/students/${sid}/progress`).catch(() => null);
-          progressMap[sid] = pr?.data?.overallPercent ?? pr?.data?.percentComplete ?? 0;
-        } catch { progressMap[sid] = 0; }
-      }));
-      setProgress(progressMap);
-    } finally { setLoading(false); }
-  }
-
-  useEffect(() => { loadData(); }, [id]);
-
-  async function scheduleClass(e: React.FormEvent) {
-    e.preventDefault();
-    setScheduling(true);
-    try {
-      await api.post(`/live/cohorts/${id}/classes`, {
-        title: newClass.title,
-        scheduledAt: new Date(newClass.scheduledAt).toISOString(),
-      });
-      const r = await api.get(`/live/cohorts/${id}/classes`);
-      setClasses(r.data);
-      setNewClass({ title: '', scheduledAt: '' });
-      setShowSchedule(false);
-      notify.success('Class scheduled');
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to schedule');
-    } finally { setScheduling(false); }
-  }
-
-  async function startClass(classId: string) {
-    setStarting(classId);
-    try {
-      await api.patch(`/live/classes/${classId}/start`);
-      window.open(`/teacher/live/${classId}`, '_blank');
-      const r = await api.get(`/live/cohorts/${id}/classes`);
-      setClasses(r.data);
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to start');
-    } finally { setStarting(null); }
-  }
-
-  async function endClass(classId: string) {
-    setEnding(classId);
-    try {
-      await api.patch(`/live/classes/${classId}/end`);
-      notify.success('Class ended');
-      const r = await api.get(`/live/cohorts/${id}/classes`);
-      setClasses(r.data);
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to end');
-    } finally { setEnding(null); }
-  }
-
-  async function createAssignment(e: React.FormEvent) {
-    e.preventDefault();
-    setCreatingAsgn(true);
-    try {
-      await api.post(`/education/cohorts/${id}/assignments`, {
-        title: asgnForm.title,
-        description: asgnForm.description,
-        maxPoints: parseInt(asgnForm.maxPoints),
-        dueDate: new Date(asgnForm.dueDate).toISOString(),
-      });
-      notify.success('Assignment created');
-      setShowNewAsgn(false);
-      setAsgnForm({ title: '', description: '', maxPoints: '100', dueDate: '' });
-      await loadData();
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to create assignment');
-    } finally { setCreatingAsgn(false); }
-  }
-
-  async function loadAssignmentSubmissions(assignmentId: string) {
-    try {
-      const r = await api.get(`/education/assignments/${assignmentId}/submissions`);
-      setAsgnSubs(r.data);
-      setViewAsgn(assignmentId);
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to load submissions');
-    }
-  }
-
-  async function gradeAsgnSubmission(submissionId: string) {
-    const g = asgnGrades[submissionId];
-    if (!g?.score) { notify.error('Enter a score before grading'); return; }
-    setGradingAsgn(submissionId);
-    try {
-      await api.patch(`/education/submissions/${submissionId}/grade`, {
-        grade: parseFloat(g.score),
-        feedback: g.feedback,
-      });
-      notify.success('Graded');
-      if (viewAsgn) await loadAssignmentSubmissions(viewAsgn);
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Grading failed');
-    } finally { setGradingAsgn(null); }
-  }
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar back />
-      <div className="flex-1 p-6 space-y-6 max-w-none w-full">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[1,2,3,4].map(i => <div key={i} className="rounded-2xl border border-cloud bg-white h-16 animate-pulse" />)}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-3">
-            {[1,2,3].map(i => <SkeletonCard key={i} lines={2} />)}
-          </div>
-          <div className="space-y-3">
-            {[1,2].map(i => <SkeletonCard key={i} lines={2} />)}
-          </div>
-        </div>
+  if (!data) return (
+    <div className="flex min-h-full flex-col">
+      <Topbar backHref="/teacher/cohorts" backLabel="Cohorts" title="Cohort" />
+      <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">{[0, 1, 2, 3].map(i => <div key={i} className="h-24 rounded-lg border border-line bg-white animate-pulse" />)}</div>
+        <div className="h-96 rounded-lg border border-line bg-white animate-pulse" />
       </div>
     </div>
   );
 
-  const students: CohortStudent[] = roster?.students ?? [];
-  const cohortName = roster?.cohort?.name ?? roster?.name ?? 'Cohort';
-  const examDate   = roster?.cohort?.examDate ?? roster?.examDate ?? null;
-  const sittingLabel = roster?.cohort?.sittingLabel ?? roster?.sittingLabel ?? null;
-  const startDate  = roster?.cohort?.startDate ?? roster?.startDate ?? null;
-
-  const examDaysLeft = examDate
-    ? Math.ceil((new Date(examDate).getTime() - Date.now()) / 86400000)
-    : null;
-
-  const live     = classes.filter(c => c.status === 'ACTIVE');
-  const upcoming = classes.filter(c => c.status === 'SCHEDULED');
-  const past     = classes.filter(c => c.status === 'COMPLETED');
-
-  const avgProgress = students.length > 0
-    ? Math.round(Object.values(progress).reduce((s, v) => s + v, 0) / students.length)
-    : 0;
+  const { cohort, stats, next } = data;
+  const examDays = cohort.examDate ? Math.ceil((new Date(cohort.examDate).getTime() - Date.now()) / DAY) : null;
+  const sub = [
+    `${stats.students} student${stats.students === 1 ? '' : 's'}`,
+    cohort.examDate ? `exam on ${new Date(cohort.examDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}${examDays != null && examDays >= 0 ? ` (${examDays} days)` : ''}` : null,
+    cohort.startDate ? `started ${new Date(cohort.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : null,
+  ].filter(Boolean).join(' · ');
+  const tabs: [Tab, string, number][] = [['students', 'Students', data.students.length], ['classes', 'Live classes', data.classes.length], ['work', 'Assignments', data.assignments.length]];
 
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar
-        title={cohortName}
-        subtitle={`${students.length} students enrolled`}
-        backHref="/teacher/cohorts"
-        backLabel="Cohorts"
-      />
-      <div className="flex-1 p-6 space-y-6">
+    <div className="flex min-h-full flex-col">
+      <Topbar backHref="/teacher/cohorts" backLabel="Cohorts" title={cohort.name}
+        actions={<>
+          <Button size="sm" variant="secondary" onClick={() => setDialog('assignment')}>New assignment</Button>
+          <Button size="sm" onClick={() => setDialog('schedule')}>Schedule a class</Button>
+        </>} />
 
-        {/* Exam countdown banner */}
-        {examDate && examDaysLeft !== null && (
-          <div className={`rounded-2xl px-5 py-4 flex items-center gap-4 flex-wrap ${
-            examDaysLeft <= 0
-              ? 'bg-royal/10 border border-royal/20'
-              : examDaysLeft <= 14
-              ? 'bg-amber-50 border border-amber-200'
-              : 'bg-azure/5 border border-azure/20'
-          }`}>
-            <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${
-              examDaysLeft <= 0 ? 'bg-royal/20' : examDaysLeft <= 14 ? 'bg-amber-100' : 'bg-azure/10'
-            }`}>
-              <Icon name="clock" size={18} className={examDaysLeft <= 14 && examDaysLeft > 0 ? 'text-amber-600' : 'text-azure'} />
-            </div>
-            <div className="flex-1 min-w-0">
-              {sittingLabel && (
-                <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-0.5">{sittingLabel}</p>
-              )}
-              <p className="text-sm font-bold text-navy">
-                {examDaysLeft <= 0
-                  ? 'Exam date has passed'
-                  : examDaysLeft === 1
-                  ? 'Exam is tomorrow!'
-                  : `${examDaysLeft} days until exam`}
-              </p>
-              <p className="text-xs text-royal/50">
-                {new Date(examDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                {startDate && ` · Started ${new Date(startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`}
-              </p>
-            </div>
-            {examDaysLeft > 0 && (
-              <div className={`flex-shrink-0 rounded-xl px-4 py-2 text-center ${
-                examDaysLeft <= 14 ? 'bg-amber-500 text-white' : 'bg-azure text-white'
-              }`}>
-                <p className="text-2xl font-black leading-none">{examDaysLeft}</p>
-                <p className="text-[10px] font-semibold mt-0.5">days left</p>
-              </div>
-            )}
+      <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-extrabold tracking-[-0.01em] text-navy">{cohort.name}</h1>
+            <p className="mt-1 text-[13.5px] text-muted">{sub}</p>
           </div>
-        )}
+          {next && (
+            <div className="flex items-center gap-2.5 rounded-lg border border-azure bg-white px-3.5 py-2.5">
+              <div className="min-w-0">
+                <p className="text-xs text-muted">{next.live ? 'Live now' : `Next class · ${when(next.scheduledAt)}`}</p>
+                <p className="truncate text-sm font-semibold text-navy">{next.title}</p>
+              </div>
+              <button type="button" disabled={busy === next.id} onClick={() => start(next)} className={clsx(btn(true), 'h-[34px] px-3.5')}>{next.live ? 'Open class' : 'Start class'}</button>
+            </div>
+          )}
+        </div>
 
-        {/* Stat strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
           {[
-            { label: 'Students',      value: students.length,        icon: 'graduate'  as const },
-            { label: 'Sessions',      value: classes.length,         icon: 'live'      as const },
-            { label: 'Avg progress',  value: `${avgProgress}%`,      icon: 'courses'   as const },
-            { label: 'Assignments',   value: assignments.length, icon: 'assignments' as const },
+            { l: 'Students', v: String(stats.students), sub: stats.attention ? `${stats.attention} need${stats.attention === 1 ? 's' : ''} attention` : 'Everyone on track' },
+            { l: 'Avg progress', v: stats.avgProgress != null ? `${stats.avgProgress}%` : '—', sub: stats.courses ? `Across ${stats.courses} course${stats.courses === 1 ? '' : 's'}` : 'No courses linked yet' },
+            { l: 'Attendance', v: stats.attendancePct != null ? `${stats.attendancePct}%` : '—', sub: 'Last 4 weeks' },
+            { l: 'To grade', v: String(stats.toGrade), sub: stats.toGradeTitle ?? 'Nothing waiting' },
           ].map(s => (
-            <Card key={s.label} padding="sm">
-              <div className="flex items-center gap-3">
-                <IconBox className="h-8 w-8 rounded-lg flex-shrink-0"><Icon name={s.icon} size={14} /></IconBox>
-                <div>
-                  <p className="text-sm font-bold text-navy">{s.value}</p>
-                  <p className="text-[10px] text-royal/40 font-semibold">{s.label}</p>
-                </div>
-              </div>
-            </Card>
+            <div key={s.l} className="rounded-lg border border-line bg-white p-4">
+              <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{s.l}</dt>
+              <dd className="mt-1.5 text-[22px] font-extrabold text-navy">{s.v}</dd>
+              <dd className="mt-0.5 truncate text-[12.5px] text-muted">{s.sub}</dd>
+            </div>
           ))}
-        </div>
+        </dl>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-          {/* Students roster — 2/3 */}
-          <div className="lg:col-span-2 space-y-4">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">STUDENTS</p>
-              <h2 className="text-base font-bold text-navy">{students.length} enrolled</h2>
+        <section className="rounded-lg border border-line bg-white">
+          <div className="flex flex-wrap items-center gap-3 border-b border-line px-4">
+            <div role="tablist" aria-label="Cohort" className="flex flex-1 gap-1">
+              {tabs.map(([k, l, n]) => (
+                <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+                  className={clsx('-mb-px h-[46px] border-b-2 px-3 text-[13.5px] text-navy', tab === k ? 'border-azure-strong font-semibold' : 'border-transparent font-medium')}>
+                  {l} <span className="font-medium text-muted">{n}</span>
+                </button>
+              ))}
             </div>
+            {tab === 'students' && data.students.length > 0 && <span className="text-[13px] text-muted">Show: <strong className="text-navy">Needs attention first</strong></span>}
+          </div>
 
-            {students.length === 0 ? (
-              <Card padding="lg">
-                <div className="flex flex-col items-center py-8 text-center">
-                  <IconBox className="h-12 w-12 rounded-2xl mb-3"><Icon name="mentorship" size={20} /></IconBox>
-                  <p className="text-sm font-semibold text-navy">No students yet</p>
-                  <p className="text-xs text-royal/50 mt-1">Admin will enroll students into this cohort</p>
-                </div>
-              </Card>
-            ) : (
-              <Card padding="none">
-                {students.map((s, i, arr) => {
-                  const student = s.student ?? (s as unknown as Student);
-                  const pct = progress[student.id] ?? 0;
-                  return (
-                    <div key={student.id} className={`flex items-center gap-4 px-4 py-3.5${i < arr.length - 1 ? ' border-b border-cloud' : ''}`}>
-                      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-azure text-sm font-bold text-white">
-                        {(student.firstName ?? student.email ?? 'S')[0].toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-navy truncate">
-                          {student.firstName || student.lastName
-                            ? `${student.firstName ?? ''} ${student.lastName ?? ''}`.trim()
-                            : student.email}
-                        </p>
-                        {(student.firstName || student.lastName) && <p className="text-[10px] text-royal/40 truncate">{student.email}</p>}
-                        <div className="mt-1.5 flex items-center gap-2">
-                          <div className="flex-1 h-1.5 rounded-full bg-cloud overflow-hidden">
-                            <div className="h-full rounded-full bg-azure transition-all" style={{ width: `${pct}%` }} />
+          {tab === 'students' && (
+            !data.students.length ? <p className="px-[18px] py-8 text-center text-[13px] text-ink2">No students yet. Students join when they buy a package linked to this cohort, or an admin adds them.</p> : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] border-collapse text-[13.5px]">
+                  <thead><tr>
+                    {['Student', 'Course progress', 'Classes', 'Assignments', 'Last active', ''].map(h => (
+                      <th key={h} className="border-b border-line px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {data.students.map(s => (
+                      <tr key={s.id} onClick={() => setOpenStudent(s.id)} className="cursor-pointer hover:bg-subtle">
+                        <td className="border-b border-line px-4 py-[11px]">
+                          <div className="flex items-center gap-2.5">
+                            <span className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-[11.5px] font-bold text-navy">{initials(s.name)}</span>
+                            <span className="font-semibold text-navy">{s.name}</span>
                           </div>
-                          <span className="text-[10px] font-semibold text-azure flex-shrink-0">{pct}%</span>
-                        </div>
-                      </div>
-                      <Badge variant={pct === 100 ? 'active' : pct > 0 ? 'muted' : 'default'}>
-                        {pct === 100 ? 'Done' : pct > 0 ? 'In progress' : 'Not started'}
-                      </Badge>
-                    </div>
-                  );
-                })}
-              </Card>
-            )}
-          </div>
-
-          {/* Live classes — 1/3 */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">LIVE CLASSES</p>
-                <h2 className="text-base font-bold text-navy">Schedule</h2>
+                        </td>
+                        <td className="border-b border-line px-4 py-[11px]">
+                          <div className="flex items-center gap-2">
+                            <span className="h-1.5 w-[90px] overflow-hidden rounded-[3px] bg-subtle"><span className="block h-1.5 bg-azure" style={{ width: `${s.progress}%` }} /></span>
+                            <span className="font-semibold text-navy">{s.progress}%</span>
+                          </div>
+                        </td>
+                        <td className="border-b border-line px-4 py-[11px] text-navy">{s.held ? `${s.attended} of ${s.held}` : '—'}</td>
+                        <td className="border-b border-line px-4 py-[11px] text-navy">{s.assignments ? `${s.submitted} of ${s.assignments}` : '—'}</td>
+                        <td className="border-b border-line px-4 py-[11px] text-muted">{ago(s.lastActive)}</td>
+                        <td className="border-b border-line px-4 py-[11px] text-right">
+                          {s.flag && <span className="inline-flex h-6 items-center whitespace-nowrap rounded bg-accent-soft px-2 text-xs font-semibold text-navy">{s.flag}</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <Button size="sm" onClick={() => setShowSchedule(v => !v)}>
-                <Icon name="add" size={13} /> New
-              </Button>
-            </div>
-
-            {showSchedule && (
-              <Card padding="md">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-azure mb-3">SCHEDULE CLASS</p>
-                <form onSubmit={scheduleClass} className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-navy">Class title</label>
-                    <input value={newClass.title} onChange={e => setNewClass(f => ({ ...f, title: e.target.value }))} required
-                      placeholder="e.g. Algebra Week 3"
-                      className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure focus:ring-2 focus:ring-azure/15 placeholder:text-royal/40" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-navy">Date & time</label>
-                    <input type="datetime-local" value={newClass.scheduledAt}
-                      onChange={e => setNewClass(f => ({ ...f, scheduledAt: e.target.value }))} required
-                      className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure focus:ring-2 focus:ring-azure/15" />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button type="submit" fullWidth loading={scheduling} size="sm">Schedule</Button>
-                    <Button type="button" variant="secondary" size="sm" onClick={() => setShowSchedule(false)}>Cancel</Button>
-                  </div>
-                </form>
-              </Card>
-            )}
-
-            {/* Live now */}
-            {live.map(cls => (
-              <Card key={cls.id} padding="sm" className="border-azure/30 bg-azure/5">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-azure">
-                    <Icon name="live" size={14} className="text-white" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="active">Live now</Badge>
-                    </div>
-                    <p className="text-xs font-semibold text-navy truncate">{cls.title}</p>
-                    <p className="text-[10px] text-royal/50">
-                      {new Date(cls.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-3">
-                  <Link href={`/teacher/live/${cls.id}`} target="_blank"
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-azure py-2 text-xs font-semibold text-white hover:bg-royal transition">
-                    <Icon name="live" size={12} /> Rejoin
-                  </Link>
-                  <Button size="sm" loading={ending === cls.id}
-                    onClick={() => endClass(cls.id)}
-                    className="flex-1 bg-red-500 border-red-500 hover:bg-red-600 hover:border-red-600">
-                    <Icon name="close" size={12} /> End
-                  </Button>
-                </div>
-              </Card>
-            ))}
-
-            {/* Upcoming */}
-            {upcoming.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-[10px] font-semibold text-royal/40 uppercase tracking-widest">UPCOMING</p>
-                {upcoming.map(cls => (
-                  <Card key={cls.id} padding="sm">
-                    <div className="flex items-start gap-3">
-                      <IconBox><Icon name="live" size={14} /></IconBox>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-navy truncate">{cls.title}</p>
-                        <p className="text-[10px] text-royal/50">
-                          {new Date(cls.scheduledAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                          {' · '}
-                          {new Date(cls.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                      <Button size="sm" loading={starting === cls.id} onClick={() => startClass(cls.id)}>
-                        Start
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {/* Past */}
-            {past.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-[10px] font-semibold text-royal/30 uppercase tracking-widest">PAST</p>
-                {past.map(cls => (
-                  <Card key={cls.id} padding="sm">
-                    <div className="flex items-center gap-3">
-                      <IconBox><Icon name="live" size={14} /></IconBox>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-navy truncate">{cls.title}</p>
-                        <p className="text-[10px] text-royal/50">
-                          {new Date(cls.scheduledAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                        </p>
-                      </div>
-                      <Badge variant="default">Done</Badge>
-                    </div>
-                    <button onClick={() => toggleAttendance(cls.id)}
-                      className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg border border-cloud py-1.5 text-[10px] font-semibold text-royal/50 hover:text-azure hover:border-azure transition">
-                      {loadingAtt === cls.id
-                        ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-azure border-t-transparent" />
-                        : <Icon name="graduate" size={11} />}
-                      {showAtt === cls.id ? 'Hide attendance' : 'View attendance'}
-                    </button>
-                    {showAtt === cls.id && (
-                      <div className="mt-2 rounded-xl border border-cloud bg-cloud/20 divide-y divide-cloud">
-                        {(attendance[cls.id] ?? []).length === 0 ? (
-                          <p className="px-3 py-2 text-[10px] text-royal/40">No attendance recorded</p>
-                        ) : (
-                          (attendance[cls.id] ?? []).map((att) => {
-                            const name = att.student?.firstName || att.student?.lastName
-                              ? `${att.student.firstName ?? ''} ${att.student.lastName ?? ''}`.trim()
-                              : att.student?.email ?? 'Unknown';
-                            const mins = att.durationSecs ? Math.round(att.durationSecs / 60) : null;
-                            return (
-                              <div key={att.id} className="flex items-center justify-between px-3 py-1.5">
-                                <p className="text-[10px] font-semibold text-navy truncate">{name}</p>
-                                <p className="text-[10px] text-royal/40 flex-shrink-0 ml-2">
-                                  {mins != null ? `${mins}m` : '—'}
-                                </p>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    )}
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {classes.length === 0 && !showSchedule && (
-              <Card padding="md">
-                <div className="flex flex-col items-center py-4 text-center">
-                  <IconBox className="h-10 w-10 rounded-xl mb-2"><Icon name="live" size={16} /></IconBox>
-                  <p className="text-xs font-semibold text-navy">No classes scheduled</p>
-                  <p className="text-[10px] text-royal/40 mt-0.5">Click "New" to add a session</p>
-                </div>
-              </Card>
-            )}
-          </div>
-        </div>
-
-        {/* ── Assignments ──────────────────────────────────── */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">ASSIGNMENTS</p>
-              <h2 className="text-base font-bold text-navy">{assignments.length} assignment{assignments.length !== 1 ? 's' : ''}</h2>
-            </div>
-            <Button size="sm" onClick={() => setShowNewAsgn(v => !v)}>
-              <Icon name="add" size={13} /> New
-            </Button>
-          </div>
-
-          {/* New assignment form */}
-          {showNewAsgn && (
-            <Card padding="md">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-azure mb-3">NEW ASSIGNMENT</p>
-              <form onSubmit={createAssignment} className="space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-navy">Title *</label>
-                    <input value={asgnForm.title} onChange={e => setAsgnForm(f => ({ ...f, title: e.target.value }))} required
-                      placeholder="e.g. Essay on Climate Change"
-                      className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure focus:ring-2 focus:ring-azure/15 placeholder:text-royal/40" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-navy">Max points *</label>
-                    <input type="number" min="1" value={asgnForm.maxPoints}
-                      onChange={e => setAsgnForm(f => ({ ...f, maxPoints: e.target.value }))} required
-                      className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure focus:ring-2 focus:ring-azure/15" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-navy">Due date *</label>
-                    <input type="datetime-local" value={asgnForm.dueDate}
-                      onChange={e => setAsgnForm(f => ({ ...f, dueDate: e.target.value }))} required
-                      className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure focus:ring-2 focus:ring-azure/15" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-navy">Description</label>
-                    <input value={asgnForm.description}
-                      onChange={e => setAsgnForm(f => ({ ...f, description: e.target.value }))}
-                      placeholder="What students should submit…"
-                      className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure focus:ring-2 focus:ring-azure/15 placeholder:text-royal/40" />
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button type="submit" size="sm" loading={creatingAsgn}>Create</Button>
-                  <Button type="button" variant="secondary" size="sm" onClick={() => setShowNewAsgn(false)}>Cancel</Button>
-                </div>
-              </form>
-            </Card>
+            )
           )}
 
-          {/* Assignment cards */}
-          {assignments.length === 0 && !showNewAsgn ? (
-            <Card padding="md">
-              <div className="flex flex-col items-center py-4 text-center">
-                <IconBox className="h-10 w-10 rounded-xl mb-2"><Icon name="assignments" size={16} /></IconBox>
-                <p className="text-xs font-semibold text-navy">No assignments yet</p>
-                <p className="text-[10px] text-royal/40 mt-0.5">Click "New" to create an assignment for this cohort</p>
-              </div>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {assignments.map((asgn) => {
-                const isPast = new Date() > new Date(asgn.dueDate);
+          {tab === 'classes' && (
+            <div>
+              {!data.classes.length && <p className="px-[18px] py-8 text-center text-[13px] text-ink2">No classes yet. Use “Schedule a class” to add one.</p>}
+              {[...data.classes.filter(c => !c.ended), ...data.classes.filter(c => c.ended).reverse()].map(c => (
+                <div key={c.id} className="flex flex-wrap items-center gap-3.5 border-t border-line px-[18px] py-[13px] first:border-t-0">
+                  <div className={clsx('w-12 flex-shrink-0 rounded-md py-1.5 text-center', c.ended ? 'bg-subtle' : 'bg-accent-soft')}>
+                    <p className="text-[11px] font-bold uppercase text-azure-strong">{new Date(c.scheduledAt).toLocaleDateString('en-GB', { month: 'short' })}</p>
+                    <p className="text-lg font-extrabold text-navy">{String(new Date(c.scheduledAt).getDate()).padStart(2, '0')}</p>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-navy">{c.title}</p>
+                    <p className="mt-0.5 text-[12.5px] text-muted">
+                      {c.ended
+                        ? `${c.attendedCount} of ${c.rosterSize} attended · ${c.recordingUrl ? 'recording added' : 'no recording yet'}`
+                        : `${when(c.scheduledAt)} · ${c.durationMins} min${c.live ? ' · live now' : ''}`}
+                    </p>
+                  </div>
+                  {c.live ? <>
+                    <button type="button" onClick={() => start(c)} className={btn(true)}>Open class</button>
+                    <button type="button" disabled={busy === c.id} onClick={() => end(c)} className={btn(false)}>End class</button>
+                  </> : !c.ended ? <>
+                    {new Date(c.scheduledAt).getTime() - Date.now() < DAY && <button type="button" disabled={busy === c.id} onClick={() => start(c)} className={btn(true)}>Start class</button>}
+                    <button type="button" onClick={() => setEditClass(c)} className={btn(false)}>Edit</button>
+                  </> : <>
+                    <button type="button" onClick={() => setAttendanceFor(c)} className={btn(false)}>Attendance</button>
+                    <button type="button" onClick={() => setEditClass(c)} className={btn(false)}>{c.recordingUrl ? 'Change recording' : 'Add recording'}</button>
+                  </>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tab === 'work' && (
+            <div>
+              {!data.assignments.length && <p className="px-[18px] py-8 text-center text-[13px] text-ink2">No assignments yet. Use “New assignment” to set one.</p>}
+              {data.assignments.map(a => {
+                const toGrade = a.submitted - a.graded;
+                const closed = new Date(a.dueDate).getTime() < Date.now();
+                const pct = a.total ? Math.round(((toGrade ? a.submitted : a.graded) / a.total) * 100) : 0;
                 return (
-                  <Card key={asgn.id} padding="sm"
-                    className={`cursor-pointer hover:border-azure/40 transition ${viewAsgn === asgn.id ? 'border-azure bg-azure/5' : ''}`}
-                    onClick={() => viewAsgn === asgn.id ? (setViewAsgn(null), setAsgnSubs(null)) : loadAssignmentSubmissions(asgn.id)}>
-                    <div className="flex items-start gap-3">
-                      <IconBox className="flex-shrink-0"><Icon name="assignments" size={14} /></IconBox>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-navy truncate">{asgn.title}</p>
-                        <p className="text-[10px] text-royal/50 mt-0.5">
-                          Due {new Date(asgn.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </p>
-                        <p className="text-[10px] text-royal/40">{asgn.maxPoints} pts</p>
-                      </div>
-                      <Badge variant={isPast ? 'muted' : 'active'}>{isPast ? 'Closed' : 'Open'}</Badge>
+                  <div key={a.id} className="flex flex-wrap items-center gap-3.5 border-t border-line px-[18px] py-[13px] first:border-t-0">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-navy">{a.title}</p>
+                      <p className="mt-0.5 text-[12.5px] text-muted">{closed ? 'Closed' : 'Due'} {new Date(a.dueDate).toLocaleDateString('en-GB', { weekday: closed ? undefined : 'long', day: 'numeric', month: 'long' })} · {a.maxPoints} marks</p>
                     </div>
-                  </Card>
+                    <div className="w-[150px]">
+                      <p className="mb-1 text-[12.5px] text-ink2">{toGrade ? `${a.submitted} of ${a.total} submitted` : `${a.graded} of ${a.total} graded`}</p>
+                      <span className="block h-1.5 overflow-hidden rounded-[3px] bg-subtle"><span className="block h-1.5 bg-azure" style={{ width: `${pct}%` }} /></span>
+                    </div>
+                    <button type="button" onClick={() => setGradeFor(a)} className={btn(toGrade > 0)}>{toGrade ? `Grade ${toGrade}` : 'View'}</button>
+                  </div>
                 );
               })}
             </div>
           )}
+        </section>
+      </div>
 
-          {/* Submissions panel */}
-          {viewAsgn && asgnSubs && (
-            <Card padding="md">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-azure">SUBMISSIONS</p>
-                  <p className="text-sm font-bold text-navy">{asgnSubs.assignment?.title}</p>
-                  <p className="text-[10px] text-royal/50">Max: {asgnSubs.assignment?.maxPoints} pts</p>
-                </div>
-                <button onClick={() => { setViewAsgn(null); setAsgnSubs(null); }}
-                  className="rounded-lg p-1.5 text-royal/30 hover:text-navy transition">
-                  <Icon name="close" size={14} />
-                </button>
-              </div>
-              <div className="divide-y divide-cloud">
-                {(asgnSubs.students ?? []).map((row) => {
-                  const sub = row.submission;
-                  const gradeKey = sub?.id ?? `missing-${row.student.id}`;
-                  const grade = asgnGrades[gradeKey] ?? {
-                    score: sub?.grade != null ? String(sub.grade) : '',
-                    feedback: sub?.feedback ?? '',
-                  };
-                  return (
-                    <div key={row.student.id} className="py-3 flex items-start gap-3">
-                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-azure text-xs font-bold text-white">
-                        {(row.student.firstName ?? row.student.email ?? 'S')[0].toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-navy">
-                          {row.student.firstName || row.student.lastName
-                            ? `${row.student.firstName ?? ''} ${row.student.lastName ?? ''}`.trim()
-                            : row.student.email}
-                        </p>
-                        {!sub ? (
-                          <p className="text-[10px] text-royal/40 mt-0.5">Not submitted</p>
-                        ) : sub.status === 'GRADED' ? (
-                          <div className="mt-0.5">
-                            <p className="text-[10px] text-green-600 font-semibold">
-                              Graded: {sub.grade}/{asgnSubs.assignment?.maxPoints}
-                            </p>
-                            {sub.feedback && <p className="text-[10px] text-royal/50 mt-0.5 italic">{sub.feedback}</p>}
-                          </div>
-                        ) : (
-                          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-                            <input type="number" min="0" max={asgnSubs.assignment?.maxPoints} placeholder="Score"
-                              value={grade.score}
-                              onChange={e => setAsgnGrades(g => ({ ...g, [sub.id]: { ...grade, score: e.target.value } }))}
-                              className="w-20 rounded-lg border border-cloud px-2 py-1 text-xs text-navy outline-none focus:border-azure" />
-                            <input placeholder="Feedback (optional)"
-                              value={grade.feedback}
-                              onChange={e => setAsgnGrades(g => ({ ...g, [sub.id]: { ...grade, feedback: e.target.value } }))}
-                              className="flex-1 min-w-[120px] rounded-lg border border-cloud px-2 py-1 text-xs text-navy outline-none focus:border-azure placeholder:text-royal/30" />
-                            <Button size="sm" loading={gradingAsgn === sub.id}
-                              onClick={() => gradeAsgnSubmission(sub.id)}>Grade</Button>
-                          </div>
-                        )}
-                        {sub?.fileUrl && (
-                          <a href={sub.fileUrl} target="_blank" rel="noreferrer"
-                            className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-azure hover:underline">
-                            <Icon name="file" size={10} /> View submission
-                          </a>
-                        )}
-                      </div>
-                      <Badge variant={!sub ? 'default' : sub.status === 'GRADED' ? 'active' : 'muted'}>
-                        {!sub ? 'Missing' : sub.status === 'GRADED' ? 'Graded' : 'Pending'}
-                      </Badge>
+      <StudentDrawer cohortId={id} studentId={openStudent} onClose={() => setOpenStudent(null)} />
+      <ScheduleDialog open={dialog === 'schedule'} cohortId={id} onClose={() => setDialog(null)} onDone={load} />
+      <AssignmentDialog open={dialog === 'assignment'} cohortId={id} onClose={() => setDialog(null)} onDone={load} />
+      <EditClassDialog cls={editClass} onClose={() => setEditClass(null)} onDone={load} />
+      <AttendanceDrawer cls={attendanceFor} onClose={() => setAttendanceFor(null)} />
+      <GradeDrawer assignment={gradeFor} onClose={() => setGradeFor(null)} onChanged={load} />
+    </div>
+  );
+}
+
+/* ─── Student drawer ─────────────────────────────────────────────────────── */
+
+function StudentDrawer({ cohortId, studentId, onClose }: { cohortId: string; studentId: string | null; onClose: () => void }) {
+  const [d, setD] = useState<StudentDetail | null>(null);
+  useEffect(() => {
+    setD(null);
+    if (studentId) api.get(`/portals/teacher/cohorts/${cohortId}/students/${studentId}`).then(r => setD(r.data)).catch(() => notify.error('Could not load this student'));
+  }, [cohortId, studentId]);
+  const stateText = (a: StudentDetail['assignments'][number]) => a.state === 'graded' ? `${a.grade}/${a.maxPoints}` : a.state === 'waiting' ? 'Waiting for grade' : a.state === 'overdue' ? 'Not submitted' : 'Not due yet';
+
+  return (
+    <Drawer open={!!studentId} onOpenChange={o => { if (!o) onClose(); }}>
+      {studentId && (
+        <DrawerContent title={d?.student.name ?? 'Student'}
+          description={d ? `In this cohort since ${new Date(d.student.joinedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : undefined}
+          action={d && <Link href={`/teacher/messages?to=${d.student.id}`} className={btn(false)}>Message</Link>}>
+          {!d ? <div className="h-64 rounded-md bg-subtle animate-pulse" /> : <>
+            {d.flag && d.flagReason && (
+              <p className="rounded-md border border-azure bg-accent-soft px-3.5 py-3 text-[13px] text-ink2">
+                <strong className="text-navy">{d.flag}.</strong> {d.flagReason.charAt(0).toUpperCase() + d.flagReason.slice(1)}.
+              </p>
+            )}
+            <InfoGrid items={[
+              { label: 'Progress', value: `${d.progress}%` },
+              { label: 'Classes', value: d.held ? `${d.attended} of ${d.held}` : '—' },
+              { label: 'Avg grade', value: d.avgGradePct != null ? `${d.avgGradePct}%` : '—' },
+            ]} />
+            <DrawerSection title="Courses">
+              {!d.courses.length ? <p className="text-[13px] text-ink2">No courses are linked to this cohort’s packages.</p> : (
+                <div className="space-y-3">
+                  {d.courses.map(c => (
+                    <div key={c.id}>
+                      <div className="flex justify-between gap-3 text-[13px]"><span className="truncate text-ink2">{c.title}</span><strong className="text-navy">{c.pct}%</strong></div>
+                      <span className="mt-1.5 block h-1.5 overflow-hidden rounded-[3px] bg-subtle"><span className="block h-1.5 bg-azure" style={{ width: `${c.pct}%` }} /></span>
                     </div>
-                  );
-                })}
-              </div>
-            </Card>
+                  ))}
+                </div>
+              )}
+            </DrawerSection>
+            <DrawerSection title="Recent classes">
+              {!d.recentClasses.length ? <p className="text-[13px] text-ink2">No classes held since they joined.</p> : (
+                <div className="space-y-2">
+                  {d.recentClasses.map(c => (
+                    <p key={c.id} className="flex justify-between gap-3 rounded-md border border-line px-3 py-2 text-[13px]">
+                      <span className="truncate text-navy">{c.title} · {new Date(c.scheduledAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                      <strong className="font-semibold text-navy">{c.attended ? 'Attended' : 'Missed'}</strong>
+                    </p>
+                  ))}
+                </div>
+              )}
+            </DrawerSection>
+            <DrawerSection title="Assignments">
+              {!d.assignments.length ? <p className="text-[13px] text-ink2">No assignments yet.</p> : (
+                <div className="space-y-2">
+                  {d.assignments.map(a => (
+                    <p key={a.id} className="flex justify-between gap-3 rounded-md border border-line px-3 py-2 text-[13px]">
+                      <span className="truncate text-navy">{a.title}</span><strong className="font-semibold text-navy">{stateText(a)}</strong>
+                    </p>
+                  ))}
+                </div>
+              )}
+            </DrawerSection>
+          </>}
+        </DrawerContent>
+      )}
+    </Drawer>
+  );
+}
+
+/* ─── Dialogs ─────────────────────────────────────────────────────────────── */
+
+function ScheduleDialog({ open, cohortId, onClose, onDone }: { open: boolean; cohortId: string; onClose: () => void; onDone: () => Promise<void> }) {
+  const [title, setTitle] = useState('');
+  const [at, setAt] = useState('');
+  const [mins, setMins] = useState('90');
+  const [desc, setDesc] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open) { setTitle(''); setDesc(''); setMins('90'); const d = new Date(Date.now() + DAY); d.setHours(17, 0, 0, 0); setAt(localInput(d)); } }, [open]);
+  async function save() {
+    setBusy(true);
+    try {
+      await api.post(`/live/cohorts/${cohortId}/classes`, { title: title.trim(), scheduledAt: new Date(at).toISOString(), durationMinutes: Number(mins), description: desc.trim() || undefined });
+      notify.success('Class scheduled', { description: 'Students see it on their cohort page.' });
+      onClose(); await onDone();
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not schedule the class'); }
+    finally { setBusy(false); }
+  }
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      {open && (
+        <DialogContent title="Schedule a class" description="Students can join from 10 minutes before the start.">
+          <div className="space-y-3">
+            <label className="flex flex-col gap-1.5"><span className={label}>Topic</span>
+              <input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="For example: Quadratic equations" className="input-base" /></label>
+            <div className="flex gap-2">
+              <label className="flex flex-1 flex-col gap-1.5"><span className={label}>Starts</span>
+                <input type="datetime-local" value={at} onChange={e => setAt(e.target.value)} className="input-base" /></label>
+              <label className="flex w-32 flex-col gap-1.5"><span className={label}>Length</span>
+                <select value={mins} onChange={e => setMins(e.target.value)} className="input-base">{[45, 60, 90, 120].map(m => <option key={m} value={m}>{m} min</option>)}</select></label>
+            </div>
+            <label className="flex flex-col gap-1.5"><span className={label}>What you’ll cover (optional)</span>
+              <textarea rows={3} value={desc} onChange={e => setDesc(e.target.value)} className="w-full resize-none rounded-md border border-line px-3 py-2 text-sm text-navy outline-none focus:border-azure" /></label>
+          </div>
+          <DialogFooter>
+            <Button size="sm" variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button size="sm" loading={busy} disabled={!title.trim() || !at} onClick={save}>Schedule</Button>
+          </DialogFooter>
+        </DialogContent>
+      )}
+    </Dialog>
+  );
+}
+
+function AssignmentDialog({ open, cohortId, onClose, onDone }: { open: boolean; cohortId: string; onClose: () => void; onDone: () => Promise<void> }) {
+  const [f, setF] = useState({ title: '', description: '', maxPoints: '20', dueDate: '' });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open) { const d = new Date(Date.now() + 7 * DAY); d.setHours(23, 59, 0, 0); setF({ title: '', description: '', maxPoints: '20', dueDate: localInput(d) }); } }, [open]);
+  async function save() {
+    setBusy(true);
+    try {
+      await api.post(`/education/cohorts/${cohortId}/assignments`, { title: f.title.trim(), description: f.description.trim(), maxPoints: parseInt(f.maxPoints), dueDate: new Date(f.dueDate).toISOString() });
+      notify.success('Assignment set');
+      onClose(); await onDone();
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not create the assignment'); }
+    finally { setBusy(false); }
+  }
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      {open && (
+        <DialogContent title="New assignment" description="Every student in the cohort sees it on their cohort page.">
+          <div className="space-y-3">
+            <label className="flex flex-col gap-1.5"><span className={label}>Title</span>
+              <input autoFocus value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="For example: Quadratics worksheet" className="input-base" /></label>
+            <label className="flex flex-col gap-1.5"><span className={label}>Instructions</span>
+              <textarea rows={4} value={f.description} onChange={e => setF({ ...f, description: e.target.value })} className="w-full resize-none rounded-md border border-line px-3 py-2 text-sm text-navy outline-none focus:border-azure" /></label>
+            <div className="flex gap-2">
+              <label className="flex flex-1 flex-col gap-1.5"><span className={label}>Due</span>
+                <input type="datetime-local" value={f.dueDate} onChange={e => setF({ ...f, dueDate: e.target.value })} className="input-base" /></label>
+              <label className="flex w-28 flex-col gap-1.5"><span className={label}>Marks</span>
+                <input inputMode="numeric" value={f.maxPoints} onChange={e => setF({ ...f, maxPoints: e.target.value })} className="input-base" /></label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button size="sm" variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button size="sm" loading={busy} disabled={!f.title.trim() || !f.description.trim() || !f.dueDate || !(parseInt(f.maxPoints) > 0)} onClick={save}>Set assignment</Button>
+          </DialogFooter>
+        </DialogContent>
+      )}
+    </Dialog>
+  );
+}
+
+function EditClassDialog({ cls, onClose, onDone }: { cls: ClassRow | null; onClose: () => void; onDone: () => Promise<void> }) {
+  const [title, setTitle] = useState('');
+  const [at, setAt] = useState('');
+  const [mins, setMins] = useState('90');
+  const [rec, setRec] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => { if (cls) { setTitle(cls.title); setAt(localInput(new Date(cls.scheduledAt))); setMins(String(cls.durationMins)); setRec(cls.recordingUrl ?? ''); } }, [cls]);
+  if (!cls) return <Dialog open={false} onOpenChange={() => {}}>{null}</Dialog>;
+  const scheduled = cls.status === 'SCHEDULED' && !cls.ended;
+  async function save() {
+    setBusy('save');
+    try {
+      await api.patch(`/live/classes/${cls!.id}`, scheduled
+        ? { title: title.trim(), scheduledAt: new Date(at).toISOString(), durationMins: Number(mins) }
+        : { title: title.trim(), recordingUrl: rec.trim() || null });
+      notify.success('Class updated');
+      onClose(); await onDone();
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not update the class'); }
+    finally { setBusy(null); }
+  }
+  async function cancel() {
+    setBusy('cancel');
+    try { await api.delete(`/live/classes/${cls!.id}`); notify.success('Class cancelled'); onClose(); await onDone(); }
+    catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not cancel the class'); }
+    finally { setBusy(null); }
+  }
+  return (
+    <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent title={scheduled ? 'Edit class' : 'Class recording'} description={scheduled ? 'Students see the new time straight away.' : 'Paste a link to the recording so students who missed it can watch.'}>
+        <div className="space-y-3">
+          <label className="flex flex-col gap-1.5"><span className={label}>Topic</span>
+            <input value={title} onChange={e => setTitle(e.target.value)} className="input-base" /></label>
+          {scheduled ? (
+            <div className="flex gap-2">
+              <label className="flex flex-1 flex-col gap-1.5"><span className={label}>Starts</span>
+                <input type="datetime-local" value={at} onChange={e => setAt(e.target.value)} className="input-base" /></label>
+              <label className="flex w-32 flex-col gap-1.5"><span className={label}>Length</span>
+                <select value={mins} onChange={e => setMins(e.target.value)} className="input-base">{[45, 60, 90, 120].map(m => <option key={m} value={m}>{m} min</option>)}{![45, 60, 90, 120].includes(Number(mins)) && <option value={mins}>{mins} min</option>}</select></label>
+            </div>
+          ) : (
+            <label className="flex flex-col gap-1.5"><span className={label}>Recording link</span>
+              <input value={rec} onChange={e => setRec(e.target.value)} placeholder="https://" className="input-base" /></label>
           )}
         </div>
+        <DialogFooter>
+          {scheduled && <Button size="sm" variant="ghost" loading={busy === 'cancel'} onClick={cancel} className="mr-auto">Cancel class</Button>}
+          <Button size="sm" variant="secondary" onClick={onClose}>Close</Button>
+          <Button size="sm" loading={busy === 'save'} disabled={!title.trim()} onClick={save}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-      </div>
-    </div>
+function AttendanceDrawer({ cls, onClose }: { cls: ClassRow | null; onClose: () => void }) {
+  const [rows, setRows] = useState<{ id: string; joinedAt?: string; leftAt?: string | null; student?: { firstName?: string | null; lastName?: string | null; name?: string | null; email?: string } }[] | null>(null);
+  useEffect(() => { setRows(null); if (cls) api.get(`/live/classes/${cls.id}/attendance`).then(r => setRows(r.data ?? [])).catch(() => setRows([])); }, [cls]);
+  return (
+    <Drawer open={!!cls} onOpenChange={o => { if (!o) onClose(); }}>
+      {cls && (
+        <DrawerContent title={cls.title} description={`${short(cls.scheduledAt)} · ${cls.attendedCount} of ${cls.rosterSize} attended`}>
+          {!rows ? <div className="h-40 rounded-md bg-subtle animate-pulse" /> : !rows.length ? <p className="text-[13px] text-ink2">Nobody joined this class.</p> : (
+            <div className="overflow-hidden rounded-md border border-line">
+              {rows.map(r => {
+                const n = r.student ? (r.student.name || [r.student.firstName, r.student.lastName].filter(Boolean).join(' ') || r.student.email?.split('@')[0] || 'Student') : 'Student';
+                const mins = r.joinedAt && r.leftAt ? Math.round((new Date(r.leftAt).getTime() - new Date(r.joinedAt).getTime()) / 60_000) : null;
+                return (
+                  <p key={r.id} className="flex justify-between gap-3 border-b border-line px-3 py-2 text-[13px] last:border-b-0">
+                    <span className="font-semibold text-navy">{n}</span>
+                    <span className="text-muted">{r.joinedAt ? `Joined ${time(r.joinedAt)}` : ''}{mins != null ? ` · ${mins} min` : ''}</span>
+                  </p>
+                );
+              })}
+            </div>
+          )}
+        </DrawerContent>
+      )}
+    </Drawer>
+  );
+}
+
+function GradeDrawer({ assignment, onClose, onChanged }: { assignment: AssignmentRow | null; onClose: () => void; onChanged: () => Promise<void> }) {
+  const [rows, setRows] = useState<SubRow[] | null>(null);
+  const [grades, setGrades] = useState<Record<string, { score: string; feedback: string }>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  async function load(a: AssignmentRow) {
+    const r = await api.get(`/education/assignments/${a.id}/submissions`);
+    const list: SubRow[] = r.data?.students ?? [];
+    // Submitted and ungraded first
+    list.sort((x, y) => Number(!!y.submission && y.submission.grade == null) - Number(!!x.submission && x.submission.grade == null) || Number(!!y.submission) - Number(!!x.submission));
+    setRows(list);
+  }
+  useEffect(() => { setRows(null); setGrades({}); if (assignment) load(assignment).catch(() => setRows([])); }, [assignment]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function grade(subId: string) {
+    const g = grades[subId];
+    if (!g?.score) { notify.error('Enter a score first'); return; }
+    setBusy(subId);
+    try {
+      await api.patch(`/education/submissions/${subId}/grade`, { grade: parseFloat(g.score), feedback: g.feedback });
+      notify.success('Graded');
+      await load(assignment!); await onChanged();
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not save the grade'); }
+    finally { setBusy(null); }
+  }
+  return (
+    <Drawer open={!!assignment} onOpenChange={o => { if (!o) onClose(); }}>
+      {assignment && (
+        <DrawerContent title={assignment.title} description={`${assignment.submitted} of ${assignment.total} submitted · ${assignment.graded} graded · ${assignment.maxPoints} marks`}>
+          {!rows ? <div className="h-40 rounded-md bg-subtle animate-pulse" /> : rows.map(r => {
+            const s = r.submission;
+            return (
+              <div key={r.student.id} className="space-y-2 rounded-md border border-line p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[13.5px] font-semibold text-navy">{personName(r.student)}</p>
+                  <span className="text-[12.5px] text-muted">{!s ? 'Not submitted' : s.grade != null ? `Graded · ${s.grade}/${assignment.maxPoints}` : 'Waiting for your grade'}</span>
+                </div>
+                {s?.fileUrl && <a href={s.fileUrl} target="_blank" rel="noopener noreferrer" className="text-[13px] font-semibold text-azure-strong hover:underline">Open their work</a>}
+                {s && s.grade == null && (
+                  <div className="flex flex-wrap items-start gap-2">
+                    <input inputMode="decimal" aria-label="Score" placeholder={`Score / ${assignment.maxPoints}`} value={grades[s.id]?.score ?? ''}
+                      onChange={e => setGrades(g => ({ ...g, [s.id]: { score: e.target.value, feedback: g[s.id]?.feedback ?? '' } }))} className="input-base h-9 w-28" />
+                    <input aria-label="Feedback" placeholder="Feedback for the student" value={grades[s.id]?.feedback ?? ''}
+                      onChange={e => setGrades(g => ({ ...g, [s.id]: { score: g[s.id]?.score ?? '', feedback: e.target.value } }))} className="input-base h-9 min-w-[160px] flex-1" />
+                    <Button size="sm" loading={busy === s.id} onClick={() => grade(s.id)}>Save</Button>
+                  </div>
+                )}
+                {s?.feedback && s.grade != null && <p className="text-[12.5px] text-ink2">“{s.feedback}”</p>}
+              </div>
+            );
+          })}
+        </DrawerContent>
+      )}
+    </Drawer>
   );
 }
