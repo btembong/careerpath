@@ -1,588 +1,374 @@
 'use client';
-import { notify } from '@/lib/notify';
-import { useEffect, useState, useMemo } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { clsx } from 'clsx';
+import { minorToMajor } from '@cpa/shared';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card, IconBox } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
-import { Select } from '@/components/ui/Select';
+import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent, DrawerSection, InfoGrid } from '@/components/ui/Dialog';
+import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-interface Teacher { id: string; email: string; name: string | null; }
-interface Cohort {
-  id: string; name: string; teacherId: string;
-  sittingLabel: string | null; examDate: string | null; startDate: string | null;
-  teacher: Teacher | null;
-  linkedPackage: { id: string; name: string } | null;
-  _count: { students: number; liveClasses: number };
+type Status = 'running' | 'upcoming' | 'ended';
+interface Row {
+  id: string; name: string; sittingLabel: string | null; examDate: string | null; startDate: string | null;
+  teacher: { id: string; name: string }; students: number;
+  nextClass: { title: string; scheduledAt: string; status: string } | null;
+  packages: { id: string; name: string; isPublished: boolean }[]; status: Status;
 }
-interface Roster {
-  id: string; name: string; teacher: Teacher | null;
-  students: { student: { id: string; email: string; name: string | null } }[];
-  liveClasses: { id: string; title: string; scheduledAt: string; status: string }[];
+interface ListData {
+  stats: { running: number; upcoming: number; students: number; joinedThisWeek: number; classesThisWeek: number; attendanceLastWeekPct: number | null; withoutPackage: number };
+  cohorts: Row[];
 }
+interface Detail {
+  cohort: { id: string; name: string; sittingLabel: string | null; examDate: string | null; startDate: string | null; status: Status };
+  teacher: { id: string; name: string; email: string };
+  stats: { attendancePct: number | null; avgProgress: number | null; held: number; ahead: number };
+  revenue: { currency: string; amount: number }[];
+  members: { id: string; name: string; email: string; source: string; addedAt: string }[];
+  packages: { id: string; name: string; priceAmount: number; currency: string; validityDays: number | null; isPublished: boolean; sold: number }[];
+  upcoming: { id: string; title: string; scheduledAt: string; durationMins: number }[];
+}
+interface Teacher { id: string; email: string; name: string | null; firstName?: string | null; lastName?: string | null; approvalStatus?: string }
+
+const DAY = 86_400_000;
+const STATUS: Record<Status, string> = { running: 'Running', upcoming: 'Starting soon', ended: 'Exam passed' };
+const SOURCE: Record<string, string> = { PACKAGE: 'Bought the package', ORG: 'School licence', ADMIN: 'Added by admin', TEACHER: 'Added by teacher' };
+const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+const teacherName = (t: Teacher) => t.name || [t.firstName, t.lastName].filter(Boolean).join(' ') || t.email;
+const date = (d: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+const when = (d: string) => {
+  const days = Math.round((new Date(new Date(d).toDateString()).getTime() - new Date(new Date().toDateString()).getTime()) / DAY);
+  const t = new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return days === 0 ? `Today ${t}` : days === 1 ? `Tomorrow ${t}` : `${new Date(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} ${t}`;
+};
+const months = (d: number | null) => { if (!d) return 'no end date'; const m = Math.round(d / 30.44); return Math.abs(m * 30.44 - d) <= 3 ? `${m} months` : `${d} days`; };
+const label = 'text-[13px] font-semibold text-navy';
+const badge = (blue: boolean) => clsx('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs font-semibold', blue ? 'bg-accent-soft text-navy' : 'border border-line bg-subtle text-ink2');
 
 export default function AdminCohortsPage() {
-  const [cohorts,  setCohorts]  = useState<Cohort[]>([]);
+  const [data, setData] = useState<ListData | null>(null);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [roster,   setRoster]   = useState<Roster | null>(null);
-  const [rosterLoading, setRosterLoading] = useState(false);
-
-  // Create form
-  const [showForm,      setShowForm]      = useState(false);
-  const [newName,       setNewName]       = useState('');
-  const [newTeacher,    setNewTeacher]    = useState('');
-  const [newSitting,    setNewSitting]    = useState('');
-  const [newExamDate,   setNewExamDate]   = useState('');
-  const [newStartDate,  setNewStartDate]  = useState('');
-  const [saving,        setSaving]        = useState(false);
-
-  // Edit exam fields inline
-  const [editingExam,   setEditingExam]   = useState<string | null>(null);
-  const [editSitting,   setEditSitting]   = useState('');
-  const [editExamDate,  setEditExamDate]  = useState('');
-  const [editStartDate, setEditStartDate] = useState('');
-  const [savingExam,    setSavingExam]    = useState(false);
-
-  // Add student
-  const [addEmail,  setAddEmail]  = useState('');
-  const [adding,    setAdding]    = useState(false);
-  const [removing,  setRemoving]  = useState<string | null>(null);
-
-  // Bulk-add students
-  const [showBulk,      setShowBulk]      = useState(false);
-  const [bulkEmails,    setBulkEmails]    = useState('');
-  const [bulkAdding,    setBulkAdding]    = useState(false);
-  const [bulkResults,   setBulkResults]   = useState<{ email: string; ok: boolean; msg: string }[] | null>(null);
-
-  // Schedule class
-  const [showSchedule,   setShowSchedule]   = useState(false);
-  const [classTitle,     setClassTitle]     = useState('');
-  const [classDate,      setClassDate]      = useState('');
-  const [scheduling,     setScheduling]     = useState(false);
+  const [tab, setTab] = useState<Status | 'all'>('running');
+  const [q, setQ] = useState('');
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   async function load() {
-    try {
-      const [cr, tr] = await Promise.all([
-        api.get('/portals/admin/cohorts'),
-        api.get('/portals/admin/teachers?status=APPROVED').catch(() => api.get('/portals/admin/teachers')),
-      ]);
-      setCohorts(cr.data ?? []);
-      setTeachers((tr.data ?? []).filter((t: any) => t.approvalStatus === 'APPROVED'));
-    } finally { setLoading(false); }
+    const r = await api.get('/portals/admin/cohort-list');
+    setData(r.data);
   }
+  useEffect(() => {
+    load().catch(() => notify.error('Could not load cohorts'));
+    api.get('/portals/admin/teachers?status=APPROVED').catch(() => api.get('/portals/admin/teachers'))
+      .then(r => setTeachers((r.data ?? []).filter((t: Teacher) => !t.approvalStatus || t.approvalStatus === 'APPROVED'))).catch(() => {});
+  }, []);
 
-  useEffect(() => { load(); }, []);
-
-  async function loadRoster(id: string) {
-    if (expanded === id) { setExpanded(null); setRoster(null); return; }
-    setExpanded(id);
-    setRoster(null);
-    setRosterLoading(true);
-    try {
-      const r = await api.get(`/portals/admin/cohorts/${id}`);
-      setRoster(r.data);
-    } catch { notify.error('Failed to load cohort'); }
-    finally { setRosterLoading(false); }
-  }
-
-  async function createCohort(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newTeacher) { notify.error('Select a teacher'); return; }
-    setSaving(true);
-    try {
-      await api.post('/portals/admin/cohorts', {
-        name: newName.trim(),
-        teacherId: newTeacher,
-        sittingLabel: newSitting.trim() || undefined,
-        examDate:    newExamDate  || undefined,
-        startDate:   newStartDate || undefined,
-      });
-      notify.success('Cohort created');
-      setNewName(''); setNewTeacher(''); setNewSitting(''); setNewExamDate(''); setNewStartDate('');
-      setShowForm(false);
-      load();
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-    finally { setSaving(false); }
-  }
-
-  async function saveExamFields(cohortId: string) {
-    setSavingExam(true);
-    try {
-      await api.patch(`/portals/admin/cohorts/${cohortId}`, {
-        sittingLabel: editSitting.trim() || null,
-        examDate:    editExamDate  || null,
-        startDate:   editStartDate || null,
-      });
-      notify.success('Saved');
-      setEditingExam(null);
-      load();
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-    finally { setSavingExam(false); }
-  }
-
-  function openEditExam(c: Cohort) {
-    setEditingExam(c.id);
-    setEditSitting(c.sittingLabel ?? '');
-    setEditExamDate(c.examDate ? c.examDate.slice(0, 10) : '');
-    setEditStartDate(c.startDate ? c.startDate.slice(0, 10) : '');
-  }
-
-  async function addStudent(e: React.FormEvent) {
-    e.preventDefault();
-    if (!expanded || !addEmail.trim()) return;
-    setAdding(true);
-    try {
-      await api.post(`/portals/admin/cohorts/${expanded}/students`, { email: addEmail.trim().toLowerCase() });
-      notify.success('Student added');
-      setAddEmail('');
-      const r = await api.get(`/portals/admin/cohorts/${expanded}`);
-      setRoster(r.data);
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-    finally { setAdding(false); }
-  }
-
-  async function removeStudent(studentId: string) {
-    if (!expanded) return;
-    setRemoving(studentId);
-    try {
-      await api.delete(`/portals/admin/cohorts/${expanded}/students/${studentId}`);
-      notify.success('Student removed');
-      setRoster(r => r ? { ...r, students: r.students.filter(s => s.student.id !== studentId) } : r);
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-    finally { setRemoving(null); }
-  }
-
-  async function bulkAddStudents(e: React.FormEvent) {
-    e.preventDefault();
-    if (!expanded || !bulkEmails.trim()) return;
-    const emails = bulkEmails.split(/[\n,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
-    if (emails.length === 0) return;
-    setBulkAdding(true);
-    setBulkResults(null);
-    const results = await Promise.all(
-      emails.map(email =>
-        api.post(`/portals/admin/cohorts/${expanded}/students`, { email })
-          .then(() => ({ email, ok: true, msg: 'Added' }))
-          .catch(err => ({ email, ok: false, msg: err?.response?.data?.message ?? 'Failed' }))
-      )
-    );
-    setBulkResults(results);
-    setBulkAdding(false);
-    const added = results.filter(r => r.ok).length;
-    if (added > 0) {
-      notify.success(`Added ${added} student${added !== 1 ? 's' : ''}`);
-      const r = await api.get(`/portals/admin/cohorts/${expanded}`);
-      setRoster(r.data);
-    }
-  }
-
-  async function scheduleClass(e: React.FormEvent) {
-    e.preventDefault();
-    if (!expanded) return;
-    setScheduling(true);
-    try {
-      await api.post(`/live/cohorts/${expanded}/classes`, {
-        title: classTitle.trim(),
-        scheduledAt: new Date(classDate).toISOString(),
-      });
-      notify.success('Class scheduled');
-      setClassTitle(''); setClassDate(''); setShowSchedule(false);
-      const r = await api.get(`/portals/admin/cohorts/${expanded}`);
-      setRoster(r.data);
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-    finally { setScheduling(false); }
-  }
-
-  const totalStudents = useMemo(() => cohorts.reduce((s, c) => s + c._count.students, 0), [cohorts]);
-  const totalClasses  = useMemo(() => cohorts.reduce((s, c) => s + c._count.liveClasses, 0), [cohorts]);
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 p-6 space-y-6 max-w-5xl w-full mx-auto">
-        <div className="grid grid-cols-3 gap-4">
-          {[1,2,3].map(i => <div key={i} className="rounded-2xl border border-cloud bg-white h-20 animate-pulse" />)}
-        </div>
-        <div className="space-y-3">
-          {[1,2,3].map(i => <SkeletonCard key={i} />)}
-        </div>
-      </div>
-    </div>
-  );
+  const counts = useMemo(() => {
+    const c = { running: 0, upcoming: 0, ended: 0, all: data?.cohorts.length ?? 0 };
+    data?.cohorts.forEach(r => { c[r.status]++; });
+    return c;
+  }, [data]);
+  const shown = (data?.cohorts ?? []).filter(r => (tab === 'all' || r.status === tab)
+    && (!q.trim() || `${r.name} ${r.teacher.name}`.toLowerCase().includes(q.trim().toLowerCase())));
+  const s = data?.stats;
 
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="Cohorts" subtitle="Create groups, assign teachers, enroll students" />
+    <div className="flex min-h-full flex-col">
+      <Topbar title="Cohorts" subtitle="Groups of students with a teacher, live classes and an exam date"
+        actions={<Button size="sm" onClick={() => setCreating(true)}>New cohort</Button>} />
 
-      <div className="flex-1 p-6 space-y-6 max-w-5xl w-full mx-auto">
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
+      <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
           {[
-            { label: 'Total cohorts',  value: cohorts.length,   icon: 'mentorship' as const },
-            { label: 'Total students', value: totalStudents,    icon: 'graduate'   as const },
-            { label: 'Total sessions', value: totalClasses,     icon: 'live'       as const },
-          ].map(s => (
-            <Card key={s.label} padding="md">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">{s.label}</p>
-                  <p className="mt-1 text-2xl font-bold text-navy">{s.value}</p>
-                </div>
-                <IconBox><Icon name={s.icon} size={16} /></IconBox>
-              </div>
-            </Card>
-          ))}
-        </div>
-
-        {/* Header + create */}
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">COHORTS</p>
-            <h2 className="text-base font-bold text-navy">{cohorts.length} group{cohorts.length !== 1 ? 's' : ''}</h2>
-          </div>
-          <Button size="sm" onClick={() => setShowForm(v => !v)}>
-            <Icon name="add" size={13} /> New cohort
-          </Button>
-        </div>
-
-        {/* Create form */}
-        {showForm && (
-          <Card padding="md">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-azure mb-4">NEW COHORT</p>
-            <form onSubmit={createCohort} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-navy">Cohort name</label>
-                  <input value={newName} onChange={e => setNewName(e.target.value)} required
-                    placeholder="e.g. ACCA F3 — June 2026"
-                    className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-navy">Assign teacher</label>
-                  <Select
-                    value={newTeacher}
-                    onValueChange={setNewTeacher}
-                    placeholder="— Select teacher —"
-                    options={teachers.map(t => ({
-                      value: t.id,
-                      label: t.name ? `${t.name} (${t.email})` : t.email,
-                      avatar: (t.name ?? t.email)[0].toUpperCase(),
-                    }))}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-navy">Sitting label <span className="font-normal text-royal/40">(optional)</span></label>
-                  <input value={newSitting} onChange={e => setNewSitting(e.target.value)}
-                    placeholder="e.g. June 2026 Sitting"
-                    className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-navy">Exam date <span className="font-normal text-royal/40">(optional)</span></label>
-                  <input type="date" value={newExamDate} onChange={e => setNewExamDate(e.target.value)}
-                    className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-navy">Start date <span className="font-normal text-royal/40">(optional)</span></label>
-                  <input type="date" value={newStartDate} onChange={e => setNewStartDate(e.target.value)}
-                    className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure" />
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <Button type="submit" size="sm" loading={saving}>Create cohort</Button>
-                <Button type="button" variant="secondary" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
-              </div>
-            </form>
-          </Card>
-        )}
-
-        {/* Cohort list */}
-        {cohorts.length === 0 ? (
-          <Card padding="lg">
-            <div className="flex flex-col items-center py-12 text-center">
-              <IconBox className="h-14 w-14 rounded-2xl mb-3"><Icon name="mentorship" size={24} /></IconBox>
-              <p className="text-sm font-semibold text-navy">No cohorts yet</p>
-              <p className="text-xs text-royal/50 mt-1">Create a cohort and assign an approved teacher to get started</p>
+            { l: 'Running cohorts', v: s ? String(s.running) : '…', sub: s ? (s.upcoming ? `${s.upcoming} starting soon` : 'None starting soon') : '' },
+            { l: 'Students in cohorts', v: s ? String(s.students) : '…', sub: s ? `${s.joinedThisWeek} joined this week` : '' },
+            { l: 'Live classes this week', v: s ? String(s.classesThisWeek) : '…', sub: s?.attendanceLastWeekPct != null ? `${s.attendanceLastWeekPct}% attendance last week` : 'No classes last week' },
+            { l: 'Without a package', v: s ? String(s.withoutPackage) : '…', sub: 'Students can’t join these by buying' },
+          ].map(x => (
+            <div key={x.l} className="rounded-lg border border-line bg-white p-4">
+              <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{x.l}</dt>
+              <dd className="mt-1.5 text-[22px] font-extrabold text-navy">{x.v}</dd>
+              <dd className="mt-0.5 truncate text-[12.5px] text-muted">{x.sub}</dd>
             </div>
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            {cohorts.map(c => {
-              const isOpen = expanded === c.id;
-              return (
-                <Card key={c.id} padding="none" className="overflow-hidden">
-                  {/* Header */}
-                  <button
-                    onClick={() => loadRoster(c.id)}
-                    className="flex items-center gap-4 px-5 py-4 w-full text-left hover:bg-cloud/30 transition">
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-navy text-sm font-bold text-white">
-                      {c.name[0].toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-navy truncate">{c.name}</p>
-                      <p className="text-xs text-royal/50 truncate">
-                        {c.teacher?.name ?? c.teacher?.email?.split('@')[0] ?? 'No teacher assigned'}
-                        {c.sittingLabel && <> · <span className="text-azure font-semibold">{c.sittingLabel}</span></>}
-                        {c.linkedPackage && <> · <span className="text-emerald-600 font-semibold">{c.linkedPackage.name}</span></>}
-                      </p>
-                      {c.examDate && (() => {
-                        const days = Math.ceil((new Date(c.examDate).getTime() - Date.now()) / 86400000);
-                        return days > 0 ? (
-                          <p className="text-[10px] font-semibold text-amber-600 mt-0.5">
-                            Exam in {days} day{days !== 1 ? 's' : ''} · {new Date(c.examDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </p>
-                        ) : (
-                          <p className="text-[10px] font-semibold text-royal/40 mt-0.5">
-                            Exam passed · {new Date(c.examDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </p>
-                        );
-                      })()}
-                    </div>
-                    <div className="hidden sm:flex items-center gap-4 flex-shrink-0 mr-2">
-                      <div className="flex items-center gap-1.5 text-xs text-royal/50">
-                        <Icon name="graduate" size={12} />
-                        <span>{c._count.students}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-royal/50">
-                        <Icon name="live" size={12} />
-                        <span>{c._count.liveClasses}</span>
-                      </div>
-                    </div>
-                    <Badge variant="active">Active</Badge>
-                    <Icon name="chevronDown" size={14} className={`text-royal/40 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                  </button>
+          ))}
+        </dl>
 
-                  {/* Expanded panel */}
-                  <AnimatePresence>
-                  {isOpen && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden"
-                    >
-                    <div className="border-t border-cloud">
-                      {rosterLoading ? (
-                        <div className="flex items-center justify-center py-10">
-                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-azure border-t-transparent" />
-                        </div>
-                      ) : roster && (
-                        <>
-                        {/* Exam fields editor */}
-                        <div className="px-5 py-4 border-b border-cloud bg-surface">
-                          {editingExam === c.id ? (
-                            <div className="space-y-3">
-                              <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">EXAM / SITTING DETAILS</p>
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div className="space-y-1">
-                                  <label className="text-xs font-semibold text-navy">Sitting label</label>
-                                  <input value={editSitting} onChange={e => setEditSitting(e.target.value)}
-                                    placeholder="e.g. June 2026 Sitting"
-                                    className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="text-xs font-semibold text-navy">Exam date</label>
-                                  <input type="date" value={editExamDate} onChange={e => setEditExamDate(e.target.value)}
-                                    className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure" />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="text-xs font-semibold text-navy">Start date</label>
-                                  <input type="date" value={editStartDate} onChange={e => setEditStartDate(e.target.value)}
-                                    className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure" />
-                                </div>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button size="sm" loading={savingExam} onClick={() => saveExamFields(c.id)}>Save</Button>
-                                <Button size="sm" variant="secondary" onClick={() => setEditingExam(null)}>Cancel</Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-4 flex-wrap text-xs text-royal/50">
-                                {c.sittingLabel
-                                  ? <span className="font-semibold text-azure">{c.sittingLabel}</span>
-                                  : <span className="italic">No sitting label</span>}
-                                {c.examDate && (
-                                  <span className="flex items-center gap-1">
-                                    <Icon name="clock" size={11} className="text-amber-500" />
-                                    Exam: {new Date(c.examDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                  </span>
-                                )}
-                                {c.startDate && (
-                                  <span className="flex items-center gap-1">
-                                    <Icon name="calendar" size={11} className="text-azure" />
-                                    Starts: {new Date(c.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                  </span>
-                                )}
-                              </div>
-                              <button onClick={() => openEditExam(c)}
-                                className="flex items-center gap-1.5 text-xs font-semibold text-azure hover:text-royal transition flex-shrink-0">
-                                <Icon name="settings" size={11} /> Edit exam info
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 divide-y lg:divide-y-0 lg:divide-x divide-cloud">
-
-                          {/* Students panel */}
-                          <div className="p-5 space-y-4">
-                            <div className="flex items-center justify-between">
-                              <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">
-                                STUDENTS ({roster.students.length})
-                              </p>
-                            </div>
-
-                            {/* Add student form */}
-                            <form onSubmit={addStudent} className="flex gap-2">
-                              <input
-                                value={addEmail}
-                                onChange={e => setAddEmail(e.target.value)}
-                                placeholder="student@email.com"
-                                type="email"
-                                className="flex-1 rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40"
-                              />
-                              <Button type="submit" size="sm" loading={adding}>
-                                <Icon name="add" size={12} /> Add
-                              </Button>
-                              <button type="button"
-                                onClick={() => { setShowBulk(v => !v); setBulkResults(null); setBulkEmails(''); }}
-                                className="flex items-center gap-1 rounded-xl border border-cloud px-3 py-2 text-xs font-semibold text-navy hover:bg-cloud transition flex-shrink-0">
-                                Bulk
-                              </button>
-                            </form>
-
-                            {/* Bulk-add panel */}
-                            {showBulk && (
-                              <form onSubmit={bulkAddStudents} className="space-y-2 rounded-xl border border-azure/20 bg-azure/5 p-3">
-                                <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">BULK ADD</p>
-                                <p className="text-[10px] text-royal/50">Paste emails separated by commas, semicolons or new lines</p>
-                                <textarea
-                                  value={bulkEmails}
-                                  onChange={e => setBulkEmails(e.target.value)}
-                                  rows={4}
-                                  placeholder={"alice@example.com\nbob@example.com, carol@example.com"}
-                                  className="w-full rounded-lg border border-cloud bg-white px-3 py-2 text-xs text-navy outline-none focus:border-azure placeholder:text-royal/30 resize-none"
-                                />
-                                <Button type="submit" size="sm" loading={bulkAdding} fullWidth>
-                                  Add all
-                                </Button>
-                                {bulkResults && (
-                                  <div className="max-h-40 overflow-y-auto space-y-1 mt-1">
-                                    {bulkResults.map(r => (
-                                      <div key={r.email} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-[10px] ${r.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
-                                        <Icon name={r.ok ? 'check' : 'close'} size={10} />
-                                        <span className="font-semibold truncate flex-1">{r.email}</span>
-                                        <span>{r.msg}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </form>
-                            )}
-
-                            {roster.students.length === 0 ? (
-                              <p className="text-xs text-royal/40 text-center py-4">No students enrolled yet</p>
-                            ) : (
-                              <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                                {roster.students.map(({ student }) => (
-                                  <div key={student.id} className="flex items-center gap-3 rounded-xl border border-cloud px-3 py-2.5 bg-surface">
-                                    <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-azure/10 text-xs font-bold text-azure">
-                                      {(student.name ?? student.email)[0].toUpperCase()}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-xs font-semibold text-navy truncate">{student.name ?? student.email}</p>
-                                      {student.name && <p className="text-[10px] text-royal/40 truncate">{student.email}</p>}
-                                    </div>
-                                    <button
-                                      onClick={() => removeStudent(student.id)}
-                                      disabled={removing === student.id}
-                                      className="text-royal/30 hover:text-red-500 transition flex-shrink-0">
-                                      {removing === student.id
-                                        ? <div className="h-3.5 w-3.5 animate-spin rounded-full border border-red-400 border-t-transparent" />
-                                        : <Icon name="close" size={13} />
-                                      }
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Sessions panel */}
-                          <div className="p-5 space-y-4">
-                            <div className="flex items-center justify-between">
-                              <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">
-                                SESSIONS ({roster.liveClasses.length})
-                              </p>
-                              <button
-                                onClick={() => setShowSchedule(v => !v)}
-                                className="flex items-center gap-1 text-xs font-semibold text-azure hover:text-royal transition">
-                                <Icon name="add" size={11} /> Schedule
-                              </button>
-                            </div>
-
-                            {showSchedule && (
-                              <form onSubmit={scheduleClass} className="space-y-2 rounded-xl border border-azure/20 bg-azure/5 p-3">
-                                <input value={classTitle} onChange={e => setClassTitle(e.target.value)} required
-                                  placeholder="Class title"
-                                  className="w-full rounded-lg border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-                                <input type="datetime-local" value={classDate} onChange={e => setClassDate(e.target.value)} required
-                                  min={new Date().toISOString().slice(0, 16)}
-                                  className="w-full rounded-lg border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure" />
-                                <Button type="submit" size="sm" fullWidth loading={scheduling}>Confirm</Button>
-                              </form>
-                            )}
-
-                            {roster.liveClasses.length === 0 ? (
-                              <p className="text-xs text-royal/40 text-center py-4">No sessions scheduled yet</p>
-                            ) : (
-                              <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                                {roster.liveClasses.map(cls => {
-                                  const isLive = cls.status === 'ACTIVE';
-                                  const isPast = new Date(cls.scheduledAt) < new Date() && !isLive;
-                                  return (
-                                    <div key={cls.id} className="flex items-center gap-3 rounded-xl border border-cloud px-3 py-2.5">
-                                      <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full ${isLive ? 'bg-azure' : 'bg-cloud'}`}>
-                                        <Icon name="live" size={12} className={isLive ? 'text-white' : 'text-royal/40'} />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-semibold text-navy truncate">{cls.title}</p>
-                                        <p className="text-[10px] text-royal/40">
-                                          {new Date(cls.scheduledAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                                          {' · '}
-                                          {new Date(cls.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </p>
-                                      </div>
-                                      <Badge variant={isLive ? 'active' : isPast ? 'default' : 'muted'}>
-                                        {isLive ? 'Live' : isPast ? 'Done' : 'Upcoming'}
-                                      </Badge>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        </>
-                      )}
-                    </div>
-                    </motion.div>
-                  )}
-                  </AnimatePresence>
-                </Card>
-              );
-            })}
+        <section className="rounded-lg border border-line bg-white">
+          <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4">
+            <div role="tablist" aria-label="Status" className="flex flex-1 gap-1 overflow-x-auto">
+              {([['running', 'Running'], ['upcoming', 'Starting soon'], ['ended', 'Exam passed'], ['all', 'All']] as [Status | 'all', string][]).map(([k, l]) => (
+                <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+                  className={clsx('-mb-px h-[46px] whitespace-nowrap border-b-2 px-3 text-[13.5px] text-navy', tab === k ? 'border-azure-strong font-semibold' : 'border-transparent font-medium')}>
+                  {l} <span className="font-medium text-muted">{counts[k]}</span>
+                </button>
+              ))}
+            </div>
+            <input type="search" aria-label="Search cohorts" value={q} onChange={e => setQ(e.target.value)} placeholder="Search by cohort or teacher" className="input-base my-2 h-[34px] w-60" />
           </div>
-        )}
+          {!data ? <div className="m-4 h-60 rounded-md bg-subtle animate-pulse" /> : !shown.length ? (
+            <p className="px-4 py-10 text-center text-[13px] text-ink2">{data.cohorts.length ? 'No cohorts here.' : 'No cohorts yet. Create one to group students with a teacher and live classes.'}</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] border-collapse text-[13.5px]">
+                <thead><tr>
+                  {['Cohort', 'Teacher', 'Students', 'Exam', 'Next class', 'Sold with', 'Status'].map(h => (
+                    <th key={h} className="border-b border-line px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {shown.map(r => {
+                    const examDays = r.examDate ? Math.ceil((new Date(r.examDate).getTime() - Date.now()) / DAY) : null;
+                    return (
+                      <tr key={r.id} onClick={() => setOpenId(r.id)} className="cursor-pointer hover:bg-subtle">
+                        <td className="border-b border-line px-4 py-3 font-semibold text-navy">{r.name}</td>
+                        <td className="border-b border-line px-4 py-3 text-navy">{r.teacher.name}</td>
+                        <td className="border-b border-line px-4 py-3 text-navy">{r.students}</td>
+                        <td className="border-b border-line px-4 py-3 text-navy">{r.examDate ? `${date(r.examDate)}${examDays != null && examDays >= 0 && r.status !== 'ended' ? ` · ${examDays} days` : ''}` : '—'}</td>
+                        <td className="border-b border-line px-4 py-3 text-ink2">{r.nextClass ? (r.nextClass.status === 'ACTIVE' ? 'Live now' : when(r.nextClass.scheduledAt)) : r.status === 'ended' ? '—' : 'Not scheduled'}</td>
+                        <td className="border-b border-line px-4 py-3 text-ink2">{r.packages.length ? r.packages.map(p => p.name).join(', ') : 'Not sold yet'}</td>
+                        <td className="border-b border-line px-4 py-3"><span className={badge(r.status === 'running')}>{STATUS[r.status]}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </div>
+
+      <CohortDrawer id={openId} teachers={teachers} onClose={() => setOpenId(null)} onChanged={load} />
+      <NewCohortDialog open={creating} teachers={teachers} onClose={() => setCreating(false)} onDone={async () => { setCreating(false); await load(); }} />
     </div>
+  );
+}
+
+function CohortDrawer({ id, teachers, onClose, onChanged }: { id: string | null; teachers: Teacher[]; onClose: () => void; onChanged: () => Promise<void> }) {
+  const [d, setD] = useState<Detail | null>(null);
+  const [f, setF] = useState({ name: '', teacherId: '', sittingLabel: '', startDate: '', examDate: '' });
+  const [emails, setEmails] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [scheduling, setScheduling] = useState(false);
+
+  async function load(cid: string) {
+    const r = await api.get(`/portals/admin/cohorts/${cid}/overview`);
+    const x: Detail = r.data;
+    setD(x);
+    setF({ name: x.cohort.name, teacherId: x.teacher.id, sittingLabel: x.cohort.sittingLabel ?? '', startDate: x.cohort.startDate?.slice(0, 10) ?? '', examDate: x.cohort.examDate?.slice(0, 10) ?? '' });
+  }
+  useEffect(() => { setD(null); setEmails(''); setShowAll(false); if (id) load(id).catch(() => notify.error('Could not load this cohort')); }, [id]);
+
+  async function run(key: string, fn: () => Promise<unknown>, done?: string) {
+    setBusy(key);
+    try { await fn(); if (done) notify.success(done); await load(id!); await onChanged(); }
+    catch (err: any) { notify.error(err?.response?.data?.message ?? 'That didn’t work. Please try again.'); }
+    finally { setBusy(null); }
+  }
+
+  async function addStudents() {
+    const list = [...new Set(emails.split(/[\s,;]+/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@')))];
+    if (!list.length) return;
+    setBusy('add');
+    const results = await Promise.all(list.map(email => api.post(`/portals/admin/cohorts/${id}/students`, { email })
+      .then(() => ({ email, ok: true, msg: '' })).catch(err => ({ email, ok: false, msg: err?.response?.data?.message ?? 'Failed' }))));
+    const ok = results.filter(r => r.ok).length;
+    const failed = results.filter(r => !r.ok);
+    if (ok) notify.success(`${ok} student${ok === 1 ? '' : 's'} added`);
+    if (failed.length) notify.error(`${failed.length} not added`, { description: failed.slice(0, 3).map(r => `${r.email}: ${r.msg}`).join(' · ') });
+    setEmails(failed.map(r => r.email).join(', '));
+    setBusy(null);
+    await load(id!); await onChanged();
+  }
+
+  const changed = d && (f.name !== d.cohort.name || f.teacherId !== d.teacher.id || f.sittingLabel !== (d.cohort.sittingLabel ?? '')
+    || f.startDate !== (d.cohort.startDate?.slice(0, 10) ?? '') || f.examDate !== (d.cohort.examDate?.slice(0, 10) ?? ''));
+  const revenue = d?.revenue.length ? d.revenue.map(r => `${r.currency} ${minorToMajor(r.amount, r.currency).toLocaleString()}`).join(' · ') : '—';
+  const members = d ? (showAll ? d.members : d.members.slice(0, 8)) : [];
+
+  return (
+    <Drawer open={!!id} onOpenChange={o => { if (!o) onClose(); }}>
+      {id && (
+        <DrawerContent width="lg" title={d?.cohort.name ?? 'Cohort'} description={d ? `${d.teacher.name} · ${d.members.length} student${d.members.length === 1 ? '' : 's'}` : undefined}>
+          {!d ? <div className="h-80 rounded-md bg-subtle animate-pulse" /> : <>
+            <InfoGrid items={[
+              { label: 'Attendance', value: d.stats.attendancePct != null ? `${d.stats.attendancePct}%` : '—' },
+              { label: 'Avg progress', value: d.stats.avgProgress != null ? `${d.stats.avgProgress}%` : '—' },
+              { label: 'Classes', value: `${d.stats.held} held · ${d.stats.ahead} ahead` },
+              { label: 'Started', value: date(d.cohort.startDate) },
+              { label: 'Exam', value: date(d.cohort.examDate) },
+              { label: 'Revenue', value: revenue },
+            ]} />
+
+            <DrawerSection title="Details">
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                <label className="flex flex-col gap-1.5 sm:col-span-2"><span className={label}>Name</span>
+                  <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} className="input-base" /></label>
+                <label className="flex flex-col gap-1.5 sm:col-span-2"><span className={label}>Teacher</span>
+                  <select value={f.teacherId} onChange={e => setF({ ...f, teacherId: e.target.value })} className="input-base">
+                    {!teachers.some(t => t.id === d.teacher.id) && <option value={d.teacher.id}>{d.teacher.name}</option>}
+                    {teachers.map(t => <option key={t.id} value={t.id}>{teacherName(t)}</option>)}
+                  </select></label>
+                <label className="flex flex-col gap-1.5 sm:col-span-2"><span className={label}>Exam sitting</span>
+                  <input value={f.sittingLabel} onChange={e => setF({ ...f, sittingLabel: e.target.value })} placeholder="For example: WASSCE · November 2026" className="input-base" /></label>
+                <label className="flex flex-col gap-1.5"><span className={label}>Starts</span>
+                  <input type="date" value={f.startDate} onChange={e => setF({ ...f, startDate: e.target.value })} className="input-base" /></label>
+                <label className="flex flex-col gap-1.5"><span className={label}>Exam date</span>
+                  <input type="date" value={f.examDate} onChange={e => setF({ ...f, examDate: e.target.value })} className="input-base" /></label>
+              </div>
+              <div>
+                <Button size="sm" variant="secondary" loading={busy === 'details'} disabled={!changed || !f.name.trim()}
+                  onClick={() => run('details', () => api.patch(`/portals/admin/cohorts/${id}`, {
+                    name: f.name.trim(), teacherId: f.teacherId, sittingLabel: f.sittingLabel.trim() || null,
+                    startDate: f.startDate || null, examDate: f.examDate || null,
+                  }), 'Cohort saved')}>Save details</Button>
+              </div>
+            </DrawerSection>
+
+            <DrawerSection title="Students" count={d.members.length}>
+              <div className="flex gap-2">
+                <input aria-label="Add students" value={emails} onChange={e => setEmails(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addStudents(); }}
+                  placeholder="Paste emails, separated by commas or spaces" className="input-base h-9 flex-1" />
+                <Button size="sm" loading={busy === 'add'} disabled={!emails.includes('@')} onClick={addStudents}>Add</Button>
+              </div>
+              <p className="text-[12.5px] text-muted">Students who buy a package linked to this cohort, or claim a school seat for one, are added automatically.</p>
+              {d.members.length > 0 && (
+                <div className="overflow-hidden rounded-md border border-line">
+                  {members.map(m => (
+                    <div key={m.id} className="flex items-center gap-2.5 border-b border-line px-3 py-2 last:border-b-0">
+                      <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-[11px] font-bold text-navy">{initials(m.name)}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13.5px] font-semibold text-navy">{m.name}</p>
+                        <p className="truncate text-xs text-muted">{m.email}</p>
+                      </div>
+                      <span className="hidden whitespace-nowrap text-[12.5px] text-muted sm:inline">{SOURCE[m.source] ?? m.source} · {new Date(m.addedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                      <button type="button" disabled={busy === `rm-${m.id}`}
+                        onClick={() => run(`rm-${m.id}`, () => api.delete(`/portals/admin/cohorts/${id}/students/${m.id}`), 'Student removed')}
+                        className="h-7 rounded-md px-2.5 text-[12.5px] font-semibold text-muted hover:bg-subtle hover:text-error disabled:opacity-50">Remove</button>
+                    </div>
+                  ))}
+                  {d.members.length > 8 && (
+                    <button type="button" onClick={() => setShowAll(v => !v)} className="w-full px-3 py-2 text-left text-[12.5px] font-semibold text-azure-strong hover:bg-subtle">
+                      {showAll ? 'Show fewer' : `Show all ${d.members.length}`}
+                    </button>
+                  )}
+                </div>
+              )}
+            </DrawerSection>
+
+            <DrawerSection title="Sold with">
+              {!d.packages.length ? (
+                <div className="flex flex-wrap items-center gap-2.5 rounded-md border border-line bg-subtle px-3 py-2.5">
+                  <p className="min-w-0 flex-1 text-[13px] text-ink2">No package adds students to this cohort, so nobody can join it by buying.</p>
+                  <Link href="/admin/packages" className="text-[13px] font-semibold text-azure-strong hover:underline">Link a package</Link>
+                </div>
+              ) : d.packages.map(p => (
+                <div key={p.id} className="flex items-center gap-2.5 rounded-md border border-line px-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13.5px] font-semibold text-navy">{p.name}{p.isPublished ? '' : ' (draft)'}</p>
+                    <p className="text-[12.5px] text-muted">{p.currency} {minorToMajor(p.priceAmount, p.currency).toLocaleString()} · {months(p.validityDays)} · {p.sold} sold</p>
+                  </div>
+                  <Link href="/admin/packages" className="text-[13px] font-semibold text-azure-strong hover:underline">Edit package</Link>
+                </div>
+              ))}
+            </DrawerSection>
+
+            <DrawerSection title="Upcoming classes" action={<Button size="sm" variant="secondary" onClick={() => setScheduling(true)}>Schedule a class</Button>}>
+              {!d.upcoming.length ? <p className="text-[13px] text-ink2">Nothing scheduled.</p> : d.upcoming.map(c => (
+                <p key={c.id} className="flex justify-between gap-3 rounded-md border border-line px-3 py-2 text-[13px]">
+                  <span className="truncate text-navy">{c.title}</span><strong className="whitespace-nowrap font-semibold text-navy">{when(c.scheduledAt)}</strong>
+                </p>
+              ))}
+            </DrawerSection>
+          </>}
+          <ScheduleDialog open={scheduling} cohortId={id} onClose={() => setScheduling(false)} onDone={async () => { setScheduling(false); await load(id); await onChanged(); }} />
+        </DrawerContent>
+      )}
+    </Drawer>
+  );
+}
+
+function ScheduleDialog({ open, cohortId, onClose, onDone }: { open: boolean; cohortId: string; onClose: () => void; onDone: () => Promise<void> }) {
+  const [title, setTitle] = useState('');
+  const [at, setAt] = useState('');
+  const [mins, setMins] = useState('90');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open) { setTitle(''); setMins('90'); setAt(''); } }, [open]);
+  async function save() {
+    setBusy(true);
+    try {
+      await api.post(`/live/cohorts/${cohortId}/classes`, { title: title.trim(), scheduledAt: new Date(at).toISOString(), durationMinutes: Number(mins) });
+      notify.success('Class scheduled');
+      await onDone();
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not schedule the class'); }
+    finally { setBusy(false); }
+  }
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      {open && (
+        <DialogContent title="Schedule a class">
+          <div className="space-y-3">
+            <label className="flex flex-col gap-1.5"><span className={label}>Topic</span>
+              <input autoFocus value={title} onChange={e => setTitle(e.target.value)} className="input-base" /></label>
+            <div className="flex gap-2">
+              <label className="flex flex-1 flex-col gap-1.5"><span className={label}>Starts</span>
+                <input type="datetime-local" value={at} onChange={e => setAt(e.target.value)} className="input-base" /></label>
+              <label className="flex w-32 flex-col gap-1.5"><span className={label}>Length</span>
+                <select value={mins} onChange={e => setMins(e.target.value)} className="input-base">{[45, 60, 90, 120].map(m => <option key={m} value={m}>{m} min</option>)}</select></label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button size="sm" variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button size="sm" loading={busy} disabled={!title.trim() || !at} onClick={save}>Schedule</Button>
+          </DialogFooter>
+        </DialogContent>
+      )}
+    </Dialog>
+  );
+}
+
+function NewCohortDialog({ open, teachers, onClose, onDone }: { open: boolean; teachers: Teacher[]; onClose: () => void; onDone: () => Promise<void> }) {
+  const [f, setF] = useState({ name: '', teacherId: '', sittingLabel: '', startDate: '', examDate: '' });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open) setF({ name: '', teacherId: '', sittingLabel: '', startDate: '', examDate: '' }); }, [open]);
+  async function save() {
+    setBusy(true);
+    try {
+      await api.post('/portals/admin/cohorts', {
+        name: f.name.trim(), teacherId: f.teacherId, sittingLabel: f.sittingLabel.trim() || undefined,
+        startDate: f.startDate || undefined, examDate: f.examDate || undefined,
+      });
+      notify.success('Cohort created', { description: 'Link it to a package so students join when they buy.' });
+      await onDone();
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not create the cohort'); }
+    finally { setBusy(false); }
+  }
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      {open && (
+        <DialogContent title="New cohort" description="A group of students with one teacher, preparing for the same exam.">
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5 sm:col-span-2"><span className={label}>Name</span>
+              <input autoFocus value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="For example: WASSCE Maths · Nov 2026" className="input-base" /></label>
+            <label className="flex flex-col gap-1.5 sm:col-span-2"><span className={label}>Teacher</span>
+              <select value={f.teacherId} onChange={e => setF({ ...f, teacherId: e.target.value })} className="input-base">
+                <option value="">Choose a teacher</option>
+                {teachers.map(t => <option key={t.id} value={t.id}>{teacherName(t)}</option>)}
+              </select></label>
+            <label className="flex flex-col gap-1.5 sm:col-span-2"><span className={label}>Exam sitting (optional)</span>
+              <input value={f.sittingLabel} onChange={e => setF({ ...f, sittingLabel: e.target.value })} placeholder="WASSCE · November 2026" className="input-base" /></label>
+            <label className="flex flex-col gap-1.5"><span className={label}>Starts</span>
+              <input type="date" value={f.startDate} onChange={e => setF({ ...f, startDate: e.target.value })} className="input-base" /></label>
+            <label className="flex flex-col gap-1.5"><span className={label}>Exam date</span>
+              <input type="date" value={f.examDate} onChange={e => setF({ ...f, examDate: e.target.value })} className="input-base" /></label>
+          </div>
+          <DialogFooter>
+            <Button size="sm" variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button size="sm" loading={busy} disabled={!f.name.trim() || !f.teacherId} onClick={save}>Create cohort</Button>
+          </DialogFooter>
+        </DialogContent>
+      )}
+    </Dialog>
   );
 }
