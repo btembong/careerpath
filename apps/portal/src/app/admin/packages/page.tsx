@@ -1,414 +1,291 @@
 'use client';
-import { notify } from '@/lib/notify';
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useMemo, useState } from 'react';
+import { clsx } from 'clsx';
+import { minorToMajor, majorToMinor } from '@cpa/shared';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card, IconBox } from '@/components/ui/Card';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
-import { Select } from '@/components/ui/Select';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { spring } from '@/lib/motion';
+import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
+import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-interface PlatformCourse { id: string; title: string; status: string; programme: { shortName: string | null; name: string } | null; }
-interface Country { id: string; name: string; code: string; currency: string; }
-interface Cohort { id: string; name: string; }
-interface AdminPackage {
+interface Course {
+  id: string; title: string; status: string;
+  isSoldIndividually: boolean; priceAmount: number | null; priceCurrency: string | null;
+  teacher?: { email: string; name?: string | null; firstName?: string | null; lastName?: string | null } | null;
+  programme?: { name: string; shortName: string | null } | null;
+}
+interface Cohort { id: string; name: string }
+interface Pkg {
   id: string; name: string; description: string | null;
-  priceAmount: number; currency: string; countryId: string | null;
-  courseIds: string[]; validityDays: number | null; categoryTags: string[];
-  cohortId: string | null; cohort: Cohort | null;
+  priceAmount: number; currency: string; courseIds: string[];
+  validityDays: number | null; categoryTags: string[]; isPublished: boolean;
+  cohortId: string | null; cohort?: Cohort | null;
   _count?: { purchases: number };
-  totalRevenue?: number;
+}
+interface Form {
+  name: string; description: string; currency: string; price: string; validityDays: string;
+  courseIds: string[]; tags: string; cohortId: string; isPublished: boolean;
 }
 
-const CURRENCIES = ['USD','NGN','GHS','ZAR','XAF','XOF','RWF','KES','UGX','ETB','TZS'];
+const CURRENCIES = ['GHS', 'XAF', 'NGN', 'USD', 'XOF', 'LRD', 'KES', 'ZAR', 'RWF', 'UGX'];
+const VALIDITY = [['90', '3 months'], ['180', '6 months'], ['365', '12 months'], ['', 'No end date']];
+const money = (minor: number | null, cur: string | null) =>
+  minor == null || !cur ? '—' : `${cur} ${minorToMajor(minor, cur).toLocaleString()}`;
+const teacherName = (c: Course) =>
+  c.teacher?.name || [c.teacher?.firstName, c.teacher?.lastName].filter(Boolean).join(' ') || c.teacher?.email?.split('@')[0] || '—';
+const months = (d: number | null) => !d ? 'No end date' : d % 30 === 0 ? `${d / 30} months` : `${d} days`;
+const label = 'text-[13px] font-semibold text-navy';
+
+function toForm(p?: Pkg): Form {
+  return p ? {
+    name: p.name, description: p.description ?? '', currency: p.currency,
+    price: String(minorToMajor(p.priceAmount, p.currency)), validityDays: p.validityDays ? String(p.validityDays) : '',
+    courseIds: p.courseIds, tags: p.categoryTags.join(', '), cohortId: p.cohortId ?? '', isPublished: p.isPublished,
+  } : { name: 'New package', description: '', currency: 'GHS', price: '', validityDays: '365', courseIds: [], tags: '', cohortId: '', isPublished: false };
+}
 
 export default function AdminPackagesPage() {
-  const [packages, setPackages]   = useState<AdminPackage[]>([]);
-  const [courses,  setCourses]    = useState<PlatformCourse[]>([]);
-  const [countries, setCountries] = useState<Country[]>([]);
-  const [cohorts,  setCohorts]    = useState<Cohort[]>([]);
-  const [loading,  setLoading]    = useState(true);
-  const [showForm, setShowForm]   = useState(false);
-  const [saving,   setSaving]     = useState(false);
-  const [editId,   setEditId]     = useState<string | null>(null);
-  const [deleteId, setDeleteId]   = useState<string | null>(null);
-  const [deleting, setDeleting]   = useState(false);
+  const [packages, setPackages] = useState<Pkg[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selId, setSelId] = useState<string | 'new' | null>(null);
+  const [form, setForm] = useState<Form>(toForm());
+  const [saving, setSaving] = useState(false);
+  const [picking, setPicking] = useState(false);
 
-  const blank = {
-    name: '', description: '', priceAmount: '', currency: 'USD',
-    countryId: '', validityDays: '', selectedCourseIds: [] as string[], categoryTags: '', cohortId: '',
-  };
-  const [form, setForm] = useState(blank);
-
+  async function loadPackages() {
+    const r = await api.get('/admin/packages').catch(() => ({ data: [] }));
+    setPackages(r.data ?? []);
+    return (r.data ?? []) as Pkg[];
+  }
   useEffect(() => {
     Promise.all([
-      api.get('/admin/packages').then(r => setPackages(r.data)).catch(() => {}),
+      loadPackages().then(ps => { if (ps[0]) { setSelId(ps[0].id); setForm(toForm(ps[0])); } }),
       api.get('/platform-courses').then(r => setCourses(r.data ?? [])).catch(() => {}),
-      api.get('/countries/admin/countries').then(r => setCountries(r.data ?? [])).catch(() => {}),
       api.get('/portals/admin/cohorts').then(r => setCohorts(r.data ?? [])).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, []);
 
-  function buildPayload() {
-    return {
-      name: form.name,
-      description: form.description || undefined,
-      priceAmount: parseFloat(form.priceAmount),
+  const byId = useMemo(() => new Map(courses.map(c => [c.id, c])), [courses]);
+  const sel = selId && selId !== 'new' ? packages.find(p => p.id === selId) ?? null : null;
+  const set = (patch: Partial<Form>) => setForm(f => ({ ...f, ...patch }));
+
+  function pick(p: Pkg | 'new') {
+    if (p === 'new') { setSelId('new'); setForm(toForm()); }
+    else { setSelId(p.id); setForm(toForm(p)); }
+  }
+
+  // What the chosen courses cost one by one, in the package currency (courses priced in another currency can't be added up)
+  const inPkg = form.courseIds.map(id => byId.get(id)).filter((c): c is Course => !!c);
+  const sameCurrency = inPkg.filter(c => c.isSoldIndividually && c.priceAmount != null && c.priceCurrency === form.currency);
+  const separateTotal = sameCurrency.reduce((t, c) => t + minorToMajor(c.priceAmount!, c.priceCurrency), 0);
+  const priceNum = Number(form.price);
+  const allPriced = inPkg.length > 0 && sameCurrency.length === inPkg.length;
+
+  async function save(publish?: boolean) {
+    if (!form.name.trim() || !(priceNum > 0)) { notify.error('Give the package a name and a price above zero'); return; }
+    setSaving(true);
+    const payload = {
+      name: form.name.trim(),
+      description: form.description.trim() || undefined,
+      priceAmount: majorToMinor(priceNum, form.currency),
       currency: form.currency,
-      countryId: form.countryId || undefined,
-      validityDays: form.validityDays ? parseInt(form.validityDays) : undefined,
-      courseIds: form.selectedCourseIds,
-      categoryTags: form.categoryTags ? form.categoryTags.split(',').map(s => s.trim()).filter(Boolean) : [],
+      validityDays: form.validityDays ? Number(form.validityDays) : undefined,
+      courseIds: form.courseIds,
+      categoryTags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
       cohortId: form.cohortId || null,
+      ...(publish !== undefined && { isPublished: publish }),
     };
-  }
-
-  async function savePackage(e: React.FormEvent) {
-    e.preventDefault(); setSaving(true);
     try {
-      if (editId) {
-        await api.patch(`/admin/packages/${editId}`, buildPayload());
-        notify.success('Package updated');
-      } else {
-        await api.post('/admin/packages', buildPayload());
+      if (selId === 'new') {
+        const r = await api.post('/admin/packages', payload);
+        if (publish) await api.patch(`/admin/packages/${r.data.id}`, { isPublished: true });
         notify.success('Package created');
+        const ps = await loadPackages();
+        const created = ps.find(p => p.id === r.data.id);
+        if (created) pick(created);
+      } else if (selId) {
+        await api.patch(`/admin/packages/${selId}`, payload);
+        notify.success(publish === true ? 'Package published' : publish === false ? 'Package unpublished' : 'Changes saved');
+        const ps = await loadPackages();
+        const updated = ps.find(p => p.id === selId);
+        if (updated) setForm(toForm(updated));
       }
-      const r = await api.get('/admin/packages');
-      setPackages(r.data); setShowForm(false); setEditId(null); setForm(blank);
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-    finally { setSaving(false); }
-  }
-
-  function startEdit(pkg: AdminPackage) {
-    setEditId(pkg.id);
-    setForm({
-      name: pkg.name, description: pkg.description ?? '',
-      priceAmount: pkg.priceAmount?.toString() ?? '',
-      currency: pkg.currency ?? 'USD',
-      countryId: pkg.countryId ?? '',
-      validityDays: pkg.validityDays?.toString() ?? '',
-      selectedCourseIds: pkg.courseIds ?? [],
-      categoryTags: pkg.categoryTags?.join(', ') ?? '',
-      cohortId: pkg.cohortId ?? '',
-    });
-    setShowForm(true);
-  }
-
-  async function deletePackage() {
-    if (!deleteId) return;
-    setDeleting(true);
-    try {
-      await api.delete(`/admin/packages/${deleteId}`);
-      setPackages(prev => prev.filter(p => p.id !== deleteId));
-      setDeleteId(null);
-      notify.success('Package deleted');
     } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to delete');
-    } finally { setDeleting(false); }
+      const m = err?.response?.data?.message;
+      notify.error(Array.isArray(m) ? m.join(', ') : m ?? 'Could not save the package');
+    } finally { setSaving(false); }
   }
-
-  function toggleCourse(id: string) {
-    setForm(f => ({
-      ...f,
-      selectedCourseIds: f.selectedCourseIds.includes(id)
-        ? f.selectedCourseIds.filter(x => x !== id)
-        : [...f.selectedCourseIds, id],
-    }));
-  }
-
-  // Sync currency from selected country
-  function handleCountryChange(countryId: string) {
-    const country = countries.find(c => c.id === countryId);
-    setForm(f => ({ ...f, countryId, currency: country?.currency ?? f.currency }));
-  }
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 p-6 space-y-5">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {[1,2,3].map(i => <SkeletonCard key={i} />)}
-        </div>
-      </div>
-    </div>
-  );
-
-  // Group courses by programme for the checklist
-  const coursesByProg: Record<string, PlatformCourse[]> = {};
-  courses.forEach(c => {
-    const key = c.programme?.shortName ?? c.programme?.name ?? 'Untagged';
-    if (!coursesByProg[key]) coursesByProg[key] = [];
-    coursesByProg[key].push(c);
-  });
 
   return (
-    <>
-    <div className="flex flex-col min-h-full">
-      <Topbar title="Packages" subtitle="Create and manage learning packages" />
-      <div className="flex-1 p-6 space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">PACKAGES</p>
-            <h2 className="text-base font-bold text-navy">{packages.length} package{packages.length !== 1 ? 's' : ''}</h2>
-          </div>
-          <Button size="sm" onClick={() => { setShowForm(v => !v); setEditId(null); setForm(blank); }}>
-            <Icon name="add" size={14} /> New package
-          </Button>
-        </div>
+    <div className="flex min-h-full flex-col">
+      <Topbar title="Packages" subtitle="Bundle courses with live classes, and set the price"
+        actions={<Button size="sm" onClick={() => pick('new')}>New package</Button>} />
 
-        {/* Form */}
-        {showForm && (
-          <Card padding="md">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-azure mb-4">
-              {editId ? 'EDIT PACKAGE' : 'NEW PACKAGE'}
-            </p>
-            <form onSubmit={savePackage} className="space-y-5">
-
-              {/* Basic info */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-semibold text-navy">Package name *</label>
-                  <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required
-                    placeholder="WASSCE Science Bundle – Nigeria"
-                    className="w-full rounded-md border border-cloud bg-white px-4 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-                </div>
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-semibold text-navy">Description</label>
-                  <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                    rows={2} placeholder="What's included…"
-                    className="w-full rounded-md border border-cloud bg-white px-4 py-2.5 text-sm text-navy outline-none resize-none focus:border-azure placeholder:text-royal/40" />
-                </div>
-
-                {/* Country — drives currency */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-navy">Country <span className="font-normal text-royal/40">(sets currency)</span></label>
-                  <Select
-                    value={form.countryId}
-                    onValueChange={handleCountryChange}
-                    placeholder="— Any country —"
-                    options={countries.map(c => ({ value: c.id, label: `${c.name} (${c.currency})` }))}
-                  />
-                </div>
-
-                {/* Currency — auto-filled but editable */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-navy">Currency *</label>
-                  <Select
-                    value={form.currency}
-                    onValueChange={v => setForm(f => ({ ...f, currency: v }))}
-                    options={CURRENCIES.map(c => ({ value: c, label: c }))}
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-navy">Price *</label>
-                  <input value={form.priceAmount} onChange={e => setForm(f => ({ ...f, priceAmount: e.target.value }))}
-                    required type="number" placeholder="150"
-                    className="w-full rounded-md border border-cloud bg-white px-4 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-navy">Validity (days)</label>
-                  <input value={form.validityDays} onChange={e => setForm(f => ({ ...f, validityDays: e.target.value }))}
-                    type="number" placeholder="90"
-                    className="w-full rounded-md border border-cloud bg-white px-4 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-                </div>
-
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-semibold text-navy">Category tags <span className="font-normal text-royal/40">(comma-separated)</span></label>
-                  <input value={form.categoryTags} onChange={e => setForm(f => ({ ...f, categoryTags: e.target.value }))}
-                    placeholder="Science, WASSCE, West Africa"
-                    className="w-full rounded-md border border-cloud bg-white px-4 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-                </div>
-
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-xs font-semibold text-navy">
-                    Linked cohort <span className="font-normal text-royal/40">(students auto-enrolled on purchase)</span>
-                  </label>
-                  <Select
-                    value={form.cohortId}
-                    onValueChange={v => setForm(f => ({ ...f, cohortId: v }))}
-                    placeholder="— No cohort —"
-                    options={cohorts.map(c => ({ value: c.id, label: c.name }))}
-                  />
-                </div>
-              </div>
-
-              {/* Course checklist */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-navy">
-                    Courses in this package
-                    {form.selectedCourseIds.length > 0 && (
-                      <span className="ml-2 rounded bg-azure px-1.5 py-0.5 text-[10px] font-bold text-white">
-                        {form.selectedCourseIds.length} selected
-                      </span>
-                    )}
-                  </label>
-                  {form.selectedCourseIds.length > 0 && (
-                    <button type="button" onClick={() => setForm(f => ({ ...f, selectedCourseIds: [] }))}
-                      className="text-[10px] text-royal/40 hover:text-navy transition">
-                      Clear all
-                    </button>
-                  )}
-                </div>
-
-                {courses.length === 0 ? (
-                  <div className="rounded-md border border-cloud bg-surface px-4 py-3 text-xs text-royal/40">
-                    No platform courses yet — create some in Course Management first.
-                  </div>
-                ) : (
-                  <div className="rounded-md border border-cloud bg-surface divide-y divide-cloud max-h-64 overflow-y-auto">
-                    {Object.entries(coursesByProg).map(([progName, progCourses]) => (
-                      <div key={progName}>
-                        <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-royal/40 bg-cloud/50 sticky top-0">
-                          {progName}
-                        </p>
-                        {progCourses.map(c => {
-                          const checked = form.selectedCourseIds.includes(c.id);
-                          return (
-                            <label key={c.id}
-                              className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-cloud transition ${checked ? 'bg-azure/5' : ''}`}>
-                              <input type="checkbox" checked={checked} onChange={() => toggleCourse(c.id)}
-                                className="rounded accent-azure" />
-                              <span className="flex-1 text-sm text-navy">{c.title}</span>
-                              <Badge variant={c.status === 'PUBLISHED' ? 'active' : 'default'}>
-                                {c.status === 'PUBLISHED' ? 'Published' : c.status.replace('_', ' ')}
-                              </Badge>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    ))}
+      <div className="flex flex-wrap items-start gap-5 p-4 lg:px-7 lg:py-6">
+        <section aria-label="Packages" className="min-w-0 flex-[1_1_340px] overflow-hidden rounded-lg border border-line bg-white">
+          {loading ? <p className="p-5 text-sm text-muted">Loading packages…</p>
+            : !packages.length && selId !== 'new' ? <p className="p-5 text-sm text-ink2">No packages yet. Create the first one.</p>
+            : (
+              <>
+                {selId === 'new' && (
+                  <div className="flex items-center gap-3 border-b border-line bg-accent-soft px-4 py-3.5">
+                    <span className="flex-1 text-sm font-semibold text-navy">{form.name || 'New package'}</span>
+                    <span className="inline-flex h-[22px] items-center rounded border border-line bg-white px-1.5 text-[11.5px] font-semibold text-ink2">Not saved</span>
                   </div>
                 )}
-              </div>
-
-              <div className="flex gap-3">
-                <Button type="submit" loading={saving} size="sm">{editId ? 'Save changes' : 'Create package'}</Button>
-                <Button type="button" variant="secondary" size="sm" onClick={() => { setShowForm(false); setEditId(null); setForm(blank); }}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </Card>
-        )}
-
-        {/* Package list */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {packages.map((pkg, i) => {
-            const country = countries.find(c => c.id === pkg.countryId);
-            const soldCount = pkg._count?.purchases ?? null;
-            const revenue = pkg.totalRevenue != null ? pkg.totalRevenue : (soldCount != null ? soldCount * Number(pkg.priceAmount) : null);
-            return (
-              <motion.div
-                key={pkg.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.06, ...spring.smooth }}
-              >
-              <Card padding="none" className="overflow-hidden flex flex-col h-full">
-                <div className="bg-navy p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-md bg-azure/20">
-                      <Icon name="packages" size={20} className="text-azure" />
-                    </div>
-                    <div className="text-right">
-                      <Badge variant="active">{pkg.currency} {Number(pkg.priceAmount).toLocaleString()}</Badge>
-                      {country && (
-                        <p className="text-[10px] text-white/40 mt-1">{country.name}</p>
-                      )}
-                    </div>
-                  </div>
-                  <h3 className="mt-3 text-sm font-bold text-white leading-snug">{pkg.name}</h3>
-                  {pkg.description && <p className="mt-1 text-xs text-white/40 line-clamp-2">{pkg.description}</p>}
-                </div>
-                <div className="flex-1 p-4 space-y-3">
-                  {/* Sales + revenue strip */}
-                  {(soldCount != null || revenue != null) && (
-                    <div className="grid grid-cols-2 gap-2">
-                      {soldCount != null && (
-                        <div className="rounded-lg bg-azure/8 border border-azure/15 px-3 py-2 text-center">
-                          <p className="text-sm font-black text-navy">{soldCount.toLocaleString()}</p>
-                          <p className="text-[9px] uppercase tracking-widest text-royal/50 mt-0.5">Sold</p>
-                        </div>
-                      )}
-                      {revenue != null && (
-                        <div className="rounded-lg bg-azure/8 border border-azure/15 px-3 py-2 text-center">
-                          <p className="text-sm font-black text-navy">{Number(revenue).toLocaleString()}</p>
-                          <p className="text-[9px] uppercase tracking-widest text-royal/50 mt-0.5">{pkg.currency} Revenue</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-3 text-xs text-royal/60 flex-wrap">
-                    <span className="flex items-center gap-1">
-                      <IconBox className="h-5 w-5 rounded"><Icon name="courses" size={10} /></IconBox>
-                      {pkg.courseIds?.length ?? 0} courses
+                {packages.map(p => (
+                  <button key={p.id} type="button" onClick={() => pick(p)} aria-current={selId === p.id}
+                    className={clsx('flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left last:border-b-0 transition-colors',
+                      selId === p.id ? 'bg-accent-soft' : 'bg-white hover:bg-subtle')}>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-navy">{p.name}</span>
+                      <span className="block truncate text-[12.5px] text-muted">
+                        {p.courseIds.length} course{p.courseIds.length === 1 ? '' : 's'} · {months(p.validityDays)}{p.cohort ? ' · live classes' : ''}
+                      </span>
                     </span>
-                    {pkg.validityDays && (
-                      <span className="flex items-center gap-1">
-                        <IconBox className="h-5 w-5 rounded"><Icon name="clock" size={10} /></IconBox>
-                        {pkg.validityDays}d
+                    <span className="text-right">
+                      <span className="block text-sm font-bold text-navy">{money(p.priceAmount, p.currency)}</span>
+                      <span className={clsx('mt-1 inline-flex h-[22px] items-center rounded px-1.5 text-[11.5px] font-semibold',
+                        p.isPublished ? 'bg-accent-soft text-navy' : 'border border-line bg-subtle text-ink2')}>
+                        {p.isPublished ? 'Published' : 'Draft'}
                       </span>
-                    )}
-                    {pkg.cohort && (
-                      <span className="flex items-center gap-1 text-azure font-semibold">
-                        <IconBox className="h-5 w-5 rounded"><Icon name="mentorship" size={10} /></IconBox>
-                        {pkg.cohort.name}
-                      </span>
-                    )}
-                  </div>
-                  {(pkg.categoryTags?.length > 0) && (
-                    <div className="flex flex-wrap gap-1">
-                      {pkg.categoryTags.slice(0, 3).map((tag: string) => (
-                        <span key={tag} className="rounded bg-cloud px-2 py-0.5 text-[10px] font-medium text-royal/60">{tag}</span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <button onClick={() => startEdit(pkg)}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-cloud py-2 text-xs font-semibold text-navy hover:bg-cloud transition">
-                      <Icon name="edit" size={13} /> Edit
-                    </button>
-                    <button onClick={() => setDeleteId(pkg.id)}
-                      className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-400 hover:bg-red-100 transition">
-                      <Icon name="trash" size={13} />
-                    </button>
-                  </div>
-                </div>
-              </Card>
-              </motion.div>
-            );
-          })}
-          {packages.length === 0 && (
-            <div className="col-span-3">
-              <Card padding="lg">
-                <EmptyState icon="packages" title="No packages yet" description="Create your first learning package" />
-              </Card>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+                    </span>
+                  </button>
+                ))}
+              </>
+            )}
+        </section>
 
-    <ConfirmDialog
-      open={!!deleteId}
-      onOpenChange={open => { if (!open) setDeleteId(null); }}
-      title="Delete package?"
-      description="This cannot be undone. Students with active purchases won't lose access, but the package will be removed from sale."
-      confirmLabel="Delete package"
-      variant="danger"
-      loading={deleting}
-      onConfirm={deletePackage}
-    />
-    </>
+        {selId && (
+          <section aria-label="Package editor" className="flex min-w-0 flex-[999_1_520px] flex-col gap-5 rounded-lg border border-line bg-white p-5">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="min-w-0 flex-1 truncate text-lg font-bold text-navy">{form.name || 'New package'}</h2>
+              {sel?._count && <span className="text-[13px] text-muted">{sel._count.purchases} sold</span>}
+              <span className={clsx('inline-flex h-6 items-center rounded px-2 text-xs font-semibold',
+                form.isPublished ? 'bg-accent-soft text-navy' : 'border border-line bg-subtle text-ink2')}>
+                {selId === 'new' ? 'Not saved' : form.isPublished ? 'Published' : 'Draft'}
+              </span>
+            </div>
+
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <label className="flex flex-col gap-1.5 sm:col-span-2"><span className={label}>Name</span>
+                <input value={form.name} onChange={e => set({ name: e.target.value })} className="input-base" /></label>
+              <label className="flex flex-col gap-1.5 sm:col-span-2"><span className={label}>What students get</span>
+                <textarea rows={2} value={form.description} onChange={e => set({ description: e.target.value })}
+                  placeholder="For example: all four GCE O Level sciences with weekly live classes"
+                  className="w-full resize-none rounded-md border border-line px-3 py-2 text-sm text-navy outline-none focus:border-azure" /></label>
+              <label className="flex flex-col gap-1.5"><span className={label}>Currency</span>
+                <select value={form.currency} onChange={e => set({ currency: e.target.value })} className="input-base">{CURRENCIES.map(c => <option key={c}>{c}</option>)}</select></label>
+              <label className="flex flex-col gap-1.5"><span className={label}>Price</span>
+                <input inputMode="decimal" value={form.price} onChange={e => set({ price: e.target.value })} placeholder="150" className="input-base" /></label>
+              <label className="flex flex-col gap-1.5"><span className={label}>Access lasts</span>
+                <select value={form.validityDays} onChange={e => set({ validityDays: e.target.value })} className="input-base">
+                  {VALIDITY.map(([v, l]) => <option key={l} value={v}>{l}</option>)}
+                </select></label>
+              <label className="flex flex-col gap-1.5"><span className={label}>Programmes (for catalogue filters)</span>
+                <input value={form.tags} onChange={e => set({ tags: e.target.value })} placeholder="GCE O Level, Sciences" className="input-base" /></label>
+            </div>
+
+            <div className="flex flex-col gap-2.5">
+              <div className="flex items-center gap-2">
+                <h3 className="text-[15px] font-semibold text-navy">Courses</h3>
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded bg-accent-soft px-1.5 text-[11.5px] font-bold text-navy">{form.courseIds.length}</span>
+                <span className="flex-1" />
+                <Button size="sm" variant="secondary" onClick={() => setPicking(true)}>Add courses</Button>
+              </div>
+              {inPkg.length ? (
+                <div className="overflow-x-auto rounded-md border border-line">
+                  <table className="w-full min-w-[480px] border-collapse text-[13.5px]">
+                    <thead><tr className="bg-subtle">
+                      {['Course', 'Teacher', 'Price on its own', ''].map(h => <th key={h} className="border-b border-line px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {inPkg.map(c => (
+                        <tr key={c.id}>
+                          <td className="border-b border-line px-3 py-2.5 font-semibold text-navy">{c.title}</td>
+                          <td className="border-b border-line px-3 py-2.5 text-ink2">{teacherName(c)}</td>
+                          <td className="border-b border-line px-3 py-2.5 text-ink2">{c.isSoldIndividually ? money(c.priceAmount, c.priceCurrency) : 'Package only'}</td>
+                          <td className="border-b border-line px-3 py-2.5 text-right">
+                            <button type="button" onClick={() => set({ courseIds: form.courseIds.filter(id => id !== c.id) })}
+                              className="text-[13px] font-semibold text-muted hover:text-error">Remove</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <p className="text-[13.5px] text-ink2">No courses yet. Add the courses this package unlocks.</p>}
+              {allPriced && priceNum > 0 && (
+                <p className="rounded-md bg-accent-soft px-3 py-2.5 text-[13px] text-ink2">
+                  Bought one by one these cost <strong className="text-navy">{form.currency} {separateTotal.toLocaleString()}</strong>.{' '}
+                  {separateTotal > priceNum
+                    ? <>The package saves students <strong className="text-navy">{form.currency} {(separateTotal - priceNum).toLocaleString()}</strong>.</>
+                    : <strong className="text-navy">The package costs more than buying the courses separately.</strong>}
+                </p>
+              )}
+            </div>
+
+            <label className="flex flex-col gap-1.5"><span className={label}>Live classes</span>
+              <select value={form.cohortId} onChange={e => set({ cohortId: e.target.value })} className="input-base">
+                <option value="">No live classes</option>
+                {cohorts.map(c => <option key={c.id} value={c.id}>Cohort: {c.name}</option>)}
+              </select>
+              <span className="text-xs text-muted">Buyers join this cohort and its live classes.</span>
+            </label>
+
+            <div className="flex flex-wrap gap-2 border-t border-line pt-4">
+              <Button size="sm" loading={saving} onClick={() => save()}>{selId === 'new' ? 'Create as draft' : 'Save changes'}</Button>
+              {selId !== 'new' && (form.isPublished
+                ? <Button size="sm" variant="danger" loading={saving} onClick={() => save(false)}>Unpublish</Button>
+                : <Button size="sm" variant="secondary" loading={saving} onClick={() => save(true)}>Publish</Button>)}
+              {selId === 'new' && <Button size="sm" variant="secondary" loading={saving} onClick={() => save(true)}>Create and publish</Button>}
+            </div>
+          </section>
+        )}
+      </div>
+
+      <CoursePicker open={picking} courses={courses} chosen={form.courseIds}
+        onClose={() => setPicking(false)} onDone={ids => { set({ courseIds: ids }); setPicking(false); }} />
+    </div>
+  );
+}
+
+function CoursePicker({ open, courses, chosen, onClose, onDone }: {
+  open: boolean; courses: Course[]; chosen: string[]; onClose: () => void; onDone: (ids: string[]) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [ids, setIds] = useState<Set<string>>(new Set(chosen));
+  useEffect(() => { if (open) { setIds(new Set(chosen)); setQ(''); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const list = courses.filter(c => c.status === 'PUBLISHED' && (!q.trim() || c.title.toLowerCase().includes(q.trim().toLowerCase())));
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      {open && (
+        <DialogContent size="lg" title="Choose courses" description="Only published courses can go in a package">
+          <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search courses" aria-label="Search courses" className="input-base mb-3" />
+          <ul className="max-h-[360px] overflow-y-auto rounded-md border border-line">
+            {list.map(c => (
+              <li key={c.id} className="border-b border-line last:border-b-0">
+                <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-subtle">
+                  <input type="checkbox" checked={ids.has(c.id)} className="h-4 w-4 accent-[#3F6FE8]"
+                    onChange={() => setIds(s => { const n = new Set(s); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; })} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-navy">{c.title}</span>
+                    <span className="block text-xs text-muted">{teacherName(c)}{c.programme ? ` · ${c.programme.shortName ?? c.programme.name}` : ''}</span>
+                  </span>
+                </label>
+              </li>
+            ))}
+            {!list.length && <li className="p-4 text-sm text-muted">No published courses match.</li>}
+          </ul>
+          <DialogFooter>
+            <span className="mr-auto text-[13px] text-ink2">{ids.size} chosen</span>
+            <Button size="sm" variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button size="sm" onClick={() => onDone([...ids])}>Use these courses</Button>
+          </DialogFooter>
+        </DialogContent>
+      )}
+    </Dialog>
   );
 }
