@@ -1,230 +1,217 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { notify } from '@/lib/notify';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { SkeletonTopbar, SkeletonTable } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
+import { Button } from '@/components/ui/Button';
+import { Drawer, DrawerContent, DrawerSection, InfoGrid } from '@/components/ui/Dialog';
+import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-type StatusFilter = 'all' | 'ACTIVE' | 'SCHEDULED' | 'COMPLETED' | 'CANCELLED';
-
-const STATUS_BADGE: Record<string, 'active' | 'muted' | 'default'> = {
-  ACTIVE:    'active',
-  SCHEDULED: 'muted',
-  COMPLETED: 'default',
-  CANCELLED: 'muted',
-};
-
-function teacherName(t?: any) {
-  if (!t) return '—';
-  if (t.firstName || t.lastName) return `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim();
-  return t.email ?? '—';
+type Kind = 'live' | 'upcoming' | 'held' | 'cancelled';
+interface Row {
+  id: string; title: string; scheduledAt: string; durationMins: number; status: string; recordingUrl: string | null;
+  cohort: { id: string; name: string }; teacher: { id: string; name: string };
+  rosterSize: number; attendedCount: number; inClass: number; kind: Kind; missingRecording: boolean;
 }
+interface Overview {
+  stats: { liveNow: number; inClassNow: number; thisWeek: number; cohortsThisWeek: number; teachersThisWeek: number; attendancePct: number | null; missingRecordings: number };
+  live: Row[]; classes: Row[];
+}
+type Tab = 'week' | 'held' | 'missing' | 'cancelled' | 'all';
+
+const DAY = 86_400_000;
+const time = (d: string) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+const when = (d: string) => {
+  const days = Math.round((new Date(new Date(d).toDateString()).getTime() - new Date(new Date().toDateString()).getTime()) / DAY);
+  return days === 0 ? `Today ${time(d)}` : days === 1 ? `Tomorrow ${time(d)}` : `${new Date(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}${days > 0 ? ` ${time(d)}` : ''}`;
+};
+const STATUS: Record<Kind, string> = { live: 'Live', upcoming: 'Scheduled', held: 'Held', cancelled: 'Cancelled' };
 
 export default function AdminLivePage() {
-  const [data, setData]     = useState<{ stats: any; classes: any[] } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter]   = useState<StatusFilter>('all');
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [acting, setActing] = useState<string | null>(null);
+  const [d, setD] = useState<Overview | null>(null);
+  const [tab, setTab] = useState<Tab>('week');
+  const [q, setQ] = useState('');
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
+  async function load() { const r = await api.get('/live/admin/classes'); setD(r.data); }
   useEffect(() => {
-    api.get('/live/admin/overview')
-      .then(r => setData(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    load().catch(() => notify.error('Could not load live classes'));
+    const iv = setInterval(() => load().catch(() => {}), 60_000);
+    return () => clearInterval(iv);
   }, []);
 
-  async function forceEnd(classId: string) {
-    setActing(classId);
-    try {
-      await api.patch(`/live/classes/${classId}/end`);
-      setData(prev => prev ? {
-        ...prev,
-        classes: prev.classes.map(c => c.id === classId ? { ...c, status: 'COMPLETED' } : c),
-      } : prev);
-      notify.success('Class ended');
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to end class');
-    } finally { setActing(null); }
+  const lists = useMemo(() => {
+    const all = d?.classes ?? [];
+    const weekEnd = Date.now() + 7 * DAY;
+    return {
+      week: all.filter(c => (c.kind === 'upcoming' || c.kind === 'live') && +new Date(c.scheduledAt) < weekEnd).reverse(),
+      held: all.filter(c => c.kind === 'held'),
+      missing: all.filter(c => c.missingRecording),
+      cancelled: all.filter(c => c.kind === 'cancelled'),
+      all,
+    } as Record<Tab, Row[]>;
+  }, [d]);
+  const shown = lists[tab].filter(c => !q.trim() || `${c.title} ${c.cohort.name} ${c.teacher.name}`.toLowerCase().includes(q.trim().toLowerCase()));
+
+  async function end(c: Row) {
+    setBusy(c.id);
+    try { await api.patch(`/live/classes/${c.id}/end`); notify.success('Class ended'); await load(); }
+    catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not end the class'); }
+    finally { setBusy(null); }
   }
 
-  async function cancelClass(classId: string) {
-    setActing(classId);
-    try {
-      await api.patch(`/live/classes/${classId}/cancel`);
-      setData(prev => prev ? {
-        ...prev,
-        classes: prev.classes.map(c => c.id === classId ? { ...c, status: 'CANCELLED' } : c),
-      } : prev);
-      notify.success('Class cancelled');
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to cancel class');
-    } finally { setActing(null); }
-  }
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 p-6 space-y-5 max-w-6xl mx-auto w-full">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[0,1,2,3].map(i => <div key={i} className="h-20 rounded-2xl bg-cloud animate-pulse" />)}
-        </div>
-        <SkeletonTable />
-      </div>
-    </div>
-  );
-
-  const stats = data?.stats ?? {};
-  const classes = data?.classes ?? [];
-  const filtered = filter === 'all' ? classes : classes.filter(c => c.status === filter);
+  const s = d?.stats;
+  const open = d?.classes.find(c => c.id === openId) ?? null;
 
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="Live Classes" subtitle="All cohort sessions across all teachers" />
-      <div className="flex-1 p-4 md:p-6 space-y-5 max-w-5xl w-full mx-auto">
+    <div className="flex min-h-full flex-col">
+      <Topbar title="Live classes" subtitle="Every class on the platform, what’s live now and how well they’re attended" />
 
-        {/* Stats grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {([
-            { key: 'active',    label: 'Live now',  color: 'text-azure'   },
-            { key: 'scheduled', label: 'Scheduled', color: 'text-royal'   },
-            { key: 'completed', label: 'Completed', color: 'text-navy'    },
-            { key: 'cancelled', label: 'Cancelled', color: 'text-royal/40'},
-            { key: 'totalAttendance', label: 'Total joins', color: 'text-navy' },
-          ]).map(s => (
-            <Card key={s.key} className="flex flex-col items-center py-4 text-center">
-              <p className={`text-2xl font-black ${s.color}`}>{stats[s.key] ?? 0}</p>
-              <p className="text-[10px] font-semibold text-royal/50 mt-0.5">{s.label}</p>
-            </Card>
+      <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+          {[
+            { l: 'Live now', v: s ? String(s.liveNow) : '…', sub: s ? (s.liveNow ? `${s.inClassNow} student${s.inClassNow === 1 ? '' : 's'} in class` : 'No class running') : '' },
+            { l: 'This week', v: s ? `${s.thisWeek} class${s.thisWeek === 1 ? '' : 'es'}` : '…', sub: s ? `${s.cohortsThisWeek} cohort${s.cohortsThisWeek === 1 ? '' : 's'} · ${s.teachersThisWeek} teacher${s.teachersThisWeek === 1 ? '' : 's'}` : '' },
+            { l: 'Attendance', v: s?.attendancePct != null ? `${s.attendancePct}%` : '—', sub: 'Last 4 weeks' },
+            { l: 'Missing recordings', v: s ? String(s.missingRecordings) : '…', sub: 'Held more than 2 days ago' },
+          ].map(x => (
+            <div key={x.l} className="rounded-lg border border-line bg-white p-4">
+              <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{x.l}</dt>
+              <dd className="mt-1.5 text-[22px] font-extrabold text-navy">{x.v}</dd>
+              <dd className="mt-0.5 truncate text-[12.5px] text-muted">{x.sub}</dd>
+            </div>
           ))}
-        </div>
+        </dl>
 
-        {/* Filter tabs */}
-        <div className="flex gap-1 rounded-xl border border-cloud bg-surface p-1 w-fit flex-wrap">
-          {(['all', 'ACTIVE', 'SCHEDULED', 'COMPLETED', 'CANCELLED'] as StatusFilter[]).map(f => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all capitalize
-                ${filter === f ? 'bg-white text-navy shadow-sm border border-cloud' : 'text-royal/50 hover:text-navy'}`}>
-              {f === 'all' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
-              {f !== 'all' && (
-                <span className="ml-1.5 text-[10px] text-royal/40">
-                  {f === 'ACTIVE' ? stats.active : f === 'SCHEDULED' ? stats.scheduled : f === 'COMPLETED' ? stats.completed : stats.cancelled}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Class list */}
-        {filtered.length === 0 ? (
-          <EmptyState icon="live" title="No classes" description={`No ${filter === 'all' ? '' : filter.toLowerCase()} live classes`} />
-        ) : (
-          <div className="space-y-2">
-            {filtered.map(cls => {
-              const isExpanded = expanded === cls.id;
-              return (
-                <Card key={cls.id} padding="none" className="overflow-hidden">
-                  {/* Row */}
-                  <button onClick={() => setExpanded(isExpanded ? null : cls.id)}
-                    className="flex w-full items-center gap-4 px-5 py-4 text-left hover:bg-surface transition">
-                    <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl
-                      ${cls.status === 'ACTIVE' ? 'bg-azure' : 'bg-cloud'}`}>
-                      <Icon name="live" size={16}
-                        className={cls.status === 'ACTIVE' ? 'text-white animate-pulse' : 'text-royal/40'} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-navy truncate">{cls.title}</p>
-                      <p className="text-[11px] text-royal/50 mt-0.5">
-                        {cls.cohort?.name}
-                        {cls.cohort?.teacher && <> · <span className="text-azure">{teacherName(cls.cohort.teacher)}</span></>}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <p className="text-[11px] text-royal/40 hidden sm:block">
-                        {new Date(cls.scheduledAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        {' '}
-                        {new Date(cls.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                      {cls._count?.attendance > 0 && (
-                        <span className="flex items-center gap-1 text-[11px] text-royal/50">
-                          <Icon name="user" size={11} />
-                          {cls._count.attendance}
-                        </span>
-                      )}
-                      <Badge variant={STATUS_BADGE[cls.status] ?? 'default'} className="capitalize text-[10px]">
-                        {cls.status.toLowerCase()}
-                      </Badge>
-                      <Icon name="chevronDown" size={13}
-                        className={`text-royal/30 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                    </div>
-                  </button>
-
-                  {/* Expanded detail */}
-                  <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden"
-                    >
-                    <div className="border-t border-cloud px-5 py-4 space-y-3">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {[
-                          { label: 'Cohort', value: cls.cohort?.name ?? '—' },
-                          { label: 'Teacher', value: teacherName(cls.cohort?.teacher) },
-                          { label: 'Duration', value: `${cls.durationMins ?? 90} min` },
-                          { label: 'Attendance', value: cls._count?.attendance ?? 0 },
-                        ].map(item => (
-                          <div key={item.label} className="rounded-xl bg-surface p-3">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-royal/40 mb-1">{item.label}</p>
-                            <p className="text-sm font-semibold text-navy">{item.value}</p>
-                          </div>
-                        ))}
-                      </div>
-                      {cls.description && (
-                        <p className="text-xs text-royal/60 bg-surface rounded-xl p-3">{cls.description}</p>
-                      )}
-                      {cls.recordingUrl && (
-                        <a href={cls.recordingUrl} target="_blank" rel="noreferrer"
-                          className="inline-flex items-center gap-2 rounded-xl border border-azure/30 bg-azure/5 px-4 py-2 text-xs font-semibold text-azure hover:bg-azure/10 transition">
-                          <Icon name="live" size={13} /> Watch recording
-                        </a>
-                      )}
-                      <div className="flex gap-2">
-                        {cls.status === 'ACTIVE' && (
-                          <button
-                            onClick={() => forceEnd(cls.id)}
-                            disabled={acting === cls.id}
-                            className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-100 transition disabled:opacity-50">
-                            {acting === cls.id ? 'Ending…' : 'Force end'}
-                          </button>
-                        )}
-                        {cls.status === 'SCHEDULED' && (
-                          <button
-                            onClick={() => cancelClass(cls.id)}
-                            disabled={acting === cls.id}
-                            className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-100 transition disabled:opacity-50">
-                            {acting === cls.id ? 'Cancelling…' : 'Cancel class'}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    </motion.div>
-                  )}
-                  </AnimatePresence>
-                </Card>
-              );
-            })}
-          </div>
+        {d && d.live.length > 0 && (
+          <section className="flex flex-col gap-2 rounded-lg border border-azure bg-white px-[18px] py-4">
+            <h2 className="flex items-center gap-2 text-[15px] font-bold text-navy"><span className="h-2 w-2 animate-pulse rounded-full bg-azure-strong" /> Live now</h2>
+            {d.live.map(c => (
+              <div key={c.id} className="flex flex-wrap items-center gap-3 rounded-md border border-line px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-navy">{c.title}</p>
+                  <p className="mt-0.5 truncate text-[12.5px] text-muted">{c.cohort.name} · {c.teacher.name} · started {time(c.scheduledAt)} · {c.inClass} of {c.rosterSize} in class</p>
+                </div>
+                <button type="button" onClick={() => setOpenId(c.id)} className="inline-flex h-8 items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Details</button>
+                <button type="button" disabled={busy === c.id} onClick={() => end(c)} className="inline-flex h-8 items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy hover:bg-subtle disabled:opacity-60">End class</button>
+              </div>
+            ))}
+          </section>
         )}
+
+        <section className="rounded-lg border border-line bg-white">
+          <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4">
+            <div role="tablist" aria-label="Classes" className="flex flex-1 gap-1 overflow-x-auto">
+              {([['week', 'This week'], ['held', 'Held'], ['missing', 'Missing recording'], ['cancelled', 'Cancelled'], ['all', 'All']] as [Tab, string][]).map(([k, l]) => (
+                <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+                  className={clsx('-mb-px h-[46px] whitespace-nowrap border-b-2 px-3 text-[13.5px] text-navy', tab === k ? 'border-azure-strong font-semibold' : 'border-transparent font-medium')}>
+                  {l} <span className="font-medium text-muted">{lists[k].length}</span>
+                </button>
+              ))}
+            </div>
+            <input type="search" aria-label="Search classes" value={q} onChange={e => setQ(e.target.value)} placeholder="Search by class, cohort or teacher" className="input-base my-2 h-[34px] w-64" />
+          </div>
+          {!d ? <div className="m-4 h-60 rounded-md bg-subtle animate-pulse" /> : !shown.length ? (
+            <p className="px-4 py-10 text-center text-[13px] text-ink2">No classes here.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[880px] border-collapse text-[13.5px]">
+                <thead><tr>
+                  {['Class', 'Cohort', 'Teacher', 'When', 'Attendance', 'Recording', 'Status'].map(h => (
+                    <th key={h} className="border-b border-line px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {shown.map(c => (
+                    <tr key={c.id} onClick={() => setOpenId(c.id)} className="cursor-pointer hover:bg-subtle">
+                      <td className="border-b border-line px-4 py-3 font-semibold text-navy">{c.title}</td>
+                      <td className="border-b border-line px-4 py-3 text-ink2">{c.cohort.name}</td>
+                      <td className="border-b border-line px-4 py-3 text-navy">{c.teacher.name}</td>
+                      <td className="border-b border-line px-4 py-3 text-ink2">{when(c.scheduledAt)}</td>
+                      <td className="border-b border-line px-4 py-3 text-navy">
+                        {c.kind === 'held' || c.kind === 'live' ? `${c.attendedCount} of ${c.rosterSize}${c.rosterSize ? ` · ${Math.round((c.attendedCount / c.rosterSize) * 100)}%` : ''}` : '—'}
+                      </td>
+                      <td className="border-b border-line px-4 py-3 text-ink2">{c.recordingUrl ? 'Added' : c.missingRecording ? 'Missing' : '—'}</td>
+                      <td className="border-b border-line px-4 py-3">
+                        <span className={clsx('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs font-semibold',
+                          c.kind === 'live' || c.kind === 'held' ? 'bg-accent-soft text-navy' : 'border border-line bg-subtle text-ink2')}>{STATUS[c.kind]}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </div>
+
+      <ClassDrawer cls={open} onClose={() => setOpenId(null)} onChanged={load} />
     </div>
+  );
+}
+
+function ClassDrawer({ cls, onClose, onChanged }: { cls: Row | null; onClose: () => void; onChanged: () => Promise<void> }) {
+  const [who, setWho] = useState<{ id: string; joinedAt?: string; leftAt?: string | null; student?: { firstName?: string | null; lastName?: string | null; email?: string } }[] | null>(null);
+  const [rec, setRec] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => {
+    setWho(null); setRec(cls?.recordingUrl ?? '');
+    if (cls && (cls.kind === 'held' || cls.kind === 'live')) api.get(`/live/classes/${cls.id}/attendance`).then(r => setWho(r.data ?? [])).catch(() => setWho([]));
+  }, [cls?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function run(key: string, fn: () => Promise<unknown>, done: string, close = false) {
+    setBusy(key);
+    try { await fn(); notify.success(done); await onChanged(); if (close) onClose(); }
+    catch (err: any) { notify.error(err?.response?.data?.message ?? 'That didn’t work. Please try again.'); }
+    finally { setBusy(null); }
+  }
+
+  return (
+    <Drawer open={!!cls} onOpenChange={o => { if (!o) onClose(); }}>
+      {cls && (
+        <DrawerContent title={cls.title} description={`${cls.cohort.name} · ${cls.teacher.name}`}
+          footer={<>
+            <Link href={`/admin/messages?to=${cls.teacher.id}`} className="inline-flex h-9 items-center rounded-md border border-line px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Message the teacher</Link>
+            <span className="flex-1" />
+            {cls.kind === 'live' && <Button size="sm" variant="secondary" loading={busy === 'end'} onClick={() => run('end', () => api.patch(`/live/classes/${cls.id}/end`), 'Class ended')}>End class</Button>}
+            {cls.kind === 'upcoming' && <Button size="sm" variant="danger" loading={busy === 'cancel'} onClick={() => run('cancel', () => api.delete(`/live/classes/${cls.id}`), 'Class cancelled', true)}>Cancel class</Button>}
+          </>}>
+          <InfoGrid items={[
+            { label: 'When', value: `${new Date(cls.scheduledAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · ${time(cls.scheduledAt)}` },
+            { label: 'Attendance', value: cls.kind === 'held' || cls.kind === 'live' ? `${cls.attendedCount} of ${cls.rosterSize}` : '—' },
+            { label: 'Status', value: STATUS[cls.kind] },
+          ]} />
+          {(cls.kind === 'held' || cls.kind === 'live') && (
+            <DrawerSection title="Who came" count={who?.length}>
+              {!who ? <div className="h-24 rounded-md bg-subtle animate-pulse" /> : !who.length ? <p className="text-[13px] text-ink2">Nobody joined this class.</p> : (
+                <div className="space-y-2">
+                  {who.map(w => {
+                    const n = [w.student?.firstName, w.student?.lastName].filter(Boolean).join(' ') || w.student?.email?.split('@')[0] || 'Student';
+                    const mins = w.joinedAt && w.leftAt ? Math.round((+new Date(w.leftAt) - +new Date(w.joinedAt)) / 60_000) : null;
+                    return (
+                      <p key={w.id} className="flex justify-between gap-3 rounded-md border border-line px-3 py-2 text-[13px]">
+                        <span className="font-semibold text-navy">{n}</span>
+                        <span className="text-muted">{w.joinedAt ? time(w.joinedAt) : ''}{mins != null ? ` · ${mins} min` : w.leftAt === null && cls.kind === 'live' ? ' · in class' : ''}</span>
+                      </p>
+                    );
+                  })}
+                </div>
+              )}
+            </DrawerSection>
+          )}
+          {cls.kind === 'held' && (
+            <DrawerSection title="Recording">
+              <div className="flex gap-2">
+                <input aria-label="Recording link" value={rec} onChange={e => setRec(e.target.value)} placeholder="https://" className="input-base h-9 flex-1" />
+                <Button size="sm" variant="secondary" loading={busy === 'rec'} disabled={rec.trim() === (cls.recordingUrl ?? '')}
+                  onClick={() => run('rec', () => api.patch(`/live/classes/${cls.id}`, { recordingUrl: rec.trim() || null }), 'Recording saved')}>Save</Button>
+              </div>
+            </DrawerSection>
+          )}
+        </DrawerContent>
+      )}
+    </Drawer>
   );
 }
