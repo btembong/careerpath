@@ -1,281 +1,209 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card, IconBox } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
 import api from '@/lib/api';
 
-interface CohortTeacher { email: string; firstName?: string | null; lastName?: string | null; }
-interface Cohort { id: string; name: string; teacher?: CohortTeacher; }
-interface LiveClass {
-  id: string;
-  title: string;
-  description?: string;
-  scheduledAt: string;
-  durationMins?: number;
-  status: 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
-  recordingUrl?: string;
-  cohort?: Cohort;
+interface Cls {
+  id: string; title: string; description: string | null; scheduledAt: string; durationMins: number; status: string;
+  recordingUrl: string | null; cohort: { id: string; name: string }; teacher: string;
+  attended?: boolean; beforeJoined?: boolean; inClass?: number;
+}
+interface Overview {
+  live: Cls[]; upcoming: Cls[]; past: Cls[]; catchUp: Cls[];
+  attendance: { attended: number; held: number; cohortAvgPct: number | null } | null;
 }
 
-function teacherName(t?: CohortTeacher | null): string | null {
-  if (!t) return null;
-  if (t.firstName || t.lastName) return `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim();
-  return t.email.split('@')[0];
+const DAY = 86_400_000;
+const time = (d: string) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+const dayKey = (d: string) => new Date(d).toDateString();
+const dayTitle = (d: string) => {
+  const days = Math.round((new Date(dayKey(d)).getTime() - new Date(new Date().toDateString()).getTime()) / DAY);
+  const label = new Date(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  return days === 0 ? `Today · ${label}` : days === 1 ? `Tomorrow · ${label}` : label;
+};
+const inDays = (d: string) => {
+  const days = Math.round((new Date(dayKey(d)).getTime() - new Date(new Date().toDateString()).getTime()) / DAY);
+  return days <= 0 ? 'Today' : days === 1 ? 'Tomorrow' : `In ${days} days`;
+};
+
+/** One calendar file with every upcoming class, or just one */
+function downloadIcs(list: Cls[], name: string) {
+  const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const clean = (s: string) => s.replace(/[,;\n]/g, ' ');
+  const events = list.map(c => {
+    const s = new Date(c.scheduledAt), e = new Date(s.getTime() + c.durationMins * 60_000);
+    return ['BEGIN:VEVENT', `UID:${c.id}@careerpathafrica`, `DTSTAMP:${fmt(new Date())}`, `DTSTART:${fmt(s)}`, `DTEND:${fmt(e)}`,
+      `SUMMARY:${clean(c.title)}`, `DESCRIPTION:${clean(`${c.cohort.name} with ${c.teacher}`)}`, `URL:${window.location.origin}/student/live/${c.id}`, 'END:VEVENT'].join('\r\n');
+  });
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//CareerPath Africa//Live classes//EN', ...events, 'END:VCALENDAR'].join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+  a.download = name; a.click(); URL.revokeObjectURL(a.href);
 }
 
-function isToday(d: string) {
-  const t = new Date(d); const n = new Date();
-  return t.getFullYear() === n.getFullYear() && t.getMonth() === n.getMonth() && t.getDate() === n.getDate();
-}
-
-function addToCalendar(title: string, scheduledAt: string, durationMins?: number) {
-  const start = new Date(scheduledAt);
-  const end   = new Date(start.getTime() + (durationMins ?? 60) * 60_000);
-  const fmt   = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-  const ics = [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//CareerPath Africa//EN',
-    'BEGIN:VEVENT',
-    `UID:${scheduledAt}-${Math.random().toString(36).slice(2)}@careerpathafrica`,
-    `DTSTART:${fmt(start)}`, `DTEND:${fmt(end)}`, `SUMMARY:${title}`,
-    'END:VEVENT', 'END:VCALENDAR',
-  ].join('\r\n');
-  const blob = new Blob([ics], { type: 'text/calendar' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url; a.download = `${title.replace(/\s+/g, '-')}.ics`; a.click();
-  URL.revokeObjectURL(url);
-}
-
-function useCountdowns(sessions: LiveClass[]) {
-  const compute = useCallback(() => {
-    const now = Date.now();
-    const out: Record<string, string> = {};
-    sessions.forEach(s => {
-      const diff = new Date(s.scheduledAt).getTime() - now;
-      if (diff <= 0) { out[s.id] = 'Starting soon'; return; }
-      const mins = Math.floor(diff / 60_000);
-      if (mins < 60) { out[s.id] = `Starts in ${mins} min${mins !== 1 ? 's' : ''}`; return; }
-      const hrs = Math.floor(mins / 60);
-      if (hrs < 24) { out[s.id] = `Starts in ${hrs}h ${mins % 60}m`; return; }
-      out[s.id] = `Starts in ${Math.floor(hrs / 24)} day${Math.floor(hrs / 24) !== 1 ? 's' : ''}`;
-    });
-    return out;
-  }, [sessions]);
-
-  const [countdowns, setCountdowns] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    setCountdowns(compute());
-    const id = setInterval(() => setCountdowns(compute()), 30_000);
-    return () => clearInterval(id);
-  }, [compute]);
-
-  return countdowns;
-}
+const badge = (blue: boolean) => clsx('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs font-semibold', blue ? 'bg-accent-soft text-navy' : 'border border-line bg-subtle text-ink2');
+const btn = (primary: boolean) => clsx('inline-flex h-8 items-center whitespace-nowrap rounded-md border px-3 text-[13px] font-semibold',
+  primary ? 'border-azure-strong bg-azure-strong text-on-accent' : 'border-line bg-white text-navy hover:bg-subtle');
 
 export default function StudentLivePage() {
-  const [sessions, setSessions] = useState<LiveClass[]>([]);
-  const [loading,  setLoading]  = useState(true);
+  const [d, setD] = useState<Overview | null>(null);
+  const [tab, setTab] = useState<'up' | 'past'>('up');
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    api.get('/live/student/upcoming')
-      .then(r => setSessions(r.data ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    const load = () => api.get('/live/student/overview').then(r => setD(r.data)).catch(() => setD({ live: [], upcoming: [], past: [], catchUp: [], attendance: null }));
+    load();
+    const iv = setInterval(() => { load(); setNow(Date.now()); }, 60_000);
+    return () => clearInterval(iv);
   }, []);
 
-  const countdowns = useCountdowns(sessions);
+  // Monday-to-Sunday strip for this week
+  const week = useMemo(() => {
+    const today = new Date(new Date().toDateString());
+    const monday = new Date(today.getTime() - ((today.getDay() + 6) % 7) * DAY);
+    return Array.from({ length: 7 }, (_, i) => {
+      const day = new Date(monday.getTime() + i * DAY);
+      const items = [...(d?.live ?? []), ...(d?.upcoming ?? []), ...(d?.past ?? [])].filter(c => dayKey(c.scheduledAt) === day.toDateString())
+        .sort((a, b) => +new Date(a.scheduledAt) - +new Date(b.scheduledAt));
+      return { day, items, today: day.getTime() === today.getTime() };
+    });
+  }, [d]);
 
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
-        <div className="space-y-3">
-          <div className="h-2.5 w-24 rounded bg-cloud animate-pulse" />
-          {[1, 2].map(i => <SkeletonCard key={i} lines={3} />)}
-        </div>
-        <div className="space-y-3">
-          <div className="h-2.5 w-20 rounded bg-cloud animate-pulse" />
-          {[1, 2, 3].map(i => <SkeletonCard key={i} lines={2} />)}
-        </div>
-      </div>
-    </div>
-  );
+  const groups = useMemo(() => {
+    const list = tab === 'up' ? [...(d?.live ?? []), ...(d?.upcoming ?? [])] : (d?.past ?? []);
+    const out: { key: string; title: string; items: Cls[] }[] = [];
+    list.forEach(c => {
+      const key = dayKey(c.scheduledAt);
+      const g = out.find(x => x.key === key);
+      if (g) g.items.push(c); else out.push({ key, title: dayTitle(c.scheduledAt), items: [c] });
+    });
+    return out;
+  }, [d, tab]);
 
-  const live      = sessions.filter(s => s.status === 'ACTIVE');
-  const upcoming  = sessions.filter(s => s.status === 'SCHEDULED');
-  const completed = sessions.filter(s => s.status === 'COMPLETED');
-  const cancelled = sessions.filter(s => s.status === 'CANCELLED');
-
-  function SessionCard({ s }: { s: LiveClass }) {
-    const teacher   = s.cohort?.teacher;
-    const isLive    = s.status === 'ACTIVE';
-    const isCompleted = s.status === 'COMPLETED';
-    const isCancelled = s.status === 'CANCELLED';
-    const isPast    = isCompleted || isCancelled;
-    const today     = !isPast && isToday(s.scheduledAt);
-
-    return (
-      <Card padding="none" className="overflow-hidden">
-        <div className={`h-1 w-full ${
-          isLive      ? 'bg-red-400'
-          : today     ? 'bg-azure'
-          : isPast    ? 'bg-cloud'
-          : 'bg-royal/20'
-        }`} />
-        <div className="p-4 space-y-3">
-          <div className="flex items-start gap-3">
-            <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${
-              isLive ? 'bg-azure' : 'bg-cloud'
-            }`}>
-              <Icon name="live" size={18} className={isLive ? 'text-white' : 'text-royal/40'} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                <p className="text-sm font-bold text-navy leading-tight truncate">{s.title}</p>
-                {today && !isLive && (
-                  <span className="rounded-md bg-azure/10 border border-azure/20 px-2 py-0.5 text-[10px] font-semibold text-azure flex-shrink-0">
-                    Today
-                  </span>
-                )}
-              </div>
-              {s.cohort && (
-                <p className="text-[11px] text-royal/50 mt-0.5">
-                  {s.cohort.name}
-                  {teacher && teacherName(teacher) && (
-                    <> · <span className="text-azure font-medium">{teacherName(teacher)}</span></>
-                  )}
-                </p>
-              )}
-              {s.description && (
-                <p className="text-[11px] text-royal/40 mt-1 line-clamp-2">{s.description}</p>
-              )}
-            </div>
-            <Badge variant={isLive ? 'active' : isCancelled ? 'muted' : isPast ? 'default' : 'muted'}>
-              {isLive ? 'Live now' : isCancelled ? 'Cancelled' : isPast ? 'Ended' : 'Upcoming'}
-            </Badge>
-          </div>
-
-          {/* Date / time / duration row */}
-          <div className="flex items-center gap-4 text-xs text-royal/50 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <Icon name="calendar" size={12} />
-              <span>{new Date(s.scheduledAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Icon name="clock" size={12} />
-              <span>{new Date(s.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-            </div>
-            {s.durationMins && (
-              <div className="flex items-center gap-1.5">
-                <Icon name="courses" size={12} />
-                <span>{s.durationMins} min</span>
-              </div>
-            )}
-          </div>
-
-          {/* Actions */}
-          {isLive && (
-            <Link href={`/student/live/${s.id}`}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-azure py-2.5 text-sm font-bold text-white hover:bg-royal transition">
-              <Icon name="live" size={14} /> Join class now
-            </Link>
-          )}
-
-          {!isLive && !isPast && (
-            <div className="flex items-center gap-2">
-              <div className="flex-1 flex items-center gap-2 rounded-xl border border-cloud bg-surface px-3 py-2">
-                <Icon name="clock" size={12} className="text-royal/40 flex-shrink-0" />
-                <p className="text-xs text-royal/50">{countdowns[s.id] ?? '—'}</p>
-              </div>
-              <button
-                onClick={() => addToCalendar(s.title, s.scheduledAt, s.durationMins)}
-                title="Add to calendar"
-                className="flex items-center justify-center h-9 w-9 rounded-xl border border-cloud bg-surface text-royal/40 hover:border-azure hover:text-azure transition flex-shrink-0">
-                <Icon name="calendar" size={13} />
-              </button>
-            </div>
-          )}
-
-          {isCompleted && s.recordingUrl && (
-            <a href={s.recordingUrl} target="_blank" rel="noreferrer"
-              className="flex items-center gap-2 rounded-xl border border-azure/30 bg-azure/5 px-3 py-2 text-xs font-semibold text-azure hover:bg-azure/10 transition">
-              <Icon name="play" size={13} /> Watch recording
-            </a>
-          )}
-          {isCompleted && !s.recordingUrl && (
-            <p className="text-xs text-royal/30 px-1">Recording not available yet</p>
-          )}
-        </div>
-      </Card>
-    );
-  }
-
-  const isEmpty = sessions.length === 0;
+  const live = d?.live[0];
+  const a = d?.attendance;
+  const pct = a?.held ? Math.round((a.attended / a.held) * 100) : null;
 
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="Live Classes" subtitle="Your scheduled and active sessions" />
+    <div className="flex min-h-full flex-col">
+      <Topbar title="Live classes" subtitle="Every class from your cohorts, and recordings of the ones you missed"
+        actions={d?.upcoming.length ? <button type="button" onClick={() => downloadIcs(d.upcoming, 'live-classes.ics')} className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Add all to my calendar</button> : undefined} />
 
-      <div className="flex-1 p-4 md:p-6 space-y-6 max-w-3xl w-full mx-auto">
-
-        {isEmpty ? (
-          <Card>
-            <EmptyState
-              icon="live"
-              title="No live classes scheduled"
-              description="Your teacher will schedule sessions for your cohort. Check back soon."
-            />
-          </Card>
-        ) : (
-          <>
-            {/* Live now */}
-            {live.length > 0 && (
-              <div className="space-y-3">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-red-500 flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-red-400 animate-pulse" />
-                  LIVE NOW
+      <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        {!d ? <div className="h-64 rounded-lg border border-line bg-white animate-pulse" /> : !d.attendance ? (
+          <div className="rounded-lg border border-line bg-white p-10 text-center">
+            <p className="text-sm font-semibold text-navy">You’re not in a cohort yet</p>
+            <p className="mx-auto mt-1 max-w-md text-[13px] text-ink2">Live classes come with packages that include a cohort. You’ll see every class here once you join one.</p>
+            <Link href="/packages" className="mt-4 inline-flex h-9 items-center rounded-md bg-azure-strong px-4 text-[13.5px] font-semibold text-on-accent">Browse packages</Link>
+          </div>
+        ) : <>
+          {live && (
+            <section className="flex flex-wrap items-center gap-4 rounded-lg border border-azure bg-white px-5 py-[18px]">
+              <span className="inline-flex h-[26px] items-center gap-1.5 rounded bg-azure-strong px-2.5 text-xs font-bold text-on-accent"><span className="h-[7px] w-[7px] animate-pulse rounded-full bg-white" /> Live now</span>
+              <div className="min-w-0 flex-[999_1_300px]">
+                <p className="text-lg font-extrabold text-navy">{live.title}</p>
+                <p className="mt-0.5 text-[13.5px] text-ink2">
+                  {live.cohort.name} · {live.teacher} · started {Math.max(0, Math.round((now - +new Date(live.scheduledAt)) / 60_000))} min ago{live.inClass ? ` · ${live.inClass} in class` : ''}
                 </p>
-                {live.map(s => <SessionCard key={s.id} s={s} />)}
               </div>
-            )}
+              <Link href={`/student/live/${live.id}`} className="inline-flex h-10 items-center rounded-md bg-azure-strong px-5 text-sm font-semibold text-on-accent">Join class</Link>
+            </section>
+          )}
 
-            {/* Upcoming */}
-            {upcoming.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-royal/40">UPCOMING</p>
-                  <Badge>{upcoming.length}</Badge>
+          <section className="grid grid-cols-7 gap-1.5 sm:gap-2" aria-label="This week">
+            {week.map(w => (
+              <div key={w.day.toISOString()} className={clsx('min-h-[82px] rounded-lg border bg-white p-1.5 text-center sm:p-2.5', w.today ? 'border-azure' : 'border-line')}>
+                <p className="text-[11px] font-semibold uppercase text-muted">{w.day.toLocaleDateString('en-GB', { weekday: 'short' })}</p>
+                <p className="mb-1.5 mt-0.5 text-lg font-extrabold text-navy">{w.day.getDate()}</p>
+                {w.items.map(c => (
+                  <p key={c.id} title={`${time(c.scheduledAt)} ${c.title}`} className="mb-1 truncate rounded bg-accent-soft px-1.5 py-1 text-left text-[11px] font-semibold text-navy">
+                    {time(c.scheduledAt)} <span className="hidden sm:inline">{c.cohort.name.split(/[·—-]/)[0].trim()}</span>
+                  </p>
+                ))}
+              </div>
+            ))}
+          </section>
+
+          <div className="flex flex-wrap items-start gap-5">
+            <section className="min-w-0 flex-[999_1_520px] rounded-lg border border-line bg-white">
+              <div role="tablist" aria-label="Classes" className="flex gap-1 border-b border-line px-4">
+                {([['up', 'Coming up', d.live.length + d.upcoming.length], ['past', 'Past and recordings', d.past.length]] as ['up' | 'past', string, number][]).map(([k, l, n]) => (
+                  <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+                    className={clsx('-mb-px h-[46px] border-b-2 px-3 text-[13.5px] text-navy', tab === k ? 'border-azure-strong font-semibold' : 'border-transparent font-medium')}>
+                    {l} <span className="font-medium text-muted">{n}</span>
+                  </button>
+                ))}
+              </div>
+              {!groups.length && <p className="px-[18px] py-8 text-center text-[13px] text-ink2">{tab === 'up' ? 'Nothing scheduled yet. Your teacher will add classes here.' : 'No classes held yet.'}</p>}
+              {groups.map(g => (
+                <div key={g.key}>
+                  <p className="px-[18px] pb-1.5 pt-3.5 text-xs font-semibold uppercase tracking-[0.06em] text-muted">{g.title}</p>
+                  {g.items.map(c => {
+                    const isLive = c.status === 'ACTIVE';
+                    const opensSoon = !isLive && +new Date(c.scheduledAt) - now <= 10 * 60_000;
+                    return (
+                      <div key={c.id} className="flex flex-wrap items-center gap-3.5 border-t border-line px-[18px] py-3">
+                        <div className="w-16 flex-shrink-0 text-center">
+                          <p className="text-[15px] font-extrabold text-navy">{time(c.scheduledAt)}</p>
+                          <p className="text-[11.5px] text-muted">{c.durationMins} min</p>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-navy">{c.title}</p>
+                          <p className="mt-0.5 truncate text-[12.5px] text-muted">{c.cohort.name} · {c.teacher}</p>
+                        </div>
+                        {tab === 'up' ? <>
+                          <span className={badge(isLive)}>{isLive ? 'Live now' : inDays(c.scheduledAt)}</span>
+                          {isLive || opensSoon
+                            ? <Link href={`/student/live/${c.id}`} className={btn(true)}>Join class</Link>
+                            : <button type="button" onClick={() => downloadIcs([c], 'live-class.ics')} className={btn(false)}>Add to calendar</button>}
+                        </> : <>
+                          <span className={badge(!!c.attended)}>{c.attended ? 'Attended' : c.beforeJoined ? 'Before you joined' : 'Missed'}</span>
+                          {c.recordingUrl
+                            ? <a href={c.recordingUrl} target="_blank" rel="noopener noreferrer" className={btn(!c.attended && !c.beforeJoined)}>Watch recording</a>
+                            : <span className="inline-flex h-8 items-center px-1 text-[12.5px] text-muted">Recording coming</span>}
+                        </>}
+                      </div>
+                    );
+                  })}
                 </div>
-                {upcoming.map(s => <SessionCard key={s.id} s={s} />)}
-              </div>
-            )}
+              ))}
+            </section>
 
-            {/* Completed */}
-            {completed.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-royal/30">PAST SESSIONS</p>
-                  <Badge>{completed.length}</Badge>
-                </div>
-                {completed.map(s => <SessionCard key={s.id} s={s} />)}
-              </div>
-            )}
-
-            {/* Cancelled */}
-            {cancelled.length > 0 && (
-              <div className="space-y-3">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-royal/20">CANCELLED</p>
-                {cancelled.map(s => <SessionCard key={s.id} s={s} />)}
-              </div>
-            )}
-          </>
-        )}
+            <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
+              <section className="flex flex-col gap-2.5 rounded-lg border border-line bg-white p-[18px]">
+                <h3 className="text-[15px] font-semibold text-navy">Your attendance</h3>
+                <p className="text-[28px] font-extrabold text-navy">{pct != null ? `${pct}%` : '—'} <span className="text-[13px] font-medium text-muted">{a?.held ? `${a.attended} of ${a.held} classes` : 'No classes held since you joined'}</span></p>
+                <span className="block h-1.5 overflow-hidden rounded-[3px] bg-subtle"><span className="block h-1.5 bg-azure" style={{ width: `${pct ?? 0}%` }} /></span>
+                <p className="text-[12.5px] text-muted">{a?.cohortAvgPct != null ? `Cohort average ${a.cohortAvgPct}% · ` : ''}counts towards your progress report</p>
+              </section>
+              {d.catchUp.length > 0 && (
+                <section className="flex flex-col gap-2.5 rounded-lg border border-line bg-white p-[18px]">
+                  <h3 className="text-[15px] font-semibold text-navy">Catch up</h3>
+                  <p className="text-[12.5px] text-muted">Recordings of classes you missed</p>
+                  {d.catchUp.map(c => (
+                    <div key={c.id} className="flex items-center gap-2.5 rounded-md border border-line px-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13.5px] font-semibold text-navy">{c.title}</p>
+                        <p className="mt-0.5 text-xs text-muted">{new Date(c.scheduledAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} · {c.durationMins} min</p>
+                      </div>
+                      <a href={c.recordingUrl!} target="_blank" rel="noopener noreferrer" className="inline-flex h-[30px] items-center rounded-md border border-line px-2.5 text-[12.5px] font-semibold text-navy hover:bg-subtle">Watch</a>
+                    </div>
+                  ))}
+                </section>
+              )}
+              <section className="flex flex-col gap-2 rounded-lg border border-line bg-white p-[18px]">
+                <h3 className="text-[15px] font-semibold text-navy">Before a class</h3>
+                <ul className="list-disc space-y-1.5 pl-[18px] text-[13px] text-ink2">
+                  <li>The Join button opens 10 minutes before the start.</li>
+                  <li>On a weak connection, turn your camera off; audio uses far less data.</li>
+                  <li>Use earphones so the class doesn’t echo.</li>
+                </ul>
+              </section>
+            </aside>
+          </div>
+        </>}
       </div>
     </div>
   );
