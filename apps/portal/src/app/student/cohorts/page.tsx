@@ -1,339 +1,288 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card, IconBox } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Icon } from '@/components/ui/Icon';
-import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
 import api from '@/lib/api';
 
-interface Teacher {
-  id: string; email: string;
-  name: string | null; firstName: string | null; lastName: string | null;
-}
-interface Cohort {
-  id: string; name: string; teacherId: string;
-  sittingLabel: string | null; examDate: string | null; startDate: string | null;
-  teacher: Teacher | null;
-  _count: { students: number; liveClasses: number };
-}
-interface LiveClass {
-  id: string; title: string; scheduledAt: string; status: string;
-}
-
-function teacherName(t: Teacher | null): string {
-  if (!t) return 'No teacher assigned';
-  if (t.firstName || t.lastName) return `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim();
-  return t.name ?? t.email.split('@')[0];
+interface ClassItem { id: string; title: string; description: string | null; scheduledAt: string; durationMins: number; status: string; recordingUrl: string | null; live: boolean; attended?: boolean }
+interface Overview {
+  cohorts: { id: string; name: string }[];
+  cohort: { id: string; name: string; sittingLabel: string | null; examDate: string | null; startDate: string | null } | null;
+  teacher?: { id: string; name: string; avatarUrl: string | null; bio: string | null; subjects: string[]; yearsExperience: number | null };
+  next?: ClassItem | null;
+  stats?: { attended: number; held: number; cohortAttendancePct: number | null; submitted: number; assignments: number; overdue: number; dueSoon: { title: string; dueDate: string } | null; avgGradePct: number | null; graded: number };
+  courseProgress?: { id: string; title: string; pct: number }[];
+  classes?: { upcoming: ClassItem[]; past: ClassItem[] };
+  assignments?: { id: string; title: string; dueDate: string; maxPoints: number; state: 'todo' | 'overdue' | 'waiting' | 'graded'; grade: number | null; submittedAt: string | null }[];
+  members?: { id: string; name: string; role: string; me: boolean }[];
+  package?: { id: string; name: string; courses: number; expiresAt: string | null } | null;
 }
 
-function examCountdown(examDate: string | null): { label: string; urgent: boolean } | null {
-  if (!examDate) return null;
-  const days = Math.ceil((new Date(examDate).getTime() - Date.now()) / 86_400_000);
-  if (days < 0) return { label: `Exam passed ${Math.abs(days)}d ago`, urgent: false };
-  if (days === 0) return { label: 'Exam is today!', urgent: true };
-  return { label: `${days} day${days !== 1 ? 's' : ''} to exam`, urgent: days <= 14 };
+type Tab = 'classes' | 'work' | 'group';
+const DAY = 86_400_000;
+const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+const time = (d: string) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+const dayLabel = (d: string) => {
+  const t = new Date(d), now = new Date();
+  const days = Math.round((new Date(t.toDateString()).getTime() - new Date(now.toDateString()).getTime()) / DAY);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  return t.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+};
+const inDays = (d: string) => {
+  const days = Math.round((new Date(new Date(d).toDateString()).getTime() - new Date(new Date().toDateString()).getTime()) / DAY);
+  return days <= 0 ? 'Today' : days === 1 ? 'Tomorrow' : `In ${days} days`;
+};
+const longDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+/** A calendar file for one class, so students can add it to their phone calendar */
+function downloadIcs(c: ClassItem, cohort: string) {
+  const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const start = new Date(c.scheduledAt), end = new Date(start.getTime() + c.durationMins * 60_000);
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//CareerPath Africa//Live class//EN', 'BEGIN:VEVENT',
+    `UID:${c.id}@careerpathafrica`, `DTSTAMP:${fmt(new Date())}`, `DTSTART:${fmt(start)}`, `DTEND:${fmt(end)}`,
+    `SUMMARY:${c.title.replace(/[,;]/g, ' ')}`, `DESCRIPTION:Live class for ${cohort.replace(/[,;]/g, ' ')}`,
+    `URL:${window.location.origin}/student/live/${c.id}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+  a.download = 'live-class.ics';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
-export default function StudentCohortsPage() {
-  const [cohorts,     setCohorts]     = useState<Cohort[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [expanded,    setExpanded]    = useState<string | null>(null);
-  const [classes,     setClasses]     = useState<Record<string, LiveClass[]>>({});
-  const [loadingCls,  setLoadingCls]  = useState<string | null>(null);
+const badge = (blue: boolean) => clsx('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs font-semibold', blue ? 'bg-accent-soft text-navy' : 'border border-line bg-subtle text-ink2');
+const btn = (primary: boolean) => clsx('inline-flex h-8 items-center whitespace-nowrap rounded-md border px-3 text-[13px] font-semibold',
+  primary ? 'border-azure-strong bg-azure-strong text-on-accent' : 'border-line bg-white text-navy hover:bg-subtle');
+
+export default function StudentCohortPage() {
+  const [data, setData] = useState<Overview | null>(null);
+  const [cohortId, setCohortId] = useState<string>('');
+  const [tab, setTab] = useState<Tab>('classes');
 
   useEffect(() => {
-    api.get('/portals/student/cohorts')
-      .then(r => setCohorts(r.data ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    const fromUrl = new URLSearchParams(window.location.search).get('id') ?? '';
+    setCohortId(fromUrl);
   }, []);
+  useEffect(() => {
+    setData(null);
+    api.get('/portals/student/cohort-overview', { params: cohortId ? { cohortId } : {} })
+      .then(r => setData(r.data)).catch(() => setData({ cohorts: [], cohort: null }));
+  }, [cohortId]);
 
-  async function toggleCohort(id: string) {
-    if (expanded === id) { setExpanded(null); return; }
-    setExpanded(id);
-    if (classes[id]) return;
-    setLoadingCls(id);
-    try {
-      const r = await api.get(`/live/cohorts/${id}/classes`);
-      setClasses(prev => ({ ...prev, [id]: r.data ?? [] }));
-    } catch {
-      setClasses(prev => ({ ...prev, [id]: [] }));
-    } finally {
-      setLoadingCls(null);
-    }
-  }
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-6 space-y-4">
-        <div className="grid grid-cols-3 gap-3">
-          {[1,2].map(i => (
-            <div key={i} className="rounded-2xl border border-cloud bg-white p-5 space-y-2">
-              <div className="h-2.5 w-20 rounded bg-cloud animate-pulse" />
-              <div className="h-8 w-12 rounded bg-cloud animate-pulse" />
-            </div>
-          ))}
-        </div>
-        {[1,2].map(i => <SkeletonCard key={i} lines={3} />)}
+  if (!data) return (
+    <div className="flex min-h-full flex-col">
+      <Topbar title="My cohort" subtitle="Your class, live lessons and assignments in one place" />
+      <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        <div className="h-40 rounded-lg border border-line bg-white animate-pulse" />
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">{[0, 1, 2, 3].map(i => <div key={i} className="h-24 rounded-lg border border-line bg-white animate-pulse" />)}</div>
       </div>
     </div>
   );
 
-  const totalLive = cohorts.reduce((s, c) => s + c._count.liveClasses, 0);
+  if (!data.cohort) return (
+    <div className="flex min-h-full flex-col">
+      <Topbar title="My cohort" subtitle="Your class, live lessons and assignments in one place" />
+      <div className="m-4 rounded-lg border border-line bg-white p-10 text-center lg:m-7">
+        <p className="text-sm font-semibold text-navy">You’re not in a cohort yet</p>
+        <p className="mx-auto mt-1 max-w-md text-[13px] text-ink2">Packages with live classes put you in a cohort with a teacher and classmates preparing for the same exam.</p>
+        <Link href="/packages" className={clsx(btn(true), 'mt-4 h-9 px-4')}>Browse packages</Link>
+      </div>
+    </div>
+  );
+
+  const { cohort, teacher, next, stats, classes, assignments = [], members = [], courseProgress = [] } = data;
+  const now = Date.now();
+  const nextStart = next ? new Date(next.scheduledAt).getTime() : 0;
+  const canJoin = !!next && (next.live || nextStart - now <= 10 * 60_000);
+  const examDays = cohort.examDate ? Math.ceil((new Date(cohort.examDate).getTime() - now) / DAY) : null;
+  const mainCourse = [...courseProgress].sort((a, b) => b.pct - a.pct)[0];
+  const tabs: [Tab, string, number][] = [['classes', 'Live classes', (classes?.upcoming.length ?? 0) + (classes?.past.length ?? 0)], ['work', 'Assignments', assignments.length], ['group', 'Group', members.length]];
 
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="My Cohorts" subtitle="Your study groups and live class schedule" />
+    <div className="flex min-h-full flex-col">
+      <Topbar title="My cohort" subtitle="Your class, live lessons and assignments in one place"
+        actions={data.cohorts.length > 1 ? (
+          <label className="flex h-9 items-center gap-2 rounded-md border border-line bg-white px-2.5 text-[13.5px] text-ink2">
+            <span className="text-muted">Cohort:</span>
+            <select aria-label="Cohort" value={cohort.id} onChange={e => setCohortId(e.target.value)} className="bg-transparent font-semibold text-navy outline-none">
+              {data.cohorts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+        ) : undefined} />
 
-      <div className="flex-1 p-4 md:p-6 space-y-5 max-w-4xl w-full mx-auto">
+      <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        <section className={clsx('flex flex-wrap items-stretch gap-5 rounded-lg border bg-white p-5', next ? 'border-azure' : 'border-line')}>
+          <div className="flex min-w-0 flex-[999_1_380px] flex-col gap-1.5">
+            {next ? (
+              <>
+                <span className="inline-flex h-6 items-center gap-1.5 self-start rounded bg-accent-soft px-2 text-xs font-bold text-navy">
+                  <span className={clsx('h-[7px] w-[7px] rounded-full bg-azure-strong', next.live && 'animate-pulse')} />
+                  {next.live ? 'Live now' : `Next live class · ${dayLabel(next.scheduledAt).toLowerCase()}`}
+                </span>
+                <p className="mt-1.5 text-xl font-extrabold text-navy">{next.title}</p>
+                <p className="text-[13.5px] text-ink2">{dayLabel(next.scheduledAt)}, {time(next.scheduledAt)}{teacher ? ` · with ${teacher.name}` : ''} · {next.durationMins} min</p>
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  {canJoin
+                    ? <Link href={`/student/live/${next.id}`} className={clsx(btn(true), 'h-[38px] px-[18px] text-sm')}>Join class</Link>
+                    : <span className="inline-flex h-[38px] items-center rounded-md border border-line bg-subtle px-3.5 text-sm font-semibold text-muted">Opens 10 min before</span>}
+                  <button type="button" onClick={() => downloadIcs(next, cohort.name)} className={clsx(btn(false), 'h-[38px] px-3.5 text-sm')}>Add to calendar</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xl font-extrabold text-navy">{cohort.name}</p>
+                <p className="text-[13.5px] text-ink2">No live class is scheduled yet. Your teacher will add the next one here.</p>
+              </>
+            )}
+          </div>
+          {examDays != null && examDays >= 0 && (
+            <div className="flex flex-[1_1_220px] flex-col justify-center gap-1 rounded-md bg-subtle px-4 py-3.5">
+              <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">{cohort.sittingLabel ?? 'Your exam'}</p>
+              <p className="text-[30px] font-extrabold tracking-[-0.01em] text-navy">{examDays === 0 ? 'Today' : `${examDays} day${examDays === 1 ? '' : 's'}`}</p>
+              <p className="text-[13px] text-ink2">{examDays === 0 ? 'Good luck!' : `until your exam on ${new Date(cohort.examDate!).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}`}</p>
+            </div>
+          )}
+        </section>
 
-        {cohorts.length === 0 ? (
-          <Card>
-            <EmptyState
-              icon="mentorship"
-              title="No cohorts yet"
-              description="You haven't been placed in a study group. Buy a package that includes a cohort, or ask your admin to enroll you."
-              action={{ label: 'Browse packages', href: '/packages' }}
-            />
-          </Card>
-        ) : (
-          <>
-            {/* Stats — only cohorts + live classes; no misleading total-students sum */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 max-w-xs">
-              {[
-                { label: 'Cohorts',      value: cohorts.length, icon: 'mentorship' as const },
-                { label: 'Live classes', value: totalLive,      icon: 'live'       as const },
-              ].map(s => (
-                <Card key={s.label} padding="md">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">{s.label}</p>
-                      <p className="mt-1 text-2xl font-bold text-navy">{s.value}</p>
-                    </div>
-                    <IconBox><Icon name={s.icon} size={14} /></IconBox>
-                  </div>
-                </Card>
+        {stats && (
+          <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+            {[
+              { l: 'Classes attended', v: stats.held ? `${stats.attended} of ${stats.held}` : '—', sub: stats.held ? `${Math.round((stats.attended / stats.held) * 100)}%${stats.cohortAttendancePct != null ? ` · cohort average ${stats.cohortAttendancePct}%` : ''}` : 'No classes held yet' },
+              { l: 'Assignments', v: stats.assignments ? `${stats.submitted} of ${stats.assignments}` : '—', sub: stats.overdue ? `${stats.overdue} overdue` : stats.dueSoon ? `${stats.dueSoon.title} due ${dayLabel(stats.dueSoon.dueDate).toLowerCase()}` : stats.assignments ? 'All caught up' : 'None set yet' },
+              { l: 'Average grade', v: stats.avgGradePct != null ? `${stats.avgGradePct}%` : '—', sub: stats.graded ? `Across ${stats.graded} graded assignment${stats.graded === 1 ? '' : 's'}` : 'Nothing graded yet' },
+              { l: 'Course progress', v: mainCourse ? `${mainCourse.pct}%` : '—', sub: mainCourse ? mainCourse.title : 'No courses linked yet' },
+            ].map(s => (
+              <div key={s.l} className="rounded-lg border border-line bg-white p-4">
+                <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{s.l}</dt>
+                <dd className="mt-1.5 text-[22px] font-extrabold text-navy">{s.v}</dd>
+                <dd className="mt-0.5 truncate text-[12.5px] text-muted">{s.sub}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+
+        <div className="flex flex-wrap items-start gap-5">
+          <section className="min-w-0 flex-[999_1_520px] rounded-lg border border-line bg-white">
+            <div role="tablist" aria-label="Cohort" className="flex gap-1 border-b border-line px-4">
+              {tabs.map(([k, l, n]) => (
+                <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+                  className={clsx('-mb-px h-[46px] border-b-2 px-3 text-[13.5px] text-navy', tab === k ? 'border-azure-strong font-semibold' : 'border-transparent font-medium')}>
+                  {l} <span className="font-medium text-muted">{n}</span>
+                </button>
               ))}
             </div>
 
-            {/* Cohort list */}
-            <div className="space-y-3">
-              {cohorts.map(c => {
-                const isOpen    = expanded === c.id;
-                const countdown = examCountdown(c.examDate);
-                const cohortClasses: LiveClass[] = classes[c.id] ?? [];
-                // Fix: filter for SCHEDULED only (not filter-out ENDED which doesn't exist in API)
-                const upcoming = cohortClasses.filter(
-                  cl => cl.status === 'SCHEDULED'
-                ).slice(0, 3);
-                // Fix: API uses 'ACTIVE' for live status (consistent with cohort/page.tsx)
-                const liveNow  = cohortClasses.find(cl => cl.status === 'ACTIVE');
-
-                return (
-                  <Card key={c.id} padding="none" className="overflow-hidden">
-
-                    {/* Header row */}
-                    <div className="flex items-center gap-4 px-5 py-4 w-full">
-                      <button
-                        onClick={() => toggleCohort(c.id)}
-                        className="flex items-center gap-4 flex-1 min-w-0 text-left hover:opacity-80 transition"
-                      >
-                      <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-navy text-sm font-bold text-white">
-                        {c.name[0].toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-bold text-navy truncate">{c.name}</p>
-                          {liveNow && (
-                            <span className="flex items-center gap-1 rounded-md bg-azure px-2 py-0.5 text-[10px] font-bold text-white">
-                              <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                              LIVE NOW
-                            </span>
-                          )}
-                          {c.sittingLabel && (
-                            <Badge variant="active">{c.sittingLabel}</Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-royal/50 mt-0.5 truncate">
-                          {teacherName(c.teacher)}
-                        </p>
-                        {countdown && (
-                          <p className={`text-[10px] font-semibold mt-0.5 ${countdown.urgent ? 'text-amber-600' : 'text-royal/40'}`}>
-                            {countdown.label}
-                            {c.examDate && (
-                              <> · {new Date(c.examDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</>
-                            )}
-                          </p>
-                        )}
-                      </div>
-                      <div className="hidden sm:flex items-center gap-4 flex-shrink-0 mr-2 text-xs text-royal/50">
-                        <span className="flex items-center gap-1.5">
-                          <Icon name="graduate" size={12} /> {c._count.students}
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <Icon name="live" size={12} /> {c._count.liveClasses}
-                        </span>
-                      </div>
-                      <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={14} className="text-royal/40 flex-shrink-0" />
-                      </button>
-
-                      {/* Quick-join: only visible when a session is live */}
-                      {liveNow && (
-                        <Link
-                          href={`/student/live/${liveNow.id}`}
-                          onClick={e => e.stopPropagation()}
-                          className="flex-shrink-0 flex items-center gap-1.5 rounded-xl bg-azure px-3 py-2 text-xs font-bold text-white hover:bg-royal transition ml-1"
-                        >
-                          <Icon name="play" size={12} /> Join
-                        </Link>
-                      )}
+            {tab === 'classes' && (
+              <div>
+                <p className="px-[18px] pb-1.5 pt-3.5 text-xs font-semibold uppercase tracking-[0.06em] text-muted">Coming up</p>
+                {!classes?.upcoming.length && <p className="border-t border-line px-[18px] py-3 text-[13px] text-ink2">Nothing scheduled yet.</p>}
+                {classes?.upcoming.map(c => (
+                  <div key={c.id} className="flex items-center gap-3.5 border-t border-line px-[18px] py-3">
+                    <div className="w-12 flex-shrink-0 rounded-md bg-accent-soft py-1.5 text-center">
+                      <p className="text-[11px] font-bold uppercase text-azure-strong">{new Date(c.scheduledAt).toLocaleDateString('en-GB', { month: 'short' })}</p>
+                      <p className="text-lg font-extrabold text-navy">{String(new Date(c.scheduledAt).getDate()).padStart(2, '0')}</p>
                     </div>
-
-                    {/* Expanded panel */}
-                    {isOpen && (
-                      <div className="border-t border-cloud">
-                        {loadingCls === c.id ? (
-                          <div className="flex items-center justify-center py-10">
-                            <div className="h-5 w-5 animate-spin rounded-full border-2 border-azure border-t-transparent" />
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-cloud">
-
-                            {/* Instructor info */}
-                            <div className="p-5 space-y-4">
-                              <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">INSTRUCTOR</p>
-                              {c.teacher ? (
-                                <div className="flex items-center gap-3">
-                                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-azure/10 text-sm font-bold text-azure">
-                                    {teacherName(c.teacher)[0].toUpperCase()}
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-semibold text-navy">{teacherName(c.teacher)}</p>
-                                    <p className="text-xs text-royal/40">Instructor</p>
-                                  </div>
-                                </div>
-                              ) : (
-                                <p className="text-xs text-royal/40">No instructor assigned yet</p>
-                              )}
-
-                              {/* Cohort metadata */}
-                              <div className="space-y-2 pt-1">
-                                {c.startDate && (
-                                  <div className="flex items-center gap-2 text-xs text-royal/50">
-                                    <Icon name="calendar" size={12} className="text-azure flex-shrink-0" />
-                                    Started {new Date(c.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                  </div>
-                                )}
-                                {c.examDate && (
-                                  <div className="flex items-center gap-2 text-xs text-royal/50">
-                                    <Icon name="clock" size={12} className="text-amber-500 flex-shrink-0" />
-                                    Exam on {new Date(c.examDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                  </div>
-                                )}
-                                <div className="flex items-center gap-2 text-xs text-royal/50">
-                                  <Icon name="graduate" size={12} className="text-azure flex-shrink-0" />
-                                  {c._count.students} student{c._count.students !== 1 ? 's' : ''} in this cohort
-                                </div>
-                              </div>
-
-                              {/* Quick links */}
-                              <div className="flex gap-2 pt-1 flex-wrap">
-                                <Link href={`/student/assignments?cohortId=${c.id}`}
-                                  className="flex items-center gap-1.5 rounded-lg border border-cloud px-3 py-2 text-xs font-semibold text-navy hover:bg-cloud transition">
-                                  <Icon name="notebook" size={12} /> Assignments
-                                </Link>
-                                <Link href="/student/mentorship"
-                                  className="flex items-center gap-1.5 rounded-lg border border-cloud px-3 py-2 text-xs font-semibold text-navy hover:bg-cloud transition">
-                                  <Icon name="mentorship" size={12} /> Mentorship
-                                </Link>
-                              </div>
-                            </div>
-
-                            {/* Upcoming live classes */}
-                            <div className="p-5 space-y-3">
-                              <div className="flex items-center justify-between">
-                                <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">
-                                  UPCOMING SESSIONS
-                                </p>
-                                <Link href="/student/live"
-                                  className="flex items-center gap-1 text-[10px] font-semibold text-azure hover:text-royal transition">
-                                  View all <Icon name="arrowRight" size={10} />
-                                </Link>
-                              </div>
-
-                              {liveNow && (
-                                <Link href={`/student/live/${liveNow.id}`}
-                                  className="flex items-center gap-3 rounded-xl bg-azure px-4 py-3 text-white hover:bg-royal transition">
-                                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-white/20">
-                                    <Icon name="live" size={14} />
-                                  </span>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-bold truncate">{liveNow.title}</p>
-                                    <p className="text-[10px] text-white/70">Live right now — tap to join</p>
-                                  </div>
-                                  <Icon name="arrowRight" size={13} className="flex-shrink-0 opacity-70" />
-                                </Link>
-                              )}
-
-                              {upcoming.length === 0 && !liveNow ? (
-                                <p className="text-xs text-royal/40 py-4 text-center">No upcoming sessions scheduled</p>
-                              ) : (
-                                <div className="space-y-2">
-                                  {upcoming.map(cls => {
-                                    const date = new Date(cls.scheduledAt);
-                                    return (
-                                      <div key={cls.id} className="flex items-center gap-3 rounded-xl border border-cloud px-3 py-2.5">
-                                        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-cloud">
-                                          <Icon name="live" size={13} className="text-royal/50" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-xs font-semibold text-navy truncate">{cls.title}</p>
-                                          <p className="text-[10px] text-royal/40">
-                                            {date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                                            {' · '}
-                                            {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                          </p>
-                                        </div>
-                                        <Badge variant="muted">Upcoming</Badge>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                  </Card>
-                );
-              })}
-            </div>
-
-            {/* Upsell — only when student has fewer than 2 cohorts */}
-            {cohorts.length < 2 && (
-              <Card className="flex items-start gap-4">
-                <IconBox><Icon name="packages" size={16} /></IconBox>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-navy">Want to join more cohorts?</p>
-                  <p className="text-xs text-royal/50 mt-1 leading-relaxed">
-                    Each package you purchase can include a dedicated study group with live sessions and an assigned instructor.
-                  </p>
-                  <Link href="/packages"
-                    className="mt-3 inline-flex items-center gap-1.5 btn-primary text-xs px-4 py-2">
-                    Browse packages <Icon name="arrowRight" size={12} />
-                  </Link>
-                </div>
-              </Card>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-navy">{c.title}</p>
+                      <p className="mt-0.5 text-[12.5px] text-muted">
+                        {new Date(c.scheduledAt).toLocaleDateString('en-GB', { weekday: 'short' })} {time(c.scheduledAt)} – {time(new Date(new Date(c.scheduledAt).getTime() + c.durationMins * 60_000).toISOString())}
+                      </p>
+                    </div>
+                    {c.live ? <Link href={`/student/live/${c.id}`} className={btn(true)}>Join</Link> : <span className="text-[12.5px] text-muted">{inDays(c.scheduledAt)}</span>}
+                  </div>
+                ))}
+                <p className="px-[18px] pb-1.5 pt-[18px] text-xs font-semibold uppercase tracking-[0.06em] text-muted">Past classes</p>
+                {!classes?.past.length && <p className="border-t border-line px-[18px] py-3 text-[13px] text-ink2">No classes held yet.</p>}
+                {classes?.past.map(c => (
+                  <div key={c.id} className="flex flex-wrap items-center gap-3.5 border-t border-line px-[18px] py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-navy">{c.title}</p>
+                      <p className="mt-0.5 text-[12.5px] text-muted">{new Date(c.scheduledAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} · {c.durationMins} min</p>
+                    </div>
+                    <span className={badge(!!c.attended)}>{c.attended ? 'Attended' : 'Missed'}</span>
+                    {c.recordingUrl
+                      ? <a href={c.recordingUrl} target="_blank" rel="noopener noreferrer" className={btn(false)}>Watch recording</a>
+                      : <span className="inline-flex h-8 items-center px-1 text-[12.5px] text-muted">Recording coming</span>}
+                  </div>
+                ))}
+              </div>
             )}
-          </>
-        )}
+
+            {tab === 'work' && (
+              <div>
+                {!assignments.length && <p className="px-[18px] py-6 text-center text-[13px] text-ink2">Your teacher hasn’t set any assignments yet.</p>}
+                {assignments.map(a => {
+                  const meta = a.state === 'graded' || a.state === 'waiting'
+                    ? `Submitted ${a.submittedAt ? new Date(a.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) : ''}`
+                    : `${a.state === 'overdue' ? 'Was due' : 'Due'} ${new Date(a.dueDate).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} · ${a.maxPoints} marks`;
+                  const state = a.state === 'graded' ? `Graded · ${a.grade}/${a.maxPoints}` : a.state === 'waiting' ? 'Waiting for grade' : a.state === 'overdue' ? 'Overdue' : 'To do';
+                  const cta = a.state === 'graded' ? 'See feedback' : a.state === 'waiting' ? 'View' : 'Start';
+                  return (
+                    <div key={a.id} className="flex flex-wrap items-center gap-3.5 border-t border-line px-[18px] py-3.5 first:border-t-0">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-navy">{a.title}</p>
+                        <p className="mt-0.5 text-[12.5px] text-muted">{meta}</p>
+                      </div>
+                      <span className={badge(a.state === 'graded')}>{state}</span>
+                      <Link href={`/student/assignments?id=${a.id}`} className={btn(a.state === 'todo' || a.state === 'overdue')}>{cta}</Link>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {tab === 'group' && (
+              <div className="grid gap-2.5 p-4 [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
+                {members.map(m => (
+                  <div key={m.id} className="flex items-center gap-2.5 rounded-md border border-line p-2.5">
+                    <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-xs font-bold text-navy">{initials(m.name)}</span>
+                    <div className="min-w-0">
+                      <p className="truncate text-[13.5px] font-semibold text-navy">{m.name}</p>
+                      <p className="text-xs text-muted">{m.role}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
+            {teacher && (
+              <section className="flex flex-col gap-3 rounded-lg border border-line bg-white p-[18px]">
+                <h3 className="text-[15px] font-semibold text-navy">Your teacher</h3>
+                <div className="flex items-center gap-3">
+                  <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-[15px] font-extrabold text-azure-strong">{initials(teacher.name)}</span>
+                  <div className="min-w-0">
+                    <p className="text-[14.5px] font-semibold text-navy">{teacher.name}</p>
+                    <p className="truncate text-[12.5px] text-muted">
+                      {[teacher.subjects.slice(0, 2).join(', '), teacher.yearsExperience ? `${teacher.yearsExperience} years teaching` : null].filter(Boolean).join(' · ') || 'Cohort teacher'}
+                    </p>
+                  </div>
+                </div>
+                <Link href={`/student/messages?to=${teacher.id}`} className={clsx(btn(false), 'h-9 justify-center text-[13.5px]')}>Send a message</Link>
+              </section>
+            )}
+            {data.package && (
+              <section className="flex flex-col gap-2.5 rounded-lg border border-line bg-white p-[18px]">
+                <h3 className="text-[15px] font-semibold text-navy">Included with</h3>
+                <p className="text-[13.5px] font-semibold text-navy">{data.package.name}</p>
+                <p className="text-[12.5px] text-muted">
+                  {data.package.expiresAt ? `Access until ${longDate(data.package.expiresAt)}` : 'No time limit'} · {data.package.courses} course{data.package.courses === 1 ? '' : 's'}
+                </p>
+                <Link href={`/packages/${data.package.id}`} className="text-[13px] font-semibold text-azure-strong hover:underline">View package</Link>
+              </section>
+            )}
+            <section className="flex flex-col gap-2 rounded-lg border border-line bg-white p-[18px]">
+              <h3 className="text-[15px] font-semibold text-navy">How live classes work</h3>
+              <ul className="list-disc space-y-1.5 pl-[18px] text-[13px] text-ink2">
+                <li>Join from this page up to 10 minutes before the start.</li>
+                <li>Missed one? The recording appears here once your teacher adds it.</li>
+                <li>Attendance counts towards your progress report.</li>
+              </ul>
+            </section>
+          </aside>
+        </div>
       </div>
     </div>
   );

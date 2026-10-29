@@ -41,7 +41,22 @@ export default function MessagesInbox({ backHref }: { backHref: string }) {
   }, []);
 
   useEffect(() => {
-    loadThreads().finally(() => setLoading(false));
+    // ?to=<userId> opens (or starts) the conversation with that person
+    const to = new URLSearchParams(window.location.search).get('to');
+    (async () => {
+      if (to) {
+        try {
+          const t = await api.post('/messages/threads', { recipientId: to });
+          const r = await api.get('/messages/threads');
+          setThreads(r.data);
+          const found = (r.data as ThreadSummary[]).find(x => x.id === t.data?.id || x.other.id === to);
+          if (found) setActiveThread(found);
+          else if (t.data?.id) setActiveThread({ id: t.data.id, other: { id: to, name: 'New conversation', avatarUrl: null, role: '' }, lastMessage: null, unread: false, lastMessageAt: new Date().toISOString() });
+          return;
+        } catch { notify.error('Could not open that conversation'); }
+      }
+      await loadThreads();
+    })().finally(() => setLoading(false));
   }, [loadThreads]);
 
   const loadMessages = useCallback(async (threadId: string) => {
