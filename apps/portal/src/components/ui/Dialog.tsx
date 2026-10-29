@@ -76,7 +76,7 @@ export function DialogContent({ title, description, children, className, size = 
           {/* Header */}
           <div className="flex items-start gap-3 border-b border-line px-6 py-4">
             <RadixDialog.Close aria-label="Close" className="-ml-1.5 mt-0.5 rounded-md p-1.5 text-ink2 hover:bg-subtle hover:text-navy transition-colors">
-              <Icon name="close" size={16} />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
             </RadixDialog.Close>
             <div className="min-w-0">
               <RadixDialog.Title className="text-[17px] font-bold text-navy">{title}</RadixDialog.Title>
@@ -148,7 +148,7 @@ export function DrawerContent({ title, description, action, children, width = 'm
         >
           <div className="flex items-center gap-3 border-b border-line px-6 py-4">
             <RadixDialog.Close aria-label="Close" className="-ml-1.5 rounded-md p-1.5 text-ink2 hover:bg-subtle hover:text-navy transition-colors">
-              <Icon name="close" size={18} />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
             </RadixDialog.Close>
             <div className="min-w-0 flex-1">
               <RadixDialog.Title className="truncate text-[17px] font-bold text-navy">{title}</RadixDialog.Title>
