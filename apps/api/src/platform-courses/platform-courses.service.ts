@@ -1003,6 +1003,44 @@ export class PlatformCoursesService {
     return { updated, skipped: courses.length - updated };
   }
 
+  /**
+   * What a teacher needs to propose a sensible price: the programme's default prices, the range of
+   * similar published courses' prices (same programme), their commission and the packages the course is in.
+   */
+  async priceGuide(courseId: string, actor: UserProfile) {
+    const course = await this.assertCourseAccess(courseId, actor);
+    const [defaults, similar, assignment, packages] = await Promise.all([
+      this.prisma.coursePriceDefault.findMany({
+        where: { OR: [{ programmeId: course.programmeId ?? undefined }, { programmeId: null }] },
+        select: { programmeId: true, currency: true, amount: true },
+      }),
+      this.prisma.platformCourse.findMany({
+        where: { id: { not: courseId }, status: 'PUBLISHED', isSoldIndividually: true, priceAmount: { not: null }, ...(course.programmeId ? { programmeId: course.programmeId } : {}) },
+        select: { priceAmount: true, priceCurrency: true },
+      }),
+      this.prisma.courseAssignment.findUnique({ where: { courseId }, select: { teacherCommissionPct: true } }),
+      this.prisma.package.findMany({
+        where: { courseIds: { has: courseId } },
+        select: { id: true, name: true, priceAmount: true, currency: true, courseIds: true, isPublished: true, _count: { select: { purchases: true } } },
+      }),
+    ]);
+    // A programme's own default wins over the every-programme one, per currency
+    const byCurrency = new Map<string, number>();
+    defaults.filter(d => d.programmeId === null).forEach(d => byCurrency.set(d.currency, d.amount));
+    defaults.filter(d => d.programmeId !== null).forEach(d => byCurrency.set(d.currency, d.amount));
+    const ranges = new Map<string, { min: number; max: number; count: number }>();
+    similar.forEach(c => {
+      const r = ranges.get(c.priceCurrency!) ?? { min: c.priceAmount!, max: c.priceAmount!, count: 0 };
+      ranges.set(c.priceCurrency!, { min: Math.min(r.min, c.priceAmount!), max: Math.max(r.max, c.priceAmount!), count: r.count + 1 });
+    });
+    return {
+      defaults: [...byCurrency].map(([currency, amount]) => ({ currency, amount })),
+      similar: [...ranges].map(([currency, r]) => ({ currency, ...r })),
+      teacherCommissionPct: assignment?.teacherCommissionPct ?? null,
+      packages: packages.map(p => ({ id: p.id, name: p.name, priceAmount: p.priceAmount, currency: p.currency, courses: p.courseIds.length, isPublished: p.isPublished, sold: p._count.purchases })),
+    };
+  }
+
   /** The teacher's commission on this course (from their course assignment), for the pricing screen. */
   async teacherShare(courseId: string, actor: UserProfile) {
     await this.assertCourseAccess(courseId, actor);

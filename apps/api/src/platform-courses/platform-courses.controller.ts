@@ -114,6 +114,13 @@ export class PlatformCoursesController {
     return this.svc.decidePrice(id, dto);
   }
 
+  @Get(':id/price-guide')
+  @Roles(UserRole.ADMIN, UserRole.TEACHER)
+  @ApiOperation({ summary: '[Teacher] Default prices, similar-course prices, commission and packages for this course' })
+  priceGuide(@Param('id') id: string, @CurrentUser() user: UserProfile) {
+    return this.svc.priceGuide(id, user);
+  }
+
   @Get(':id/teacher-share')
   @Roles(UserRole.ADMIN, UserRole.TEACHER)
   @ApiOperation({ summary: '[Teacher] Commission the teacher earns on sales of this course' })
