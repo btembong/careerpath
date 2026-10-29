@@ -7,6 +7,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { StudentInsightsService } from './student-insights.service';
+import { StudentLibraryService } from './student-library.service';
 
 @ApiTags('portals')
 @ApiBearerAuth()
@@ -14,7 +15,11 @@ import { StudentInsightsService } from './student-insights.service';
 @Roles(UserRole.STUDENT)
 @Controller('portals/student')
 export class StudentInsightsController {
-  constructor(private readonly insights: StudentInsightsService) {}
+  constructor(private readonly insights: StudentInsightsService, private readonly lib: StudentLibraryService) {}
+
+  @Get('library')
+  @ApiOperation({ summary: '[Student] My courses: where access comes from, when it ends, progress, next lesson and certificates' })
+  library(@CurrentUser() user: UserProfile) { return this.lib.library(user.id); }
 
   @Get('stats')
   @ApiOperation({ summary: '[Student] Course, lesson, quiz, study-time, streak and certificate totals' })

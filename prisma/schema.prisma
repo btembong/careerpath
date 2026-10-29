@@ -725,6 +725,8 @@ model PlatformCourse {
   accessMonths       Int?               @default(12)
   /// Teaching language, e.g. "English" or "French"; shown to students only when set
   language           String?
+  /// What students will be able to do after the course; shown on the course page when set
+  outcomes           String[]           @default([])
   certificates       Certificate[]
   enrollments        CourseEnrollment[]
   modules            CourseModule[]

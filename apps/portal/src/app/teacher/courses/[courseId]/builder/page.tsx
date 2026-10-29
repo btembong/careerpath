@@ -59,7 +59,7 @@ function parseChapters(text: string): { chapters: { startSec: number; title: str
 }
 interface Course {
   id: string; title: string; description: string | null;
-  shortDescription: string | null; coverUrl: string | null; status: string;
+  shortDescription: string | null; coverUrl: string | null; status: string; outcomes?: string[];
   programme: { name: string; shortName: string | null } | null;
   subject: { name: string } | null;
   modules: Module[];
@@ -370,6 +370,7 @@ export default function CourseBuilderPage() {
 
   // Cover image + short description
   const [shortDesc, setShortDesc] = useState('');
+  const [outcomes, setOutcomes] = useState<string[]>([]);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
 
@@ -399,8 +400,10 @@ export default function CourseBuilderPage() {
   async function saveMeta() {
     setSavingMeta(true);
     try {
-      await api.patch(`/platform-courses/${courseId}`, { shortDescription: shortDesc || null });
-      setCourse(c => c ? { ...c, shortDescription: shortDesc || null } : c);
+      const clean = outcomes.map(o => o.trim()).filter(Boolean);
+      await api.patch(`/platform-courses/${courseId}`, { shortDescription: shortDesc || null, outcomes: clean });
+      setCourse(c => c ? { ...c, shortDescription: shortDesc || null, outcomes: clean } : c);
+      setOutcomes(clean);
       notify.success('Course details saved');
     } catch { notify.error('Failed to save'); }
     finally { setSavingMeta(false); }
@@ -436,6 +439,7 @@ export default function CourseBuilderPage() {
     const r = await api.get(`/platform-courses/${courseId}`);
     setCourse(r.data);
     setShortDesc(r.data.shortDescription ?? '');
+    setOutcomes(r.data.outcomes ?? []);
   }
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [courseId]);
@@ -677,6 +681,22 @@ export default function CourseBuilderPage() {
                   className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40 resize-none"
                 />
                 <p className="text-[10px] text-royal/30 text-right">{shortDesc.length}/200</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-navy">What students will be able to do</p>
+                <p className="mb-2 text-[11px] text-muted">Up to 8 short lines, shown on the course page. For example: “Simplify and rationalise surds”.</p>
+                <div className="space-y-1.5">
+                  {outcomes.map((o, i) => (
+                    <div key={i} className="flex gap-2">
+                      <input value={o} maxLength={160} onChange={e => setOutcomes(list => list.map((x, j) => j === i ? e.target.value : x))}
+                        placeholder={`Outcome ${i + 1}`} className="input-base h-9 flex-1" />
+                      <button type="button" onClick={() => setOutcomes(list => list.filter((_, j) => j !== i))} className="text-[12px] font-semibold text-muted hover:text-error">Remove</button>
+                    </div>
+                  ))}
+                  {outcomes.length < 8 && (
+                    <button type="button" onClick={() => setOutcomes(list => [...list, ''])} className="text-[12.5px] font-semibold text-azure-strong hover:underline">Add an outcome</button>
+                  )}
+                </div>
               </div>
               <Button size="sm" loading={savingMeta} onClick={saveMeta} className="self-start">
                 Save Details

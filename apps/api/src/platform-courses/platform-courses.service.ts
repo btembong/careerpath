@@ -181,7 +181,7 @@ export class PlatformCoursesService {
     teacherId?: string; status?: CourseStatus;
     priceAmount?: number | null; priceCurrency?: string | null; isSoldIndividually?: boolean;
     shortDescription?: string | null; source?: CourseSource; wpCourseUrl?: string | null;
-    accessMonths?: number | null; language?: string | null;
+    accessMonths?: number | null; language?: string | null; outcomes?: string[];
   }) {
     await this.assertCourseAccess(id, actor);
     const isAdmin = (actor.role as UserRole) === UserRole.ADMIN;
@@ -213,6 +213,7 @@ export class PlatformCoursesService {
       ...(isAdmin && dto.isSoldIndividually !== undefined && { isSoldIndividually: !!dto.isSoldIndividually }),
       ...(isAdmin && dto.accessMonths !== undefined && { accessMonths: dto.accessMonths }),
       ...(dto.language !== undefined && { language: dto.language?.trim() || null }),
+      ...(dto.outcomes !== undefined && { outcomes: cleanOutcomes(dto.outcomes) }),
       ...(isAdmin && dto.status !== undefined && { status: dto.status }),
       ...(isAdmin && dto.teacherId !== undefined && { teacherId: dto.teacherId }),
     };
@@ -1202,6 +1203,7 @@ function courseIncludes() {
     subject:    { select: { id: true, name: true, category: true } },
     level:      { select: { id: true, name: true, tier: true } },
     teacher:    { select: { id: true, email: true, name: true, firstName: true, lastName: true } },
+    _count:     { select: { modules: true, enrollments: true } },
     modules: {
       orderBy: { sortOrder: 'asc' as const },
       include: {
@@ -1231,4 +1233,10 @@ function normaliseChapters(raw: unknown): { startSec: number; title: string }[] 
     .sort((a, b) => a.startSec - b.startSec)
     .slice(0, 100);
   return chapters.length ? chapters : null;
+}
+
+/** Up to 8 short outcome lines; blanks dropped */
+function cleanOutcomes(list: unknown): string[] {
+  if (!Array.isArray(list)) throw new BadRequestException('outcomes must be a list of short sentences');
+  return list.map(x => String(x ?? '').trim().slice(0, 160)).filter(Boolean).slice(0, 8);
 }
