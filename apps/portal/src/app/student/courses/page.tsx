@@ -21,7 +21,7 @@ interface Course {
   packageExpiresAt?: string | null;
   isIndividual?: boolean;
   _count?: { modules: number };
-  teacher?: { firstName?: string | null; lastName?: string | null; email: string };
+  teacher?: { name?: string | null; firstName?: string | null; lastName?: string | null; email: string };
 }
 
 type Tab = 'packages' | 'individual' | 'free';
@@ -498,7 +498,7 @@ function CourseCard({ course, showLifetimeBadge, nextLesson }: {
   })();
 
   const teacherName = course.teacher
-    ? [course.teacher.firstName, course.teacher.lastName].filter(Boolean).join(' ') || course.teacher.email
+    ? course.teacher.name || [course.teacher.firstName, course.teacher.lastName].filter(Boolean).join(' ') || null
     : null;
 
   return (

@@ -14,6 +14,7 @@ interface Package {
   priceAmount: number; currency: string;
   courseIds: string[]; validityDays: number | null; categoryTags: string[];
   cohort?: { id: string; name: string } | null;
+  mentorship?: string | null;
 }
 interface Course {
   id: string; title: string; status: string;
@@ -72,6 +73,8 @@ function PackagesInner() {
     .sort((a, b) => (b.saving ?? -1) - (a.saving ?? -1) || a.p.priceAmount - b.p.priceAmount), [packages, byId, prog]);
 
   const bestId = plans.find(x => x.saving != null)?.p.id ?? null;
+  // Mentorship only shows when at least one package includes it
+  const anyMentorship = plans.some(x => x.p.mentorship);
   const owned = (id: string) => mine.find(m => m.id === id) ?? null;
 
   return (
@@ -82,7 +85,7 @@ function PackagesInner() {
         <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-extrabold tracking-[-0.01em] text-navy">Choose a package</h1>
-            <p className="mt-1 text-[13.5px] text-muted">A package bundles several courses, often with live classes, for less than buying them one by one.</p>
+            <p className="mt-1 text-[13.5px] text-muted">A package bundles several courses{anyMentorship ? ', live classes and mentorship' : ', often with live classes,'} for less than buying them one by one.</p>
           </div>
           {programmes.length > 1 && (
             <div role="tablist" aria-label="Programme" className="flex max-w-full flex-wrap gap-1 rounded-lg border border-line bg-white p-1">
@@ -115,6 +118,7 @@ function PackagesInner() {
                   [true, 'Practice and quizzes'],
                   [true, 'Certificates'],
                   [!!p.cohort, p.cohort ? `Live classes with ${p.cohort.name}` : 'Live classes'],
+                  ...(anyMentorship ? [[!!p.mentorship, p.mentorship || 'Mentorship'] as [boolean, string]] : []),
                 ];
                 return (
                   <article key={p.id} className={clsx('flex flex-col gap-1.5 rounded-lg border bg-white p-5', best ? 'border-azure' : 'border-line')}>
@@ -178,6 +182,7 @@ function PackagesInner() {
                         ['Courses', ({ p }) => String(p.courseIds.length)],
                         ['Access', ({ p }) => term(p.validityDays)],
                         ['Live classes', ({ p }) => p.cohort ? 'Yes' : '—'],
+                        ...(anyMentorship ? [['Mentorship', ({ p }: typeof plans[number]) => p.mentorship || '—'] as [string, (x: typeof plans[number]) => string]] : []),
                         ['Certificates', () => 'Yes'],
                         ['Price', ({ p }) => money(p.priceAmount, p.currency)],
                         ['Price per course', ({ p }) => p.courseIds.length ? money(Math.round(p.priceAmount / p.courseIds.length), p.currency) : '—'],

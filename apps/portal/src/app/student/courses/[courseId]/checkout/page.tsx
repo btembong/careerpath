@@ -23,7 +23,7 @@ interface Course {
   programme: { name: string; shortName: string | null } | null;
   subject:   { name: string } | null;
   level:     { name: string } | null;
-  teacher:   { email: string; name: string | null } | null;
+  teacher:   { email: string; name: string | null; firstName?: string | null; lastName?: string | null } | null;
   _count:    { modules: number; enrollments: number };
 }
 interface AppliedCoupon { code: string; discountType: 'PERCENT' | 'FIXED'; discountValue: number; }
@@ -183,6 +183,8 @@ export default function CourseCheckoutPage() {
     </div>
   );
 
+  // The teacher's name — never their email
+  const teacherName = course.teacher ? course.teacher.name || [course.teacher.firstName, course.teacher.lastName].filter(Boolean).join(' ') || null : null;
   const cur         = course.priceCurrency?.toUpperCase() ?? '';
   const isTranzak   = TRANZAK_CURRENCIES.has(cur);
   const isStripe    = STRIPE_CURRENCIES.has(cur);
@@ -245,13 +247,13 @@ export default function CourseCheckoutPage() {
                   Lifetime access
                 </span>
               </div>
-              {course.teacher && (
+              {teacherName && (
                 <div className="flex items-center gap-2.5 pt-1">
                   <div className="w-7 h-7 rounded-full bg-azure/10 flex items-center justify-center text-xs font-bold text-azure flex-shrink-0">
-                    {(course.teacher.name ?? course.teacher.email)[0].toUpperCase()}
+                    {teacherName[0].toUpperCase()}
                   </div>
                   <span className="text-xs text-royal/50">
-                    {course.teacher.name ?? course.teacher.email.split('@')[0]}
+                    {teacherName}
                   </span>
                 </div>
               )}

@@ -16,10 +16,11 @@ interface Course {
   id: string; title: string; description: string | null;
   source: 'NATIVE' | 'WORDPRESS'; wpCourseUrl: string | null;
   priceAmount: number | null; priceCurrency: string | null; isSoldIndividually: boolean;
+  accessMonths: number | null; language: string | null;
   programme: { name: string; shortName: string | null } | null;
   subject:   { name: string } | null;
   level:     { name: string } | null;
-  teacher:   { email: string; name: string | null } | null;
+  teacher:   { email: string; name: string | null; firstName?: string | null; lastName?: string | null } | null;
   _count:    { modules: number; enrollments: number };
 }
 
@@ -132,6 +133,9 @@ export default function CourseDetailPage() {
   );
 
   const price        = course.priceAmount ? Number(course.priceAmount) : null;
+  const accessNote   = course.accessMonths ? `${course.accessMonths} month${course.accessMonths === 1 ? '' : 's'} of access` : 'No time limit';
+  // The teacher's name — never their email
+  const teacherName  = course.teacher ? course.teacher.name || [course.teacher.firstName, course.teacher.lastName].filter(Boolean).join(' ') || null : null;
   const totalLessons = modules.reduce((n, m) => n + m.lessons.length, 0);
   const totalSecs    = modules.reduce((n, m) => n + m.lessons.reduce((s, l) => s + (l.durationSecs ?? 0), 0), 0);
 
@@ -141,12 +145,11 @@ export default function CourseDetailPage() {
     totalLessons > 0
       ? `${totalLessons} lesson${totalLessons !== 1 ? 's' : ''}${totalSecs > 0 ? ` · ${fmtDuration(totalSecs)} total` : ''}`
       : null,
-    price ? 'One-time payment · no time limit' : 'No time limit',
+    price ? `One-time payment · ${accessNote.toLowerCase()}` : 'No time limit',
     'Certificate on completion',
     'Graded quizzes and assignments',
-    course.teacher
-      ? `Taught by ${course.teacher.name ?? course.teacher.email.split('@')[0]}`
-      : 'Expert-led instruction',
+    teacherName ? `Taught by ${teacherName}` : 'Expert-led instruction',
+    course.language ? `Taught in ${course.language}` : null,
   ].filter(Boolean) as string[];
 
   const outcomes = [
@@ -188,10 +191,10 @@ export default function CourseDetailPage() {
             <span className="flex items-center gap-1.5">
               <Icon name="graduate" size={13} /> {(course._count?.enrollments ?? 0).toLocaleString()} enrolled
             </span>
-            {course.teacher && (
+            {teacherName && (
               <>
                 <span>·</span>
-                <span>{course.teacher.name ?? course.teacher.email.split('@')[0]}</span>
+                <span>{teacherName}</span>
               </>
             )}
           </div>
@@ -277,18 +280,15 @@ export default function CourseDetailPage() {
                 )}
               </div>
 
-              {course.teacher && (
+              {teacherName && (
                 <div className="flex items-center gap-3 mt-5">
                   <div className="w-9 h-9 rounded-full bg-azure/10 flex items-center justify-center text-sm font-bold text-azure flex-shrink-0">
-                    {(course.teacher.name ?? course.teacher.email)[0].toUpperCase()}
+                    {teacherName![0].toUpperCase()}
                   </div>
                   <div>
                     <p className="text-sm font-medium text-navy">
-                      {course.teacher.name ?? course.teacher.email.split('@')[0]}
+                      {teacherName}
                     </p>
-                    {course.teacher.name && (
-                      <p className="text-xs text-royal/40">{course.teacher.email}</p>
-                    )}
                   </div>
                 </div>
               )}
@@ -415,20 +415,19 @@ export default function CourseDetailPage() {
               </section>
 
               {/* Instructor */}
-              {course.teacher && (
+              {teacherName && (
                 <section>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-4">
                     Your instructor
                   </p>
                   <Card className="flex items-center gap-4 p-5">
                     <div className="w-14 h-14 rounded-full bg-azure/10 flex items-center justify-center text-lg font-bold text-azure flex-shrink-0">
-                      {(course.teacher.name ?? course.teacher.email)[0].toUpperCase()}
+                      {teacherName![0].toUpperCase()}
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-navy">
-                        {course.teacher.name ?? course.teacher.email.split('@')[0]}
+                        {teacherName}
                       </p>
-                      <p className="text-xs text-royal/40 mt-0.5">{course.teacher.email}</p>
                     </div>
                   </Card>
                 </section>
@@ -474,7 +473,7 @@ export default function CourseDetailPage() {
                       <p className="text-3xl font-bold text-navy leading-none">
                         {course.priceCurrency} {minorToMajor(price, course.priceCurrency).toLocaleString()}
                       </p>
-                      <p className="text-xs text-royal/40 mt-1">One-time payment</p>
+                      <p className="text-xs text-royal/40 mt-1">One-time payment · {accessNote.toLowerCase()}</p>
                     </>
                   ) : (
                     <>
@@ -566,7 +565,7 @@ export default function CourseDetailPage() {
                 <p className="text-base font-bold text-navy">
                   {course.priceCurrency} {minorToMajor(price, course.priceCurrency).toLocaleString()}
                 </p>
-                <p className="text-xs text-royal/40">One-time payment</p>
+                <p className="text-xs text-royal/40">One-time payment · {accessNote.toLowerCase()}</p>
               </div>
               {course.isSoldIndividually ? (
                 <Link href={`/student/courses/${courseId}/checkout`} className="btn-primary flex-shrink-0 text-sm px-4 py-2.5">

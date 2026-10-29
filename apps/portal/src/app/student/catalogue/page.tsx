@@ -19,6 +19,8 @@ interface Course {
   programme: { id: string; name: string; shortName: string | null } | null;
   subject: { id: string; name: string } | null;
   level: { id: string; name: string } | null;
+  teacher: { name: string | null; firstName: string | null; lastName: string | null } | null;
+  accessMonths: number | null; language: string | null;
   _count: { modules: number; enrollments: number };
 }
 interface Package {
@@ -26,6 +28,7 @@ interface Package {
   priceAmount: number; currency: string; courseIds: string[];
   validityDays: number | null; categoryTags: string[];
   cohort?: { id: string; name: string } | null;
+  mentorship?: string | null;
 }
 interface Lesson { id: string; title: string; isFree: boolean; durationSecs: number | null }
 interface Detail { id: string; hasAccess?: boolean; modules: { id: string; title: string; lessons: Lesson[] }[] }
@@ -38,6 +41,9 @@ const abbr = (t: string) => t.split(/[\s·—-]+/).filter(w => /^[A-Za-z]/.test(
 const short = (p: { name: string; shortName: string | null }) => p.shortName ?? p.name;
 const term = (days: number | null) => !days ? 'no time limit' : days % 30 === 0 ? `${days / 30} month${days === 30 ? '' : 's'}` : `${days} days`;
 const isFree = (c: Course) => c.isSoldIndividually && !c.priceAmount;
+/** The teacher's name — never their email */
+const teacherOf = (c: Course) => c.teacher?.name || [c.teacher?.firstName, c.teacher?.lastName].filter(Boolean).join(' ') || null;
+const accessText = (m: number | null) => m == null ? 'No time limit' : `${m} month${m === 1 ? '' : 's'}`;
 
 export default function StudentCataloguePage() {
   return (
@@ -61,6 +67,7 @@ function Catalogue() {
   const [search, setSearch] = useState('');
   const [subject, setSubject] = useState('all');
   const [price, setPrice] = useState<PriceFilter>('any');
+  const [lang, setLang] = useState('all');
   const [sort, setSort] = useState<Sort>('popular');
   const [prog, setProgState] = useState<string>(params.get('tab') ?? '');
   const [openId, setOpenId] = useState<string | null>(null);
@@ -123,15 +130,19 @@ function Catalogue() {
     return [...m].sort((a, b) => a[1].localeCompare(b[1]));
   }, [progCourses]);
 
+  // Only offered when some courses say what language they're taught in
+  const languages = useMemo(() => [...new Set(progCourses.map(c => c.language).filter(Boolean) as string[])].sort(), [progCourses]);
+
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = progCourses.filter(c =>
       (subject === 'all' || c.subject?.id === subject) &&
+      (lang === 'all' || c.language === lang) &&
       (price === 'any'
         || (price === 'single' && c.isSoldIndividually && !!c.priceAmount)
         || (price === 'free' && isFree(c))
         || (price === 'package' && !c.isSoldIndividually)) &&
-      (!q || c.title.toLowerCase().includes(q) || (c.subject?.name ?? '').toLowerCase().includes(q) || (c.description ?? '').toLowerCase().includes(q)));
+      (!q || `${c.title} ${c.subject?.name ?? ''} ${teacherOf(c) ?? ''} ${c.description ?? ''}`.toLowerCase().includes(q)));
     const cmp: Record<Sort, (a: Course, b: Course) => number> = {
       popular: (a, b) => b._count.enrollments - a._count.enrollments,
       newest: (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt),
@@ -139,7 +150,7 @@ function Catalogue() {
       price: (a, b) => (a.isSoldIndividually ? a.priceAmount ?? 0 : Infinity) - (b.isSoldIndividually ? b.priceAmount ?? 0 : Infinity),
     };
     return [...list].sort(cmp[sort]);
-  }, [progCourses, search, subject, price, sort]);
+  }, [progCourses, search, subject, lang, price, sort]);
 
   const open = openId ? byId.get(openId) ?? null : null;
   const selectBox = 'h-10 rounded-md border border-line bg-white pl-3 pr-8 text-[13.5px] text-navy outline-none focus:border-azure';
@@ -153,7 +164,7 @@ function Catalogue() {
           <label className="flex h-10 min-w-0 flex-[1_1_320px] items-center gap-2.5 rounded-md border border-line bg-white px-3 focus-within:border-azure">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" aria-hidden className="text-muted"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" /></svg>
             <input type="search" aria-label="Search courses" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search courses or subjects" className="min-w-0 flex-1 bg-transparent text-sm text-navy outline-none placeholder:text-muted" />
+              placeholder="Search courses, subjects or teachers" className="min-w-0 flex-1 bg-transparent text-sm text-navy outline-none placeholder:text-muted" />
           </label>
           <select aria-label="Subject" value={subject} onChange={e => setSubject(e.target.value)} className={selectBox}>
             <option value="all">Subject: All</option>
@@ -165,6 +176,12 @@ function Catalogue() {
             <option value="free">Free</option>
             <option value="package">In a package only</option>
           </select>
+          {languages.length > 0 && (
+            <select aria-label="Language" value={lang} onChange={e => setLang(e.target.value)} className={selectBox}>
+              <option value="all">Language: Any</option>
+              {languages.map(l => <option key={l}>{l}</option>)}
+            </select>
+          )}
           <select aria-label="Sort" value={sort} onChange={e => setSort(e.target.value as Sort)} className={selectBox}>
             <option value="popular">Sort: Most popular</option>
             <option value="newest">Newest</option>
@@ -216,7 +233,7 @@ function Catalogue() {
                         <p className="text-xl font-extrabold text-navy">{money(p.priceAmount, p.currency)} <span className="text-[12.5px] font-medium text-muted">/ {term(p.validityDays)}</span></p>
                         <p className="text-[12.5px] font-semibold text-azure-strong">
                           {[saving != null ? `Saves ${money(saving, p.currency)} vs buying separately` : `${p.courseIds.length} course${p.courseIds.length === 1 ? '' : 's'}`,
-                            p.cohort ? 'live classes included' : null].filter(Boolean).join(' · ')}
+                            p.cohort ? 'live classes included' : null, p.mentorship ? 'mentorship included' : null].filter(Boolean).join(' · ')}
                         </p>
                         <Link href={`/packages/${p.id}`} className="mt-auto inline-flex h-[34px] items-center justify-center rounded-md border border-line text-[13px] font-semibold text-navy hover:bg-subtle">View package</Link>
                       </article>
@@ -234,7 +251,7 @@ function Catalogue() {
                 <div className="rounded-lg border border-line bg-white p-10 text-center">
                   <p className="text-sm font-semibold text-navy">No courses match</p>
                   <p className="mt-1 text-[13px] text-ink2">Try another subject or price, or clear the search.</p>
-                  <Button size="sm" variant="secondary" className="mt-4" onClick={() => { setSearch(''); setSubject('all'); setPrice('any'); }}>Clear filters</Button>
+                  <Button size="sm" variant="secondary" className="mt-4" onClick={() => { setSearch(''); setSubject('all'); setLang('all'); setPrice('any'); }}>Clear filters</Button>
                 </div>
               ) : (
                 <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
@@ -250,7 +267,7 @@ function Catalogue() {
                             <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-[13px] font-extrabold text-azure-strong">{abbr(c.title)}</span>
                             <div className="min-w-0">
                               <p className="line-clamp-2 text-[14.5px] font-semibold leading-snug text-navy">{c.title}</p>
-                              <p className="mt-0.5 truncate text-[12.5px] text-muted">{[c.subject?.name, c.programme ? short(c.programme) : null].filter(Boolean).join(' · ')}</p>
+                              <p className="mt-0.5 truncate text-[12.5px] text-muted">{[teacherOf(c), c.subject?.name, c.language].filter(Boolean).join(' · ')}</p>
                             </div>
                           </div>
                           <dl className="grid grid-cols-3 gap-1.5">
@@ -331,7 +348,7 @@ function CoursePreview({ course, packages, owned, separateTotal, onEnrolled }: {
           : <Link href="/packages" className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-azure-strong text-sm font-semibold text-on-accent">See packages</Link>;
 
   return (
-    <DrawerContent title={course.title} description={[course.subject?.name, course.programme ? short(course.programme) : null].filter(Boolean).join(' · ')}
+    <DrawerContent title={course.title} description={[teacherOf(course), course.programme ? short(course.programme) : null].filter(Boolean).join(' · ')}
       footer={<>
         {primary}
         {!owned && firstFree && (
@@ -341,7 +358,8 @@ function CoursePreview({ course, packages, owned, separateTotal, onEnrolled }: {
       <InfoGrid items={[
         { label: 'Lessons', value: detail ? lessons.length : '…' },
         { label: 'Length', value: !detail ? '…' : secs ? (secs >= 3600 ? `${Math.round(secs / 3600)} h` : `${Math.max(1, Math.round(secs / 60))} min`) : '—' },
-        { label: 'Access', value: 'No time limit' },
+        { label: 'Access', value: free ? 'No time limit' : accessText(course.accessMonths) },
+        ...(course.language ? [{ label: 'Language', value: course.language }] : []),
       ]} />
 
       {course.description && <p className="text-[13.5px] leading-relaxed text-ink2">{course.description}</p>}
@@ -351,14 +369,14 @@ function CoursePreview({ course, packages, owned, separateTotal, onEnrolled }: {
           <div className="flex flex-col gap-2.5">
             {sellsAlone && (
               <Option checked={choice === 'course'} onPick={() => setChoice('course')} title="This course only"
-                body="All lessons, practice and quizzes, plus the certificate" price={coursePrice!} />
+                body={`All lessons, practice and quizzes, plus the certificate · ${course.accessMonths ? `${accessText(course.accessMonths)} of access` : 'no time limit'}`} price={coursePrice!} />
             )}
             {packages.map(p => {
               const t = separateTotal(p);
               const others = p.courseIds.length - 1;
               return (
                 <Option key={p.id} checked={choice === p.id} onPick={() => setChoice(p.id)} title={p.name}
-                  body={`This course${others > 0 ? ` and ${others} more` : ''}${p.cohort ? ', with live classes' : ''} · ${term(p.validityDays)}`}
+                  body={`This course${others > 0 ? ` and ${others} more` : ''}${p.cohort ? ', live classes' : ''}${p.mentorship ? `, ${p.mentorship.toLowerCase()}` : ''} · ${term(p.validityDays)}`}
                   note={t != null && t > p.priceAmount ? `Saves ${money(t - p.priceAmount, p.currency)} compared with buying the ${p.courseIds.length} courses` : undefined}
                   price={money(p.priceAmount, p.currency)} />
               );
