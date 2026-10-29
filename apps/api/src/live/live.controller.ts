@@ -121,6 +121,17 @@ export class LiveController {
     return this.liveService.endClass(user, liveClassId);
   }
 
+  @Patch('classes/:liveClassId')
+  @Roles(UserRole.TEACHER, UserRole.ADMIN)
+  @ApiOperation({ summary: '[Teacher] Edit a class — title, time, length or recording link' })
+  updateClass(
+    @CurrentUser() user: UserProfile,
+    @Param('liveClassId') liveClassId: string,
+    @Body() dto: { title?: string; description?: string | null; scheduledAt?: string; durationMins?: number; recordingUrl?: string | null },
+  ) {
+    return this.liveService.updateClass(user, liveClassId, dto);
+  }
+
   @Delete('classes/:liveClassId')
   @Roles(UserRole.TEACHER, UserRole.ADMIN)
   @ApiOperation({ summary: '[Teacher] Cancel a scheduled class' })

@@ -177,7 +177,7 @@ export class PortalsController {
   @ApiOperation({ summary: '[Admin] Update exam date, sitting label, or start date for a cohort' })
   updateCohort(
     @Param('id') id: string,
-    @Body() dto: { sittingLabel?: string; examDate?: string; startDate?: string },
+    @Body() dto: { name?: string; teacherId?: string; sittingLabel?: string; examDate?: string; startDate?: string },
   ) {
     return this.portalsService.updateCohort(id, dto);
   }

@@ -206,6 +206,30 @@ export class LiveService {
   /**
    * Teacher cancels a SCHEDULED class.
    */
+  /** Change a class's details or add its recording. Admins may edit any class. */
+  async updateClass(user: UserProfile, liveClassId: string, dto: { title?: string; description?: string | null; scheduledAt?: string; durationMins?: number; recordingUrl?: string | null }) {
+    const liveClass = await this.prisma.liveClass.findUnique({ where: { id: liveClassId }, include: { cohort: true } });
+    if (!liveClass) throw new NotFoundException('Live class not found');
+    if ((user.role as string) !== 'ADMIN' && liveClass.cohort.teacherId !== user.id) throw new ForbiddenException('Not your class');
+    if (dto.scheduledAt !== undefined && liveClass.status !== 'SCHEDULED') throw new BadRequestException('Only scheduled classes can be moved');
+    if (dto.durationMins !== undefined && !(Number.isInteger(dto.durationMins) && dto.durationMins >= 15 && dto.durationMins <= 360)) {
+      throw new BadRequestException('Length must be between 15 and 360 minutes');
+    }
+    if (dto.recordingUrl && !/^https:\/\//i.test(dto.recordingUrl.trim())) throw new BadRequestException('The recording link must start with https://');
+    const when = dto.scheduledAt ? new Date(dto.scheduledAt) : undefined;
+    if (when && isNaN(when.getTime())) throw new BadRequestException('Invalid date');
+    return this.prisma.liveClass.update({
+      where: { id: liveClassId },
+      data: {
+        ...(dto.title !== undefined && dto.title.trim() && { title: dto.title.trim() }),
+        ...(dto.description !== undefined && { description: dto.description?.trim() || null }),
+        ...(when && { scheduledAt: when }),
+        ...(dto.durationMins !== undefined && { durationMins: dto.durationMins }),
+        ...(dto.recordingUrl !== undefined && { recordingUrl: dto.recordingUrl?.trim() || null }),
+      },
+    });
+  }
+
   async cancelClass(teacher: UserProfile, liveClassId: string) {
     const liveClass = await this.getLiveClassForTeacher(teacher.id, liveClassId);
 

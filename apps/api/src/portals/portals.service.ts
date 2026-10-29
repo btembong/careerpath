@@ -360,13 +360,21 @@ export class PortalsService {
   }
 
   async updateCohort(cohortId: string, dto: {
+    name?: string;
+    teacherId?: string;
     sittingLabel?: string;
     examDate?: string;
     startDate?: string;
   }) {
+    if (dto.teacherId) {
+      const t = await this.prisma.userProfile.findFirst({ where: { id: dto.teacherId, role: UserRole.TEACHER } });
+      if (!t) throw new NotFoundException('Teacher not found');
+    }
     return this.prisma.cohort.update({
       where: { id: cohortId },
       data: {
+        ...(dto.name?.trim() && { name: dto.name.trim() }),
+        ...(dto.teacherId && { teacherId: dto.teacherId }),
         ...(dto.sittingLabel !== undefined && { sittingLabel: dto.sittingLabel?.trim() || null }),
         ...(dto.examDate  !== undefined && { examDate:  dto.examDate  ? new Date(dto.examDate)  : null }),
         ...(dto.startDate !== undefined && { startDate: dto.startDate ? new Date(dto.startDate) : null }),
