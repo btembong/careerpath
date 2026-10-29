@@ -25,7 +25,12 @@ interface Course {
 interface ActivePackage { id: string; expiresAt: string | null }
 
 const money = (minor: number, cur: string) => `${cur} ${minorToMajor(minor, cur).toLocaleString()}`;
-const term = (days: number | null) => !days ? 'No time limit' : days % 30 === 0 ? `${days / 30} month${days === 30 ? '' : 's'}` : `${days} days`;
+// Whole months when the days are close to one (365 days = 12 months)
+const term = (days: number | null) => {
+  if (!days) return 'No time limit';
+  const m = Math.round(days / 30.44);
+  return m >= 1 && Math.abs(m * 30.44 - days) <= 3 ? `${m} month${m === 1 ? '' : 's'}` : `${days} days`;
+};
 const CHECK = 'M5 12.5l4.5 4.5L19 7.5', DASH = 'M6 12h12';
 
 function PackagesInner() {

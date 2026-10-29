@@ -33,7 +33,11 @@ const money = (minor: number | null, cur: string | null) =>
   minor == null || !cur ? '—' : `${cur} ${minorToMajor(minor, cur).toLocaleString()}`;
 const teacherName = (c: Course) =>
   c.teacher?.name || [c.teacher?.firstName, c.teacher?.lastName].filter(Boolean).join(' ') || c.teacher?.email?.split('@')[0] || '—';
-const months = (d: number | null) => !d ? 'No end date' : d % 30 === 0 ? `${d / 30} months` : `${d} days`;
+const months = (d: number | null) => {
+  if (!d) return 'No end date';
+  const m = Math.round(d / 30.44);
+  return m >= 1 && Math.abs(m * 30.44 - d) <= 3 ? `${m} month${m === 1 ? '' : 's'}` : `${d} days`;
+};
 const label = 'text-[13px] font-semibold text-navy';
 
 function toForm(p?: Pkg): Form {

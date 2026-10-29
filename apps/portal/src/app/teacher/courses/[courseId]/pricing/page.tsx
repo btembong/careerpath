@@ -157,7 +157,7 @@ export default function CoursePricingPage() {
             <ul className="list-disc space-y-1.5 pl-5 text-[13px] text-ink2">
               <li>You propose; an admin approves or sets a different price.</li>
               <li>Prices only change through approval, even after publishing.</li>
-              <li>Students who already bought the course keep their access.</li>
+              <li>A price change doesn’t affect students who already bought the course; they keep access until their access period ends.</li>
             </ul>
           </aside>
         </div>

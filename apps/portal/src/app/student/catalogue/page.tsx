@@ -39,7 +39,12 @@ type Sort = 'popular' | 'newest' | 'az' | 'price';
 const money = (minor: number, cur: string) => `${cur} ${minorToMajor(minor, cur).toLocaleString()}`;
 const abbr = (t: string) => t.split(/[\s·—-]+/).filter(w => /^[A-Za-z]/.test(w)).slice(0, 2).map(w => w[0]).join('').toUpperCase() || 'C';
 const short = (p: { name: string; shortName: string | null }) => p.shortName ?? p.name;
-const term = (days: number | null) => !days ? 'no time limit' : days % 30 === 0 ? `${days / 30} month${days === 30 ? '' : 's'}` : `${days} days`;
+// Whole months when the days are close to one (365 days = 12 months)
+const term = (days: number | null) => {
+  if (!days) return 'no time limit';
+  const m = Math.round(days / 30.44);
+  return m >= 1 && Math.abs(m * 30.44 - days) <= 3 ? `${m} month${m === 1 ? '' : 's'}` : `${days} days`;
+};
 const isFree = (c: Course) => c.isSoldIndividually && !c.priceAmount;
 /** The teacher's name — never their email */
 const teacherOf = (c: Course) => c.teacher?.name || [c.teacher?.firstName, c.teacher?.lastName].filter(Boolean).join(' ') || null;
