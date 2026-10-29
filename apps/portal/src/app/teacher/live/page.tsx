@@ -1,366 +1,269 @@
 'use client';
-import { notify } from '@/lib/notify';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card, IconBox } from '@/components/ui/Card';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent } from '@/components/ui/Dialog';
+import { EditClassDialog, EditableClass } from '@/components/live/EditClassDialog';
+import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-interface LiveClass {
-  id: string; title: string; description?: string;
-  scheduledAt: string; durationMins?: number;
-  status: 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
-  dailyRoomUrl?: string;
+interface Row extends EditableClass { description: string | null; cohort: { id: string; name: string }; rosterSize: number; attendedCount: number }
+interface Overview {
+  cohorts: { id: string; name: string; examDate: string | null; students: number }[];
+  next: Row | null;
+  stats: { thisWeek: number; cohortsThisWeek: number; attendancePct: number | null; missingRecordings: number; minutesThisTerm: number };
+  upcoming: Row[]; needsRecording: Row[]; past: Row[];
 }
-interface Cohort { id: string; name: string; _count: { students: number }; classes?: LiveClass[]; }
+type Tab = 'up' | 'rec' | 'past';
 
-const STATUS_COLOR: Record<string, 'active' | 'muted' | 'default'> = {
-  ACTIVE: 'active', SCHEDULED: 'muted', COMPLETED: 'default', CANCELLED: 'muted',
+const DAY = 86_400_000;
+const time = (d: string) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+const when = (d: string) => {
+  const days = Math.round((new Date(new Date(d).toDateString()).getTime() - new Date(new Date().toDateString()).getTime()) / DAY);
+  return `${days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : new Date(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} ${time(d)}`;
 };
-const STATUS_LABEL: Record<string, string> = {
-  ACTIVE: 'Live', SCHEDULED: 'Scheduled', COMPLETED: 'Done', CANCELLED: 'Cancelled',
-};
-
-// Start button only shows within 30 min of scheduled time
-function canStartNow(scheduledAt: string): boolean {
-  const diff = new Date(scheduledAt).getTime() - Date.now();
-  return diff <= 30 * 60_000; // within 30 min (or already past)
-}
+const badge = (blue: boolean) => clsx('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs font-semibold', blue ? 'bg-accent-soft text-navy' : 'border border-line bg-subtle text-ink2');
+const btn = (primary: boolean) => clsx('inline-flex h-8 items-center whitespace-nowrap rounded-md border px-3 text-[13px] font-semibold disabled:opacity-60',
+  primary ? 'border-azure-strong bg-azure-strong text-on-accent' : 'border-line bg-white text-navy hover:bg-subtle');
+const label = 'text-[13px] font-semibold text-navy';
 
 export default function TeacherLivePage() {
-  const [cohorts,    setCohorts]    = useState<Cohort[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [expanded,   setExpanded]   = useState<string | null>(null);
-  const [scheduling, setScheduling] = useState<string | null>(null);
-  const [acting,     setActing]     = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<{ id: string; action: 'cancel' | 'end' } | null>(null);
-  const [showAllPast, setShowAllPast] = useState<Record<string, boolean>>({});
-  const [form, setForm] = useState({ title: '', description: '', scheduledAt: '', durationMinutes: '90' });
+  const [d, setD] = useState<Overview | null>(null);
+  const [tab, setTab] = useState<Tab>('up');
+  const [cohort, setCohort] = useState('all');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [edit, setEdit] = useState<Row | null>(null);
+  const [att, setAtt] = useState<Row | null>(null);
+  const [scheduling, setScheduling] = useState(false);
 
-  // datetime-local min = now (no past scheduling)
-  const minDateTime = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
-    .toISOString().slice(0, 16);
+  async function load() { const r = await api.get('/live/teacher/overview'); setD(r.data); }
+  useEffect(() => { load().catch(() => notify.error('Could not load your classes')); }, []);
 
-  async function loadCohorts() {
-    const r = await api.get('/portals/teacher/cohorts');
-    const list: Cohort[] = r.data;
-    const withClasses = await Promise.all(
-      list.map(async c => {
-        try {
-          const cr = await api.get(`/live/cohorts/${c.id}/classes`);
-          return { ...c, classes: cr.data };
-        } catch { return { ...c, classes: [] }; }
-      }),
-    );
-    setCohorts(withClasses);
+  async function start(c: Row) {
+    if (c.status === 'ACTIVE') { window.open(`/teacher/live/${c.id}`, '_blank'); return; }
+    setBusy(c.id);
+    try { await api.patch(`/live/classes/${c.id}/start`); window.open(`/teacher/live/${c.id}`, '_blank'); await load(); }
+    catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not start the class'); }
+    finally { setBusy(null); }
+  }
+  async function end(c: Row) {
+    setBusy(c.id);
+    try { await api.patch(`/live/classes/${c.id}/end`); notify.success('Class ended'); await load(); }
+    catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not end the class'); }
+    finally { setBusy(null); }
   }
 
-  useEffect(() => {
-    loadCohorts()
-      .catch(() => notify.error('Failed to load cohorts'))
-      .finally(() => setLoading(false));
-  }, []);
-
-  async function scheduleClass(cohortId: string, e: React.FormEvent) {
-    e.preventDefault();
-    setActing(cohortId);
-    try {
-      await api.post(`/live/cohorts/${cohortId}/classes`, {
-        title: form.title,
-        description: form.description || undefined,
-        scheduledAt: new Date(form.scheduledAt).toISOString(),
-        durationMinutes: parseInt(form.durationMinutes),
-      });
-      setScheduling(null);
-      setForm({ title: '', description: '', scheduledAt: '', durationMinutes: '90' });
-      await loadCohorts();
-      notify.success('Class scheduled');
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to schedule class');
-    } finally { setActing(null); }
-  }
-
-  async function startClass(classId: string) {
-    setActing(classId);
-    try {
-      await api.patch(`/live/classes/${classId}/start`);
-      await loadCohorts();
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to start class');
-    } finally { setActing(null); }
-  }
-
-  async function executeConfirmed() {
-    if (!confirming) return;
-    const { id, action } = confirming;
-    setConfirming(null);
-    setActing(id);
-    try {
-      if (action === 'cancel') {
-        await api.delete(`/live/classes/${id}`);
-        notify.success('Class cancelled');
-      } else {
-        await api.patch(`/live/classes/${id}/end`);
-        notify.success('Class ended');
-      }
-      await loadCohorts();
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? `Failed to ${action} class`);
-    } finally { setActing(null); }
-  }
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 p-6 space-y-4">
-        {[1, 2].map(i => <SkeletonCard key={i} lines={3} />)}
-      </div>
-    </div>
-  );
-
-  const allClasses  = cohorts.flatMap(c => (c.classes ?? []).map(cl => ({ ...cl, cohortName: c.name })));
-  const activeClass = allClasses.find(c => c.status === 'ACTIVE');
+  const filter = (list: Row[]) => list.filter(c => cohort === 'all' || c.cohort.id === cohort);
+  const rows = d ? filter(tab === 'up' ? d.upcoming : tab === 'rec' ? d.needsRecording : d.past) : [];
+  const next = d?.next;
+  const nextIn = next ? Math.round((+new Date(next.scheduledAt) - Date.now()) / 60_000) : 0;
+  const hours = d ? Math.round(d.stats.minutesThisTerm / 60) : 0;
 
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="Live Classes" subtitle="Schedule, start and manage your live sessions" />
+    <div className="flex min-h-full flex-col">
+      <Topbar title="Live classes" subtitle="Your classes across all cohorts"
+        actions={<Button size="sm" disabled={!d?.cohorts.length} onClick={() => setScheduling(true)}>Schedule a class</Button>} />
 
-      <div className="flex-1 p-6 pb-28 lg:pb-6 space-y-6">
-
-        {/* Active class banner */}
-        {activeClass && (
-          <div className="rounded-2xl bg-navy p-5 flex items-center gap-4">
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-azure/20">
-              <Icon name="live" size={18} className="text-azure animate-pulse" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">LIVE NOW</p>
-              <p className="text-sm font-bold text-white truncate">{activeClass.title}</p>
-              <p className="text-xs text-white/40">{(activeClass as any).cohortName}</p>
-            </div>
-            <div className="flex gap-2 flex-shrink-0">
-              <Link href={`/teacher/live/${activeClass.id}`}>
-                <Button size="sm"><Icon name="live" size={13} /> Join room</Button>
-              </Link>
-              <Button size="sm" variant="secondary" loading={acting === activeClass.id}
-                onClick={() => setConfirming({ id: activeClass.id, action: 'end' })}>
-                End
-              </Button>
-            </div>
+      <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        {!d ? <div className="h-64 rounded-lg border border-line bg-white animate-pulse" /> : !d.cohorts.length ? (
+          <div className="rounded-lg border border-line bg-white p-10 text-center">
+            <p className="text-sm font-semibold text-navy">You don’t have a cohort yet</p>
+            <p className="mx-auto mt-1 max-w-md text-[13px] text-ink2">An admin creates cohorts and assigns them to you. Once you have one, you can schedule its live classes here.</p>
           </div>
-        )}
+        ) : <>
+          {next && (
+            <section className="flex flex-wrap items-center gap-4 rounded-lg border border-azure bg-white px-5 py-[18px]">
+              <div className="min-w-0 flex-[999_1_300px]">
+                <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">
+                  {next.status === 'ACTIVE' ? 'Live now' : `Next · ${when(next.scheduledAt)}${nextIn > 0 && nextIn < 120 ? ` · in ${nextIn} min` : ''}`}
+                </p>
+                <p className="mt-1 text-lg font-extrabold text-navy">{next.title}</p>
+                <p className="mt-0.5 text-[13.5px] text-ink2">{next.cohort.name} · {next.rosterSize} students · {next.durationMins} min</p>
+              </div>
+              {next.status === 'ACTIVE' ? <>
+                <button type="button" disabled={busy === next.id} onClick={() => end(next)} className={clsx(btn(false), 'h-10 px-4 text-sm')}>End class</button>
+                <button type="button" onClick={() => start(next)} className={clsx(btn(true), 'h-10 px-5 text-sm')}>Open class</button>
+              </> : <>
+                <button type="button" onClick={() => setEdit(next)} className={clsx(btn(false), 'h-10 px-4 text-sm')}>Edit</button>
+                <button type="button" disabled={busy === next.id || nextIn > 24 * 60} onClick={() => start(next)} className={clsx(btn(true), 'h-10 px-5 text-sm')}
+                  title={nextIn > 24 * 60 ? 'You can start a class on the day' : undefined}>Start class</button>
+              </>}
+            </section>
+          )}
 
-        {/* Cohorts */}
-        {cohorts.length === 0 ? (
-          <Card padding="lg">
-            <EmptyState
-              icon="live"
-              title="No cohorts yet"
-              description="Create a cohort first from the Cohorts page to schedule live classes"
-            />
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {cohorts.map(cohort => {
-              const classes   = cohort.classes ?? [];
-              const isOpen    = expanded === cohort.id;
-              // Fix: only SCHEDULED + ACTIVE are "upcoming", exclude CANCELLED
-              const upcoming  = classes.filter(c => c.status === 'SCHEDULED' || c.status === 'ACTIVE');
-              const completed = classes.filter(c => c.status === 'COMPLETED');
-              const cancelled = classes.filter(c => c.status === 'CANCELLED');
-              const showAll   = showAllPast[cohort.id] ?? false;
+          <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+            {[
+              { l: 'This week', v: `${d.stats.thisWeek} class${d.stats.thisWeek === 1 ? '' : 'es'}`, sub: d.stats.cohortsThisWeek ? `${d.stats.cohortsThisWeek} cohort${d.stats.cohortsThisWeek === 1 ? '' : 's'}` : 'Nothing scheduled' },
+              { l: 'Attendance', v: d.stats.attendancePct != null ? `${d.stats.attendancePct}%` : '—', sub: 'Last 4 weeks' },
+              { l: 'Missing recordings', v: String(d.stats.missingRecordings), sub: d.stats.missingRecordings ? 'Students who missed can’t catch up' : 'All caught up' },
+              { l: 'Hours taught', v: `${hours} h`, sub: 'Last 4 months' },
+            ].map(s => (
+              <div key={s.l} className="rounded-lg border border-line bg-white p-4">
+                <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{s.l}</dt>
+                <dd className="mt-1.5 text-[22px] font-extrabold text-navy">{s.v}</dd>
+                <dd className="mt-0.5 truncate text-[12.5px] text-muted">{s.sub}</dd>
+              </div>
+            ))}
+          </dl>
 
-              return (
-                <Card key={cohort.id} padding="none" className="overflow-hidden">
-                  {/* Cohort header */}
-                  <button onClick={() => setExpanded(isOpen ? null : cohort.id)}
-                    className="flex items-center gap-4 w-full px-5 py-4 text-left hover:bg-cloud/20 transition">
-                    <IconBox className="h-10 w-10 rounded-xl flex-shrink-0">
-                      <Icon name="mentorship" size={18} />
-                    </IconBox>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-navy">{cohort.name}</p>
-                      <p className="text-xs text-royal/50">
-                        {cohort._count.students} students · {upcoming.length} upcoming class{upcoming.length !== 1 ? 'es' : ''}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      {upcoming.some(c => c.status === 'ACTIVE') && (
-                        <Badge variant="active">Live</Badge>
-                      )}
-                      <button onClick={e => { e.stopPropagation(); setScheduling(cohort.id); setExpanded(cohort.id); }}
-                        className="flex items-center gap-1.5 rounded-xl border border-cloud px-3 py-1.5 text-xs font-semibold text-navy hover:bg-cloud transition">
-                        <Icon name="add" size={12} /> Schedule
-                      </button>
-                      <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={14} className="text-royal/40" />
-                    </div>
+          <section className="rounded-lg border border-line bg-white">
+            <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4">
+              <div role="tablist" aria-label="Classes" className="flex flex-1 gap-1 overflow-x-auto">
+                {([['up', 'Coming up', d.upcoming], ['rec', 'Needs a recording', d.needsRecording], ['past', 'Past', d.past]] as [Tab, string, Row[]][]).map(([k, l, list]) => (
+                  <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+                    className={clsx('-mb-px h-[46px] whitespace-nowrap border-b-2 px-3 text-[13.5px] text-navy', tab === k ? 'border-azure-strong font-semibold' : 'border-transparent font-medium')}>
+                    {l} <span className="font-medium text-muted">{filter(list).length}</span>
                   </button>
-
-                  {isOpen && (
-                    <div className="border-t border-cloud">
-                      {/* Schedule form */}
-                      {scheduling === cohort.id && (
-                        <form onSubmit={e => scheduleClass(cohort.id, e)}
-                          className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end bg-azure/5 border-b border-cloud px-5 py-4">
-                          <div className="space-y-1 sm:col-span-2">
-                            <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">Class title</label>
-                            <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                              placeholder="e.g. Introduction to Python" required
-                              className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-                          </div>
-                          <div className="space-y-1 sm:col-span-2">
-                            <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">Description (optional)</label>
-                            <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                              placeholder="Topics covered, materials needed…"
-                              className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">Date & time</label>
-                            <input type="datetime-local" value={form.scheduledAt} min={minDateTime}
-                              onChange={e => setForm(f => ({ ...f, scheduledAt: e.target.value }))} required
-                              className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure" />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">Duration</label>
-                            <div className="relative">
-                              <Icon name="clock" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-azure/40 pointer-events-none" />
-                              <select value={form.durationMinutes} onChange={e => setForm(f => ({ ...f, durationMinutes: e.target.value }))}
-                                className="w-full appearance-none rounded-xl border border-cloud bg-white pl-9 pr-8 py-2 text-sm text-navy outline-none focus:border-azure focus:ring-2 focus:ring-azure/10 transition cursor-pointer">
-                                <option value="30">30 min</option>
-                                <option value="45">45 min</option>
-                                <option value="60">60 min</option>
-                                <option value="90">90 min</option>
-                                <option value="120">120 min</option>
-                              </select>
-                              <Icon name="chevronDown" size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-royal/30 pointer-events-none" />
-                            </div>
-                          </div>
-                          <div className="sm:col-span-2 flex gap-2">
-                            <Button type="submit" size="sm" loading={acting === cohort.id}>Save</Button>
-                            <Button type="button" size="sm" variant="secondary" onClick={() => setScheduling(null)}>Cancel</Button>
-                          </div>
-                        </form>
-                      )}
-
-                      {/* Upcoming classes */}
-                      {upcoming.length > 0 && (
-                        <div className="divide-y divide-cloud">
-                          {upcoming.map(cls => {
-                            const ready = canStartNow(cls.scheduledAt);
-                            return (
-                              <div key={cls.id} className="flex items-center gap-4 px-5 py-3.5">
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-semibold text-navy truncate">{cls.title}</p>
-                                  <p className="text-xs text-royal/50">
-                                    {new Date(cls.scheduledAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                                    {cls.durationMins ? ` · ${cls.durationMins} min` : ''}
-                                  </p>
-                                  {cls.description && (
-                                    <p className="text-[11px] text-royal/40 truncate mt-0.5">{cls.description}</p>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2 flex-shrink-0">
-                                  <Badge variant={STATUS_COLOR[cls.status]}>{STATUS_LABEL[cls.status] ?? cls.status}</Badge>
-                                  {cls.status === 'SCHEDULED' && (
-                                    <>
-                                      {ready ? (
-                                        <Button size="sm" loading={acting === cls.id} onClick={() => startClass(cls.id)}>
-                                          <Icon name="live" size={13} /> Start
-                                        </Button>
-                                      ) : (
-                                        <span className="text-[10px] text-royal/30 px-2">
-                                          {(() => {
-                                            const mins = Math.ceil((new Date(cls.scheduledAt).getTime() - Date.now()) / 60_000);
-                                            const hrs  = Math.floor(mins / 60);
-                                            return hrs > 0 ? `in ${hrs}h ${mins % 60}m` : `in ${mins}m`;
-                                          })()}
-                                        </span>
-                                      )}
-                                      <button onClick={() => setConfirming({ id: cls.id, action: 'cancel' })}
-                                        className="text-royal/30 hover:text-azure transition p-1">
-                                        <Icon name="trash" size={14} />
-                                      </button>
-                                    </>
-                                  )}
-                                  {cls.status === 'ACTIVE' && (
-                                    <Link href={`/teacher/live/${cls.id}`}>
-                                      <Button size="sm"><Icon name="live" size={13} /> Join</Button>
-                                    </Link>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Completed classes */}
-                      {completed.length > 0 && (
-                        <div className="px-5 py-3 border-t border-cloud">
-                          <p className="text-[10px] font-semibold uppercase tracking-widest text-royal/30 mb-2">
-                            {completed.length} completed class{completed.length !== 1 ? 'es' : ''}
-                          </p>
-                          <div className="divide-y divide-cloud/50">
-                            {(showAll ? completed : completed.slice(0, 3)).map(cls => (
-                              <div key={cls.id} className="flex items-center justify-between py-2 opacity-50">
-                                <p className="text-xs text-navy truncate">{cls.title}</p>
-                                <p className="text-[10px] text-royal/40 ml-3 flex-shrink-0">
-                                  {new Date(cls.scheduledAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                          {completed.length > 3 && (
-                            <button
-                              onClick={() => setShowAllPast(s => ({ ...s, [cohort.id]: !showAll }))}
-                              className="mt-2 text-[10px] font-semibold text-royal/40 hover:text-azure transition">
-                              {showAll ? 'Show less' : `Show ${completed.length - 3} more`}
-                            </button>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Cancelled — collapsed by default */}
-                      {cancelled.length > 0 && (
-                        <div className="px-5 py-2 border-t border-cloud/50">
-                          <p className="text-[10px] text-royal/20">{cancelled.length} cancelled class{cancelled.length !== 1 ? 'es' : ''}</p>
-                        </div>
-                      )}
-
-                      {upcoming.length === 0 && completed.length === 0 && cancelled.length === 0 && (
-                        <div className="px-5 py-6 text-center">
-                          <p className="text-xs text-royal/40">No classes yet. Click Schedule to add one.</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </Card>
+                ))}
+              </div>
+              {d.cohorts.length > 1 && (
+                <label className="my-1.5 flex items-center gap-1.5 text-[13px] text-muted">Cohort:
+                  <select value={cohort} onChange={e => setCohort(e.target.value)} className="h-8 rounded-md border border-line bg-white px-2 font-semibold text-navy outline-none">
+                    <option value="all">All</option>
+                    {d.cohorts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
+            {!rows.length && (
+              <p className="px-[18px] py-8 text-center text-[13px] text-ink2">
+                {tab === 'up' ? 'Nothing scheduled. Use “Schedule a class” to add one or a weekly series.' : tab === 'rec' ? 'Every class held has its recording. Thank you!' : 'No classes held yet.'}
+              </p>
+            )}
+            {rows.map(c => {
+              const pastClass = tab !== 'up';
+              const live = c.status === 'ACTIVE';
+              const soon = +new Date(c.scheduledAt) - Date.now() < DAY;
+              return (
+                <div key={c.id} className="flex flex-wrap items-center gap-3.5 border-t border-line px-[18px] py-[13px] first:border-t-0">
+                  <div className={clsx('w-12 flex-shrink-0 rounded-md py-1.5 text-center', pastClass ? 'bg-subtle' : 'bg-accent-soft')}>
+                    <p className="text-[11px] font-bold uppercase text-azure-strong">{new Date(c.scheduledAt).toLocaleDateString('en-GB', { month: 'short' })}</p>
+                    <p className="text-lg font-extrabold text-navy">{String(new Date(c.scheduledAt).getDate()).padStart(2, '0')}</p>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-navy">{c.title}</p>
+                    <p className="mt-0.5 truncate text-[12.5px] text-muted">
+                      {pastClass ? `${c.attendedCount} of ${c.rosterSize} attended · ${c.cohort.name}${tab === 'past' ? ` · ${c.recordingUrl ? 'recording added' : 'no recording yet'}` : ''}`
+                        : `${when(c.scheduledAt)} · ${c.durationMins} min · ${c.cohort.name}`}
+                    </p>
+                  </div>
+                  {tab === 'up' ? <>
+                    <span className={badge(live || soon)}>{live ? 'Live now' : soon ? `In ${Math.max(1, Math.round((+new Date(c.scheduledAt) - Date.now()) / 60_000))} min` : 'Scheduled'}</span>
+                    {live ? <>
+                      <button type="button" onClick={() => start(c)} className={btn(true)}>Open class</button>
+                      <button type="button" disabled={busy === c.id} onClick={() => end(c)} className={btn(false)}>End</button>
+                    </> : <>
+                      {soon && <button type="button" disabled={busy === c.id} onClick={() => start(c)} className={btn(true)}>Start class</button>}
+                      <button type="button" onClick={() => setEdit(c)} className={btn(false)}>Edit</button>
+                    </>}
+                  </> : tab === 'rec' ? <>
+                    <span className={badge(false)}>No recording</span>
+                    <button type="button" onClick={() => setEdit(c)} className={btn(true)}>Add recording</button>
+                  </> : <>
+                    <span className={badge(true)}>Held</span>
+                    <button type="button" onClick={() => setAtt(c)} className={btn(false)}>Attendance</button>
+                    <button type="button" onClick={() => setEdit(c)} className={btn(false)}>{c.recordingUrl ? 'Recording' : 'Add recording'}</button>
+                  </>}
+                </div>
               );
             })}
-          </div>
-        )}
+          </section>
+        </>}
       </div>
 
-      {/* Confirm dialog */}
-      <ConfirmDialog
-        open={!!confirming}
-        onOpenChange={open => { if (!open) setConfirming(null); }}
-        title={confirming?.action === 'cancel' ? 'Cancel this class?' : 'End class?'}
-        description={confirming?.action === 'cancel'
-          ? 'This will remove the scheduled class and cannot be undone.'
-          : 'All participants will be disconnected immediately.'}
-        confirmLabel={confirming?.action === 'cancel' ? 'Cancel class' : 'End class'}
-        cancelLabel="Keep"
-        variant="danger"
-        loading={!!acting}
-        onConfirm={executeConfirmed}
-      />
+      <EditClassDialog cls={edit} onClose={() => setEdit(null)} onDone={load} />
+      <AttendanceDrawer cls={att} onClose={() => setAtt(null)} />
+      {d && <ScheduleDialog open={scheduling} cohorts={d.cohorts} defaultCohort={cohort !== 'all' ? cohort : d.cohorts[0]?.id} onClose={() => setScheduling(false)} onDone={load} />}
     </div>
+  );
+}
+
+function ScheduleDialog({ open, cohorts, defaultCohort, onClose, onDone }: {
+  open: boolean; cohorts: Overview['cohorts']; defaultCohort?: string; onClose: () => void; onDone: () => Promise<void>;
+}) {
+  const [f, setF] = useState({ cohortId: '', title: '', at: '', mins: '90', desc: '', repeat: false });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const d = new Date(Date.now() + DAY); d.setHours(17, 0, 0, 0);
+    setF({ cohortId: defaultCohort ?? '', title: '', at: new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16), mins: '90', desc: '', repeat: false });
+  }, [open, defaultCohort]);
+
+  const exam = cohorts.find(c => c.id === f.cohortId)?.examDate;
+  // Weekly classes from the first one up to the exam (at most 26)
+  const weeks = f.at && exam ? Math.min(26, Math.max(1, Math.floor((new Date(exam).getTime() - new Date(f.at).getTime()) / (7 * DAY)) + 1)) : 8;
+
+  async function save() {
+    setBusy(true);
+    try {
+      const r = await api.post(`/live/cohorts/${f.cohortId}/classes/series`, {
+        title: f.title.trim(), description: f.desc.trim() || undefined, scheduledAt: new Date(f.at).toISOString(),
+        durationMinutes: Number(f.mins), weeks: f.repeat ? weeks : 1,
+      });
+      notify.success(r.data.created > 1 ? `${r.data.created} classes scheduled` : 'Class scheduled', { description: 'Students see them on their live classes page.' });
+      onClose(); await onDone();
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not schedule the class'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      {open && (
+        <DialogContent title="Schedule a class" description="Students can join from 10 minutes before the start.">
+          <div className="space-y-3">
+            <label className="flex flex-col gap-1.5"><span className={label}>Cohort</span>
+              <select value={f.cohortId} onChange={e => setF({ ...f, cohortId: e.target.value })} className="input-base">
+                {cohorts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select></label>
+            <label className="flex flex-col gap-1.5"><span className={label}>Topic</span>
+              <input autoFocus value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="For example: Statistics — reading the data" className="input-base" /></label>
+            <div className="flex gap-2">
+              <label className="flex flex-1 flex-col gap-1.5"><span className={label}>Starts</span>
+                <input type="datetime-local" value={f.at} onChange={e => setF({ ...f, at: e.target.value })} className="input-base" /></label>
+              <label className="flex w-32 flex-col gap-1.5"><span className={label}>Length</span>
+                <select value={f.mins} onChange={e => setF({ ...f, mins: e.target.value })} className="input-base">{[45, 60, 90, 120].map(m => <option key={m} value={m}>{m} min</option>)}</select></label>
+            </div>
+            <label className="flex flex-col gap-1.5"><span className={label}>What you’ll cover (optional)</span>
+              <textarea rows={2} value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} className="w-full resize-none rounded-md border border-line px-3 py-2 text-sm text-navy outline-none focus:border-azure" /></label>
+            <label className="flex items-center gap-2 text-[13.5px] text-navy">
+              <input type="checkbox" checked={f.repeat} onChange={e => setF({ ...f, repeat: e.target.checked })} className="h-4 w-4 accent-[var(--color-azure-strong)]" />
+              Repeat every week {exam ? `until the exam (${weeks} classes)` : `for ${weeks} weeks`}
+            </label>
+          </div>
+          <DialogFooter>
+            <Button size="sm" variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button size="sm" loading={busy} disabled={!f.cohortId || !f.title.trim() || !f.at} onClick={save}>{f.repeat ? `Schedule ${weeks} classes` : 'Schedule'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      )}
+    </Dialog>
+  );
+}
+
+function AttendanceDrawer({ cls, onClose }: { cls: Row | null; onClose: () => void }) {
+  const [rows, setRows] = useState<{ id: string; joinedAt?: string; leftAt?: string | null; student?: { firstName?: string | null; lastName?: string | null; email?: string } }[] | null>(null);
+  useEffect(() => { setRows(null); if (cls) api.get(`/live/classes/${cls.id}/attendance`).then(r => setRows(r.data ?? [])).catch(() => setRows([])); }, [cls]);
+  return (
+    <Drawer open={!!cls} onOpenChange={o => { if (!o) onClose(); }}>
+      {cls && (
+        <DrawerContent title={cls.title} description={`${new Date(cls.scheduledAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} · ${cls.attendedCount} of ${cls.rosterSize} attended`}>
+          {!rows ? <div className="h-40 rounded-md bg-subtle animate-pulse" /> : !rows.length ? <p className="text-[13px] text-ink2">Nobody joined this class.</p> : (
+            <div className="overflow-hidden rounded-md border border-line">
+              {rows.map(r => {
+                const n = [r.student?.firstName, r.student?.lastName].filter(Boolean).join(' ') || r.student?.email?.split('@')[0] || 'Student';
+                const mins = r.joinedAt && r.leftAt ? Math.round((+new Date(r.leftAt) - +new Date(r.joinedAt)) / 60_000) : null;
+                return (
+                  <p key={r.id} className="flex justify-between gap-3 border-b border-line px-3 py-2 text-[13px] last:border-b-0">
+                    <span className="font-semibold text-navy">{n}</span>
+                    <span className="text-muted">{r.joinedAt ? `Joined ${time(r.joinedAt)}` : ''}{mins != null ? ` · ${mins} min` : ''}</span>
+                  </p>
+                );
+              })}
+            </div>
+          )}
+        </DrawerContent>
+      )}
+    </Drawer>
   );
 }
