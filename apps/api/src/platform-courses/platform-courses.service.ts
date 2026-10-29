@@ -7,6 +7,7 @@ import { WordPressService } from '../wordpress/wordpress.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { FilesService } from '../files/files.service';
 import { GamificationService } from '../gamification/gamification.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { courseChecklist, COURSE_TEMPLATE } from './course-quality';
 import * as crypto from 'crypto';
 
@@ -20,6 +21,7 @@ export class PlatformCoursesService {
     private wp: WordPressService,
     private files: FilesService,
     private gamification: GamificationService,
+    private notifications: NotificationsService,
   ) {}
 
   // ── Course CRUD ───────────────────────────────────────────
@@ -290,9 +292,28 @@ export class PlatformCoursesService {
   }
 
   async publishCourse(id: string) {
-    return this.prisma.platformCourse.update({
+    const course = await this.prisma.platformCourse.update({
       where: { id }, data: { status: CourseStatus.PUBLISHED },
     });
+    this.notifications.notify(course.teacherId, {
+      type: 'system', title: 'Your course is live', body: `"${course.title}" is now published and visible to students.`,
+      href: `/teacher/courses/${course.id}/builder`,
+    });
+    return course;
+  }
+
+  /** Send a course under review back to its teacher as a draft, with the reason. */
+  async rejectCourse(id: string, notes?: string) {
+    const existing = await this.prisma.platformCourse.findUnique({ where: { id }, select: { status: true } });
+    if (!existing) throw new NotFoundException('Course not found');
+    if (existing.status !== CourseStatus.PENDING_REVIEW) throw new BadRequestException('Only courses waiting for review can be sent back');
+    const course = await this.prisma.platformCourse.update({ where: { id }, data: { status: CourseStatus.DRAFT } });
+    const reason = typeof notes === 'string' && notes.trim() ? notes.trim().slice(0, 1000) : 'No reason was given.';
+    this.notifications.notify(course.teacherId, {
+      type: 'system', title: 'Changes needed before publishing', body: `"${course.title}" was sent back: ${reason}`,
+      href: `/teacher/courses/${course.id}/builder`,
+    });
+    return course;
   }
 
   async archiveCourse(id: string) {
@@ -906,10 +927,19 @@ export class PlatformCoursesService {
     });
     if (!course) throw new NotFoundException('Course not found');
     const clear = { proposedPriceAmount: null, proposedPriceCurrency: null, priceProposedAt: null };
+    const owner = await this.prisma.platformCourse.findUnique({ where: { id: courseId }, select: { teacherId: true, title: true } });
     if (!dto?.approve) {
+      this.notifications.notify(owner!.teacherId, {
+        type: 'system', title: 'Price not approved', body: `Your proposed price for "${owner!.title}" was not approved. The course stays in its packages.`,
+        href: `/teacher/courses/${courseId}/pricing`,
+      });
       return this.prisma.platformCourse.update({ where: { id: courseId }, data: clear, select: { id: true } });
     }
     const { amount, currency } = this.validPrice(dto.amount ?? course.proposedPriceAmount, dto.currency ?? course.proposedPriceCurrency);
+    this.notifications.notify(owner!.teacherId, {
+      type: 'system', title: 'Course price approved', body: `"${owner!.title}" can now be bought on its own.`,
+      href: `/teacher/courses/${courseId}/pricing`,
+    });
     return this.prisma.platformCourse.update({
       where: { id: courseId },
       data: { ...clear, priceAmount: amount, priceCurrency: currency, isSoldIndividually: true },

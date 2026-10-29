@@ -165,6 +165,14 @@ export class PlatformCoursesController {
     return this.svc.publishCourse(id);
   }
 
+  @Post(':id/reject')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[Admin] Send a course under review back to its teacher as a draft' })
+  rejectCourse(@Param('id') id: string, @Body() dto: { notes?: string }) {
+    return this.svc.rejectCourse(id, dto?.notes);
+  }
+
   @Post(':id/archive')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
