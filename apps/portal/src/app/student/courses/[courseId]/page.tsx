@@ -82,7 +82,7 @@ export default function CourseDetailPage() {
     { l: 'Students', v: (c._count?.enrollments ?? 0).toLocaleString() },
   ];
   const included = [
-    lessons.length ? `All ${lessons.length} lessons with practice` : 'All lessons with practice',
+    lessons.length > 1 ? `All ${lessons.length} lessons with practice` : 'The lesson with practice',
     quizzes ? `${quizzes} graded quiz${quizzes === 1 ? '' : 'zes'}` : null,
     'Certificate when you finish',
     access ? `${access} of access` : 'No time limit on access',
@@ -144,7 +144,7 @@ export default function CourseDetailPage() {
             <section className="flex flex-col gap-2.5 rounded-lg border border-line bg-white p-[18px]">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="text-base font-bold text-navy">Course outline</h2>
-                <span className="text-[13px] text-muted">{c.modules.length} module{c.modules.length === 1 ? '' : 's'} · {lessons.length} lessons{secs ? ` · ${mins(secs)}` : ''}</span>
+                <span className="text-[13px] text-muted">{c.modules.length} module{c.modules.length === 1 ? '' : 's'} · {lessons.length} lesson{lessons.length === 1 ? '' : 's'}{secs ? ` · ${mins(secs)}` : ''}</span>
               </div>
               {c.modules.map((m, mi) => {
                 const ms = m.lessons.reduce((n, l) => n + (l.durationSecs ?? 0), 0);

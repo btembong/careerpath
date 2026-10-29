@@ -32,8 +32,8 @@ export default function CourseCheckoutPage() {
       const access = c.accessMonths ? `${c.accessMonths} month${c.accessMonths === 1 ? '' : 's'}` : 'no time limit';
       setItem({
         kind: 'course', id: c.id, title: c.title,
-        meta: [teacher, `${lessons.length} lessons`, access].filter(Boolean).join(' · '),
-        includes: [`All ${lessons.length} lessons${quizzes ? ` and ${quizzes} quiz${quizzes === 1 ? '' : 'zes'}` : ''}`, 'Certificate when you finish', 'Watch on phone or computer'],
+        meta: [teacher, `${lessons.length} lesson${lessons.length === 1 ? '' : 's'}`, access].filter(Boolean).join(' · '),
+        includes: [`${lessons.length === 1 ? 'The lesson' : `All ${lessons.length} lessons`}${quizzes ? ` and ${quizzes} quiz${quizzes === 1 ? '' : 'zes'}` : ''}`, 'Certificate when you finish', 'Watch on phone or computer'],
         priceAmount: c.priceAmount, currency: c.priceCurrency,
         accessUntil: c.accessMonths ? addMonths(new Date(), c.accessMonths) : null,
       });
