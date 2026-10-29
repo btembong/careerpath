@@ -6,6 +6,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { SkeletonCard } from '@/components/ui/Skeleton';
+import { minorToMajor } from '@cpa/shared';
 import api from '@/lib/api';
 
 const TRANZAK_CURRENCIES  = new Set(['XAF', 'XOF', 'RWF', 'UGX', 'TZS', 'MZN']);
@@ -34,7 +35,7 @@ function Spinner({ className = '' }: { className?: string }) {
 }
 
 function fmt(minor: number, currency: string) {
-  return `${currency} ${(minor / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${currency} ${minorToMajor(minor, currency).toLocaleString('en-US')}`;
 }
 
 export default function CheckoutPage() {
@@ -81,7 +82,7 @@ export default function CheckoutPage() {
   function calcDiscount(p: Package, c: AppliedCoupon | null): number {
     if (!c) return 0;
     if (c.discountType === 'PERCENT') return Math.round(p.priceAmount * c.discountValue / 100);
-    return Math.min(p.priceAmount, c.discountValue * 100);
+    return Math.min(p.priceAmount, c.discountValue);
   }
 
   async function applyCode() {
@@ -320,7 +321,7 @@ export default function CheckoutPage() {
                     <strong>{coupon.code}</strong> —{' '}
                     {coupon.discountType === 'PERCENT'
                       ? `${coupon.discountValue}% off`
-                      : `${fmt(coupon.discountValue * 100, pkg.currency)} off`}
+                      : `${fmt(coupon.discountValue, pkg.currency)} off`}
                   </p>
                 )}
               </section>

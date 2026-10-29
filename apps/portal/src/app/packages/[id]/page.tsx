@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Icon } from '@/components/ui/Icon';
 import { SkeletonCard, SkeletonListRow } from '@/components/ui/Skeleton';
+import { minorToMajor } from '@cpa/shared';
 import api from '@/lib/api';
 
 interface Course {
@@ -31,7 +32,7 @@ interface ActivePackage { id: string; expiresAt: string | null; }
 // Shared price formatter — treats priceAmount as minor units (cents/kobo/pesewas)
 // Matches the same helper in /packages/page.tsx
 function fmtPrice(amount: number, currency: string) {
-  return `${currency} ${(amount / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${currency} ${minorToMajor(amount, currency).toLocaleString('en-US')}`;
 }
 
 const BAND_COLORS = [

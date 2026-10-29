@@ -7,6 +7,7 @@ import { Card, IconBox } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Icon } from '@/components/ui/Icon';
+import { minorToMajor } from '@cpa/shared';
 import api from '@/lib/api';
 
 interface Purchase {
@@ -23,7 +24,7 @@ interface Purchase {
 }
 
 function fmtAmount(amount: number, currency: string) {
-  return `${currency} ${(amount / 100).toLocaleString()}`;
+  return `${currency} ${minorToMajor(amount, currency).toLocaleString()}`;
 }
 
 function fmtDate(d: string) {

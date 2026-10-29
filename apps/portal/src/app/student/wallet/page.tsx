@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Icon } from '@/components/ui/Icon';
 import { SkeletonTopbar, SkeletonBalance, SkeletonCard, SkeletonListRow } from '@/components/ui/Skeleton';
+import { minorToMajor } from '@cpa/shared';
 import api from '@/lib/api';
 
 interface PurchaseItem {
@@ -21,7 +22,7 @@ interface PurchaseItem {
 }
 
 function formatAmount(amount: number, currency: string) {
-  return `${currency} ${(amount / 100).toLocaleString('en', { minimumFractionDigits: 0 })}`;
+  return `${currency} ${minorToMajor(amount, currency).toLocaleString('en')}`;
 }
 
 function formatDate(d: string) {

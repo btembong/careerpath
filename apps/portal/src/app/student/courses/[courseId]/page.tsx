@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Icon } from '@/components/ui/Icon';
 import { SkeletonCard, SkeletonListRow } from '@/components/ui/Skeleton';
+import { minorToMajor } from '@cpa/shared';
 import api from '@/lib/api';
 
 interface Lesson  { id: string; title: string; type: string; durationSecs: number | null; }
@@ -140,7 +141,7 @@ export default function CourseDetailPage() {
     totalLessons > 0
       ? `${totalLessons} lesson${totalLessons !== 1 ? 's' : ''}${totalSecs > 0 ? ` · ${fmtDuration(totalSecs)} total` : ''}`
       : null,
-    price ? 'One-time payment · Lifetime access' : 'Lifetime access',
+    price ? 'One-time payment · no time limit' : 'No time limit',
     'Certificate on completion',
     'Graded quizzes and assignments',
     course.teacher
@@ -471,9 +472,9 @@ export default function CourseDetailPage() {
                   ) : price ? (
                     <>
                       <p className="text-3xl font-bold text-navy leading-none">
-                        {course.priceCurrency} {price.toLocaleString()}
+                        {course.priceCurrency} {minorToMajor(price, course.priceCurrency).toLocaleString()}
                       </p>
-                      <p className="text-xs text-royal/40 mt-1">One-time · Lifetime access</p>
+                      <p className="text-xs text-royal/40 mt-1">One-time payment</p>
                     </>
                   ) : (
                     <>
@@ -563,9 +564,9 @@ export default function CourseDetailPage() {
             <>
               <div>
                 <p className="text-base font-bold text-navy">
-                  {course.priceCurrency} {price.toLocaleString()}
+                  {course.priceCurrency} {minorToMajor(price, course.priceCurrency).toLocaleString()}
                 </p>
-                <p className="text-xs text-royal/40">One-time · Lifetime access</p>
+                <p className="text-xs text-royal/40">One-time payment</p>
               </div>
               {course.isSoldIndividually ? (
                 <Link href={`/student/courses/${courseId}/checkout`} className="btn-primary flex-shrink-0 text-sm px-4 py-2.5">

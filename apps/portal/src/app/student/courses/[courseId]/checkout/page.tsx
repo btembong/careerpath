@@ -6,6 +6,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { SkeletonCard } from '@/components/ui/Skeleton';
+import { minorToMajor } from '@cpa/shared';
 import api from '@/lib/api';
 
 const TRANZAK_CURRENCIES  = new Set(['XAF', 'XOF', 'RWF', 'UGX', 'TZS', 'MZN']);
@@ -73,8 +74,8 @@ export default function CourseCheckoutPage() {
 
   function calcDiscount(c: Course, coupon: AppliedCoupon | null): number {
     if (!coupon) return 0;
-    const base = c.priceAmount * 100; // work in minor units for discount
-    if (coupon.discountType === 'PERCENT') return Math.round(base * coupon.discountValue / 100) / 100;
+    // Prices and fixed coupon amounts are both in minor units, as the server charges them
+    if (coupon.discountType === 'PERCENT') return Math.round(c.priceAmount * coupon.discountValue / 100);
     return Math.min(c.priceAmount, coupon.discountValue);
   }
 
@@ -194,7 +195,7 @@ export default function CourseCheckoutPage() {
   const needsPhone  = gateway === 'tranzak' && tzMode === 'ussd';
 
   function fmtPrice(val: number) {
-    return `${course!.priceCurrency} ${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `${course!.priceCurrency} ${minorToMajor(val, course!.priceCurrency).toLocaleString('en-US')}`;
   }
 
   return (
