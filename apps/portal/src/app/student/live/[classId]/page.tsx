@@ -144,7 +144,7 @@ export default function StudentLiveClassPage() {
   );
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-surface">
+    <div className="flex h-screen w-full min-w-0 flex-col overflow-hidden bg-surface">
       <header className="flex flex-shrink-0 flex-wrap items-center gap-3 border-b border-line bg-white px-4 py-2.5 sm:px-6">
         <Link href="/student/live" aria-label="Back to live classes" className="flex h-[38px] w-[38px] items-center justify-center rounded-md border border-line text-ink2 hover:bg-subtle">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
