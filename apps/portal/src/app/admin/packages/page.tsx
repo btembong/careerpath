@@ -19,12 +19,12 @@ interface Pkg {
   id: string; name: string; description: string | null;
   priceAmount: number; currency: string; courseIds: string[];
   validityDays: number | null; categoryTags: string[]; isPublished: boolean;
-  cohortId: string | null; cohort?: Cohort | null; mentorship: string | null;
+  cohortId: string | null; cohort?: Cohort | null; mentorship: string | null; faq?: { q: string; a: string }[] | null;
   _count?: { purchases: number };
 }
 interface Form {
   name: string; description: string; currency: string; price: string; validityDays: string;
-  courseIds: string[]; tags: string; cohortId: string; mentorship: string; isPublished: boolean;
+  courseIds: string[]; tags: string; cohortId: string; mentorship: string; faq: { q: string; a: string }[]; isPublished: boolean;
 }
 
 const CURRENCIES = ['GHS', 'XAF', 'NGN', 'USD', 'XOF', 'LRD', 'KES', 'ZAR', 'RWF', 'UGX'];
@@ -44,8 +44,8 @@ function toForm(p?: Pkg): Form {
   return p ? {
     name: p.name, description: p.description ?? '', currency: p.currency,
     price: String(minorToMajor(p.priceAmount, p.currency)), validityDays: p.validityDays ? String(p.validityDays) : '',
-    courseIds: p.courseIds, tags: p.categoryTags.join(', '), cohortId: p.cohortId ?? '', mentorship: p.mentorship ?? '', isPublished: p.isPublished,
-  } : { name: 'New package', description: '', currency: 'GHS', price: '', validityDays: '365', courseIds: [], tags: '', cohortId: '', mentorship: '', isPublished: false };
+    courseIds: p.courseIds, tags: p.categoryTags.join(', '), cohortId: p.cohortId ?? '', mentorship: p.mentorship ?? '', faq: Array.isArray(p.faq) ? p.faq : [], isPublished: p.isPublished,
+  } : { name: 'New package', description: '', currency: 'GHS', price: '', validityDays: '365', courseIds: [], tags: '', cohortId: '', mentorship: '', faq: [], isPublished: false };
 }
 
 export default function AdminPackagesPage() {
@@ -100,6 +100,7 @@ export default function AdminPackagesPage() {
       categoryTags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
       cohortId: form.cohortId || null,
       mentorship: form.mentorship.trim() || null,
+      faq: form.faq.filter(r => r.q.trim() && r.a.trim()),
       ...(publish !== undefined && { isPublished: publish }),
     };
     try {
@@ -244,6 +245,24 @@ export default function AdminPackagesPage() {
               <input value={form.mentorship} onChange={e => set({ mentorship: e.target.value })} maxLength={80} placeholder="For example: Monthly 1-to-1 session" className="input-base" />
               <span className="text-xs text-muted">Leave empty if the package has no mentorship. Students only see it when it’s filled in.</span>
             </label>
+
+            <div className="flex flex-col gap-2">
+              <span className={label}>Questions on the package page</span>
+              <span className="-mt-1 text-xs text-muted">Leave empty to show the standard questions (access length, joining classes late, courses already bought, payment).</span>
+              {form.faq.map((r, i) => (
+                <div key={i} className="space-y-1.5 rounded-md border border-line p-2.5">
+                  <div className="flex gap-2">
+                    <input aria-label="Question" value={r.q} onChange={e => set({ faq: form.faq.map((x, j) => j === i ? { ...x, q: e.target.value } : x) })} maxLength={200} placeholder="Question" className="input-base h-9 flex-1" />
+                    <button type="button" onClick={() => set({ faq: form.faq.filter((_, j) => j !== i) })} className="text-[13px] font-semibold text-muted hover:text-error">Remove</button>
+                  </div>
+                  <textarea aria-label="Answer" rows={2} value={r.a} onChange={e => set({ faq: form.faq.map((x, j) => j === i ? { ...x, a: e.target.value } : x) })} maxLength={1000} placeholder="Answer"
+                    className="w-full resize-none rounded-md border border-line px-3 py-2 text-sm text-navy outline-none focus:border-azure" />
+                </div>
+              ))}
+              {form.faq.length < 12 && (
+                <button type="button" onClick={() => set({ faq: [...form.faq, { q: '', a: '' }] })} className="self-start text-[13px] font-semibold text-azure-strong hover:underline">Add a question</button>
+              )}
+            </div>
 
             <div className="flex flex-wrap gap-2 border-t border-line pt-4">
               <Button size="sm" loading={saving} onClick={() => save()}>{selId === 'new' ? 'Create as draft' : 'Save changes'}</Button>
