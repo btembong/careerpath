@@ -7,6 +7,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '@cpa/shared';
+import { UserProfile } from '@prisma/client';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('packages')
 @Controller()
@@ -19,6 +21,14 @@ export class PackagesController {
   @ApiOperation({ summary: 'List all published packages (student pricing screen)' })
   findPublished() {
     return this.packagesService.findPublished();
+  }
+
+  @Get('packages/:id/details')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'One package: courses, live classes, questions and (if bought) your access' })
+  details(@Param('id') id: string, @CurrentUser() user: UserProfile) {
+    return this.packagesService.details(id, user);
   }
 
   // ── Admin ────────────────────────────────────────────────
