@@ -164,7 +164,10 @@ export class CohortInsightsService {
       courseProgress,
       classes: {
         upcoming: cohort.liveClasses.filter(c => !ended(c, now) && c.status !== 'CANCELLED').map(c => this.classOut(c)),
-        past: cohort.liveClasses.filter(c => ended(c, now)).reverse().map(c => ({ ...this.classOut(c), attended: ctx.attended.has(`${c.id}:${student.id}`) })),
+        // Classes held before the student joined are not counted as missed
+        past: cohort.liveClasses.filter(c => ended(c, now)).reverse().map(c => ({
+          ...this.classOut(c), attended: ctx.attended.has(`${c.id}:${student.id}`), beforeJoined: c.scheduledAt.getTime() < roster.addedAt.getTime() - DAY,
+        })),
       },
       assignments: me.subs.map(({ a, s }) => ({
         id: a.id, title: a.title, dueDate: a.dueDate, maxPoints: a.maxPoints,

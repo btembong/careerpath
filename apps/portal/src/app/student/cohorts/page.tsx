@@ -5,7 +5,7 @@ import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
 
-interface ClassItem { id: string; title: string; description: string | null; scheduledAt: string; durationMins: number; status: string; recordingUrl: string | null; live: boolean; attended?: boolean }
+interface ClassItem { id: string; title: string; description: string | null; scheduledAt: string; durationMins: number; status: string; recordingUrl: string | null; live: boolean; attended?: boolean; beforeJoined?: boolean }
 interface Overview {
   cohorts: { id: string; name: string }[];
   cohort: { id: string; name: string; sittingLabel: string | null; examDate: string | null; startDate: string | null } | null;
@@ -200,7 +200,7 @@ export default function StudentCohortPage() {
                       <p className="truncate text-sm font-semibold text-navy">{c.title}</p>
                       <p className="mt-0.5 text-[12.5px] text-muted">{new Date(c.scheduledAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} · {c.durationMins} min</p>
                     </div>
-                    <span className={badge(!!c.attended)}>{c.attended ? 'Attended' : 'Missed'}</span>
+                    <span className={badge(!!c.attended)}>{c.attended ? 'Attended' : c.beforeJoined ? 'Before you joined' : 'Missed'}</span>
                     {c.recordingUrl
                       ? <a href={c.recordingUrl} target="_blank" rel="noopener noreferrer" className={btn(false)}>Watch recording</a>
                       : <span className="inline-flex h-8 items-center px-1 text-[12.5px] text-muted">Recording coming</span>}
