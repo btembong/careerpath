@@ -249,6 +249,8 @@ model Package {
   validityDays Int?
   isPublished  Boolean           @default(false)
   cohortId     String?
+  /// What mentorship the package includes, e.g. "Monthly 1-to-1 session"; shown only when set
+  mentorship   String?
   createdAt    DateTime          @default(now())
   purchases    PackagePurchase[]
   cohort       Cohort?           @relation("PackageCohort", fields: [cohortId], references: [id])
@@ -714,6 +716,10 @@ model PlatformCourse {
   priceAmount        Int?
   priceCurrency      String?
   shortDescription   String?
+  /// How long a single-course purchase gives access, in months; null = no time limit
+  accessMonths       Int?               @default(12)
+  /// Teaching language, e.g. "English" or "French"; shown to students only when set
+  language           String?
   certificates       Certificate[]
   enrollments        CourseEnrollment[]
   modules            CourseModule[]
@@ -1173,4 +1179,11 @@ model CoursePriceDefault {
   programme   Programme? @relation(fields: [programmeId], references: [id], onDelete: Cascade)
 
   @@unique([programmeId, currency])
+}
+
+/// Platform-wide settings an admin can change, one JSON value per key (e.g. "pricing")
+model PlatformSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
 }

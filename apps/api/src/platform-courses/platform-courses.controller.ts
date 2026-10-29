@@ -98,6 +98,35 @@ export class PlatformCoursesController {
     return this.svc.applyPriceDefaults(dto?.currency, dto?.courseIds);
   }
 
+  @Get('pricing-settings')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Pricing settings (default teacher commission)' })
+  getPricingSettings() {
+    return this.svc.getPricingSettings();
+  }
+
+  @Patch('pricing-settings')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Change pricing settings' })
+  setPricingSettings(@Body() dto: { defaultTeacherCommissionPct?: number | null }) {
+    return this.svc.setPricingSettings(dto);
+  }
+
+  @Post('pricing-settings/apply-commission')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[Admin] Give courses without a teacher commission the default one' })
+  applyDefaultCommission() {
+    return this.svc.applyDefaultCommission();
+  }
+
+  @Patch(':id/commission')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Set the teacher commission % on a course (null = paid outside the platform)' })
+  setCommission(@Param('id') id: string, @Body() dto: { teacherCommissionPct: number | null }) {
+    return this.svc.setCommission(id, dto?.teacherCommissionPct ?? null);
+  }
+
   @Post(':id/price-proposal')
   @Roles(UserRole.ADMIN, UserRole.TEACHER)
   @HttpCode(HttpStatus.OK)

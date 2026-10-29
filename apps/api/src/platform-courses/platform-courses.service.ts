@@ -73,7 +73,7 @@ export class PlatformCoursesService {
         programme: { select: { id: true, name: true, shortName: true, type: true } },
         subject:   { select: { id: true, name: true, category: true } },
         level:     { select: { id: true, name: true, tier: true } },
-        teacher:   { select: { id: true, email: true } },
+        teacher:   { select: { id: true, email: true, name: true, firstName: true, lastName: true } },
         _count:    { select: { modules: true, enrollments: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -181,6 +181,7 @@ export class PlatformCoursesService {
     teacherId?: string; status?: CourseStatus;
     priceAmount?: number | null; priceCurrency?: string | null; isSoldIndividually?: boolean;
     shortDescription?: string | null; source?: CourseSource; wpCourseUrl?: string | null;
+    accessMonths?: number | null; language?: string | null;
   }) {
     await this.assertCourseAccess(id, actor);
     const isAdmin = (actor.role as UserRole) === UserRole.ADMIN;
@@ -190,7 +191,10 @@ export class PlatformCoursesService {
       throw new ForbiddenException('Only admins can change a course’s status, teacher or source. Submit the course for review instead.');
     }
     // Prices are set by admins; teachers propose one through /price-proposal
-    const pricing = [dto.priceAmount, dto.priceCurrency, dto.isSoldIndividually].some(v => v !== undefined);
+    const pricing = [dto.priceAmount, dto.priceCurrency, dto.isSoldIndividually, dto.accessMonths].some(v => v !== undefined);
+    if (dto.accessMonths != null && (!Number.isInteger(dto.accessMonths) || dto.accessMonths < 1 || dto.accessMonths > 120)) {
+      throw new BadRequestException('Access must be a whole number of months between 1 and 120, or no time limit');
+    }
     if (!isAdmin && pricing) {
       throw new ForbiddenException('Propose a price for approval instead of setting it directly.');
     }
@@ -207,6 +211,8 @@ export class PlatformCoursesService {
       ...(isAdmin && dto.priceAmount !== undefined && { priceAmount: dto.priceAmount }),
       ...(isAdmin && dto.priceCurrency !== undefined && { priceCurrency: dto.priceCurrency ? dto.priceCurrency.toUpperCase() : null }),
       ...(isAdmin && dto.isSoldIndividually !== undefined && { isSoldIndividually: !!dto.isSoldIndividually }),
+      ...(isAdmin && dto.accessMonths !== undefined && { accessMonths: dto.accessMonths }),
+      ...(dto.language !== undefined && { language: dto.language?.trim() || null }),
       ...(isAdmin && dto.status !== undefined && { status: dto.status }),
       ...(isAdmin && dto.teacherId !== undefined && { teacherId: dto.teacherId }),
     };
@@ -795,6 +801,12 @@ export class PlatformCoursesService {
   // ── Enrollment ────────────────────────────────────────────
 
   async enrollStudent(studentId: string, courseId: string, wpUserId?: number) {
+    const target = await this.prisma.platformCourse.findUnique({ where: { id: courseId }, select: { source: true, isSoldIndividually: true, priceAmount: true } });
+    if (!target) throw new NotFoundException('Course not found');
+    const free = target.source === CourseSource.WORDPRESS || (target.isSoldIndividually && !target.priceAmount);
+    if (!free && !(await this.studentHasCourseAccess(studentId, courseId))) {
+      throw new ForbiddenException('Buy this course or a package that includes it first');
+    }
     const result = await this.prisma.courseEnrollment.upsert({
       where: { studentId_courseId: { studentId, courseId } },
       update: {},
@@ -1041,6 +1053,57 @@ export class PlatformCoursesService {
     };
   }
 
+  /** Admin pricing settings: the default teacher commission offered when setting up a course. */
+  async getPricingSettings() {
+    const row = await this.prisma.platformSetting.findUnique({ where: { key: 'pricing' } });
+    const v = (row?.value ?? {}) as { defaultTeacherCommissionPct?: number | null };
+    return { defaultTeacherCommissionPct: v.defaultTeacherCommissionPct ?? null };
+  }
+
+  async setPricingSettings(dto: { defaultTeacherCommissionPct?: number | null }) {
+    const pct = dto?.defaultTeacherCommissionPct ?? null;
+    if (pct !== null && !(typeof pct === 'number' && pct >= 0 && pct <= 100)) throw new BadRequestException('Commission must be between 0 and 100%');
+    const value = { defaultTeacherCommissionPct: pct };
+    await this.prisma.platformSetting.upsert({ where: { key: 'pricing' }, update: { value }, create: { key: 'pricing', value } });
+    return value;
+  }
+
+  /**
+   * Set the teacher's commission on one course. null means the teacher is paid outside the platform,
+   * so sales credit nothing to their wallet.
+   */
+  async setCommission(courseId: string, pct: number | null) {
+    if (pct !== null && !(typeof pct === 'number' && pct >= 0 && pct <= 100)) throw new BadRequestException('Commission must be between 0 and 100%');
+    const course = await this.prisma.platformCourse.findUniqueOrThrow({ where: { id: courseId }, select: { teacherId: true } });
+    const a = await this.prisma.courseAssignment.upsert({
+      where: { courseId },
+      update: { teacherCommissionPct: pct },
+      create: { courseId, teacherId: course.teacherId, teacherCommissionPct: pct },
+    });
+    return { teacherCommissionPct: a.teacherCommissionPct };
+  }
+
+  /** Give every course that has no commission yet the default one. */
+  async applyDefaultCommission() {
+    const { defaultTeacherCommissionPct: pct } = await this.getPricingSettings();
+    if (pct === null) throw new BadRequestException('Set a default commission first');
+    const courses = await this.prisma.platformCourse.findMany({
+      where: { source: CourseSource.NATIVE, status: { not: CourseStatus.ARCHIVED } },
+      select: { id: true, teacherId: true },
+    });
+    const existing = await this.prisma.courseAssignment.findMany({
+      where: { courseId: { in: courses.map(c => c.id) } }, select: { courseId: true, teacherCommissionPct: true },
+    });
+    const byCourse = new Map(existing.map(a => [a.courseId, a.teacherCommissionPct]));
+    const todo = courses.filter(c => byCourse.get(c.id) == null);
+    await this.prisma.$transaction(todo.map(c => this.prisma.courseAssignment.upsert({
+      where: { courseId: c.id },
+      update: { teacherCommissionPct: pct },
+      create: { courseId: c.id, teacherId: c.teacherId, teacherCommissionPct: pct },
+    })));
+    return { updated: todo.length, skipped: courses.length - todo.length };
+  }
+
   /** The teacher's commission on this course (from their course assignment), for the pricing screen. */
   async teacherShare(courseId: string, actor: UserProfile) {
     await this.assertCourseAccess(courseId, actor);
@@ -1079,12 +1142,13 @@ export class PlatformCoursesService {
     const now = new Date();
     const active = { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
     const [course, pkg, purchase, enrollment] = await Promise.all([
-      this.prisma.platformCourse.findUnique({ where: { id: courseId }, select: { status: true } }),
+      this.prisma.platformCourse.findUnique({ where: { id: courseId }, select: { status: true, source: true, isSoldIndividually: true, priceAmount: true } }),
       this.prisma.packagePurchase.findFirst({ where: { studentId, ...active, package: { courseIds: { has: courseId } } }, select: { id: true } }),
       this.prisma.coursePurchase.findFirst({ where: { studentId, courseId, ...active }, select: { id: true } }),
       this.prisma.courseEnrollment.findUnique({ where: { studentId_courseId: { studentId, courseId } }, select: { id: true } }),
     ]);
-    return course?.status === 'PUBLISHED' && !!(pkg || purchase || enrollment);
+    const enrollmentCounts = !!course && (course.source === CourseSource.WORDPRESS || (course.isSoldIndividually && !course.priceAmount));
+    return course?.status === 'PUBLISHED' && !!(pkg || purchase || (enrollmentCounts && enrollment));
   }
 
   /**
@@ -1137,7 +1201,7 @@ function courseIncludes() {
     programme:  { select: { id: true, name: true, shortName: true, type: true } },
     subject:    { select: { id: true, name: true, category: true } },
     level:      { select: { id: true, name: true, tier: true } },
-    teacher:    { select: { id: true, email: true } },
+    teacher:    { select: { id: true, email: true, name: true, firstName: true, lastName: true } },
     modules: {
       orderBy: { sortOrder: 'asc' as const },
       include: {

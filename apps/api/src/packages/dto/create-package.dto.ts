@@ -45,6 +45,11 @@ export class CreatePackageDto {
   @IsOptional()
   validityDays?: number;
 
+  @ApiPropertyOptional({ example: 'Monthly 1-to-1 session', description: 'Mentorship included; shown to students only when set' })
+  @IsString()
+  @IsOptional()
+  mentorship?: string | null;
+
   @ApiPropertyOptional({ description: 'Cohort ID to auto-enroll students into on purchase' })
   @IsString()
   @IsOptional()

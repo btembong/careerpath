@@ -66,6 +66,7 @@ export class PackagesService {
         categoryTags: dto.categoryTags ?? [],
         validityDays: dto.validityDays ?? null,
         cohortId: dto.cohortId ?? null,
+        mentorship: dto.mentorship?.trim() || null,
         isPublished: false,
       },
       include: { cohort: { select: { id: true, name: true } } },
@@ -93,6 +94,7 @@ export class PackagesService {
         ...(dto.validityDays !== undefined && { validityDays: dto.validityDays }),
         ...(dto.isPublished !== undefined && { isPublished: dto.isPublished }),
         ...('cohortId' in dto && { cohortId: dto.cohortId ?? null }),
+        ...(dto.mentorship !== undefined && { mentorship: dto.mentorship?.trim() || null }),
       },
       include: { cohort: { select: { id: true, name: true } } },
     });

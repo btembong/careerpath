@@ -117,11 +117,11 @@ export class PaymentsService {
       throw new BadRequestException('This course is not available for individual purchase');
     }
 
-    // Prevent double purchase
+    // Prevent double purchase — an expired purchase can be renewed
     const already = await this.prisma.coursePurchase.findUnique({
       where: { studentId_courseId: { studentId: student.id, courseId } },
     });
-    if (already) throw new BadRequestException('You already own this course');
+    if (already && (!already.expiresAt || already.expiresAt > new Date())) throw new BadRequestException('You already have access to this course');
 
     let finalAmount = course.priceAmount;
     let couponId: string | undefined;
@@ -492,29 +492,34 @@ export class PaymentsService {
       return;
     }
 
-    // Idempotency — skip if already purchased
+    // Idempotency — skip a repeated webhook, or a purchase that still gives access.
+    // An expired purchase is renewed in place (one row per student and course).
     const already = await this.prisma.coursePurchase.findUnique({
       where: { studentId_courseId: { studentId: event.studentId, courseId } },
     });
-    if (already) {
-      this.logger.warn('fulfillCoursePurchase: duplicate webhook, skipping', event.sessionId);
+    const stillActive = already && (!already.expiresAt || already.expiresAt > new Date());
+    if (already && (stillActive || (event.sessionId && already.gatewayRef === event.sessionId))) {
+      this.logger.warn('fulfillCoursePurchase: duplicate webhook or still active, skipping', event.sessionId);
       return;
     }
 
+    // Access runs for the course's access length from today; null = no time limit
+    const expiresAt = course.accessMonths ? addMonths(new Date(), course.accessMonths) : null;
+
     await this.prisma.$transaction(async (tx) => {
-      // 1. Create CoursePurchase
+      // 1. Create (or renew) the CoursePurchase
       const courseInvoiceNo = await this.nextInvoiceNo();
-      const purchase = await tx.coursePurchase.create({
-        data: {
-          studentId:  event.studentId,
-          courseId,
-          amountPaid: event.amountPaid,
-          currency:   event.currency,
-          gateway:    event.gateway,
-          gatewayRef: event.sessionId ?? null,
-          invoiceNo:  courseInvoiceNo,
-        },
-      });
+      const fields = {
+        amountPaid: event.amountPaid,
+        currency:   event.currency,
+        gateway:    event.gateway,
+        gatewayRef: event.sessionId ?? null,
+        invoiceNo:  courseInvoiceNo,
+        expiresAt,
+      };
+      const purchase = already
+        ? await tx.coursePurchase.update({ where: { id: already.id }, data: { ...fields, purchasedAt: new Date() } })
+        : await tx.coursePurchase.create({ data: { studentId: event.studentId, courseId, ...fields } });
 
       // 2. Enroll student in course
       await tx.courseEnrollment.upsert({
@@ -558,7 +563,9 @@ export class PaymentsService {
     this.notifications.notify(event.studentId, {
       type: 'system',
       title: 'Payment confirmed',
-      body: `You now have access to "${course.title}".`,
+      body: expiresAt
+        ? `You now have access to "${course.title}" until ${expiresAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}.`
+        : `You now have access to "${course.title}".`,
       href: `/student/learn/${courseId}`,
     });
     this.logger.log(`Course purchase fulfilled: student=${event.studentId} course=${courseId}`);
@@ -693,4 +700,14 @@ export class PaymentsService {
       `No payment gateway configured for currency ${currency}. Contact support.`,
     );
   }
+}
+
+/** The same day n months later, clamped to the month's last day (31 Jan + 1 month = 28/29 Feb). */
+function addMonths(d: Date, n: number): Date {
+  const r = new Date(d);
+  const day = r.getDate();
+  r.setDate(1);
+  r.setMonth(r.getMonth() + n);
+  r.setDate(Math.min(day, new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate()));
+  return r;
 }
