@@ -395,9 +395,14 @@ export class PaymentsService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      // 1. Create PackagePurchase
+      // 1. Create PackagePurchase — a renewal adds its days after the current access ends, so none are lost
+      const current = await tx.packagePurchase.findFirst({
+        where: { studentId: event.studentId, packageId: pkg.id, expiresAt: { gt: new Date() } },
+        orderBy: { expiresAt: 'desc' }, select: { expiresAt: true },
+      });
+      const from = Math.max(Date.now(), current?.expiresAt?.getTime() ?? 0);
       const expiresAt = pkg.validityDays
-        ? new Date(Date.now() + pkg.validityDays * 86_400_000)
+        ? new Date(from + pkg.validityDays * 86_400_000)
         : null;
 
       const invoiceNo = await this.nextInvoiceNo();
