@@ -42,7 +42,7 @@ export class LiveService {
   }
 
   async addStudent(teacher: UserProfile, cohortId: string, dto: AddStudentDto) {
-    await this.assertTeacherOwnsCohort(teacher.id, cohortId);
+    await this.assertTeacherOwnsCohort(teacher, cohortId);
 
     const student = await this.prisma.userProfile.findUnique({
       where: { id: dto.studentId, role: UserRole.STUDENT },
@@ -60,7 +60,7 @@ export class LiveService {
   }
 
   async removeStudent(teacher: UserProfile, cohortId: string, studentId: string) {
-    await this.assertTeacherOwnsCohort(teacher.id, cohortId);
+    await this.assertTeacherOwnsCohort(teacher, cohortId);
     await this.prisma.cohortRoster.delete({
       where: { studentId_cohortId: { studentId, cohortId } },
     });
@@ -73,7 +73,7 @@ export class LiveService {
    * Schedule a class. Daily.co room is created on start, not here.
    */
   async scheduleClass(teacher: UserProfile, cohortId: string, dto: ScheduleClassDto) {
-    await this.assertTeacherOwnsCohort(teacher.id, cohortId);
+    await this.assertTeacherOwnsCohort(teacher, cohortId);
 
     return this.prisma.liveClass.create({
       data: {
@@ -141,7 +141,7 @@ export class LiveService {
    * 2. Marks LiveClass ACTIVE
    */
   async startClass(teacher: UserProfile, liveClassId: string) {
-    const liveClass = await this.getLiveClassForTeacher(teacher.id, liveClassId);
+    const liveClass = await this.getLiveClassForTeacher(teacher, liveClassId);
 
     if (liveClass.status !== 'SCHEDULED') {
       throw new BadRequestException(`Class is already ${liveClass.status}`);
@@ -171,7 +171,7 @@ export class LiveService {
    * 2. Marks LiveClass COMPLETED + records leftAt on any open attendance records
    */
   async endClass(teacher: UserProfile, liveClassId: string) {
-    const liveClass = await this.getLiveClassForTeacher(teacher.id, liveClassId);
+    const liveClass = await this.getLiveClassForTeacher(teacher, liveClassId);
 
     if (liveClass.status !== 'ACTIVE') {
       throw new BadRequestException('Class is not currently active');
@@ -231,7 +231,7 @@ export class LiveService {
   }
 
   async cancelClass(teacher: UserProfile, liveClassId: string) {
-    const liveClass = await this.getLiveClassForTeacher(teacher.id, liveClassId);
+    const liveClass = await this.getLiveClassForTeacher(teacher, liveClassId);
 
     if (liveClass.status !== 'SCHEDULED') {
       throw new BadRequestException('Only scheduled classes can be cancelled');
@@ -440,20 +440,22 @@ export class LiveService {
 
   // ── Helpers ──────────────────────────────────────────────
 
-  private async assertTeacherOwnsCohort(teacherId: string, cohortId: string) {
+  /** The cohort's teacher, or any admin */
+  private async assertTeacherOwnsCohort(user: UserProfile, cohortId: string) {
     const cohort = await this.prisma.cohort.findUnique({ where: { id: cohortId } });
     if (!cohort) throw new NotFoundException('Cohort not found');
-    if (cohort.teacherId !== teacherId) throw new ForbiddenException('Not your cohort');
+    if (user.role !== UserRole.ADMIN && cohort.teacherId !== user.id) throw new ForbiddenException('Not your cohort');
     return cohort;
   }
 
-  private async getLiveClassForTeacher(teacherId: string, liveClassId: string) {
+  /** The class, if the user is its cohort's teacher or an admin */
+  private async getLiveClassForTeacher(user: UserProfile, liveClassId: string) {
     const liveClass = await this.prisma.liveClass.findUnique({
       where: { id: liveClassId },
       include: { cohort: true },
     });
     if (!liveClass) throw new NotFoundException('Live class not found');
-    if (liveClass.cohort.teacherId !== teacherId) {
+    if (user.role !== UserRole.ADMIN && liveClass.cohort.teacherId !== user.id) {
       throw new ForbiddenException('Not your class');
     }
     return liveClass;
