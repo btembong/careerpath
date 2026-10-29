@@ -439,7 +439,7 @@ export class PaymentsService {
         });
         if (!existing) {
           await this.prisma.cohortRoster.create({
-            data: { studentId: event.studentId, cohortId: pkg.cohortId },
+            data: { studentId: event.studentId, cohortId: pkg.cohortId, source: 'PACKAGE' },
           });
         }
         this.logger.log(`Auto-enrolled student=${event.studentId} into cohort=${pkg.cohortId}`);

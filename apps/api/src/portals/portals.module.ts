@@ -5,13 +5,15 @@ import { StudentInsightsController } from './student-insights.controller';
 import { StudentInsightsService } from './student-insights.service';
 import { DashboardInsightsController } from './dashboard-insights.controller';
 import { DashboardInsightsService } from './dashboard-insights.service';
+import { CohortInsightsController } from './cohort-insights.controller';
+import { CohortInsightsService } from './cohort-insights.service';
 import { WordPressModule } from '../wordpress/wordpress.module';
 import { MailModule } from '../mail/mail.module';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [WordPressModule, MailModule, AuditModule],
-  controllers: [PortalsController, StudentInsightsController, DashboardInsightsController],
-  providers: [PortalsService, StudentInsightsService, DashboardInsightsService],
+  controllers: [PortalsController, StudentInsightsController, DashboardInsightsController, CohortInsightsController],
+  providers: [PortalsService, StudentInsightsService, DashboardInsightsService, CohortInsightsService],
 })
 export class PortalsModule {}

@@ -50,6 +50,11 @@ export class CreatePackageDto {
   @IsOptional()
   mentorship?: string | null;
 
+  @ApiPropertyOptional({ description: 'Questions and answers for the package page: [{ q, a }]; empty = the standard questions' })
+  @IsArray()
+  @IsOptional()
+  faq?: { q: string; a: string }[] | null;
+
   @ApiPropertyOptional({ description: 'Cohort ID to auto-enroll students into on purchase' })
   @IsString()
   @IsOptional()

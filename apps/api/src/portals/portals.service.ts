@@ -383,7 +383,7 @@ export class PortalsService {
       where: { studentId_cohortId: { studentId: student.id, cohortId } },
     });
     if (existing) throw new BadRequestException('Student already in cohort');
-    await this.prisma.cohortRoster.create({ data: { studentId: student.id, cohortId } });
+    await this.prisma.cohortRoster.create({ data: { studentId: student.id, cohortId, source: 'ADMIN' } });
     return { ok: true };
   }
 

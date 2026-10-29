@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import {
   Injectable,
   NotFoundException,
@@ -67,6 +68,7 @@ export class PackagesService {
         validityDays: dto.validityDays ?? null,
         cohortId: dto.cohortId ?? null,
         mentorship: dto.mentorship?.trim() || null,
+        faq: cleanFaq(dto.faq) ?? undefined,
         isPublished: false,
       },
       include: { cohort: { select: { id: true, name: true } } },
@@ -95,6 +97,7 @@ export class PackagesService {
         ...(dto.isPublished !== undefined && { isPublished: dto.isPublished }),
         ...('cohortId' in dto && { cohortId: dto.cohortId ?? null }),
         ...(dto.mentorship !== undefined && { mentorship: dto.mentorship?.trim() || null }),
+        ...(dto.faq !== undefined && { faq: cleanFaq(dto.faq) ?? Prisma.DbNull }),
       },
       include: { cohort: { select: { id: true, name: true } } },
     });
@@ -145,4 +148,14 @@ export class PackagesService {
       );
     }
   }
+}
+
+/** Keep only questions with both a question and an answer; null when none are left */
+function cleanFaq(faq: { q: string; a: string }[] | null | undefined) {
+  if (!Array.isArray(faq)) return null;
+  const rows = faq
+    .map(r => ({ q: String(r?.q ?? '').trim().slice(0, 200), a: String(r?.a ?? '').trim().slice(0, 1000) }))
+    .filter(r => r.q && r.a)
+    .slice(0, 12);
+  return rows.length ? rows : null;
 }

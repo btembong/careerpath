@@ -251,6 +251,8 @@ model Package {
   cohortId     String?
   /// What mentorship the package includes, e.g. "Monthly 1-to-1 session"; shown only when set
   mentorship   String?
+  /// Questions and answers shown on the package page: [{ q, a }]; empty = the standard questions
+  faq          Json?
   createdAt    DateTime          @default(now())
   purchases    PackagePurchase[]
   cohort       Cohort?           @relation("PackageCohort", fields: [cohortId], references: [id])
@@ -331,6 +333,9 @@ model CohortRoster {
   id        String      @id @default(uuid())
   studentId String
   cohortId  String
+  /// How the student joined: PACKAGE (bought a linked package), ORG (school seat), ADMIN or TEACHER (added by hand)
+  source    String      @default("ADMIN")
+  addedAt   DateTime    @default(now())
   cohort    Cohort      @relation(fields: [cohortId], references: [id])
   student   UserProfile @relation(fields: [studentId], references: [id])
 

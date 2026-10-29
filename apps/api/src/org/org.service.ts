@@ -169,6 +169,15 @@ export class OrgService {
       }),
     ]);
 
+    // School seats join the package's cohort like a bought package does
+    if (pkg.cohortId) {
+      await this.prisma.cohortRoster.upsert({
+        where: { studentId_cohortId: { studentId: profile.id, cohortId: pkg.cohortId } },
+        update: {},
+        create: { studentId: profile.id, cohortId: pkg.cohortId, source: 'ORG' },
+      }).catch(() => {});
+    }
+
     return {
       message: 'Seat claimed successfully. You now have access to your package.',
       packageName: pkg.name,

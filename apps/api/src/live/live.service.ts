@@ -55,7 +55,7 @@ export class LiveService {
     if (existing) throw new ConflictException('Student is already enrolled in this cohort');
 
     return this.prisma.cohortRoster.create({
-      data: { studentId: dto.studentId, cohortId },
+      data: { studentId: dto.studentId, cohortId, source: 'TEACHER' },
     });
   }
 
