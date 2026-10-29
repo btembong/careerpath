@@ -1,590 +1,275 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { notify } from '@/lib/notify';
 import Link from 'next/link';
-import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Icon } from '@/components/ui/Icon';
-import { SkeletonCard, SkeletonListRow } from '@/components/ui/Skeleton';
+import { useParams, useRouter } from 'next/navigation';
+import { clsx } from 'clsx';
 import { minorToMajor } from '@cpa/shared';
+import { Topbar } from '@/components/layout/Topbar';
+import { Button } from '@/components/ui/Button';
+import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-interface Lesson  { id: string; title: string; type: string; durationSecs: number | null; }
-interface Module  { id: string; title: string; sortOrder: number; lessons: Lesson[]; }
+interface Lesson { id: string; title: string; type: 'VIDEO' | 'TEXT' | 'QUIZ' | 'LIVE'; durationSecs: number | null; isFree: boolean }
 interface Course {
-  id: string; title: string; description: string | null;
-  source: 'NATIVE' | 'WORDPRESS'; wpCourseUrl: string | null;
-  priceAmount: number | null; priceCurrency: string | null; isSoldIndividually: boolean;
-  accessMonths: number | null; language: string | null;
+  id: string; title: string; description: string | null; shortDescription: string | null; source: string; status: string;
+  priceAmount: number | null; priceCurrency: string | null; isSoldIndividually: boolean; accessMonths: number | null;
+  language: string | null; outcomes: string[]; hasAccess?: boolean;
   programme: { name: string; shortName: string | null } | null;
-  subject:   { name: string } | null;
-  level:     { name: string } | null;
-  teacher:   { email: string; name: string | null; firstName?: string | null; lastName?: string | null } | null;
-  _count:    { modules: number; enrollments: number };
+  subject: { name: string } | null; level: { name: string } | null;
+  teacher: { name: string | null; firstName: string | null; lastName: string | null } | null;
+  _count?: { enrollments: number };
+  modules: { id: string; title: string; lessons: Lesson[] }[];
 }
+interface Pkg { id: string; name: string; priceAmount: number; currency: string; courseIds: string[]; validityDays: number | null; cohort?: { id: string } | null; mentorship?: string | null }
+interface LibRow { id: string; done: number; lessons: number; pct: number; next: { id: string } | null; access: { kind: string; name?: string; expiresAt: string | null; purchasedAt?: string } }
 
-function fmtDuration(secs: number): string {
-  const m = Math.round(secs / 60);
-  return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${m % 60}m`;
-}
+const money = (minor: number, cur: string) => `${cur} ${minorToMajor(minor, cur).toLocaleString()}`;
+const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+const mins = (secs: number) => { const m = Math.round(secs / 60); return m < 60 ? `${Math.max(1, m)} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`; };
+const longDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+const months = (m: number | null) => m == null ? null : `${m} month${m === 1 ? '' : 's'}`;
+const ICON: Record<Lesson['type'], string> = {
+  VIDEO: 'M8 5v14l11-7z', TEXT: 'M7 3h7l5 5v13H7zM14 3v5h5', QUIZ: 'M9 9a3 3 0 1 1 4 2.8c-.6.3-1 .9-1 1.6V14M12 17h.01', LIVE: 'M15 10l5-3v10l-5-3M3 6h12v12H3z',
+};
 
 export default function CourseDetailPage() {
   const { courseId } = useParams<{ courseId: string }>();
   const router = useRouter();
+  const [c, setC] = useState<Course | null>(null);
+  const [pkgs, setPkgs] = useState<Pkg[]>([]);
+  const [mine, setMine] = useState<LibRow | null>(null);
+  const [enrolling, setEnrolling] = useState(false);
 
-  const [course,    setCourse]    = useState<Course | null>(null);
-  const [modules,   setModules]   = useState<Module[]>([]);
-  const [hasAccess,    setHasAccess]    = useState(false);
-  const [enrollingFree, setEnrollingFree] = useState(false);
-  const [expanded,  setExpanded]  = useState<Set<string>>(new Set());
-  const [loading,   setLoading]   = useState(true);
-  const [backHref,  setBackHref]  = useState('/student/catalogue');
-  const [backLabel, setBackLabel] = useState('Catalogue');
-
-  // Determine back-nav destination from referrer
-  useEffect(() => {
-    const ref = typeof document !== 'undefined' ? document.referrer : '';
-    if (ref.includes('/student/courses') && !ref.includes(`/student/courses/${courseId}`)) {
-      setBackHref('/student/courses'); setBackLabel('My Library');
-    } else if (ref.includes('/packages/')) {
-      const m = ref.match(/\/packages\/([^/?#]+)/);
-      if (m) { setBackHref(`/packages/${m[1]}`); setBackLabel('Package'); }
-    } else if (ref.includes('/student/catalogue')) {
-      setBackHref('/student/catalogue'); setBackLabel('Catalogue');
-    }
-  }, [courseId]);
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const [courseRes, meRes, pkgsRes, cpRes] = await Promise.all([
-          api.get(`/platform-courses/${courseId}`),
-          api.get('/auth/me').catch(() => ({ data: null })),
-          api.get('/packages').catch(() => ({ data: [] })),
-          api.get('/portals/student/course-purchases').catch(() => ({ data: [] })),
-        ]);
-
-        const c: Course = courseRes.data;
-        setCourse(c);
-
-        const activePackages: { id: string }[] = meRes.data?.activePackages ?? [];
-        const activePkgIds = new Set(activePackages.map(p => p.id));
-        const allPkgs: { id: string; courseIds: string[] }[] = pkgsRes.data ?? [];
-        const pkgAccess    = allPkgs.some(p => activePkgIds.has(p.id) && p.courseIds?.includes(courseId));
-        const directAccess = (cpRes.data ?? []).some((cp: any) => cp.courseId === courseId);
-        const access       = pkgAccess || directAccess;
-        setHasAccess(access);
-
-        if (access && c.source !== 'WORDPRESS') {
-          api.get(`/platform-courses/${courseId}/progress`)
-            .then(r => setModules(r.data?.modules ?? []))
-            .catch(() => {});
-        }
-      } catch {
-        router.push('/student/catalogue');
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [courseId, router]);
-
-  function toggleModule(id: string) {
-    setExpanded(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  async function load() {
+    const [cr, pr, lr] = await Promise.all([
+      api.get(`/platform-courses/${courseId}`),
+      api.get('/packages').catch(() => ({ data: [] })),
+      api.get('/portals/student/library').catch(() => ({ data: { courses: [] } })),
+    ]);
+    setC(cr.data);
+    setPkgs((pr.data ?? []).filter((p: Pkg) => p.courseIds?.includes(courseId)));
+    setMine((lr.data?.courses ?? []).find((x: LibRow) => x.id === courseId) ?? null);
   }
+  useEffect(() => { load().catch(() => router.push('/student/catalogue')); }, [courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Skeleton ──────────────────────────────────────────────────
-  if (loading || !course) return (
-    <div className="flex flex-col min-h-full">
-      <div className="flex h-14 items-center border-b border-cloud bg-white px-5 gap-3 animate-pulse">
-        <div className="h-6 w-24 rounded-xl bg-cloud" />
-        <div className="w-px h-4 bg-cloud mx-1" />
-        <div className="h-3 w-48 rounded bg-cloud" />
-      </div>
-      <div className="max-w-5xl mx-auto px-5 sm:px-8 py-8 w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-          <div className="lg:col-span-2 space-y-4 animate-pulse">
-            <div className="flex gap-2">
-              <div className="h-5 w-20 rounded-md bg-cloud" />
-              <div className="h-5 w-16 rounded-md bg-cloud" />
-            </div>
-            <div className="h-9 w-2/3 rounded-lg bg-cloud" />
-            <div className="h-4 w-full max-w-xl rounded bg-cloud" />
-            <div className="flex gap-4 pt-1">
-              {[80,64,72,96].map(w => (
-                <div key={w} className="h-3 rounded bg-cloud" style={{ width: w }} />
-              ))}
-            </div>
-            <div className="pt-6 space-y-3">
-              {[1,2,3,4,5].map(i => <SkeletonListRow key={i} wide />)}
-            </div>
-          </div>
-          <div className="hidden lg:block">
-            <SkeletonCard lines={6} />
-          </div>
-        </div>
+  if (!c) return (
+    <div className="flex min-h-full flex-col">
+      <Topbar backHref="/student/catalogue" backLabel="Catalogue" title="Course" />
+      <div className="flex flex-wrap gap-6 p-4 lg:px-7 lg:py-6">
+        <div className="h-[520px] min-w-0 flex-[999_1_540px] rounded-lg border border-line bg-white animate-pulse" />
+        <div className="h-[380px] min-w-0 flex-[1_1_320px] rounded-lg border border-line bg-white animate-pulse" />
       </div>
     </div>
   );
 
-  const price        = course.priceAmount ? Number(course.priceAmount) : null;
-  const accessNote   = course.accessMonths ? `${course.accessMonths} month${course.accessMonths === 1 ? '' : 's'} of access` : 'No time limit';
-  // The teacher's name — never their email
-  const teacherName  = course.teacher ? course.teacher.name || [course.teacher.firstName, course.teacher.lastName].filter(Boolean).join(' ') || null : null;
-  const totalLessons = modules.reduce((n, m) => n + m.lessons.length, 0);
-  const totalSecs    = modules.reduce((n, m) => n + m.lessons.reduce((s, l) => s + (l.durationSecs ?? 0), 0), 0);
-
-  const moduleCount = course._count?.modules ?? modules.length;
-  const features = [
-    `${moduleCount} self-paced module${moduleCount !== 1 ? 's' : ''}`,
-    totalLessons > 0
-      ? `${totalLessons} lesson${totalLessons !== 1 ? 's' : ''}${totalSecs > 0 ? ` · ${fmtDuration(totalSecs)} total` : ''}`
-      : null,
-    price ? `One-time payment · ${accessNote.toLowerCase()}` : 'No time limit',
-    'Certificate on completion',
-    'Graded quizzes and assignments',
-    teacherName ? `Taught by ${teacherName}` : 'Expert-led instruction',
-    course.language ? `Taught in ${course.language}` : null,
+  const owned = !!mine || !!c.hasAccess;
+  const lessons = c.modules.flatMap(m => m.lessons);
+  const secs = lessons.reduce((n, l) => n + (l.durationSecs ?? 0), 0);
+  const quizzes = lessons.filter(l => l.type === 'QUIZ').length;
+  const firstFree = lessons.find(l => l.isFree);
+  const teacher = c.teacher ? c.teacher.name || [c.teacher.firstName, c.teacher.lastName].filter(Boolean).join(' ') || null : null;
+  const free = c.isSoldIndividually && !c.priceAmount;
+  const forSale = c.isSoldIndividually && !!c.priceAmount && !!c.priceCurrency;
+  const access = months(c.accessMonths);
+  const bestPkg = [...pkgs].sort((a, b) => a.priceAmount - b.priceAmount)[0];
+  const website = c.source === 'WORDPRESS';
+  const tags = [c.programme ? c.programme.shortName ?? c.programme.name : null, c.subject?.name, c.level?.name].filter(Boolean) as string[];
+  const facts = [
+    { l: 'Modules', v: String(c.modules.length) },
+    { l: 'Lessons', v: lessons.length ? `${lessons.length}${secs ? ` · ${mins(secs)}` : ''}` : '—' },
+    ...(quizzes ? [{ l: 'Quizzes', v: String(quizzes) }] : []),
+    ...(c.language ? [{ l: 'Language', v: c.language }] : []),
+    { l: 'Students', v: (c._count?.enrollments ?? 0).toLocaleString() },
+  ];
+  const included = [
+    lessons.length ? `All ${lessons.length} lessons with practice` : 'All lessons with practice',
+    quizzes ? `${quizzes} graded quiz${quizzes === 1 ? '' : 'zes'}` : null,
+    'Certificate when you finish',
+    access ? `${access} of access` : 'No time limit on access',
   ].filter(Boolean) as string[];
 
-  const outcomes = [
-    course.programme
-      ? `Master ${course.programme.shortName ?? course.programme.name} core concepts`
-      : 'Master core concepts through structured modules',
-    'Test your knowledge with graded quizzes',
-    'Earn a verifiable certificate upon completion',
-    'Learn at your own pace, on any device',
-  ];
-
-  // WordPress course — redirect to the learn page (which handles countdown + WP enrollment)
-  if (course.source === 'WORDPRESS') {
-    return (
-      <div className="flex flex-col min-h-full bg-surface">
-        <header className="flex h-14 items-center border-b border-cloud bg-white px-5 gap-3 sticky top-0 z-20">
-          <Link href={backHref}
-            className="inline-flex items-center gap-1.5 text-sm text-royal/60 hover:text-navy transition">
-            <Icon name="arrowLeft" size={14} /> {backLabel}
-          </Link>
-          <div className="h-4 w-px bg-cloud mx-1" />
-          <span className="text-sm text-royal/40 truncate">{course.title}</span>
-        </header>
-        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center max-w-lg mx-auto">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-azure/10 mb-5">
-            <Icon name="courses" size={28} className="text-azure" />
-          </div>
-          <div className="flex items-center gap-2 mb-3">
-            {course.programme && (
-              <Badge variant="active">{course.programme.shortName ?? course.programme.name}</Badge>
-            )}
-            <Badge variant="muted">Free access</Badge>
-          </div>
-          <h1 className="text-2xl font-black text-navy leading-snug mb-3">{course.title}</h1>
-          {course.description && (
-            <p className="text-sm text-royal/60 leading-relaxed mb-6">{course.description}</p>
-          )}
-          <div className="flex items-center gap-3 text-xs text-royal/40 mb-8">
-            <span className="flex items-center gap-1.5">
-              <Icon name="graduate" size={13} /> {(course._count?.enrollments ?? 0).toLocaleString()} enrolled
-            </span>
-            {teacherName && (
-              <>
-                <span>·</span>
-                <span>{teacherName}</span>
-              </>
-            )}
-          </div>
-          <Link href={`/student/learn/${courseId}`}
-            className="inline-flex items-center gap-2 rounded-xl bg-azure px-7 py-3 text-sm font-bold text-white hover:bg-royal transition">
-            <Icon name="play" size={14} /> Start this course
-          </Link>
-          <p className="mt-3 text-xs text-royal/40">
-            Hosted on the CareerPath Africa learning platform
-          </p>
-        </div>
-      </div>
-    );
+  async function enrollFree() {
+    setEnrolling(true);
+    try {
+      await api.post(`/payments/enroll-free/${courseId}`);
+      notify.success('You’re enrolled', { description: 'The course is in My courses now.' });
+      await load();
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not enrol you'); }
+    finally { setEnrolling(false); }
   }
 
   return (
-    <div className="flex flex-col min-h-full bg-surface">
+    <div className="flex min-h-full flex-col">
+      <Topbar backHref="/student/catalogue" backLabel="Catalogue" title={c.title} />
 
-      {/* ── Sticky nav ── */}
-      <header className="flex h-14 items-center border-b border-cloud bg-white px-5 gap-3 sticky top-0 z-20">
-        <Link href="/student/catalogue"
-          className="inline-flex items-center gap-1.5 text-sm text-royal/60 hover:text-navy transition">
-          <Icon name="arrowLeft" size={14} /> Catalogue
-        </Link>
-        <div className="h-4 w-px bg-cloud mx-1" />
-        <span className="text-sm text-royal/40 truncate">{course.title}</span>
-      </header>
-
-      {/* ── Single grid — hero + body left, sidebar right ── */}
-      <div className="flex-1 max-w-5xl mx-auto w-full px-5 sm:px-8 pb-36 lg:pb-12">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-10 items-start">
-
-          {/* ══════════════════════════════════════
-              LEFT COL — hero + all content
-          ══════════════════════════════════════ */}
-          <div className="lg:col-span-2">
-
-            {/* ── Hero ── */}
-            <div className="py-8 sm:py-10 border-b border-cloud">
-              <div className="flex items-center gap-2 flex-wrap mb-3">
-                {course.programme && (
-                  <Badge variant="active">{course.programme.shortName ?? course.programme.name}</Badge>
-                )}
-                {course.subject && <Badge variant="default">{course.subject.name}</Badge>}
-                {course.level   && <Badge variant="default">{course.level.name}</Badge>}
+      <div className="flex flex-wrap items-start gap-6 p-4 lg:px-7 lg:py-6">
+        <div className="flex min-w-0 flex-[999_1_540px] flex-col gap-5">
+          <section className="flex flex-col gap-2">
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {tags.map((t, i) => <span key={t} className={clsx('inline-flex h-6 items-center rounded px-2 text-xs font-semibold', i === 0 ? 'bg-accent-soft text-navy' : 'border border-line bg-white text-ink2')}>{t}</span>)}
               </div>
-
-              <h1 className="text-2xl sm:text-3xl font-bold text-navy leading-snug">
-                {course.title}
-              </h1>
-
-              {course.description && (
-                <p className="mt-2 text-sm text-royal/50 max-w-2xl leading-relaxed">
-                  {course.description}
-                </p>
-              )}
-
-              <div className="flex flex-wrap items-center gap-5 mt-4 text-sm text-royal/50">
-                <span className="flex items-center gap-1.5">
-                  <Icon name="courses" size={14} className="text-royal/40" />
-                  {moduleCount} modules
-                </span>
-                {totalLessons > 0 && (
-                  <span className="flex items-center gap-1.5">
-                    <Icon name="play" size={14} className="text-royal/40" />
-                    {totalLessons} lessons
-                  </span>
-                )}
-                {totalSecs > 0 && (
-                  <span className="flex items-center gap-1.5">
-                    <Icon name="clock" size={14} className="text-royal/40" />
-                    {fmtDuration(totalSecs)} total
-                  </span>
-                )}
-                <span className="flex items-center gap-1.5">
-                  <Icon name="graduate" size={14} className="text-royal/40" />
-                  {(course._count?.enrollments ?? 0).toLocaleString()} enrolled
-                </span>
-                {hasAccess && (
-                  <span className="flex items-center gap-1.5 text-green-600 font-medium">
-                    <Icon name="check" size={14} /> Enrolled
-                  </span>
-                )}
+            )}
+            <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.01em] text-navy">{c.title}</h1>
+            {(c.description || c.shortDescription) && <p className="max-w-[680px] text-[14.5px] leading-relaxed text-ink2">{c.description || c.shortDescription}</p>}
+            {teacher && (
+              <div className="mt-1.5 flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent-soft text-xs font-extrabold text-azure-strong">{initials(teacher)}</span>
+                <p className="text-[13.5px]"><strong className="font-semibold text-navy">{teacher}</strong>{c.subject && <span className="text-muted"> · {c.subject.name}</span>}</p>
               </div>
+            )}
+          </section>
 
-              {teacherName && (
-                <div className="flex items-center gap-3 mt-5">
-                  <div className="w-9 h-9 rounded-full bg-azure/10 flex items-center justify-center text-sm font-bold text-azure flex-shrink-0">
-                    {teacherName![0].toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-navy">
-                      {teacherName}
+          {!website && (
+            <dl className="grid rounded-lg border border-line bg-white [grid-template-columns:repeat(auto-fit,minmax(130px,1fr))]">
+              {facts.map(f => (
+                <div key={f.l} className="-mr-px border-r border-line px-4 py-3.5">
+                  <dt className="text-[11.5px] text-muted">{f.l}</dt>
+                  <dd className="mt-0.5 text-[15px] font-bold text-navy">{f.v}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+
+          {c.outcomes?.length > 0 && (
+            <section className="flex flex-col gap-2.5 rounded-lg border border-line bg-white p-[18px]">
+              <h2 className="text-base font-bold text-navy">What you’ll be able to do</h2>
+              <ul className="grid gap-x-4 gap-y-2 text-[13.5px] text-ink2 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
+                {c.outcomes.map(o => <Check key={o} text={o} />)}
+              </ul>
+            </section>
+          )}
+
+          {c.modules.length > 0 && (
+            <section className="flex flex-col gap-2.5 rounded-lg border border-line bg-white p-[18px]">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-base font-bold text-navy">Course outline</h2>
+                <span className="text-[13px] text-muted">{c.modules.length} module{c.modules.length === 1 ? '' : 's'} · {lessons.length} lessons{secs ? ` · ${mins(secs)}` : ''}</span>
+              </div>
+              {c.modules.map((m, mi) => {
+                const ms = m.lessons.reduce((n, l) => n + (l.durationSecs ?? 0), 0);
+                return (
+                  <div key={m.id} className="overflow-hidden rounded-md border border-line">
+                    <p className="flex justify-between gap-3 border-b border-line bg-subtle px-3 py-2.5 text-[13.5px] font-semibold text-navy">
+                      <span className="truncate">{/^module/i.test(m.title) ? m.title : `Module ${mi + 1} — ${m.title}`}</span>
+                      <span className="whitespace-nowrap font-medium text-muted">{m.lessons.length} lesson{m.lessons.length === 1 ? '' : 's'}{ms ? ` · ${mins(ms)}` : ''}</span>
                     </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* ── Body ── */}
-            <div className="py-8 space-y-10">
-
-              {/* What you'll learn */}
-              <section>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-4">
-                  What you&apos;ll learn
-                </p>
-                <Card>
-                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {outcomes.map(o => (
-                      <li key={o} className="flex items-start gap-3 text-sm text-royal/60">
-                        <Icon name="check" size={15} className="text-azure flex-shrink-0 mt-0.5" />
-                        {o}
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              </section>
-
-              {/* Course outline */}
-              <section>
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-azure">
-                    Course outline
-                  </p>
-                  {totalLessons > 0 && (
-                    <span className="text-xs text-royal/40">
-                      {totalLessons} lessons · {fmtDuration(totalSecs)}
-                    </span>
-                  )}
-                </div>
-
-                {modules.length > 0 ? (
-                  <Card padding="none" className="overflow-hidden divide-y divide-cloud">
-                    {modules.map(mod => {
-                      const open    = expanded.has(mod.id);
-                      const modSecs = mod.lessons.reduce((s, l) => s + (l.durationSecs ?? 0), 0);
-                      return (
-                        <div key={mod.id}>
-                          <button
-                            onClick={() => toggleModule(mod.id)}
-                            className="w-full flex items-center gap-4 px-5 py-4 hover:bg-surface transition text-left"
-                          >
-                            <Icon
-                              name="chevronDown"
-                              size={14}
-                              className={`text-royal/40 flex-shrink-0 transition-transform ${open ? 'rotate-0' : '-rotate-90'}`}
-                            />
-                            <span className="flex-1 text-sm font-semibold text-navy">{mod.title}</span>
-                            <span className="text-xs text-royal/40 flex-shrink-0">
-                              {mod.lessons.length} lesson{mod.lessons.length !== 1 ? 's' : ''}
-                              {modSecs > 0 && ` · ${fmtDuration(modSecs)}`}
-                            </span>
-                          </button>
-
-                          {open && mod.lessons.length > 0 && (
-                            <div className="divide-y divide-cloud bg-surface/60">
-                              {mod.lessons.map(lesson => (
-                                <div key={lesson.id} className="flex items-center gap-3 px-5 py-3 pl-[52px]">
-                                  <Icon
-                                    name={lesson.type === 'VIDEO' ? 'play' : 'courses'}
-                                    size={13}
-                                    className="text-royal/30 flex-shrink-0"
-                                  />
-                                  <span className="flex-1 text-sm text-royal/60 truncate">{lesson.title}</span>
-                                  {lesson.durationSecs && (
-                                    <span className="text-xs text-royal/40 flex-shrink-0">
-                                      {fmtDuration(lesson.durationSecs)}
-                                    </span>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
+                    {m.lessons.map(l => {
+                      const open = owned || l.isFree;
+                      const row = (
+                        <>
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden className="flex-shrink-0 text-muted"><path d={ICON[l.type] ?? ICON.TEXT} /></svg>
+                          <span className="min-w-0 flex-1 truncate">{l.title}</span>
+                          {l.isFree && !owned && <span className="inline-flex h-5 items-center rounded bg-accent-soft px-1.5 text-[11px] font-bold text-navy">Free preview</span>}
+                          <span className="whitespace-nowrap text-xs text-muted">{l.type === 'QUIZ' ? 'Quiz' : l.durationSecs ? mins(l.durationSecs) : l.type === 'TEXT' ? 'Reading' : ''}</span>
+                        </>
                       );
+                      return open
+                        ? <Link key={l.id} href={`/student/learn/${c.id}/lesson/${l.id}`} className="flex items-center gap-2.5 px-3 py-2 text-[13px] text-ink2 hover:bg-subtle hover:text-navy">{row}</Link>
+                        : <p key={l.id} className="flex items-center gap-2.5 px-3 py-2 text-[13px] text-ink2">{row}</p>;
                     })}
-                  </Card>
-                ) : (
-                  <Card>
-                    <p className="text-sm text-royal/50 mb-4">
-                      This course has{' '}
-                      <span className="font-semibold text-navy">{moduleCount} modules</span>.
-                      Enroll to unlock the full outline.
-                    </p>
-                    <div className="space-y-2.5">
-                      {Array.from({ length: Math.min(moduleCount, 5) }).map((_, i) => (
-                        <div key={i} className="flex items-center gap-3 opacity-40 select-none">
-                          <div className="w-4 h-4 rounded bg-cloud flex-shrink-0" />
-                          <div className={`h-3 rounded bg-cloud ${[' w-2/3',' w-1/2',' w-3/5',' w-2/5',' w-1/3'][i] ?? ' w-1/2'}`} />
-                        </div>
-                      ))}
-                      {moduleCount > 5 && (
-                        <p className="text-xs text-royal/30 pl-7">
-                          + {moduleCount - 5} more modules
-                        </p>
-                      )}
-                    </div>
-                  </Card>
-                )}
-              </section>
+                  </div>
+                );
+              })}
+            </section>
+          )}
 
-              {/* Everything included */}
-              <section>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-4">
-                  Everything included
-                </p>
-                <Card>
-                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {features.map(f => (
-                      <li key={f} className="flex items-center gap-3 text-sm text-royal/60">
-                        <Icon name="check" size={14} className="text-azure flex-shrink-0" />
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              </section>
-
-              {/* Instructor */}
-              {teacherName && (
-                <section>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-4">
-                    Your instructor
-                  </p>
-                  <Card className="flex items-center gap-4 p-5">
-                    <div className="w-14 h-14 rounded-full bg-azure/10 flex items-center justify-center text-lg font-bold text-azure flex-shrink-0">
-                      {teacherName![0].toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-navy">
-                        {teacherName}
+          {pkgs.length > 0 && (
+            <section className="flex flex-col gap-2.5 rounded-lg border border-line bg-white p-[18px]">
+              <h2 className="text-base font-bold text-navy">Also in {pkgs.length === 1 ? 'this package' : 'these packages'}</h2>
+              {pkgs.map(p => {
+                const others = p.courseIds.length - 1;
+                const vm = p.validityDays ? Math.round(p.validityDays / 30.44) : null;
+                return (
+                  <div key={p.id} className="flex flex-wrap items-center gap-3 rounded-md border border-line p-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-navy">{p.name}</p>
+                      <p className="mt-0.5 text-[12.5px] text-muted">
+                        {[`This course${others > 0 ? ` and ${others} more` : ''}`, p.cohort ? 'live classes' : null, p.mentorship ? 'mentorship' : null, vm ? `${vm} months` : 'no time limit', money(p.priceAmount, p.currency)].filter(Boolean).join(' · ')}
                       </p>
                     </div>
-                  </Card>
-                </section>
-              )}
-
-              {/* Package upsell */}
-              {!hasAccess && price && (
-                <Card className="flex items-start gap-4 p-5">
-                  <div className="w-10 h-10 rounded-xl bg-azure/10 flex items-center justify-center flex-shrink-0">
-                    <Icon name="packages" size={18} className="text-azure" />
+                    <Link href={`/packages/${p.id}`} className="text-[13px] font-semibold text-azure-strong hover:underline">View package</Link>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-navy">Want more for less?</p>
-                    <p className="text-xs text-royal/50 mt-1 leading-relaxed">
-                      Our packages bundle this course with others, live sessions and mentorship — often at a lower total price.
-                    </p>
-                  </div>
-                  <Link href="/packages" className="btn-secondary text-xs px-3 py-1.5 flex-shrink-0 whitespace-nowrap">
-                    View packages
-                  </Link>
-                </Card>
-              )}
-
-            </div>
-          </div>
-
-          {/* ══════════════════════════════════════
-              RIGHT COL — sticky sidebar
-          ══════════════════════════════════════ */}
-          <div className="hidden lg:block">
-            <div className="sticky top-20 pt-8 space-y-4">
-
-              <Card className="overflow-hidden">
-                {/* Price header */}
-                <div className="px-6 pt-6 pb-5 border-b border-cloud">
-                  {hasAccess ? (
-                    <div className="flex items-center gap-2.5 rounded-xl bg-green-50 border border-green-100 px-3.5 py-3">
-                      <Icon name="check" size={14} className="text-green-500 flex-shrink-0" />
-                      <p className="text-xs font-semibold text-green-700">You&apos;re enrolled</p>
-                    </div>
-                  ) : price ? (
-                    <>
-                      <p className="text-3xl font-bold text-navy leading-none">
-                        {course.priceCurrency} {minorToMajor(price, course.priceCurrency).toLocaleString()}
-                      </p>
-                      <p className="text-xs text-royal/40 mt-1">One-time payment · {accessNote.toLowerCase()}</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-sm font-semibold text-navy">Available via package</p>
-                      <p className="text-xs text-royal/40 mt-1">Not sold individually</p>
-                    </>
-                  )}
-                </div>
-
-                {/* CTA */}
-                <div className="px-6 py-5 space-y-2.5">
-                  {hasAccess ? (
-                    <Link href={`/student/learn/${courseId}`} className="btn-primary w-full justify-center py-3">
-                      <Icon name="play" size={14} /> Continue learning
-                    </Link>
-                  ) : course.isSoldIndividually && !price ? (
-                    <button
-                      disabled={enrollingFree}
-                      onClick={async () => {
-                        setEnrollingFree(true);
-                        try {
-                          await api.post(`/payments/enroll-free/${courseId}`);
-                          setHasAccess(true);
-                          notify.success('Enrolled! You now have access.');
-                        } catch (e: any) {
-                          notify.error(e.response?.data?.message ?? 'Enrollment failed.');
-                        } finally { setEnrollingFree(false); }
-                      }}
-                      className="btn-primary w-full justify-center py-3 disabled:opacity-70">
-                      {enrollingFree ? 'Enrolling…' : 'Enroll free'}
-                    </button>
-                  ) : course.isSoldIndividually && price ? (
-                    <>
-                      <Link href={`/student/courses/${courseId}/checkout`} className="btn-primary w-full justify-center py-3">
-                        Buy this course
-                      </Link>
-                      <Link href="/packages" className="btn-secondary w-full justify-center">
-                        Or enroll via package
-                      </Link>
-                    </>
-                  ) : (
-                    <Link href="/packages" className="btn-primary w-full justify-center py-3">
-                      Get via package
-                    </Link>
-                  )}
-                  {!hasAccess && (
-                    <p className="text-center text-xs text-royal/40">
-                      {course.isSoldIndividually
-                        ? 'Instant access after payment'
-                        : 'Part of our learning packages'}
-                    </p>
-                  )}
-                </div>
-
-                {/* Feature list */}
-                <div className="px-6 pb-5 border-t border-cloud pt-4 space-y-2.5">
-                  {features.slice(0, 5).map(f => (
-                    <div key={f} className="flex items-center gap-2 text-xs text-royal/50">
-                      <Icon name="check" size={12} className="text-azure flex-shrink-0" /> {f}
-                    </div>
-                  ))}
-                </div>
-
-                {!hasAccess && (
-                  <div className="px-6 pb-5 border-t border-cloud pt-4 text-center">
-                    <p className="flex items-center justify-center gap-1.5 text-xs text-royal/40">
-                      <Icon name="shield" size={12} /> 256-bit SSL · Secure payment
-                    </p>
-                  </div>
-                )}
-              </Card>
-
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      {/* ── Mobile sticky CTA ── sits above bottom nav (z-50) */}
-      <div className="lg:hidden fixed bottom-16 inset-x-0 bg-white border-t border-cloud px-5 py-4 z-40 shadow-lg">
-        <div className="flex items-center justify-between gap-4 max-w-lg mx-auto">
-          {hasAccess ? (
-            <Link href={`/student/learn/${courseId}`} className="btn-primary w-full justify-center gap-2">
-              <Icon name="play" size={14} /> Continue learning
-            </Link>
-          ) : price ? (
-            <>
-              <div>
-                <p className="text-base font-bold text-navy">
-                  {course.priceCurrency} {minorToMajor(price, course.priceCurrency).toLocaleString()}
-                </p>
-                <p className="text-xs text-royal/40">One-time payment · {accessNote.toLowerCase()}</p>
-              </div>
-              {course.isSoldIndividually ? (
-                <Link href={`/student/courses/${courseId}/checkout`} className="btn-primary flex-shrink-0 text-sm px-4 py-2.5">
-                  Buy now
-                </Link>
-              ) : (
-                <Link href="/packages" className="btn-primary flex-shrink-0 text-sm px-4 py-2.5">
-                  Get via package
-                </Link>
-              )}
-            </>
-          ) : (
-            <Link href="/packages" className="btn-primary w-full justify-center">
-              Get via package
-            </Link>
+                );
+              })}
+            </section>
           )}
         </div>
-      </div>
 
+        <aside className="flex min-w-0 flex-[1_1_320px] flex-col gap-3.5 rounded-lg border border-azure bg-white p-5 lg:sticky lg:top-6">
+          {owned ? <>
+            <span className="inline-flex h-6 items-center self-start rounded bg-accent-soft px-2 text-xs font-bold text-navy">You have this course</span>
+            {mine && (
+              <div>
+                <p className="text-[13px] text-muted">{mine.access.expiresAt ? 'Access until' : 'Access'}</p>
+                <p className="mt-0.5 text-[22px] font-extrabold text-navy">{mine.access.expiresAt ? longDate(mine.access.expiresAt) : 'No time limit'}</p>
+                <p className="mt-0.5 text-[12.5px] text-muted">
+                  {mine.access.kind === 'package' ? `From ${mine.access.name}` : mine.access.kind === 'single' ? `Bought on its own${mine.access.purchasedAt ? ` · ${longDate(mine.access.purchasedAt)}` : ''}` : 'Free course'}
+                </p>
+              </div>
+            )}
+            {mine && mine.lessons > 0 && (
+              <div>
+                <div className="flex justify-between text-[13px]"><span className="text-ink2">{mine.done} of {mine.lessons} lessons</span><strong className="text-navy">{mine.pct}%</strong></div>
+                <span className="mt-1.5 block h-1.5 overflow-hidden rounded-[3px] bg-subtle"><span className="block h-1.5 bg-azure" style={{ width: `${mine.pct}%` }} /></span>
+              </div>
+            )}
+            <Link href={mine?.next && !website ? `/student/learn/${c.id}/lesson/${mine.next.id}` : `/student/learn/${c.id}`}
+              className="inline-flex h-[42px] items-center justify-center rounded-md bg-azure-strong text-[14.5px] font-semibold text-on-accent">
+              {mine && mine.done > 0 ? 'Continue learning' : 'Start the course'}
+            </Link>
+          </> : free || website ? <>
+            <div>
+              <p className="text-[30px] font-extrabold tracking-[-0.01em] text-navy">Free</p>
+              <p className="mt-0.5 text-[13px] text-muted">No payment, no time limit</p>
+            </div>
+            <ul className="flex flex-col gap-2 text-[13.5px] text-navy">
+              {included.slice(0, -1).map(i => <Check key={i} text={i} />)}
+            </ul>
+            {website
+              ? <Link href={`/student/learn/${c.id}`} className="inline-flex h-[42px] items-center justify-center rounded-md bg-azure-strong text-[14.5px] font-semibold text-on-accent">Start the course</Link>
+              : <Button className="h-[42px]" loading={enrolling} onClick={enrollFree}>Enrol for free</Button>}
+          </> : <>
+            {forSale ? (
+              <div>
+                <p className="text-[30px] font-extrabold tracking-[-0.01em] text-navy">{money(c.priceAmount!, c.priceCurrency!)}</p>
+                <p className="mt-0.5 text-[13px] text-muted">One payment · {access ? `${access} of access` : 'no time limit'}</p>
+              </div>
+            ) : (
+              <div>
+                <p className="text-lg font-extrabold text-navy">Available in a package</p>
+                <p className="mt-0.5 text-[13px] text-muted">This course isn’t sold on its own.</p>
+              </div>
+            )}
+            <ul className="flex flex-col gap-2 text-[13.5px] text-navy">
+              {(forSale ? included : included.slice(0, -1)).map(i => <Check key={i} text={i} />)}
+            </ul>
+            {forSale && <Link href={`/student/courses/${c.id}/checkout`} className="inline-flex h-[42px] items-center justify-center rounded-md bg-azure-strong text-[14.5px] font-semibold text-on-accent">Buy this course</Link>}
+            {firstFree && (
+              <Link href={`/student/learn/${c.id}/lesson/${firstFree.id}`} className="inline-flex h-[38px] items-center justify-center rounded-md border border-line text-[13.5px] font-semibold text-navy hover:bg-subtle">Watch a free lesson</Link>
+            )}
+            {bestPkg && (forSale ? (
+              <p className="rounded-md bg-accent-soft px-3 py-2.5 text-[13px] text-ink2">
+                <strong className="text-navy">Or get it in {bestPkg.name}</strong> for {money(bestPkg.priceAmount, bestPkg.currency)}
+                {bestPkg.courseIds.length > 1 ? ` with ${bestPkg.courseIds.length - 1} more course${bestPkg.courseIds.length === 2 ? '' : 's'}` : ''}{bestPkg.cohort ? ' and live classes' : ''}.
+                {' '}<Link href={`/packages/${bestPkg.id}`} className="font-semibold text-azure-strong hover:underline">View</Link>
+              </p>
+            ) : (
+              <Link href={`/packages/${bestPkg.id}`} className="inline-flex h-[42px] items-center justify-center rounded-md bg-azure-strong px-3 text-center text-[14px] font-semibold text-on-accent">Get {bestPkg.name} · {money(bestPkg.priceAmount, bestPkg.currency)}</Link>
+            ))}
+            {!forSale && !bestPkg && <p className="text-[13px] text-ink2">This course isn’t on sale yet.</p>}
+            {(forSale || bestPkg) && <p className="text-center text-[12.5px] text-muted">Mobile money, card or Paystack</p>}
+          </>}
+        </aside>
+      </div>
     </div>
+  );
+}
+
+function Check({ text }: { text: string }) {
+  return (
+    <li className="flex items-start gap-2">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mt-0.5 flex-shrink-0 text-azure-strong"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>{text}
+    </li>
   );
 }
