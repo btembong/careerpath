@@ -7,7 +7,22 @@ export class QuizService {
 
   // ── Question Bank ──────────────────────────────────────────
 
-  async listQuestions(courseId: string, lessonId?: string) {
+  /** Only the course's teacher and admins may see answers or change questions. */
+  private async assertCourseStaff(user: { id: string; role: string }, courseId: string) {
+    if (user.role === 'ADMIN') return;
+    const course = await this.prisma.platformCourse.findUnique({ where: { id: courseId }, select: { teacherId: true } });
+    if (!course) throw new NotFoundException('Course not found');
+    if (course.teacherId !== user.id) throw new ForbiddenException('Not your course');
+  }
+
+  private async questionCourse(id: string) {
+    const q = await this.prisma.questionBank.findUnique({ where: { id }, select: { courseId: true } });
+    if (!q) throw new NotFoundException('Question not found');
+    return q.courseId;
+  }
+
+  async listQuestions(user: { id: string; role: string }, courseId: string, lessonId?: string) {
+    await this.assertCourseStaff(user, courseId);
     return this.prisma.questionBank.findMany({
       where: { courseId, ...(lessonId ? { lessonId } : {}) },
       orderBy: { sortOrder: 'asc' },
@@ -15,11 +30,12 @@ export class QuizService {
     });
   }
 
-  async createQuestion(teacherId: string, courseId: string, dto: {
+  async createQuestion(user: { id: string; role: string }, courseId: string, dto: {
     questionText: string; type: string; lessonId?: string; difficulty?: string;
     tags?: string[]; imageUrl?: string; options?: any; correctAnswer: string;
     explanation?: string; points?: number;
   }) {
+    await this.assertCourseStaff(user, courseId);
     return this.prisma.questionBank.create({
       data: {
         courseId, lessonId: dto.lessonId, questionText: dto.questionText,
@@ -30,14 +46,17 @@ export class QuizService {
     });
   }
 
-  async updateQuestion(id: string, dto: Partial<{
+  async updateQuestion(user: { id: string; role: string }, id: string, dto: Partial<{
     questionText: string; type: string; difficulty: string; tags: string[];
     imageUrl: string; options: any; correctAnswer: string; explanation: string; points: number;
   }>) {
-    return this.prisma.questionBank.update({ where: { id }, data: dto as any });
+    await this.assertCourseStaff(user, await this.questionCourse(id));
+    const { questionText, type, difficulty, tags, imageUrl, options, correctAnswer, explanation, points } = dto;
+    return this.prisma.questionBank.update({ where: { id }, data: { questionText, type, difficulty, tags, imageUrl, options, correctAnswer, explanation, points } as any });
   }
 
-  async deleteQuestion(id: string) {
+  async deleteQuestion(user: { id: string; role: string }, id: string) {
+    await this.assertCourseStaff(user, await this.questionCourse(id));
     await this.prisma.questionBank.delete({ where: { id } });
     return { deleted: true };
   }

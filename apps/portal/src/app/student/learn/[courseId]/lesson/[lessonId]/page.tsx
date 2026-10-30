@@ -36,7 +36,7 @@ interface ProgressData {
   modules: Module[];
 }
 interface QuizQuestion {
-  id: string; questionText: string; type: 'MCQ' | 'WRITTEN';
+  id: string; questionText: string; type: 'MCQ' | 'SHORT_ANSWER' | 'WRITTEN';
   options: { id: string; text: string }[] | null;
 }
 interface QuizResult {
@@ -1050,7 +1050,7 @@ function QuizContent({
 
   // ── Results ───────────────────────────────────────────────
   if (quizState === 'submitted' && quizResults && quizScore) {
-    const mcqResults = quizResults.filter(r => r.type === 'MCQ');
+    const mcqResults = quizResults.filter(r => r.type !== 'WRITTEN');
     const correctCount = mcqResults.filter(r => r.isCorrect).length;
 
     return (
@@ -1079,9 +1079,9 @@ function QuizContent({
           <div key={r.questionId} className="bg-[var(--pl-card)] border border-[var(--pl-divider)] rounded-2xl p-5 space-y-3">
             <div className="flex items-start gap-3">
               <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-black ${
-                r.type === 'MCQ' ? (r.isCorrect ? 'bg-green-500 text-white' : 'bg-red-500 text-white') : 'bg-amber-500 text-white'
+                r.type !== 'WRITTEN' ? (r.isCorrect ? 'bg-green-500 text-white' : 'bg-red-500 text-white') : 'bg-amber-500 text-white'
               }`}>
-                {r.type === 'MCQ' ? (r.isCorrect ? '✓' : '✗') : '?'}
+                {r.type !== 'WRITTEN' ? (r.isCorrect ? '✓' : '✗') : '?'}
               </span>
               <p className="text-sm font-semibold text-white">{r.questionText}</p>
             </div>
@@ -1103,6 +1103,12 @@ function QuizContent({
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {r.type === 'SHORT_ANSWER' && (
+              <div className="pl-9 space-y-1 text-xs">
+                <p className={r.isCorrect ? 'text-green-300' : 'text-red-300'}>Your answer: {r.yourAnswer || '(no answer)'}</p>
+                {!r.isCorrect && r.correctAnswer && <p className="text-green-300">Accepted answer: {r.correctAnswer}</p>}
               </div>
             )}
             {r.type === 'WRITTEN' && (

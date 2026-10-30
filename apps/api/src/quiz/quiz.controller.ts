@@ -9,23 +9,23 @@ export class QuizController {
 
   // ── Question Bank ──────────────────────────────────────────
   @Get('questions')
-  listQuestions(@Query('courseId') courseId: string, @Query('lessonId') lessonId?: string) {
-    return this.quizService.listQuestions(courseId, lessonId);
+  listQuestions(@Req() req: any, @Query('courseId') courseId: string, @Query('lessonId') lessonId?: string) {
+    return this.quizService.listQuestions(req.user, courseId, lessonId);
   }
 
   @Post('questions')
   createQuestion(@Req() req: any, @Body() body: any) {
-    return this.quizService.createQuestion(req.user.id, body.courseId, body);
+    return this.quizService.createQuestion(req.user, body.courseId, body);
   }
 
   @Patch('questions/:id')
-  updateQuestion(@Param('id') id: string, @Body() body: any) {
-    return this.quizService.updateQuestion(id, body);
+  updateQuestion(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.quizService.updateQuestion(req.user, id, body);
   }
 
   @Delete('questions/:id')
-  deleteQuestion(@Param('id') id: string) {
-    return this.quizService.deleteQuestion(id);
+  deleteQuestion(@Req() req: any, @Param('id') id: string) {
+    return this.quizService.deleteQuestion(req.user, id);
   }
 
   // ── Attempts ──────────────────────────────────────────────

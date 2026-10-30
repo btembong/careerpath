@@ -1,157 +1,285 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import api from '@/lib/api';
-import { notify } from '@/lib/notify';
-import { Icon } from '@/components/ui/Icon';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
+import { Button } from '@/components/ui/Button';
+import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
+import { notify } from '@/lib/notify';
+import api from '@/lib/api';
 
-const QUESTION_TYPES = ['MCQ', 'TRUE_FALSE', 'FILL_BLANK', 'SHORT_ANSWER', 'WRITTEN'];
-const DIFFICULTIES = ['EASY', 'MEDIUM', 'HARD'];
-
+interface Lesson { id: string; title: string; type: string; passMark: number | null; timeLimitSecs: number | null; maxAttempts: number; shuffleQuestions: boolean }
+interface Course { id: string; title: string; modules: { id: string; title: string; lessons: Lesson[] }[] }
+interface Option { id: string; text: string }
 interface Question {
-  id: string; questionText: string; type: string; difficulty: string;
-  tags: string[]; options: any[]; correctAnswer: string; explanation: string; points: number;
+  id: string; questionText: string; type: 'MCQ' | 'SHORT_ANSWER' | 'WRITTEN'; options: Option[] | null; correctAnswer: string;
+  explanation: string | null; difficulty: 'EASY' | 'MEDIUM' | 'HARD'; points: number; tags: string[]; videoAtSec: number | null;
+}
+type Kind = 'choice' | 'truefalse' | 'short' | 'written';
+interface Draft { id?: string; kind: Kind; questionText: string; options: Option[]; correct: string; accepted: string; explanation: string; difficulty: Question['difficulty']; points: number; videoAt: string }
+
+const KINDS: [Kind, string][] = [['choice', 'Multiple choice'], ['truefalse', 'True / false'], ['short', 'Short answer'], ['written', 'Written (you grade)']];
+const SHORT: Record<Kind, string> = { choice: 'Choice', truefalse: 'T/F', short: 'Short', written: 'Written' };
+const LETTERS = 'abcdef';
+const kindOf = (q: Question): Kind => q.type === 'WRITTEN' ? 'written' : q.type === 'SHORT_ANSWER' ? 'short' : q.tags?.includes('true-false') ? 'truefalse' : 'choice';
+const mmss = (s: number | null) => s == null ? '' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+const toSecs = (v: string) => { if (!v.trim()) return null; const [m, s] = v.split(':').map(Number); return s == null ? Math.round(m) : m * 60 + s; };
+
+function blank(kind: Kind = 'choice'): Draft {
+  return {
+    kind, questionText: '', difficulty: 'MEDIUM', points: kind === 'written' ? 4 : 1, explanation: '', accepted: '', videoAt: '',
+    options: kind === 'truefalse' ? [{ id: 'a', text: 'True' }, { id: 'b', text: 'False' }] : [0, 1, 2, 3].map(i => ({ id: LETTERS[i], text: '' })),
+    correct: 'a',
+  };
+}
+function toDraft(q: Question): Draft {
+  const kind = kindOf(q);
+  return {
+    id: q.id, kind, questionText: q.questionText, difficulty: q.difficulty, points: q.points, explanation: q.explanation ?? '',
+    options: q.options?.length ? q.options : blank(kind).options, correct: kind === 'choice' || kind === 'truefalse' ? q.correctAnswer : 'a',
+    accepted: kind === 'short' || kind === 'written' ? q.correctAnswer : '', videoAt: mmss(q.videoAtSec),
+  };
 }
 
 export default function QuizBuilderPage() {
   const { courseId } = useParams<{ courseId: string }>();
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState<Partial<Question> & { lessonId?: string }>({ type: 'MCQ', difficulty: 'MEDIUM', points: 1, options: [{ id: 'a', text: '', isCorrect: true }, { id: 'b', text: '', isCorrect: false }, { id: 'c', text: '', isCorrect: false }, { id: 'd', text: '', isCorrect: false }] });
+  const router = useRouter();
+  const params = useSearchParams();
+  const [course, setCourse] = useState<Course | null>(null);
+  const [lessonId, setLessonId] = useState<string>(params.get('lessonId') ?? '');
+  const [questions, setQuestions] = useState<Question[] | null>(null);
+  const [draft, setDraft] = useState<Draft>(blank());
   const [saving, setSaving] = useState(false);
-  const [generatingAI, setGeneratingAI] = useState(false);
-  const [selectedLessonId, setSelectedLessonId] = useState('');
+  const [drafting, setDrafting] = useState(false);
+  const [preview, setPreview] = useState(false);
 
   useEffect(() => {
-    api.get(`/quiz/questions?courseId=${courseId}`).then(r => setQuestions(r.data)).finally(() => setLoading(false));
+    api.get(`/platform-courses/${courseId}`).then(r => {
+      setCourse(r.data);
+      const quizzes = (r.data.modules as Course['modules']).flatMap(m => m.lessons.filter(l => l.type === 'QUIZ'));
+      setLessonId(prev => prev && quizzes.some(q => q.id === prev) ? prev : quizzes[0]?.id ?? '');
+    }).catch(() => notify.error('Could not load the course'));
   }, [courseId]);
 
-  const save = async () => {
-    if (!form.questionText || !form.correctAnswer) { notify.error('Fill in question text and correct answer'); return; }
+  const quizzes = useMemo(() => (course?.modules ?? []).flatMap((m, mi) => m.lessons.filter(l => l.type === 'QUIZ').map(l => ({ ...l, module: `Module ${mi + 1}`, moduleTitle: m.title }))), [course]);
+  const lesson = quizzes.find(q => q.id === lessonId) ?? null;
+
+  async function loadQuestions(selectId?: string) {
+    if (!lessonId) { setQuestions([]); return; }
+    const r = await api.get(`/platform-courses/${courseId}/lessons/${lessonId}/questions`);
+    const qs: Question[] = r.data;
+    setQuestions(qs);
+    const pick = qs.find(q => q.id === selectId) ?? qs[0];
+    setDraft(pick ? toDraft(pick) : blank());
+  }
+  useEffect(() => { setQuestions(null); loadQuestions().catch(() => notify.error('Could not load the questions')); }, [lessonId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function chooseLesson(id: string) { setLessonId(id); router.replace(`?lessonId=${id}`); }
+
+  async function save() {
+    const d = draft;
+    if (!d.questionText.trim()) { notify.error('Write the question'); return; }
+    const isChoice = d.kind === 'choice' || d.kind === 'truefalse';
+    const options = isChoice ? d.options.filter(o => o.text.trim()) : null;
+    if (isChoice && (options!.length < 2 || !options!.some(o => o.id === d.correct))) { notify.error('Add at least two answers and tick the correct one'); return; }
+    if (d.kind === 'short' && !d.accepted.trim()) { notify.error('Add the accepted answer'); return; }
+    const body = {
+      type: d.kind === 'written' ? 'WRITTEN' : d.kind === 'short' ? 'SHORT_ANSWER' : 'MCQ',
+      questionText: d.questionText, options, correctAnswer: isChoice ? d.correct : d.accepted.trim(),
+      explanation: d.explanation || null, difficulty: d.difficulty, points: d.points,
+      tags: d.kind === 'truefalse' ? ['true-false'] : [], videoAtSec: toSecs(d.videoAt),
+    };
     setSaving(true);
     try {
-      const r = await api.post('/quiz/questions', { ...form, courseId });
-      setQuestions(q => [...q, r.data]);
-      setForm({ type: 'MCQ', difficulty: 'MEDIUM', points: 1, options: [{ id: 'a', text: '', isCorrect: true }, { id: 'b', text: '', isCorrect: false }, { id: 'c', text: '', isCorrect: false }, { id: 'd', text: '', isCorrect: false }] });
-      notify.success('Question saved');
-    } catch { notify.error('Failed to save'); } finally { setSaving(false); }
-  };
+      const r = d.id
+        ? await api.patch(`/platform-courses/${courseId}/lessons/${lessonId}/questions/${d.id}`, body)
+        : await api.post(`/platform-courses/${courseId}/lessons/${lessonId}/questions`, body);
+      notify.success(d.id ? 'Question saved' : 'Question added');
+      await loadQuestions(r.data.id);
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not save'); } finally { setSaving(false); }
+  }
 
-  const del = async (id: string) => {
-    await api.delete(`/quiz/questions/${id}`);
-    setQuestions(q => q.filter(x => x.id !== id));
-    notify.success('Deleted');
-  };
+  async function remove() {
+    if (!draft.id || !confirm('Delete this question?')) return;
+    try { await api.delete(`/platform-courses/${courseId}/lessons/${lessonId}/questions/${draft.id}`); notify.success('Deleted'); await loadQuestions(); }
+    catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not delete'); }
+  }
 
-  const aiGenerate = async () => {
-    if (!selectedLessonId) { notify.error('Select a lesson ID first'); return; }
-    setGeneratingAI(true);
+  async function aiDraft() {
+    setDrafting(true);
     try {
-      const r = await api.post(`/ai/generate-quiz/${selectedLessonId}`, { count: 10 });
-      notify.success(`Generated ${r.data.generated} questions`);
-      const fresh = await api.get(`/quiz/questions?courseId=${courseId}`);
-      setQuestions(fresh.data);
-    } catch { notify.error('AI generation failed'); } finally { setGeneratingAI(false); }
-  };
+      const r = await api.post(`/ai/generate-quiz/${lessonId}`, { count: 5 });
+      notify.success(`Added ${r.data.generated} questions`, { description: 'Check each one before students see it.' });
+      await loadQuestions(r.data.questions?.[0]?.id);
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'AI drafting failed'); } finally { setDrafting(false); }
+  }
+
+  async function setting(patch: Partial<Lesson>) {
+    if (!course || !lesson) return;
+    try {
+      await api.patch(`/platform-courses/${courseId}/lessons/${lessonId}/quiz-config`, patch);
+      setCourse({ ...course, modules: course.modules.map(m => ({ ...m, lessons: m.lessons.map(l => l.id === lessonId ? { ...l, ...patch } : l) })) });
+      notify.success('Quiz settings saved');
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not save'); }
+  }
+
+  const setD = (p: Partial<Draft>) => setDraft(d => ({ ...d, ...p }));
 
   return (
-    <div className="flex flex-col min-h-screen bg-surface">
-      <Topbar title="Quiz Builder" backHref={`/teacher/courses/${courseId}/builder`} />
-      <div className="flex-1 p-4 md:p-8 max-w-5xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="flex min-h-full flex-col">
+      <Topbar title="Quiz builder" subtitle={course ? `${course.title}${lesson ? ` · ${lesson.module}` : ''}` : ' '}
+        backHref={`/teacher/courses/${courseId}/builder`} backLabel="Course builder"
+        actions={quizzes.length > 1 && (
+          <select value={lessonId} onChange={e => chooseLesson(e.target.value)} className="h-9 max-w-[280px] rounded-md border border-line bg-white px-2.5 text-[13.5px] font-semibold text-navy">
+            {quizzes.map(q => <option key={q.id} value={q.id}>{q.module} · {q.title}</option>)}
+          </select>
+        )} />
 
-        {/* Question form */}
-        <div className="bg-white rounded-2xl border border-cloud p-6 h-fit">
-          <h2 className="font-bold text-navy mb-4">Add Question</h2>
-
-          <div className="flex gap-2 mb-3">
-            {QUESTION_TYPES.map(t => (
-              <button key={t} onClick={() => setForm(f => ({ ...f, type: t }))}
-                className={`text-xs px-2 py-1 rounded-lg border transition ${form.type === t ? 'bg-azure text-white border-azure' : 'border-cloud text-muted'}`}>
-                {t.replace('_', ' ')}
+      {course && !quizzes.length ? (
+        <div className="p-4 lg:px-7 lg:py-6">
+          <div className="rounded-lg border border-line bg-white px-6 py-12 text-center">
+            <p className="text-base font-bold text-navy">This course has no quiz yet</p>
+            <p className="mt-1 text-[13.5px] text-ink2">Add a lesson of type Quiz in the course builder, then come back to write its questions.</p>
+            <Link href={`/teacher/courses/${courseId}/builder`} className="mt-4 inline-flex h-9 items-center rounded-md bg-azure-strong px-4 text-[13.5px] font-semibold text-on-accent">Open course builder</Link>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-start gap-[18px] p-4 lg:px-7 lg:py-[22px]">
+          <section className="flex min-w-[240px] flex-[0_1_300px] flex-col gap-2 rounded-lg border border-line bg-white p-3.5">
+            <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">{lesson ? `${lesson.title} · ${questions?.length ?? 0} question${questions?.length === 1 ? '' : 's'}` : 'Loading…'}</p>
+            {!questions ? <div className="h-40 rounded bg-subtle animate-pulse" /> : questions.map((q, i) => (
+              <button key={q.id} onClick={() => setDraft(toDraft(q))}
+                className={clsx('flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-[13px] text-navy', draft.id === q.id ? 'bg-accent-soft font-semibold' : 'border border-line hover:bg-subtle')}>
+                <span className="font-extrabold text-muted">{i + 1}</span>
+                <span className="min-w-0 flex-1 truncate">{q.questionText}</span>
+                <span className="text-[11px] text-muted">{SHORT[kindOf(q)]}</span>
               </button>
             ))}
-          </div>
+            <button onClick={() => setDraft(blank())} disabled={!lesson}
+              className={clsx('grid h-[34px] place-items-center rounded-md border border-dashed border-azure text-[13px] font-semibold text-azure-strong hover:bg-accent-soft', !draft.id && 'bg-accent-soft')}>Add question</button>
+            <button onClick={aiDraft} disabled={!lesson || drafting}
+              className="grid h-[34px] place-items-center rounded-md border border-line text-[13px] font-semibold text-navy hover:bg-subtle disabled:opacity-60">{drafting ? 'Drafting…' : 'Draft 5 with AI from the lesson'}</button>
+          </section>
 
-          <textarea rows={3} className="w-full border border-cloud rounded-xl p-3 text-sm mb-3 focus:outline-none focus:border-azure"
-            placeholder="Question text…" value={form.questionText ?? ''}
-            onChange={e => setForm(f => ({ ...f, questionText: e.target.value }))} />
-
-          {(form.type === 'MCQ' || form.type === 'TRUE_FALSE') && (
-            <div className="flex flex-col gap-2 mb-3">
-              {(form.options ?? []).map((opt, i) => (
-                <div key={opt.id} className="flex items-center gap-2">
-                  <input type="radio" name="correct" checked={form.correctAnswer === opt.id}
-                    onChange={() => setForm(f => ({ ...f, correctAnswer: opt.id }))} />
-                  <input className="flex-1 border border-cloud rounded-lg p-2 text-sm focus:outline-none focus:border-azure"
-                    placeholder={`Option ${opt.id.toUpperCase()}`} value={opt.text}
-                    onChange={e => setForm(f => ({ ...f, options: (f.options ?? []).map((o, j) => j === i ? { ...o, text: e.target.value } : o) }))} />
-                </div>
+          <section className="flex min-w-0 flex-[999_1_440px] flex-col gap-3 rounded-lg border border-line bg-white p-[18px]">
+            <div className="flex flex-wrap gap-1.5">
+              {KINDS.map(([k, l]) => (
+                <button key={k} onClick={() => setD(k === draft.kind ? {} : { kind: k, options: blank(k).options, correct: 'a', points: k === 'written' ? Math.max(draft.points, 2) : draft.points })}
+                  className={clsx('rounded-md px-2.5 py-1.5 text-[12.5px] font-semibold', draft.kind === k ? 'border border-azure bg-accent-soft text-navy' : 'border border-line text-ink2 hover:text-navy')}>{l}</button>
               ))}
             </div>
-          )}
+            <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Question</span>
+              <textarea rows={2} value={draft.questionText} onChange={e => setD({ questionText: e.target.value })} maxLength={2000} placeholder="Simplify (2³ × 2⁴) ÷ 2⁵"
+                className="min-h-[52px] resize-y rounded-md border border-line px-2.5 py-2.5 text-sm text-navy outline-none focus:border-azure" />
+            </label>
 
-          {(form.type === 'FILL_BLANK' || form.type === 'SHORT_ANSWER') && (
-            <input className="w-full border border-cloud rounded-xl p-3 text-sm mb-3 focus:outline-none focus:border-azure"
-              placeholder="Correct answer / model answer…" value={form.correctAnswer ?? ''}
-              onChange={e => setForm(f => ({ ...f, correctAnswer: e.target.value }))} />
-          )}
+            {(draft.kind === 'choice' || draft.kind === 'truefalse') && <>
+              <p className="text-[13px] font-semibold text-navy">Answers — tick the correct one</p>
+              {draft.options.map((o, i) => (
+                <div key={o.id} className={clsx('flex items-center gap-2.5 rounded-md border px-3 py-[9px] text-[13.5px]', draft.correct === o.id ? 'border-azure bg-accent-soft' : 'border-line')}>
+                  <input type="radio" name="correct" checked={draft.correct === o.id} onChange={() => setD({ correct: o.id })} className="accent-[#3F6FE8]" aria-label={`Answer ${i + 1} is correct`} />
+                  {draft.kind === 'truefalse' ? <span className="flex-1 text-navy">{o.text}</span> : (
+                    <input value={o.text} onChange={e => setD({ options: draft.options.map(x => x.id === o.id ? { ...x, text: e.target.value } : x) })} placeholder={`Answer ${i + 1}`}
+                      className="min-w-0 flex-1 bg-transparent text-navy outline-none" />
+                  )}
+                  {draft.kind === 'choice' && draft.options.length > 2 && (
+                    <button onClick={() => setD({ options: draft.options.filter(x => x.id !== o.id), correct: draft.correct === o.id ? draft.options.find(x => x.id !== o.id)!.id : draft.correct })} className="text-xs text-muted hover:text-navy" aria-label="Remove answer">✕</button>
+                  )}
+                </div>
+              ))}
+              {draft.kind === 'choice' && draft.options.length < 6 && (
+                <button onClick={() => { const id = [...LETTERS].find(l => !draft.options.some(o => o.id === l))!; setD({ options: [...draft.options, { id, text: '' }] }); }}
+                  className="self-start text-[13px] font-semibold text-azure-strong hover:underline">+ Add an answer</button>
+              )}
+            </>}
+            {draft.kind === 'short' && (
+              <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Accepted answers</span>
+                <input value={draft.accepted} onChange={e => setD({ accepted: e.target.value })} placeholder="5√2 | 5 root 2" className="input-base" />
+                <span className="text-xs text-muted">Marked automatically, ignoring capitals and spaces. Separate alternatives with |</span>
+              </label>
+            )}
+            {draft.kind === 'written' && (
+              <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Model answer (only you see it while grading)</span>
+                <textarea rows={2} value={draft.accepted} onChange={e => setD({ accepted: e.target.value })} className="resize-y rounded-md border border-line px-2.5 py-2 text-[13.5px] text-navy outline-none focus:border-azure" />
+              </label>
+            )}
 
-          <input className="w-full border border-cloud rounded-xl p-3 text-sm mb-3 focus:outline-none focus:border-azure"
-            placeholder="Explanation (shown after attempt)…" value={form.explanation ?? ''}
-            onChange={e => setForm(f => ({ ...f, explanation: e.target.value }))} />
+            <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Explanation students see after answering</span>
+              <textarea rows={2} value={draft.explanation} onChange={e => setD({ explanation: e.target.value })} maxLength={4000}
+                className="resize-y rounded-md border border-line px-2.5 py-2.5 text-[13.5px] text-ink2 outline-none focus:border-azure" />
+            </label>
+            <div className="flex flex-wrap items-center gap-3.5 text-[13px] text-ink2">
+              <label className="flex items-center gap-1.5">Difficulty:
+                <select value={draft.difficulty} onChange={e => setD({ difficulty: e.target.value as Draft['difficulty'] })} className="rounded border border-line px-1.5 py-1 font-semibold text-navy">
+                  <option value="EASY">Easy</option><option value="MEDIUM">Medium</option><option value="HARD">Hard</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5">Marks:
+                <input type="number" min={1} max={100} value={draft.points} onChange={e => setD({ points: Math.max(1, Number(e.target.value) || 1) })} className="w-14 rounded border border-line px-1.5 py-1 font-semibold text-navy" />
+              </label>
+              <label className="flex items-center gap-1.5">Links to video at
+                <input value={draft.videoAt} onChange={e => setD({ videoAt: e.target.value })} placeholder="3:40" className="w-16 rounded border border-line px-1.5 py-1 font-semibold text-navy" />
+              </label>
+            </div>
+            <div className="flex gap-2 border-t border-line pt-3">
+              {draft.id && <Button variant="secondary" size="sm" onClick={remove}>Delete</Button>}
+              <span className="flex-1" />
+              <Button size="sm" onClick={save} loading={saving} disabled={!lesson}>{draft.id ? 'Save question' : 'Add question'}</Button>
+            </div>
+          </section>
 
-          <div className="flex gap-3 mb-4">
-            <select className="flex-1 border border-cloud rounded-xl p-2 text-sm focus:outline-none"
-              value={form.difficulty ?? 'MEDIUM'} onChange={e => setForm(f => ({ ...f, difficulty: e.target.value }))}>
-              {DIFFICULTIES.map(d => <option key={d}>{d}</option>)}
-            </select>
-            <input type="number" min={1} max={10} className="w-20 border border-cloud rounded-xl p-2 text-sm focus:outline-none"
-              value={form.points ?? 1} onChange={e => setForm(f => ({ ...f, points: Number(e.target.value) }))} />
-          </div>
-
-          <button onClick={save} disabled={saving} className="w-full py-3 rounded-xl bg-azure text-white font-semibold text-sm">
-            {saving ? 'Saving…' : 'Save Question'}
-          </button>
-
-          <hr className="my-4 border-cloud" />
-          <p className="text-xs text-muted mb-2">AI Generate from lesson</p>
-          <div className="flex gap-2">
-            <input className="flex-1 border border-cloud rounded-xl p-2 text-xs focus:outline-none"
-              placeholder="Lesson ID…" value={selectedLessonId}
-              onChange={e => setSelectedLessonId(e.target.value)} />
-            <button onClick={aiGenerate} disabled={generatingAI}
-              className="px-3 py-2 rounded-xl bg-royal text-white text-xs font-semibold">
-              {generatingAI ? '…' : '✨ AI'}
-            </button>
-          </div>
+          <aside className="flex min-w-0 flex-[1_1_240px] flex-col gap-2 rounded-lg border border-line bg-white p-4">
+            <h3 className="text-[15px] font-semibold text-navy">Quiz settings</h3>
+            {lesson ? <>
+              <SettingRow label="Pass mark">
+                <select value={lesson.passMark ?? ''} onChange={e => setting({ passMark: e.target.value === '' ? null : Number(e.target.value) })} className="font-semibold text-navy">
+                  <option value="">None</option>{[40, 50, 60, 70, 80, 90, 100].map(n => <option key={n} value={n}>{n}%</option>)}
+                </select>
+              </SettingRow>
+              <SettingRow label="Time limit">
+                <select value={lesson.timeLimitSecs ?? ''} onChange={e => setting({ timeLimitSecs: e.target.value === '' ? null : Number(e.target.value) })} className="font-semibold text-navy">
+                  <option value="">None</option>{[5, 10, 15, 20, 30, 45, 60, 90].map(n => <option key={n} value={n * 60}>{n} min</option>)}
+                </select>
+              </SettingRow>
+              <SettingRow label="Attempts">
+                <select value={lesson.maxAttempts} onChange={e => setting({ maxAttempts: Number(e.target.value) })} className="font-semibold text-navy">
+                  <option value={0}>Unlimited</option>{[1, 2, 3, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </SettingRow>
+              <SettingRow label="Shuffle questions">
+                <select value={lesson.shuffleQuestions ? 'on' : 'off'} onChange={e => setting({ shuffleQuestions: e.target.value === 'on' })} className="font-semibold text-navy">
+                  <option value="on">On</option><option value="off">Off</option>
+                </select>
+              </SettingRow>
+              <button onClick={() => setPreview(true)} disabled={!questions?.length}
+                className="mt-1.5 grid h-[34px] place-items-center rounded-md border border-line text-[13px] font-semibold text-navy hover:bg-subtle disabled:opacity-50">Preview as student</button>
+            </> : <div className="h-28 rounded bg-subtle animate-pulse" />}
+          </aside>
         </div>
+      )}
 
-        {/* Question list */}
-        <div>
-          <h2 className="font-bold text-navy mb-4">{questions.length} Questions</h2>
-          {loading ? <div className="text-muted text-sm">Loading…</div> : (
-            <div className="flex flex-col gap-3">
+      {preview && questions && lesson && (
+        <Dialog open onOpenChange={o => { if (!o) setPreview(false); }}>
+          <DialogContent title={lesson.title} description={`${questions.length} questions${lesson.timeLimitSecs ? ` · ${Math.round(lesson.timeLimitSecs / 60)} minutes` : ''}${lesson.passMark != null ? ` · pass mark ${lesson.passMark}%` : ''}`} size="lg">
+            <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto">
               {questions.map((q, i) => (
-                <div key={q.id} className="bg-white rounded-xl border border-cloud p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <span className="text-xs font-bold text-azure mr-2">#{i + 1} {q.type}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${q.difficulty === 'HARD' ? 'bg-red-100 text-red-600' : q.difficulty === 'EASY' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>{q.difficulty}</span>
-                      <p className="text-sm text-navy mt-1 line-clamp-2">{q.questionText}</p>
-                    </div>
-                    <button onClick={() => del(q.id)} className="text-red-400 hover:text-red-600 flex-shrink-0">
-                      <Icon name="trash" size={14} />
-                    </button>
-                  </div>
+                <div key={q.id} className="rounded-md border border-line p-3.5">
+                  <p className="text-[13.5px] font-semibold text-navy">{i + 1}. {q.questionText} <span className="font-normal text-muted">· {q.points} mark{q.points === 1 ? '' : 's'}</span></p>
+                  {q.type === 'MCQ' ? (
+                    <div className="mt-2 flex flex-col gap-1.5">{(q.options ?? []).map(o => <span key={o.id} className="rounded border border-line px-2.5 py-1.5 text-[13px] text-ink2">{o.text}</span>)}</div>
+                  ) : <div className="mt-2 h-14 rounded border border-line bg-subtle" />}
                 </div>
               ))}
-              {!questions.length && <p className="text-sm text-muted">No questions yet. Add your first one.</p>}
             </div>
-          )}
-        </div>
-      </div>
+            <DialogFooter><Button size="sm" variant="secondary" onClick={() => setPreview(false)}>Close</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
+}
+
+function SettingRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label className="flex items-center justify-between gap-2 text-[13px]"><span className="text-ink2">{label}</span>{children}</label>;
 }

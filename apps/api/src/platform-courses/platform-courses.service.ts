@@ -649,7 +649,7 @@ export class PlatformCoursesService {
   private questionData(dto: any, lessonType: string, partial: boolean): Prisma.QuestionBankUncheckedUpdateInput {
     const data: Prisma.QuestionBankUncheckedUpdateInput = {};
     if (!partial || dto.type !== undefined) {
-      if (!['MCQ', 'WRITTEN'].includes(dto.type)) throw new BadRequestException('type must be MCQ or WRITTEN');
+      if (!['MCQ', 'SHORT_ANSWER', 'WRITTEN'].includes(dto.type)) throw new BadRequestException('type must be MCQ, SHORT_ANSWER or WRITTEN');
       if (lessonType !== 'QUIZ' && dto.type !== 'MCQ') throw new BadRequestException('Practice questions must be multiple choice so they can be marked instantly');
       data.type = dto.type;
     }
@@ -664,6 +664,19 @@ export class PlatformCoursesService {
     }
     if (!partial || dto.correctAnswer !== undefined) data.correctAnswer = String(dto.correctAnswer ?? '');
     if (dto.explanation !== undefined) data.explanation = dto.explanation ? String(dto.explanation).slice(0, 4000) : null;
+    if (dto.points !== undefined) {
+      const pts = Math.round(Number(dto.points));
+      if (!Number.isFinite(pts) || pts < 1 || pts > 100) throw new BadRequestException('Marks must be 1 to 100');
+      data.points = pts;
+    }
+    if (dto.difficulty !== undefined) {
+      if (!['EASY', 'MEDIUM', 'HARD'].includes(dto.difficulty)) throw new BadRequestException('difficulty must be EASY, MEDIUM or HARD');
+      data.difficulty = dto.difficulty;
+    }
+    if (dto.tags !== undefined) {
+      if (!Array.isArray(dto.tags)) throw new BadRequestException('tags must be a list');
+      data.tags = dto.tags.map((t: unknown) => String(t).slice(0, 40)).slice(0, 10);
+    }
     if (dto.videoAtSec !== undefined) {
       const v = dto.videoAtSec === null || dto.videoAtSec === '' ? null : Math.floor(Number(dto.videoAtSec));
       if (v !== null && (!Number.isFinite(v) || v < 0)) throw new BadRequestException('videoAtSec must be a non-negative number of seconds');
@@ -780,16 +793,22 @@ export class PlatformCoursesService {
     });
     if (questions.length === 0) throw new BadRequestException('This quiz has no questions yet');
 
-    // Auto-score MCQ
-    const mcqQuestions = questions.filter(q => q.type === 'MCQ');
-    let autoScore = 0;
-    for (const q of mcqQuestions) {
-      if (answersJson[q.id] === q.correctAnswer) autoScore++;
-    }
-
-    const maxScore = mcqQuestions.length;
+    // Multiple choice and short answers are marked here; written answers wait for the teacher
+    const isRight = (q: (typeof questions)[number]) => {
+      const given = answersJson[q.id];
+      if (given == null || given === '') return false;
+      if (q.type === 'SHORT_ANSWER') {
+        const norm = (x: string) => x.trim().toLowerCase().replace(/\s+/g, ' ');
+        return q.correctAnswer.split('|').map(norm).includes(norm(String(given)));
+      }
+      return given === q.correctAnswer;
+    };
+    const autoQuestions = questions.filter(q => q.type !== 'WRITTEN');
+    const autoScore = autoQuestions.reduce((n, q) => n + (isRight(q) ? q.points : 0), 0);
+    const autoMax = autoQuestions.reduce((n, q) => n + q.points, 0);
+    const maxScore = questions.reduce((n, q) => n + q.points, 0);
     const hasWritten = questions.some(q => q.type === 'WRITTEN');
-    const percentage = maxScore > 0 ? Math.round((autoScore / maxScore) * 100) : 100;
+    const percentage = autoMax > 0 ? Math.round((autoScore / autoMax) * 100) : 100;
     const passed = !hasWritten && (lesson.passMark == null || percentage >= lesson.passMark);
 
     const attempt = await this.prisma.quizAttempt.create({
@@ -817,8 +836,9 @@ export class PlatformCoursesService {
       type: q.type,
       options: q.options,
       yourAnswer: answersJson[q.id] ?? null,
-      correctAnswer: q.type === 'MCQ' ? q.correctAnswer : null,
-      isCorrect: q.type === 'MCQ' ? answersJson[q.id] === q.correctAnswer : null,
+      correctAnswer: q.type === 'WRITTEN' ? null : q.correctAnswer.split('|')[0],
+      isCorrect: q.type === 'WRITTEN' ? null : isRight(q),
+      points: q.points,
       explanation: q.explanation ?? null,
     }));
 
