@@ -18,6 +18,28 @@ const BADGE_THRESHOLDS: { badge: string; check: (stats: UserStats) => boolean }[
   { badge: 'PEER_REVIEWER',         check: s => s.peerReviewsGiven >= 3 },
 ];
 
+/** What the leaderboard shows under "How to earn points" — read from XP_TABLE so it can't drift */
+const EARN_GUIDE = [
+  { label: 'Finish a lesson', points: XP_TABLE.LESSON_COMPLETE },
+  { label: 'Pass a quiz', points: XP_TABLE.QUIZ_PASS },
+  { label: 'Hand in an assignment', points: XP_TABLE.ASSIGNMENT_SUBMIT },
+  { label: 'Pass an assignment', points: XP_TABLE.ASSIGNMENT_PASS },
+  { label: 'Ask or answer in Community', points: XP_TABLE.FORUM_POST },
+  { label: 'Reach a 7 or 30-day streak', points: XP_TABLE.STREAK_BONUS },
+  { label: 'Earn a certificate', points: XP_TABLE.CERTIFICATE_EARNED },
+];
+
+const BADGE_LABELS = [
+  { badge: 'FIRST_LESSON', label: 'First lesson', hint: 'Finish any lesson' },
+  { badge: 'STREAK_7', label: '7-day streak', hint: 'Learn 7 days in a row' },
+  { badge: 'QUIZ_PERFECT', label: 'Quiz master', hint: 'Score 100% on a quiz' },
+  { badge: 'FIRST_COURSE_COMPLETE', label: 'Course finished', hint: 'Complete a whole course' },
+  { badge: 'CERTIFICATE_FIRST', label: 'First certificate', hint: 'Earn a certificate' },
+  { badge: 'FORUM_HELPER', label: 'Helper', hint: 'Get 10 upvotes in Community' },
+  { badge: 'STREAK_30', label: '30-day streak', hint: 'Learn 30 days in a row' },
+  { badge: 'PEER_REVIEWER', label: 'Peer reviewer', hint: 'Review 3 classmates' },
+];
+
 interface UserStats {
   lessonsCompleted: number; coursesCompleted: number; streak: number;
   perfectQuizzes: number; forumUpvotesReceived: number; certificatesEarned: number;
@@ -164,5 +186,105 @@ export class GamificationService {
       }))
       .sort((a, b) => b.xpTotal - a.xpTotal)
       .map((s, i) => ({ ...s, rank: i + 1 }));
+  }
+  /**
+   * The student leaderboard: points earned in a period (XP events), among one cohort or every student.
+   * Classmates who turned off "Show my name" appear as "A classmate"; you always see yourself.
+   */
+  async getBoard(user: { id: string; role: string }, opts: { period?: string; scope?: string; cohortId?: string }) {
+    const period = (['week', 'month', 'all'].includes(opts.period ?? '') ? opts.period : 'week') as 'week' | 'month' | 'all';
+    const now = new Date();
+    const start = period === 'week' ? new Date(now.getTime() - 7 * 86_400_000)
+      : period === 'month' ? new Date(now.getTime() - 30 * 86_400_000) : null;
+    const prevStart = start ? new Date(start.getTime() - (now.getTime() - start.getTime())) : null;
+
+    const memberships = await this.prisma.cohortRoster.findMany({
+      where: { studentId: user.id },
+      select: { cohort: { select: { id: true, name: true } } },
+    });
+    const cohorts = memberships.map(m => m.cohort);
+    const scope = opts.scope === 'everyone' || !cohorts.length ? 'everyone' : 'cohort';
+    const cohort = scope === 'cohort' ? (cohorts.find(c => c.id === opts.cohortId) ?? cohorts[0]) : null;
+
+    // Who is on the board
+    let studentIds: string[];
+    if (cohort) {
+      const roster = await this.prisma.cohortRoster.findMany({ where: { cohortId: cohort.id }, select: { studentId: true } });
+      studentIds = roster.map(r => r.studentId);
+    } else {
+      const active = await this.prisma.xPEvent.groupBy({
+        by: ['userId'], where: start ? { createdAt: { gte: start } } : {},
+        _sum: { points: true }, orderBy: { _sum: { points: 'desc' } }, take: 50,
+      });
+      studentIds = [...new Set([...active.map(a => a.userId), user.id])];
+    }
+
+    const sumsFor = async (from: Date | null, to: Date | null) => {
+      const rows = await this.prisma.xPEvent.groupBy({
+        by: ['userId'],
+        where: { userId: { in: studentIds }, ...(from || to ? { createdAt: { ...(from && { gte: from }), ...(to && { lt: to }) } } : {}) },
+        _sum: { points: true },
+      });
+      return new Map(rows.map(r => [r.userId, r._sum.points ?? 0]));
+    };
+    const [people, current, previous] = await Promise.all([
+      this.prisma.userProfile.findMany({
+        where: { id: { in: studentIds }, role: 'STUDENT' },
+        select: { id: true, name: true, firstName: true, lastName: true, avatarUrl: true, xpTotal: true, streak: true, leaderboardVisible: true },
+      }),
+      start ? sumsFor(start, null) : Promise.resolve(null),
+      prevStart && start ? sumsFor(prevStart, start) : Promise.resolve(null),
+    ]);
+
+    type Person = (typeof people)[number];
+    const pointsOf = (p: Person) => current ? (current.get(p.id) ?? 0) : p.xpTotal;
+    const rankBy = (score: (p: Person) => number) =>
+      new Map([...people].sort((a, b) => score(b) - score(a) || a.id.localeCompare(b.id)).map((p, i) => [p.id, i + 1]));
+    const ranks = rankBy(pointsOf);
+    const prevRanks = previous ? rankBy(p => previous.get(p.id) ?? 0) : null;
+
+    const full = (p: Person) => p.name || [p.firstName, p.lastName].filter(Boolean).join(' ') || 'Student';
+    const entries = [...people]
+      .sort((a, b) => ranks.get(a.id)! - ranks.get(b.id)!)
+      .map(p => {
+        const isMe = p.id === user.id;
+        const hidden = !isMe && !p.leaderboardVisible;
+        const name = hidden ? 'A classmate' : full(p);
+        const rank = ranks.get(p.id)!;
+        return {
+          rank, id: hidden ? `hidden-${rank}` : p.id, name, isMe,
+          initials: hidden ? '·' : name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase(),
+          avatarUrl: hidden ? null : p.avatarUrl, points: pointsOf(p), streak: p.streak,
+          move: prevRanks ? prevRanks.get(p.id)! - rank : 0,
+        };
+      });
+
+    const meIdx = entries.findIndex(e => e.isMe);
+    const me = meIdx >= 0 ? entries[meIdx] : null;
+    const ahead = meIdx > 0 ? entries[meIdx - 1] : null;
+    const [self, earned] = await Promise.all([
+      this.prisma.userProfile.findUnique({ where: { id: user.id }, select: { leaderboardVisible: true, streak: true } }),
+      this.prisma.userBadge.findMany({ where: { userId: user.id } }),
+    ]);
+
+    return {
+      period, scope, cohorts, cohortId: cohort?.id ?? null, scopeName: cohort?.name ?? 'Everyone',
+      leaderboardVisible: self?.leaderboardVisible ?? true,
+      me: me ? {
+        rank: me.rank, points: me.points, streak: self?.streak ?? 0, of: entries.length,
+        gap: ahead ? ahead.points - me.points : 0, aheadName: ahead?.name ?? null,
+      } : null,
+      entries: entries.slice(0, 50).concat(me && me.rank > 50 ? [me] : []),
+      earn: EARN_GUIDE,
+      badges: BADGE_LABELS.map(b => {
+        const e = earned.find(x => x.badge === b.badge);
+        return { ...b, earned: !!e, earnedAt: e?.earnedAt ?? null };
+      }),
+    };
+  }
+
+  async setLeaderboardVisible(userId: string, visible: boolean) {
+    await this.prisma.userProfile.update({ where: { id: userId }, data: { leaderboardVisible: !!visible } });
+    return { leaderboardVisible: !!visible };
   }
 }

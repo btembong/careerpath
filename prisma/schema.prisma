@@ -33,6 +33,12 @@ model UserProfile {
   microsoftId         String?                  @unique
   streak              Int                      @default(0)
   xpTotal             Int                      @default(0)
+  /// Whether classmates see this student's name on leaderboards (they always see their own)
+  leaderboardVisible  Boolean                  @default(true)
+  /// Per notification type: { [type]: { inApp: boolean, email: boolean } }
+  notificationPrefs   Json?
+  /// { language, textSize, dataSaver, autoplay, downloadOnWifi }
+  displayPrefs        Json?
   agreementAcceptedAt DateTime?
   agreementVersion    String?
   agreementIp         String?
@@ -417,8 +423,11 @@ model RubricCriterion {
   id          String           @id @default(uuid())
   rubricId    String
   title       String
+  /// Marks this criterion is worth
   weight      Float
+  /// Levels, lowest first: [{ points, label }]
   descriptors Json
+  sortOrder   Int              @default(0)
   rubric      AssignmentRubric @relation(fields: [rubricId], references: [id], onDelete: Cascade)
   scores      RubricScore[]
 }
@@ -501,6 +510,9 @@ model QuizAttempt {
   maxScore      Int                 @default(0)
   passed        Boolean             @default(false)
   timeTakenSecs Int?
+  /// Teacher's feedback when grading written answers
+  feedback      String?
+  gradedAt      DateTime?
   student       UserProfile         @relation(fields: [studentId], references: [id])
   answers       QuizAttemptAnswer[]
 }
