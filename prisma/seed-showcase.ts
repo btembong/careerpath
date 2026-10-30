@@ -10,6 +10,7 @@
  *   • Assignments: a graded submission for the demo student
  *   • Mentorship: free times for 3 weeks, an upcoming booking, a past rated session
  *   • Learning: lesson progress so "pick up where you left off" shows
+ *   • Teacher subjects and reviews, assignments to hand in and grade, a study plan, flag rules
  *   • Messages + notifications for the demo student
  *
  * Needs the demo accounts and WASSCE package from seed-demo.ts / seed-cohort.ts.
@@ -249,6 +250,65 @@ async function main() {
     });
   }
   log('Learning: 3 lessons done, the 4th started');
+
+  // ── Teachers, assignments, study plan, flag rules ──────────────────────
+  await prisma.teacherApplication.upsert({
+    where: { userId: teacher.id },
+    update: { subjectAreas: ['Mathematics'], yearsExperience: 9 },
+    create: { userId: teacher.id, subjectAreas: ['Mathematics'], yearsExperience: 9, bio: 'Mathematics teacher with 9 years of WASSCE and GCE exam preparation.', teachingProgrammeIds: [], teachingSubjectIds: [] },
+  });
+  for (const [who, rating, comment] of [[student, 5, 'Explains slowly and checks we understand.'], [classmates[0], 4, 'Great exam tips. Classes can run a little long.']] as const) {
+    if (!who) continue;
+    await prisma.teacherReview.upsert({
+      where: { teacherId_studentId: { teacherId: teacher.id, studentId: who.id } },
+      update: {},
+      create: { teacherId: teacher.id, studentId: who.id, rating, comment },
+    });
+  }
+  log('Teacher: Mathematics, 9 years, two student reviews');
+
+  if (pkg.cohortId) {
+    const cohortId = pkg.cohortId;
+    const ensure = async (title: string, description: string, dueDays: number, maxPoints: number) =>
+      (await prisma.assignment.findFirst({ where: { cohortId, title } }))
+      ?? prisma.assignment.create({ data: { cohortId, title, description, maxPoints, dueDate: at(dueDays, 23, 59) } });
+    const quad = await ensure('Quadratics worksheet', 'Solve questions 1–10 on the worksheet. Show every step — method marks count.', 5, 20);
+    const stats = await ensure('Statistics reading questions', 'Answer the five questions on the frequency table from Monday’s class.', -1, 10);
+    // Classmates have handed in work for the teacher to grade; one is late
+    for (const [i, c] of classmates.entries()) {
+      const a = i === 2 ? stats : quad;
+      await prisma.submission.upsert({
+        where: { studentId_assignmentId: { studentId: c.id, assignmentId: a.id } },
+        update: {},
+        create: { assignmentId: a.id, studentId: c.id, status: 'PENDING_REVIEW', note: i === 0 ? 'I wasn’t sure about question 7.' : null,
+          submittedAt: i === 2 ? new Date(Date.now() - 2 * 3_600_000) : new Date(Date.now() - (i + 1) * DAY) },
+      });
+    }
+    if (!(await prisma.progressAlert.findFirst({ where: { cohortId, teacherId: teacher.id, type: 'INACTIVE' } }))) {
+      await prisma.progressAlert.create({ data: { cohortId, teacherId: teacher.id, type: 'INACTIVE', thresholdDays: 7, enabled: true } });
+    }
+    log('Assignments: one due in 5 days, one overdue, three hand-ins to grade; inactivity rule');
+  }
+
+  const today = new Date(new Date().toDateString());
+  const monday = new Date(today.getTime() - ((today.getDay() + 6) % 7) * DAY);
+  const planned = await prisma.studyBlock.count({ where: { studentId: student.id, startsAt: { gte: monday } } });
+  if (!planned) {
+    const plan: [number, number, string, number, boolean][] = [
+      [0, 18, 'Statistics notes and 10 questions', 60, true],
+      [2, 18, 'Quadratics worksheet', 90, true],
+      [4, 17, 'Past paper: Section A', 60, false],
+      [7, 18, 'Probability in past papers', 60, false],
+      [9, 18, 'Mock test revision', 90, false],
+    ];
+    await prisma.studyBlock.createMany({
+      data: plan.map(([d, h, topic, mins, done]) => {
+        const s = new Date(monday.getTime() + d * DAY); s.setHours(h, 0, 0, 0);
+        return { studentId: student.id, startsAt: s, durationMins: mins, topic, courseId: pkg.courseIds[0] ?? null, done };
+      }),
+    });
+  }
+  log('Study plan: five study sessions over two weeks');
 
   // ── Messages and notifications ─────────────────────────────────────────
   const thread = await prisma.messageThread.findFirst({
