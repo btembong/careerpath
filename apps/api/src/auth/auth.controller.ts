@@ -140,6 +140,25 @@ export class AuthController {
     return this.authService.getMe(user.id);
   }
 
+  @Get('me/preferences')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Notification, display and privacy preferences' })
+  getPreferences(@CurrentUser() user: UserProfile) {
+    return this.authService.getPreferences(user.id);
+  }
+
+  @Patch('me/preferences')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update notification, display and privacy preferences' })
+  updatePreferences(
+    @CurrentUser() user: UserProfile,
+    @Body() body: { notifications?: unknown; display?: unknown; leaderboardVisible?: boolean; timezone?: string },
+  ) {
+    return this.authService.updatePreferences(user.id, body ?? {});
+  }
+
   @Patch('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -154,8 +173,9 @@ export class AuthController {
     @Body('bio') bio?: string,
     @Body('linkedinUrl') linkedinUrl?: string,
     @Body('websiteUrl') websiteUrl?: string,
+    @Body('countryId') countryId?: string,
   ) {
-    return this.authService.updateMe(user.id, { name, firstName, lastName, phone, avatarUrl, bio, linkedinUrl, websiteUrl });
+    return this.authService.updateMe(user.id, { name, firstName, lastName, phone, avatarUrl, bio, linkedinUrl, websiteUrl, countryId });
   }
 
   @Post('teacher-onboarding')

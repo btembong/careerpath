@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+import { resolvePrefs, resolveDisplay, NOTIFICATION_KINDS } from '../notifications/notification-prefs';
 import {
   Injectable,
   ConflictException,
@@ -364,6 +366,45 @@ export class AuthService {
       },
     });
     return { updated: true };
+  }
+
+  // ── Preferences (Settings) ───────────────────────────────
+
+  async getPreferences(userId: string) {
+    const p = await this.prisma.userProfile.findUnique({
+      where: { id: userId },
+      select: { notificationPrefs: true, displayPrefs: true, leaderboardVisible: true, countryId: true, timezone: true },
+    });
+    if (!p) throw new NotFoundException('User profile not found');
+    const countries = await this.prisma.country.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
+    return {
+      notifications: resolvePrefs(p.notificationPrefs),
+      kinds: NOTIFICATION_KINDS,
+      display: resolveDisplay(p.displayPrefs),
+      leaderboardVisible: p.leaderboardVisible,
+      countryId: p.countryId, timezone: p.timezone, countries,
+    };
+  }
+
+  async updatePreferences(userId: string, dto: { notifications?: unknown; display?: unknown; leaderboardVisible?: boolean; timezone?: string }) {
+    const current = await this.prisma.userProfile.findUnique({ where: { id: userId }, select: { notificationPrefs: true, displayPrefs: true } });
+    if (!current) throw new NotFoundException('User profile not found');
+    const data: Prisma.UserProfileUpdateInput = {};
+    if (dto.notifications && typeof dto.notifications === 'object') {
+      const merged = { ...resolvePrefs(current.notificationPrefs) } as Record<string, { inApp: boolean; email: boolean }>;
+      for (const [k, v] of Object.entries(dto.notifications as Record<string, any>)) {
+        if (!merged[k] || !v || typeof v !== 'object') continue;
+        merged[k] = { inApp: v.inApp ?? merged[k].inApp, email: v.email ?? merged[k].email };
+      }
+      data.notificationPrefs = resolvePrefs(merged);
+    }
+    if (dto.display && typeof dto.display === 'object') {
+      data.displayPrefs = resolveDisplay({ ...resolveDisplay(current.displayPrefs), ...(dto.display as object) });
+    }
+    if (dto.leaderboardVisible !== undefined) data.leaderboardVisible = !!dto.leaderboardVisible;
+    if (dto.timezone !== undefined) data.timezone = dto.timezone ? String(dto.timezone).slice(0, 64) : null;
+    await this.prisma.userProfile.update({ where: { id: userId }, data });
+    return this.getPreferences(userId);
   }
 
   // ── Me ───────────────────────────────────────────────────

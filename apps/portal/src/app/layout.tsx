@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Bricolage_Grotesque } from 'next/font/google';
 import { NotificationProvider, NotificationBridge } from '@/components/providers/NotificationProvider';
 import { ServiceWorkerRegistration } from '@/components/providers/ServiceWorkerRegistration';
+import { DisplayPrefsApplier } from '@/components/providers/DisplayPrefsApplier';
 import './globals.css';
 
 // Bricolage Grotesque is a variable font — no weight array needed.
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <NotificationProvider>
           <NotificationBridge />
           <ServiceWorkerRegistration />
+          <DisplayPrefsApplier />
           {children}
         </NotificationProvider>
       </body>

@@ -290,7 +290,7 @@ export class EducationService {
     // Notify student — non-critical
     const studentName = [submission.student.firstName, submission.student.lastName].filter(Boolean).join(' ') || submission.student.email;
     const courseTitle = submission.assignment.cohort.name;
-    this.mail.sendAssignmentGraded(submission.student.email, {
+    if (await this.notifications.wantsEmail(submission.studentId, 'grade')) this.mail.sendAssignmentGraded(submission.student.email, {
       studentName,
       assignmentTitle: submission.assignment.title,
       courseTitle,

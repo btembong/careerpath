@@ -2,8 +2,9 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
+import { resolvePrefs } from './notification-prefs';
 
-export type NotificationType = 'live' | 'assignment' | 'grade' | 'certificate' | 'message' | 'system';
+export type NotificationType = 'live' | 'assignment' | 'grade' | 'certificate' | 'message' | 'community' | 'system';
 const AUDIENCES = ['ALL', 'STUDENT', 'TEACHER', 'COUNTRY_REP', 'SUBJECT_REVIEWER'] as const;
 const CHANNELS = ['IN_APP', 'EMAIL', 'BOTH'] as const;
 
@@ -24,9 +25,19 @@ export class NotificationsService {
   notify(userIds: string | string[], n: NewNotification): void {
     const ids = [...new Set(Array.isArray(userIds) ? userIds : [userIds])];
     if (!ids.length) return;
-    this.prisma.notification
-      .createMany({ data: ids.map(userId => ({ userId, ...n })) })
+    // Respect Settings → Notifications; system notices always go through
+    const recipients = n.type === 'system' ? Promise.resolve(ids) : this.prisma.userProfile
+      .findMany({ where: { id: { in: ids } }, select: { id: true, notificationPrefs: true } })
+      .then(users => users.filter(u => resolvePrefs(u.notificationPrefs)[n.type]?.inApp !== false).map(u => u.id));
+    recipients
+      .then(to => to.length ? this.prisma.notification.createMany({ data: to.map(userId => ({ userId, ...n })) }) : null)
       .catch(err => this.logger.warn(`Notification "${n.title}" failed: ${err.message}`));
+  }
+
+  /** Whether a user wants emails of this kind (Settings → Notifications). */
+  async wantsEmail(userId: string, kind: string): Promise<boolean> {
+    const u = await this.prisma.userProfile.findUnique({ where: { id: userId }, select: { notificationPrefs: true } });
+    return resolvePrefs(u?.notificationPrefs)[kind]?.email !== false;
   }
 
   // ── Inbox ────────────────────────────────────────────────
@@ -74,7 +85,7 @@ export class NotificationsService {
       ...(audience !== 'ALL' && { role: audience as UserRole }),
       ...(dto.countryId && { countryId: dto.countryId }),
     };
-    const recipients = await this.prisma.userProfile.findMany({ where, select: { id: true, email: true } });
+    const recipients = await this.prisma.userProfile.findMany({ where, select: { id: true, email: true, notificationPrefs: true } });
 
     const sent = await this.prisma.broadcast.create({
       data: { title, body, audience, channel, countryId: dto.countryId ?? null, sentById: adminId, recipientCount: recipients.length },
@@ -88,7 +99,9 @@ export class NotificationsService {
     if (channel !== 'IN_APP') {
       // Sequential on purpose: Brevo rate-limits bursts. Runs after the response is sent.
       void (async () => {
-        for (const r of recipients) await this.mail.sendAnnouncement(r.email, title, body);
+        for (const r of recipients) {
+          if (resolvePrefs(r.notificationPrefs).news.email) await this.mail.sendAnnouncement(r.email, title, body);
+        }
       })();
     }
     return { id: sent.id, recipientCount: recipients.length };
