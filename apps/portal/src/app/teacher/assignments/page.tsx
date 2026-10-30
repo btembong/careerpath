@@ -1,236 +1,201 @@
 'use client';
-import { notify } from '@/lib/notify';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AnimatePresence, motion } from 'framer-motion';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card } from '@/components/ui/Card';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { SkeletonTopbar, SkeletonListRow } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
-import { BottomSheet } from '@/components/layout/BottomSheet';
+import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent, DrawerSection, InfoGrid } from '@/components/ui/Dialog';
+import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-interface Student { id: string; firstName?: string | null; lastName?: string | null; email?: string; }
-interface Assignment { id: string; title?: string; maxPoints?: number; }
-interface Submission {
-  id: string;
-  submittedAt?: string;
-  createdAt?: string;
-  fileUrl?: string | null;
-  textContent?: string | null;
-  notes?: string | null;
-  student?: Student;
-  assignment?: Assignment;
-  assignmentId?: string;
+interface Sub {
+  id: string; assignmentId: string; title: string; maxPoints: number; dueDate: string;
+  cohort: { id: string; name: string }; student: { id: string; name: string };
+  fileUrl: string | null; note: string | null; grade: number | null; feedback: string | null; submittedAt: string; late: boolean;
 }
-
-function studentName(s?: Student): string {
-  if (!s) return 'Student';
-  if (s.firstName || s.lastName) return `${s.firstName ?? ''} ${s.lastName ?? ''}`.trim();
-  return s.email?.split('@')[0] ?? 'Student';
+interface Assignment { id: string; title: string; description: string; dueDate: string; maxPoints: number; cohort: { id: string; name: string }; students: number; submitted: number; graded: number; late: number }
+interface Overview {
+  cohorts: { id: string; name: string; students: number }[];
+  stats: { toGrade: number; oldestWaitDays: number | null; setThisMonth: number; onTimePct: number | null; avgGradePct: number | null };
+  toGrade: Sub[]; graded: Sub[]; assignments: Assignment[];
 }
-
-function GradingForm({ s, grades, setGrade, grading, submitGrade }: {
-  s: Submission;
-  grades: Record<string, { score: string; feedback: string }>;
-  setGrade: (id: string, field: 'score' | 'feedback', value: string) => void;
-  grading: string | null;
-  submitGrade: (id: string) => void;
-}) {
-  return (
-    <div className="space-y-3">
-      {s.notes && (
-        <div className="rounded-xl bg-azure/5 border border-azure/20 px-3 py-2.5">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-azure mb-1">Student note</p>
-          <p className="text-xs text-navy/80 leading-relaxed">{s.notes}</p>
-        </div>
-      )}
-      {s.fileUrl && (
-        <a href={s.fileUrl} target="_blank" rel="noreferrer"
-          className="inline-flex items-center gap-2 rounded-xl border border-cloud bg-surface px-3 py-2 text-xs font-semibold text-navy hover:bg-cloud transition">
-          <Icon name="download" size={13} /> View submission
-        </a>
-      )}
-      {s.textContent && (
-        <div className="rounded-xl bg-surface border border-cloud p-3 text-sm text-navy/80 leading-relaxed max-h-32 overflow-y-auto">
-          {s.textContent}
-        </div>
-      )}
-      <div className="space-y-1">
-        <label className="text-xs font-semibold text-navy">Score (0–{s.assignment?.maxPoints ?? 100})</label>
-        <input type="number" min="0" max={s.assignment?.maxPoints ?? 100}
-          value={grades[s.id]?.score ?? ''} onChange={e => setGrade(s.id, 'score', e.target.value)}
-          placeholder={`e.g. ${Math.round((s.assignment?.maxPoints ?? 100) * 0.85)}`}
-          className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure focus:ring-2 focus:ring-azure/15" />
-      </div>
-      <div className="space-y-1">
-        <label className="text-xs font-semibold text-navy">Feedback <span className="font-normal text-royal/40">(optional)</span></label>
-        <textarea rows={3} value={grades[s.id]?.feedback ?? ''} onChange={e => setGrade(s.id, 'feedback', e.target.value)}
-          placeholder="Great work on…"
-          className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none resize-none focus:border-azure focus:ring-2 focus:ring-azure/15 placeholder:text-royal/40" />
-      </div>
-      <Button size="sm" loading={grading === s.id} onClick={() => submitGrade(s.id)}>
-        <Icon name="check" size={13} /> Submit grade
-      </Button>
-    </div>
-  );
-}
+type Tab = 'grade' | 'all' | 'graded';
+const DAY = 86_400_000;
+const ago = (d: string) => { const n = Math.floor((Date.now() - new Date(d).getTime()) / DAY); return n <= 0 ? 'today' : n === 1 ? 'yesterday' : `${n} days ago`; };
+const date = (d: string) => new Date(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
 export default function TeacherAssignmentsPage() {
-  const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [grading,     setGrading]     = useState<string | null>(null);
-  const [grades,      setGrades]      = useState<Record<string, { score: string; feedback: string }>>({});
-  const [open,        setOpen]        = useState<string | null>(null);
-  const [search,      setSearch]      = useState('');
+  const [d, setD] = useState<Overview | null>(null);
+  const [tab, setTab] = useState<Tab>('grade');
+  const [grading, setGrading] = useState<Sub | null>(null);
+  const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
-    api.get('/education/submissions/queue')
-      .then(r => setSubmissions(r.data ?? []))
-      .catch(() => notify.error('Failed to load grading queue'))
-      .finally(() => setLoading(false));
-  }, []);
+  async function load() { const r = await api.get('/education/teacher/assignments-overview'); setD(r.data); return r.data as Overview; }
+  useEffect(() => { load().catch(() => notify.error('Could not load assignments')); }, []);
 
-  function setGrade(id: string, field: 'score' | 'feedback', value: string) {
-    setGrades(g => ({ ...g, [id]: { ...g[id], score: g[id]?.score ?? '', feedback: g[id]?.feedback ?? '', [field]: value } }));
-  }
-
-  async function submitGrade(submissionId: string) {
-    const g = grades[submissionId];
-    if (!g?.score) { notify.error('Enter a score before submitting.'); return; }
-    setGrading(submissionId);
-    try {
-      await api.patch(`/education/submissions/${submissionId}/grade`, {
-        grade: parseFloat(g.score),
-        feedback: g.feedback || undefined,
-      });
-      notify.success('Grade submitted');
-      setSubmissions(s => s.filter(x => x.id !== submissionId));
-      setOpen(null);
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Grading failed');
-    } finally {
-      setGrading(null);
-    }
-  }
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 p-6 space-y-4">
-        <div className="h-8 w-48 rounded-xl bg-cloud animate-pulse" />
-        <div className="rounded-2xl border border-cloud bg-white overflow-hidden">
-          {[1,2,3,4,5].map(i => <SkeletonListRow key={i} />)}
-        </div>
-      </div>
-    </div>
-  );
+  const s = d?.stats;
+  const btn = (primary: boolean) => clsx('inline-flex h-8 items-center rounded-md border px-3 text-[13px] font-semibold', primary ? 'border-azure-strong bg-azure-strong text-on-accent' : 'border-line bg-white text-navy hover:bg-subtle');
 
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="Assignments" subtitle="Review and grade student submissions" />
-      <div className="flex-1 p-6 pb-28 lg:pb-6 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">GRADING QUEUE</p>
-            <h2 className="text-base font-bold text-navy">{submissions.length} pending submission{submissions.length !== 1 ? 's' : ''}</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            {submissions.length > 0 && (
-              <div className="relative">
-                <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-azure/40 pointer-events-none" />
-                <input
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Search student…"
-                  className="w-full sm:w-48 rounded-xl border border-cloud bg-white pl-9 pr-3 py-2 text-sm text-navy placeholder:text-royal/30 outline-none focus:border-azure focus:ring-2 focus:ring-azure/10 transition"
-                />
-              </div>
-            )}
-            <Link href="/teacher/quiz-grading"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-cloud bg-white px-3 py-2 text-xs font-semibold text-navy hover:bg-cloud transition">
-              <Icon name="graduate" size={13} /> Written quizzes
-            </Link>
-          </div>
-        </div>
-
-        {submissions.length === 0 ? (
-          <Card padding="lg">
-            <EmptyState
-              icon="check"
-              title="All caught up!"
-              description="No pending submissions to grade right now"
-            />
-          </Card>
-        ) : (
-          <>
-            <div className="space-y-3">
-              {(() => {
-                const filtered = search.trim()
-                  ? submissions.filter(s => studentName(s.student).toLowerCase().includes(search.toLowerCase())
-                      || (s.assignment?.title ?? '').toLowerCase().includes(search.toLowerCase()))
-                  : submissions;
-                if (filtered.length === 0 && search.trim()) {
-                  return <p className="text-sm text-royal/40 text-center py-12">No submissions match &ldquo;{search}&rdquo;</p>;
-                }
-                return filtered.map(s => (
-                  <Card key={s.id} padding="none" className="overflow-hidden">
-                    {/* Header row */}
-                    <button onClick={() => setOpen(open === s.id ? null : s.id)}
-                      className="flex items-center gap-4 px-4 py-4 w-full text-left hover:bg-cloud/30 transition">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-azure text-sm font-bold text-white flex-shrink-0">
-                        {studentName(s.student)[0].toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-navy truncate">{studentName(s.student)}</p>
-                        <p className="text-xs text-royal/50 truncate">{s.assignment?.title ?? `Assignment #${s.assignmentId?.slice(0, 8)}`}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[10px] text-royal/40">
-                          {new Date(s.submittedAt ?? s.createdAt ?? '').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                        </span>
-                        <Badge variant="default">Pending</Badge>
-                        <Icon name="chevronDown" size={14} className={`text-royal/40 transition-transform ${open === s.id ? 'rotate-180' : ''}`} />
-                      </div>
-                    </button>
-
-                    {/* Desktop inline grading panel */}
-                    <AnimatePresence>
-                      {open === s.id && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                          className="hidden lg:block overflow-hidden"
-                        >
-                          <div className="border-t border-cloud px-4 pb-4 pt-3">
-                            <GradingForm s={s} grades={grades} setGrade={setGrade} grading={grading} submitGrade={submitGrade} />
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </Card>
-                ));
-              })()}
+    <div className="flex min-h-full flex-col">
+      <Topbar title="Assignments" subtitle="Set work for your cohorts and grade what comes in"
+        actions={<Button size="sm" disabled={!d?.cohorts.length} onClick={() => setCreating(true)}>New assignment</Button>} />
+      <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
+          {[
+            { l: 'To grade', v: s ? String(s.toGrade) : '…', sub: s?.oldestWaitDays != null ? `Oldest waiting ${s.oldestWaitDays} day${s.oldestWaitDays === 1 ? '' : 's'}` : 'Nothing waiting' },
+            { l: 'Due this month', v: s ? String(s.setThisMonth) : '…', sub: d ? `${d.cohorts.length} cohort${d.cohorts.length === 1 ? '' : 's'}` : '' },
+            { l: 'On time', v: s?.onTimePct != null ? `${s.onTimePct}%` : '—', sub: 'Handed in before the due date' },
+            { l: 'Average grade', v: s?.avgGradePct != null ? `${s.avgGradePct}%` : '—', sub: 'Last 30 days' },
+          ].map(x => (
+            <div key={x.l} className="rounded-lg border border-line bg-white p-4">
+              <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{x.l}</dt>
+              <dd className="mt-1.5 text-[22px] font-extrabold text-navy">{x.v}</dd>
+              <dd className="mt-0.5 truncate text-[12.5px] text-muted">{x.sub}</dd>
             </div>
+          ))}
+        </dl>
 
-            {/* Mobile: grading in BottomSheet (tall to fit form) */}
-            {open && (() => {
-              const s = submissions.find(x => x.id === open);
-              if (!s) return null;
-              return (
-                <BottomSheet open title={`Grade: ${s.assignment?.title ?? 'Assignment'}`} onClose={() => setOpen(null)} height="auto">
-                  <GradingForm s={s} grades={grades} setGrade={setGrade} grading={grading} submitGrade={submitGrade} />
-                </BottomSheet>
-              );
-            })()}
-          </>
-        )}
+        <section className="rounded-lg border border-line bg-white">
+          <div role="tablist" aria-label="Assignments" className="flex gap-1 border-b border-line px-4">
+            {([['grade', 'To grade', d?.toGrade.length], ['all', 'All assignments', d?.assignments.length], ['graded', 'Graded', d?.graded.length]] as [Tab, string, number | undefined][]).map(([k, l, n]) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+                className={clsx('-mb-px h-[46px] border-b-2 px-3 text-[13.5px] text-navy', tab === k ? 'border-azure-strong font-semibold' : 'border-transparent font-medium')}>
+                {l} <span className="font-medium text-muted">{n ?? 0}</span>
+              </button>
+            ))}
+          </div>
+          {!d ? <div className="m-4 h-40 rounded-md bg-subtle animate-pulse" /> : tab === 'all' ? (
+            !d.assignments.length ? <p className="px-4 py-10 text-center text-[13px] text-ink2">No assignments yet. Use “New assignment” to set one.</p> :
+            d.assignments.map(a => (
+              <div key={a.id} className="flex flex-wrap items-center gap-3.5 border-t border-line px-[18px] py-3.5 first:border-t-0">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-navy">{a.title}</p>
+                  <p className="mt-0.5 truncate text-[12.5px] text-muted">{a.cohort.name} · {new Date(a.dueDate).getTime() < Date.now() ? 'closed' : 'due'} {date(a.dueDate)} · {a.maxPoints} marks</p>
+                </div>
+                <div className="w-[160px]">
+                  <p className="mb-1 text-[12.5px] text-ink2">{a.submitted} of {a.students} handed in{a.late ? ` · ${a.late} late` : ''}</p>
+                  <span className="block h-1.5 overflow-hidden rounded-[3px] bg-subtle"><span className="block h-1.5 bg-azure" style={{ width: `${a.students ? Math.round((a.submitted / a.students) * 100) : 0}%` }} /></span>
+                </div>
+                <Link href={`/teacher/cohorts/${a.cohort.id}`} className={btn(false)}>Cohort</Link>
+              </div>
+            ))
+          ) : (
+            !(tab === 'grade' ? d.toGrade : d.graded).length ? <p className="px-4 py-10 text-center text-[13px] text-ink2">{tab === 'grade' ? 'Nothing to grade. Well done!' : 'Nothing graded yet.'}</p> :
+            (tab === 'grade' ? d.toGrade : d.graded).map(x => (
+              <div key={x.id} className="flex flex-wrap items-center gap-3.5 border-t border-line px-[18px] py-3.5 first:border-t-0">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-navy">{x.title} — {x.student.name}</p>
+                  <p className="mt-0.5 truncate text-[12.5px] text-muted">{x.cohort.name} · handed in {ago(x.submittedAt)} · {x.maxPoints} marks</p>
+                </div>
+                {tab === 'grade'
+                  ? <span className={clsx('inline-flex h-6 items-center rounded px-2 text-xs font-semibold', x.late ? 'border border-line bg-subtle text-ink2' : 'bg-accent-soft text-navy')}>{x.late ? 'Late' : 'New'}</span>
+                  : <span className="inline-flex h-6 items-center rounded bg-accent-soft px-2 text-xs font-semibold text-navy">{x.grade}/{x.maxPoints}</span>}
+                <button type="button" onClick={() => setGrading(x)} className={btn(tab === 'grade')}>{tab === 'grade' ? 'Grade' : 'View'}</button>
+              </div>
+            ))
+          )}
+        </section>
       </div>
+
+      <GradeDrawer sub={grading} onClose={() => setGrading(null)}
+        onSaved={async () => {
+          const fresh = await load();
+          const next = fresh.toGrade[0];
+          setGrading(next ?? null);
+          if (!next) notify.success('All graded');
+        }} />
+      {d && <NewAssignmentDialog open={creating} cohorts={d.cohorts} onClose={() => setCreating(false)} onDone={async () => { setCreating(false); await load(); }} />}
     </div>
+  );
+}
+
+function GradeDrawer({ sub, onClose, onSaved }: { sub: Sub | null; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [score, setScore] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setScore(sub?.grade != null ? String(sub.grade) : ''); setFeedback(sub?.feedback ?? ''); }, [sub?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!sub) return <Drawer open={false} onOpenChange={() => {}}>{null}</Drawer>;
+  const n = Number(score);
+  const valid = score.trim() !== '' && n >= 0 && n <= sub.maxPoints;
+  const graded = sub.grade != null;
+
+  async function save() {
+    setBusy(true);
+    try {
+      await api.patch(`/education/submissions/${sub!.id}/grade`, { grade: n, feedback: feedback.trim() || undefined });
+      notify.success('Grade saved', { description: `${sub!.student.name} gets a notification.` });
+      await onSaved();
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not save the grade'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Drawer open onOpenChange={o => { if (!o) onClose(); }}>
+      <DrawerContent title={sub.title} description={`${sub.student.name} · handed in ${ago(sub.submittedAt)}${sub.late ? ' (late)' : ''}`}
+        footer={!graded ? <><span className="flex-1" /><Button loading={busy} disabled={!valid} onClick={save}>Save grade and next</Button></> : undefined}>
+        <InfoGrid items={[
+          { label: 'Cohort', value: sub.cohort.name },
+          { label: 'Due', value: date(sub.dueDate) },
+          { label: 'Marks', value: String(sub.maxPoints) },
+        ]} />
+        <DrawerSection title="Their work">
+          {sub.fileUrl
+            ? <a href={sub.fileUrl} target="_blank" rel="noopener noreferrer" className="block rounded-md border border-dashed border-azure bg-subtle px-4 py-4 text-[13.5px] font-semibold text-azure-strong hover:underline">Open the file they handed in</a>
+            : <p className="text-[13px] text-ink2">No file — see their note.</p>}
+          {sub.note && <p className="text-[13px] text-ink2">Their note: “{sub.note}”</p>}
+        </DrawerSection>
+        <DrawerSection title={graded ? 'Your grade' : 'Grade'}>
+          <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Score out of {sub.maxPoints}</span>
+            <input inputMode="decimal" value={score} disabled={graded} onChange={e => setScore(e.target.value)} className="input-base w-32" /></label>
+          <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Feedback</span>
+            <textarea rows={4} value={feedback} disabled={graded} onChange={e => setFeedback(e.target.value)} placeholder="What went well, and what to work on"
+              className="w-full resize-none rounded-md border border-line px-3 py-2 text-sm text-navy outline-none focus:border-azure" /></label>
+        </DrawerSection>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+function NewAssignmentDialog({ open, cohorts, onClose, onDone }: { open: boolean; cohorts: Overview['cohorts']; onClose: () => void; onDone: () => Promise<void> }) {
+  const [f, setF] = useState({ cohortId: '', title: '', description: '', maxPoints: '20', dueDate: '' });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const d = new Date(Date.now() + 7 * DAY); d.setHours(23, 59, 0, 0);
+    setF({ cohortId: cohorts[0]?.id ?? '', title: '', description: '', maxPoints: '20', dueDate: new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16) });
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      {open && (
+        <DialogContent title="New assignment" description="Every student in the cohort sees it, and it appears on their calendar.">
+          <div className="space-y-3">
+            <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Cohort</span>
+              <select value={f.cohortId} onChange={e => setF({ ...f, cohortId: e.target.value })} className="input-base">{cohorts.map(c => <option key={c.id} value={c.id}>{c.name} · {c.students} students</option>)}</select></label>
+            <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Title</span>
+              <input autoFocus value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="For example: Quadratics worksheet" className="input-base" /></label>
+            <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Instructions</span>
+              <textarea rows={4} value={f.description} onChange={e => setF({ ...f, description: e.target.value })} className="w-full resize-none rounded-md border border-line px-3 py-2 text-sm text-navy outline-none focus:border-azure" /></label>
+            <div className="flex gap-2">
+              <label className="flex flex-1 flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Due</span>
+                <input type="datetime-local" value={f.dueDate} onChange={e => setF({ ...f, dueDate: e.target.value })} className="input-base" /></label>
+              <label className="flex w-28 flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Marks</span>
+                <input inputMode="numeric" value={f.maxPoints} onChange={e => setF({ ...f, maxPoints: e.target.value })} className="input-base" /></label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button size="sm" variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button size="sm" loading={busy} disabled={!f.cohortId || !f.title.trim() || !f.description.trim() || !f.dueDate || !(parseInt(f.maxPoints) > 0)} onClick={async () => {
+              setBusy(true);
+              try {
+                await api.post(`/education/cohorts/${f.cohortId}/assignments`, { title: f.title.trim(), description: f.description.trim(), maxPoints: parseInt(f.maxPoints), dueDate: new Date(f.dueDate).toISOString() });
+                notify.success('Assignment set'); await onDone();
+              } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not create the assignment'); }
+              finally { setBusy(false); }
+            }}>Set assignment</Button>
+          </DialogFooter>
+        </DialogContent>
+      )}
+    </Dialog>
   );
 }

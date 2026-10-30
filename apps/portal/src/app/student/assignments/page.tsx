@@ -1,536 +1,184 @@
 'use client';
-import { notify } from '@/lib/notify';
-import { useEffect, useMemo, useState, Suspense as _Suspense } from 'react';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const Suspense = _Suspense as any;
-import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { clsx } from 'clsx';
+import { useDropzone } from 'react-dropzone';
 import { Topbar } from '@/components/layout/Topbar';
-import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
-import { Card, IconBox } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Icon } from '@/components/ui/Icon';
-import { BottomSheet } from '@/components/layout/BottomSheet';
-import { FileUpload } from '@/components/ui/FileUpload';
+import { Button } from '@/components/ui/Button';
+import { Drawer, DrawerContent, DrawerSection, InfoGrid } from '@/components/ui/Dialog';
+import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-interface Assignment {
-  id: string;
-  title: string;
-  description: string | null;
-  dueDate: string | null;
-  maxPoints: number;
-  cohortId: string;
-  cohortName: string | null;
-  submission: {
-    id: string;
-    status: string;
-    score: number | null;
-    feedback: string | null;
-    fileUrl: string | null;
-    submittedAt: string;
-  } | null;
+type State = 'todo' | 'overdue' | 'submitted' | 'graded';
+interface Row {
+  id: string; title: string; description: string; dueDate: string; maxPoints: number;
+  cohort: { id: string; name: string }; teacher: string; state: State; late: boolean;
+  submission: { id: string; fileUrl: string | null; grade: number | null; feedback: string | null; submittedAt: string; note: string | null } | null;
 }
-
-type FilterTab = 'all' | 'pending' | 'submitted';
-
-function dueDateLabel(dueDate: string): { text: string; urgent: boolean; overdue: boolean } {
-  const diff = new Date(dueDate).getTime() - Date.now();
-  const days = Math.ceil(diff / 86400000);
-  if (diff < 0) return { text: `Overdue by ${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''}`, urgent: true, overdue: true };
-  if (days === 0) return { text: 'Due today', urgent: true, overdue: false };
-  if (days === 1) return { text: 'Due tomorrow', urgent: true, overdue: false };
-  if (days <= 3) return { text: `Due in ${days} days`, urgent: true, overdue: false };
-  return {
-    text: `Due ${new Date(dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`,
-    urgent: false, overdue: false,
-  };
+interface Overview {
+  stats: { dueThisWeek: number; nextDue: Row | null; overdue: number; avgGradePct: number | null; graded: number; submitted: number; total: number };
+  assignments: Row[];
 }
+type Tab = 'todo' | 'submitted' | 'graded';
 
-function scoreBadgeClass(score: number, max: number) {
-  const pct = max > 0 ? (score / max) * 100 : 0;
-  if (pct >= 70) return 'bg-green-50 text-green-700 border border-green-100';
-  if (pct >= 50) return 'bg-amber-50 text-amber-700 border border-amber-100';
-  return 'bg-red-50 text-red-600 border border-red-100';
-}
+const DAY = 86_400_000;
+const due = (d: string) => new Date(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ', ' + new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+const dueIn = (d: string) => {
+  const days = Math.ceil((new Date(d).getTime() - Date.now()) / DAY);
+  return days <= 0 ? 'Due today' : days === 1 ? 'Due tomorrow' : `Due in ${days} days`;
+};
 
-function statusLabel(status: string): { text: string; variant: 'default' | 'active' | 'muted' } {
-  const map: Record<string, { text: string; variant: 'default' | 'active' | 'muted' }> = {
-    PENDING_REVIEW: { text: 'Under review', variant: 'muted' },
-    GRADED:         { text: 'Graded',        variant: 'active' },
-    PASSED:         { text: 'Passed',         variant: 'active' },
-    FAILED:         { text: 'Failed',         variant: 'muted' },
-  };
-  return map[status] ?? { text: status.replace(/_/g, ' '), variant: 'muted' };
-}
+export default function StudentAssignmentsPage() {
+  const [d, setD] = useState<Overview | null>(null);
+  const [tab, setTab] = useState<Tab>('todo');
+  const [openId, setOpenId] = useState<string | null>(null);
 
-function SubmitForm({
-  assignment, fileUrl, submissionNote, uploading, submitting,
-  onFile, onNoteChange, onSubmit, onClose,
-}: {
-  assignment: Assignment | null;
-  fileUrl: string;
-  submissionNote: string;
-  uploading: boolean;
-  submitting: boolean;
-  onFile: (f: File) => void;
-  onNoteChange: (v: string) => void;
-  onSubmit: () => void;
-  onClose: () => void;
-}) {
-  if (!assignment) return null;
-  return (
-    <div className="p-5 space-y-4">
-      {assignment.description && (
-        <div className="rounded-xl bg-surface border border-cloud px-4 py-3 text-sm text-navy/70 leading-relaxed">
-          {assignment.description}
-        </div>
-      )}
-      {assignment.submission && (
-        <div className="rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-700">
-          You previously submitted this assignment. Uploading a new file will replace your current submission.
-        </div>
-      )}
-      <FileUpload
-        accept={{
-          'application/pdf': ['.pdf'],
-          'application/msword': ['.doc'],
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-          'image/*': ['.jpg', '.jpeg', '.png'],
-        }}
-        maxSize={10 * 1024 * 1024}
-        label="Upload assignment file"
-        hint="PDF, DOCX, JPG or PNG · max 10 MB"
-        onFile={onFile}
-        preview={fileUrl || null}
-        uploading={uploading}
-      />
-      <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-navy block">
-          Note to instructor
-          <span className="font-normal text-royal/40 ml-1">(optional)</span>
-        </label>
-        <textarea
-          value={submissionNote}
-          onChange={e => onNoteChange(e.target.value)}
-          placeholder="e.g. I focused on part B as discussed in class..."
-          rows={2}
-          className="input-base resize-none"
-        />
-      </div>
-      <div className="flex gap-3 pt-1">
-        <button
-          disabled={submitting || uploading}
-          onClick={onSubmit}
-          className="flex-1 btn-primary flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-          {submitting || uploading
-            ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-            : <Icon name="upload" size={14} />
-          }
-          {assignment.submission ? 'Resubmit' : 'Submit assignment'}
-        </button>
-        <button onClick={onClose} className="btn-secondary px-4">Cancel</button>
-      </div>
-    </div>
-  );
-}
-
-function AssignmentsContent() {
-  const searchParams = useSearchParams();
-  const router       = useRouter();
-  const pathname     = usePathname();
-
-  const [assignments,     setAssignments]     = useState<Assignment[]>([]);
-  const [loading,         setLoading]         = useState(true);
-  const [submitSheet,     setSubmitSheet]     = useState<Assignment | null>(null);
-  const [fileUrl,         setFileUrl]         = useState('');
-  const [submissionNote,  setSubmissionNote]  = useState('');
-  const [uploading,       setUploading]       = useState(false);
-  const [submitting,      setSubmitting]      = useState(false);
-  const [filterTab,       setFilterTabState]  = useState<FilterTab>(() => (searchParams.get('filter') as FilterTab) ?? 'all');
-
-  function setFilterTab(t: FilterTab) {
-    setFilterTabState(t);
-    const p = new URLSearchParams(searchParams.toString());
-    if (t === 'all') p.delete('filter'); else p.set('filter', t);
-    // preserve cohortId if present
-    router.replace(`${pathname}${p.toString() ? `?${p.toString()}` : ''}`, { scroll: false });
-  }
-
-  async function load() {
-    try {
-      const r = await api.get('/education/assignments/mine').catch(() => ({ data: [] }));
-      setAssignments(r.data ?? []);
-    } catch {
-      setAssignments([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(); }, []);
-
-  // Auto-open submit sheet when ?id= is present
+  async function load() { const r = await api.get('/education/student/assignments-overview'); setD(r.data); }
   useEffect(() => {
-    const targetId = searchParams.get('id');
-    if (!targetId || assignments.length === 0) return;
-    const target = assignments.find(a => a.id === targetId && !a.submission);
-    if (target) { openSheet(target); }
-  }, [searchParams, assignments]);
+    load().catch(() => setD({ stats: { dueThisWeek: 0, nextDue: null, overdue: 0, avgGradePct: null, graded: 0, submitted: 0, total: 0 }, assignments: [] }));
+    const id = new URLSearchParams(window.location.search).get('id');
+    if (id) setOpenId(id);
+  }, []);
 
-  async function handleFile(file: File) {
-    setUploading(true);
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      const { data } = await api.post('/files/upload?folder=submissions', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      setFileUrl(data.url);
-      notify.success('File uploaded');
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Upload failed');
-    } finally {
-      setUploading(false);
-    }
-  }
+  const lists = useMemo(() => {
+    const a = d?.assignments ?? [];
+    return {
+      todo: a.filter(x => x.state === 'todo' || x.state === 'overdue').sort((x, y) => Number(y.state === 'overdue') - Number(x.state === 'overdue') || +new Date(x.dueDate) - +new Date(y.dueDate)),
+      submitted: a.filter(x => x.state === 'submitted'),
+      graded: a.filter(x => x.state === 'graded').reverse(),
+    } as Record<Tab, Row[]>;
+  }, [d]);
+  const s = d?.stats;
+  const open = d?.assignments.find(a => a.id === openId) ?? null;
 
-  async function handleSubmit() {
-    if (!submitSheet) return;
-    if (!fileUrl) { notify.error('Please upload a file before submitting'); return; }
-    setSubmitting(true);
-    try {
-      await api.post(`/education/assignments/${submitSheet.id}/submit`, {
-        fileUrl,
-        notes: submissionNote.trim() || undefined,
-      });
-      notify.success(submitSheet.submission ? 'Resubmitted successfully!' : 'Assignment submitted!');
-      setSubmitSheet(null);
-      setFileUrl('');
-      setSubmissionNote('');
-      await load();
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Submission failed');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const openSheet  = (a: Assignment) => { setSubmitSheet(a); setFileUrl(''); setSubmissionNote(''); };
-  const closeSheet = () => { setSubmitSheet(null); setFileUrl(''); setSubmissionNote(''); };
-
-  // Stats
-  const totalToSubmit = assignments.filter(a => !a.submission && !(a.dueDate && new Date(a.dueDate) < new Date())).length;
-  const totalOverdue  = assignments.filter(a => !a.submission && a.dueDate && new Date(a.dueDate) < new Date()).length;
-  const totalSubmitted = assignments.filter(a => !!a.submission).length;
-
-  // Filter
-  const filtered = useMemo(() => {
-    if (filterTab === 'pending')   return assignments.filter(a => !a.submission);
-    if (filterTab === 'submitted') return assignments.filter(a => !!a.submission);
-    return assignments;
-  }, [assignments, filterTab]);
-
-  // Group by cohort — respect ?cohortId= by sorting that cohort first
-  const focusCohortId = searchParams.get('cohortId');
-  const byCohort = useMemo(() => {
-    const map = new Map<string, { cohortName: string; pending: Assignment[]; submitted: Assignment[] }>();
-    for (const a of filtered) {
-      const key = a.cohortId;
-      if (!map.has(key)) map.set(key, { cohortName: a.cohortName ?? 'Your cohort', pending: [], submitted: [] });
-      const group = map.get(key)!;
-      if (!a.submission) group.pending.push(a);
-      else group.submitted.push(a);
-    }
-    // Sort: focusCohortId first
-    const entries = [...map.entries()];
-    if (focusCohortId) {
-      entries.sort(([a], [b]) => (a === focusCohortId ? -1 : b === focusCohortId ? 1 : 0));
-    }
-    return entries;
-  }, [filtered, focusCohortId]);
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-3">
-          {[1,2,3].map(i => (
-            <div key={i} className="rounded-2xl border border-cloud bg-white p-4 flex flex-col items-center gap-2">
-              <div className="h-8 w-10 rounded bg-cloud animate-pulse" />
-              <div className="h-2 w-14 rounded bg-cloud animate-pulse" />
+  return (
+    <div className="flex min-h-full flex-col">
+      <Topbar title="Assignments" subtitle="Work from your teachers, what’s due and your grades" />
+      <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
+          {[
+            { l: 'Due this week', v: s ? String(s.dueThisWeek) : '…', sub: s?.nextDue ? `${s.nextDue.title} · ${dueIn(s.nextDue.dueDate).toLowerCase()}` : 'Nothing due' },
+            { l: 'Overdue', v: s ? String(s.overdue) : '…', sub: s?.overdue ? 'You can still hand these in' : 'All caught up' },
+            { l: 'Average grade', v: s?.avgGradePct != null ? `${s.avgGradePct}%` : '—', sub: s?.graded ? `Across ${s.graded} graded` : 'Nothing graded yet' },
+            { l: 'Handed in', v: s ? `${s.submitted} of ${s.total}` : '…', sub: 'All your assignments' },
+          ].map(x => (
+            <div key={x.l} className="rounded-lg border border-line bg-white p-4">
+              <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{x.l}</dt>
+              <dd className="mt-1.5 text-[22px] font-extrabold text-navy">{x.v}</dd>
+              <dd className="mt-0.5 truncate text-[12.5px] text-muted">{x.sub}</dd>
             </div>
           ))}
-        </div>
-        {/* Filter pills */}
-        <div className="flex gap-2">
-          {[1,2,3].map(i => <div key={i} className="h-8 w-20 rounded-full bg-cloud animate-pulse" />)}
-        </div>
-        {/* Cards */}
-        <div className="space-y-3">
-          <div className="h-2.5 w-36 rounded bg-cloud animate-pulse" />
-          {[1,2,3].map(i => <SkeletonCard key={i} lines={2} />)}
-        </div>
-      </div>
-    </div>
-  );
+        </dl>
 
-  return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="My Assignments" subtitle="Submit and track your work" />
-
-      <div className="flex-1 p-4 md:p-6 space-y-6 max-w-3xl w-full mx-auto">
-
-        {assignments.length === 0 ? (
-          <Card>
-            <EmptyState
-              icon="assignments"
-              title="No assignments yet"
-              description="Assignments from your enrolled courses will appear here."
-              action={{ label: 'Browse courses', href: '/student/catalogue' }}
-            />
-          </Card>
-        ) : (
-          <>
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-3">
-              <Card className="flex flex-col items-center py-4 text-center">
-                <p className="text-2xl font-black text-navy tabular-nums">{totalToSubmit}</p>
-                <p className="text-[10px] font-bold text-royal/50 mt-0.5">To submit</p>
-              </Card>
-              <Card className={`flex flex-col items-center py-4 text-center ${totalOverdue > 0 ? 'border-red-200 bg-red-50' : ''}`}>
-                <p className={`text-2xl font-black tabular-nums ${totalOverdue > 0 ? 'text-red-600' : 'text-navy'}`}>{totalOverdue}</p>
-                <p className={`text-[10px] font-bold mt-0.5 ${totalOverdue > 0 ? 'text-red-400' : 'text-royal/50'}`}>Overdue</p>
-              </Card>
-              <Card className="flex flex-col items-center py-4 text-center">
-                <p className="text-2xl font-black text-navy tabular-nums">{totalSubmitted}</p>
-                <p className="text-[10px] font-bold text-royal/50 mt-0.5">Submitted</p>
-              </Card>
-            </div>
-
-            {/* Filter tabs */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {([
-                ['all',       'All',       assignments.length],
-                ['pending',   'Pending',   assignments.filter(a => !a.submission).length],
-                ['submitted', 'Submitted', totalSubmitted],
-              ] as [FilterTab, string, number][]).map(([t, label, count]) => (
-                <button key={t} onClick={() => setFilterTab(t)}
-                  className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition border ${
-                    filterTab === t
-                      ? 'bg-azure text-white border-azure'
-                      : 'bg-white border-cloud text-royal/60 hover:border-azure/40'
-                  }`}>
-                  {label}
-                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                    filterTab === t ? 'bg-white/20 text-white' : 'bg-cloud text-royal/50'
-                  }`}>{count}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* No results for filter */}
-            {byCohort.length === 0 && (
-              <Card>
-                <EmptyState
-                  icon="assignments"
-                  title={filterTab === 'pending' ? 'No pending assignments' : 'No submitted assignments yet'}
-                  description={filterTab === 'pending' ? 'All caught up!' : 'Submit your first assignment to see it here.'}
-                />
-              </Card>
-            )}
-
-            {/* Grouped by cohort */}
-            {byCohort.map(([cohortId, group]) => (
-              <div key={cohortId} id={`cohort-${cohortId}`} className="space-y-3">
-
-                <div className="flex items-center gap-2 px-1">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-azure">{group.cohortName}</p>
-                  <Badge>{group.pending.length + group.submitted.length}</Badge>
-                  {focusCohortId === cohortId && (
-                    <span className="text-[10px] text-royal/40 ml-1">← from cohort</span>
-                  )}
-                </div>
-
-                {/* ── PENDING ── */}
-                {group.pending.map(a => {
-                  const due = a.dueDate ? dueDateLabel(a.dueDate) : null;
-                  return (
-                    <Card key={a.id} padding="none" className={due?.overdue ? 'border-red-200' : ''}>
-                      {due?.overdue && <div className="h-1 w-full bg-red-400 rounded-t-2xl" />}
-                      <div className="p-4 flex items-start gap-4">
-                        <IconBox className={due?.overdue ? 'bg-red-50 text-red-400' : ''}>
-                          <Icon name="assignments" size={18} />
-                        </IconBox>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-navy">{a.title}</p>
-                          {a.description && (
-                            <p className="text-xs text-royal/50 mt-1 leading-relaxed line-clamp-2">{a.description}</p>
-                          )}
-                          <div className="flex items-center gap-3 mt-2 flex-wrap">
-                            {due && (
-                              <span className={`flex items-center gap-1 text-xs font-medium ${due.overdue ? 'text-red-500' : due.urgent ? 'text-amber-500' : 'text-royal/50'}`}>
-                                <Icon name="clock" size={11} />
-                                {due.text}
-                              </span>
-                            )}
-                            <span className="text-xs text-royal/40">{a.maxPoints} pts</span>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => openSheet(a)}
-                          className="flex-shrink-0 btn-primary text-xs px-4 py-2 flex items-center gap-1.5">
-                          <Icon name="upload" size={13} /> Submit
-                        </button>
-                      </div>
-                    </Card>
-                  );
-                })}
-
-                {/* ── SUBMITTED ── */}
-                {group.submitted.map(a => {
-                  const sub         = a.submission!;
-                  const status      = sub.status ?? 'PENDING_REVIEW';
-                  const sl          = statusLabel(status);
-                  const canResubmit = status === 'FAILED' ||
-                    (status === 'PENDING_REVIEW' && (!a.dueDate || new Date(a.dueDate) > new Date()));
-                  const scorePct    = sub.score != null && a.maxPoints > 0
-                    ? Math.round((sub.score / a.maxPoints) * 100)
-                    : null;
-                  const submittedLate = a.dueDate && new Date(sub.submittedAt) > new Date(a.dueDate);
-
-                  return (
-                    <Card key={a.id} padding="none">
-                      <div className="p-4 flex items-start gap-4">
-                        <IconBox className={status === 'GRADED' || status === 'PASSED' ? 'bg-azure/10 text-azure' : status === 'FAILED' ? 'bg-red-50 text-red-400' : ''}>
-                          <Icon name={status === 'GRADED' || status === 'PASSED' ? 'check' : 'assignments'} size={18} />
-                        </IconBox>
-
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-navy">{a.title}</p>
-                          <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                            <p className="text-xs text-royal/50">
-                              Submitted {new Date(sub.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </p>
-                            {submittedLate && (
-                              <span className="text-[10px] font-semibold text-amber-500 bg-amber-50 border border-amber-100 rounded-md px-2 py-0.5">
-                                Late
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-                          {sub.score != null ? (
-                            <span className={`rounded-xl px-3 py-1.5 text-sm font-bold tabular-nums ${scoreBadgeClass(sub.score, a.maxPoints)}`}>
-                              {sub.score}/{a.maxPoints}
-                            </span>
-                          ) : (
-                            <Badge variant={sl.variant}>{sl.text}</Badge>
-                          )}
-                          {scorePct !== null && (
-                            <span className="text-xs text-royal/40">{scorePct}%</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {sub.feedback && (
-                        <div className="mx-4 mb-4 rounded-xl bg-surface border border-cloud px-4 py-3">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-1.5">Instructor feedback</p>
-                          <p className="text-sm text-navy/80 leading-relaxed">{sub.feedback}</p>
-                        </div>
-                      )}
-
-                      {(sub.fileUrl || canResubmit) && (
-                        <div className="border-t border-cloud px-4 py-3 flex items-center gap-4">
-                          {sub.fileUrl && (
-                            <a href={sub.fileUrl} target="_blank" rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 text-sm font-medium text-azure hover:text-royal transition">
-                              <Icon name="download" size={14} /> View submission
-                            </a>
-                          )}
-                          {canResubmit && (
-                            <button onClick={() => openSheet(a)}
-                              className="inline-flex items-center gap-1.5 text-sm font-medium text-royal/50 hover:text-azure transition">
-                              <Icon name="upload" size={14} /> Resubmit
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </Card>
-                  );
-                })}
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-
-      {/* Mobile: bottom sheet */}
-      <BottomSheet
-        open={!!submitSheet}
-        onClose={closeSheet}
-        title={`${submitSheet?.submission ? 'Resubmit' : 'Submit'}: ${submitSheet?.title ?? ''}`}
-        height="auto"
-      >
-        <SubmitForm
-          assignment={submitSheet}
-          fileUrl={fileUrl}
-          submissionNote={submissionNote}
-          uploading={uploading}
-          submitting={submitting}
-          onFile={handleFile}
-          onNoteChange={setSubmissionNote}
-          onSubmit={handleSubmit}
-          onClose={closeSheet}
-        />
-      </BottomSheet>
-
-      {/* Desktop modal */}
-      {submitSheet && (
-        <div className="fixed inset-0 z-50 hidden lg:flex items-center justify-center bg-navy/20 backdrop-blur-sm p-6">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-card-lg overflow-hidden border border-cloud">
-            <div className="px-5 py-4 flex items-center justify-between border-b border-cloud">
-              <div>
-                <p className="text-sm font-semibold text-navy">
-                  {submitSheet.submission ? 'Resubmit Assignment' : 'Submit Assignment'}
-                </p>
-                <p className="text-xs text-royal/50 mt-0.5 truncate max-w-[280px]">{submitSheet.title}</p>
-              </div>
-              <button onClick={closeSheet}
-                className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-cloud transition text-royal/40 hover:text-navy">
-                <Icon name="close" size={16} />
+        <section className="rounded-lg border border-line bg-white">
+          <div role="tablist" aria-label="Assignments" className="flex gap-1 border-b border-line px-4">
+            {([['todo', 'To do'], ['submitted', 'Handed in'], ['graded', 'Graded']] as [Tab, string][]).map(([k, l]) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+                className={clsx('-mb-px h-[46px] border-b-2 px-3 text-[13.5px] text-navy', tab === k ? 'border-azure-strong font-semibold' : 'border-transparent font-medium')}>
+                {l} <span className="font-medium text-muted">{lists[k].length}</span>
               </button>
-            </div>
-            <SubmitForm
-              assignment={submitSheet}
-              fileUrl={fileUrl}
-              submissionNote={submissionNote}
-              uploading={uploading}
-              submitting={submitting}
-              onFile={handleFile}
-              onNoteChange={setSubmissionNote}
-              onSubmit={handleSubmit}
-              onClose={closeSheet}
-            />
+            ))}
           </div>
-        </div>
-      )}
+          {!d ? <div className="m-4 h-40 rounded-md bg-subtle animate-pulse" /> : !lists[tab].length ? (
+            <p className="px-4 py-10 text-center text-[13px] text-ink2">{tab === 'todo' ? 'Nothing to do right now.' : tab === 'submitted' ? 'Nothing waiting for a grade.' : 'No grades yet.'}</p>
+          ) : lists[tab].map(a => {
+            const meta = a.state === 'graded' ? `Graded ${a.submission!.grade}/${a.maxPoints}${a.submission!.feedback ? ` · “${a.submission!.feedback.slice(0, 60)}${a.submission!.feedback.length > 60 ? '…' : ''}”` : ''}`
+              : a.state === 'submitted' ? `Handed in ${new Date(a.submission!.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}${a.late ? ' · late' : ''} · ${a.cohort.name}`
+              : `${a.cohort.name} · ${a.state === 'overdue' ? 'was due' : 'due'} ${due(a.dueDate)} · ${a.maxPoints} marks`;
+            const badge = a.state === 'overdue' ? 'Overdue' : a.state === 'todo' ? dueIn(a.dueDate) : a.state === 'submitted' ? 'Waiting for grade' : `${Math.round((a.submission!.grade! / a.maxPoints) * 100)}%`;
+            const cta = a.state === 'todo' ? 'Start' : a.state === 'overdue' ? 'Hand in late' : a.state === 'submitted' ? 'View' : 'See feedback';
+            return (
+              <div key={a.id} className="flex flex-wrap items-center gap-3.5 border-t border-line px-[18px] py-3.5 first:border-t-0">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-navy">{a.title}</p>
+                  <p className="mt-0.5 truncate text-[12.5px] text-muted">{meta}</p>
+                </div>
+                <span className={clsx('inline-flex h-6 items-center rounded px-2 text-xs font-semibold', a.state === 'overdue' || a.state === 'submitted' ? 'border border-line bg-subtle text-ink2' : 'bg-accent-soft text-navy')}>{badge}</span>
+                <button type="button" onClick={() => setOpenId(a.id)}
+                  className={clsx('inline-flex h-8 items-center rounded-md border px-3 text-[13px] font-semibold', a.state === 'todo' || a.state === 'overdue' ? 'border-azure-strong bg-azure-strong text-on-accent' : 'border-line bg-white text-navy hover:bg-subtle')}>{cta}</button>
+              </div>
+            );
+          })}
+        </section>
+      </div>
+
+      <AssignmentDrawer a={open} onClose={() => setOpenId(null)} onDone={load} />
     </div>
   );
 }
 
-export default function AssignmentsPage() {
+function AssignmentDrawer({ a, onClose, onDone }: { a: Row | null; onClose: () => void; onDone: () => Promise<void> }) {
+  const [file, setFile] = useState<{ name: string; url: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setFile(null); setNote(a?.submission?.note ?? ''); }, [a?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    multiple: false, maxSize: 20 * 1024 * 1024,
+    accept: { 'application/pdf': ['.pdf'], 'image/*': ['.jpg', '.jpeg', '.png', '.webp'], 'application/msword': ['.doc'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] },
+    onDropRejected: () => notify.error('Use a PDF, photo or Word file up to 20 MB'),
+    onDropAccepted: async ([f]) => {
+      setUploading(true);
+      try {
+        const fd = new FormData(); fd.append('file', f);
+        const r = await api.post('/files/upload?folder=submissions', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+        setFile({ name: f.name, url: r.data?.url ?? r.data?.fileUrl ?? r.data });
+      } catch { notify.error('Upload failed. Please try again.'); }
+      finally { setUploading(false); }
+    },
+  });
+
+  if (!a) return <Drawer open={false} onOpenChange={() => {}}>{null}</Drawer>;
+  const canHandIn = a.state === 'todo' || a.state === 'overdue' || a.state === 'submitted';
+
+  async function handIn() {
+    setBusy(true);
+    try {
+      await api.post(`/education/assignments/${a!.id}/submit`, { fileUrl: file?.url ?? a!.submission?.fileUrl ?? undefined, note: note.trim() || undefined });
+      notify.success(a!.state === 'submitted' ? 'Updated' : 'Handed in', { description: 'Your teacher will grade it and you’ll get a notification.' });
+      onClose(); await onDone();
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not hand it in'); }
+    finally { setBusy(false); }
+  }
+
   return (
-    <Suspense fallback={
-      <div className="flex flex-col min-h-full">
-        <div className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-6">
-          <div className="h-8 w-48 rounded-xl bg-cloud animate-pulse" />
-        </div>
-      </div>
-    }>
-      <AssignmentsContent />
-    </Suspense>
+    <Drawer open onOpenChange={o => { if (!o) onClose(); }}>
+      <DrawerContent title={a.title} description={`${a.teacher} · ${a.cohort.name}`}
+        footer={canHandIn ? <>
+          <span className="flex-1 self-center text-[12.5px] text-muted">{a.state === 'overdue' ? 'This will be marked late.' : a.state === 'submitted' ? 'You can replace your work until it’s graded.' : ''}</span>
+          <Button loading={busy} disabled={uploading || (!file && !a.submission?.fileUrl && !note.trim())} onClick={handIn}>{a.state === 'submitted' ? 'Update hand-in' : 'Hand in'}</Button>
+        </> : undefined}>
+        <InfoGrid items={[
+          { label: 'Due', value: due(a.dueDate) },
+          { label: 'Marks', value: String(a.maxPoints) },
+          { label: 'Status', value: a.state === 'graded' ? `Graded ${a.submission!.grade}/${a.maxPoints}` : a.state === 'submitted' ? (a.late ? 'Handed in late' : 'Handed in') : a.state === 'overdue' ? 'Overdue' : 'To do' },
+        ]} />
+        <DrawerSection title="Instructions">
+          <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink2">{a.description}</p>
+        </DrawerSection>
+        {a.state === 'graded' && (
+          <DrawerSection title="Feedback">
+            <p className="rounded-md border border-azure bg-accent-soft px-3.5 py-3 text-[13.5px] text-navy">
+              <strong>{a.submission!.grade}/{a.maxPoints}</strong>{a.submission!.feedback ? ` — ${a.submission!.feedback}` : ''}
+            </p>
+          </DrawerSection>
+        )}
+        <DrawerSection title="Your work">
+          {a.submission?.fileUrl && <a href={a.submission.fileUrl} target="_blank" rel="noopener noreferrer" className="block text-[13.5px] font-semibold text-azure-strong hover:underline">Open what you handed in</a>}
+          {canHandIn && (
+            <div {...(getRootProps() as React.HTMLAttributes<HTMLDivElement>)} className={clsx('cursor-pointer rounded-md border border-dashed px-4 py-5 text-center text-[13.5px]', isDragActive ? 'border-azure bg-accent-soft' : 'border-azure bg-subtle')}>
+              <input {...getInputProps()} />
+              {uploading ? 'Uploading…' : file ? <><strong className="text-navy">{file.name}</strong> <span className="text-muted">· ready to hand in</span></> : <span className="text-ink2">Upload a photo or PDF of your work — or drop it here</span>}
+            </div>
+          )}
+          {canHandIn && (
+            <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Note to your teacher (optional)</span>
+              <textarea rows={2} value={note} onChange={e => setNote(e.target.value)} maxLength={1000} className="w-full resize-none rounded-md border border-line px-3 py-2 text-sm text-navy outline-none focus:border-azure" />
+            </label>
+          )}
+          {!canHandIn && a.submission?.note && <p className="text-[13px] text-ink2">Your note: “{a.submission.note}”</p>}
+        </DrawerSection>
+      </DrawerContent>
+    </Drawer>
   );
 }
