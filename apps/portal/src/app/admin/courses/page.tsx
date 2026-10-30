@@ -276,7 +276,7 @@ function CourseDrawer({ course, packages, onClose, onChanged }: { course: Course
   return (
     <Drawer open={!!course} onOpenChange={o => { if (!o) onClose(); }}>
       <DrawerContent title={course.title} description={`${teacherName(course)}${course.programme ? ` · ${course.programme.shortName ?? course.programme.name}` : ''}`}
-        action={<Link href={`/admin/courses/${course.id}`} className="inline-flex h-8 items-center rounded-md border border-line bg-white px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Course details</Link>}>
+        action={<span className="flex gap-2"><Link href={`/admin/courses/${course.id}/builder`} className="inline-flex h-8 items-center rounded-md border border-line bg-white px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Open builder</Link><Link href={`/admin/courses/${course.id}`} className="inline-flex h-8 items-center rounded-md border border-line bg-white px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Settings</Link></span>}>
 
         <Stepper steps={['Draft', 'Checklist met', 'Submitted', 'Published']} current={step} />
 

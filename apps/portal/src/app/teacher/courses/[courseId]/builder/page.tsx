@@ -2,7 +2,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import Image from 'next/image';
 import { useDropzone } from 'react-dropzone';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, usePathname } from 'next/navigation';
+import { clsx } from 'clsx';
 import Link from 'next/link';
 import { notify } from '@/lib/notify';
 import {
@@ -366,6 +367,10 @@ export default function CourseBuilderPage() {
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
+  // The same builder serves admins at /admin/courses/[id]/builder
+  const isAdmin = (usePathname() ?? '').startsWith('/admin');
+  const [review, setReview] = useState<{ reviewStatus: string; reviewNotes: string | null; reviewedAt: string | null; submittedAt: string | null; checklist: Record<string, string> | null; reviewer: string | null; teacher: string | null } | null>(null);
+  const [sendBack, setSendBack] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ type: 'module' | 'lesson' | 'review'; moduleId?: string; lessonId?: string } | null>(null);
 
   // Cover image + short description
@@ -438,6 +443,7 @@ export default function CourseBuilderPage() {
   async function load() {
     const r = await api.get(`/platform-courses/${courseId}`);
     setCourse(r.data);
+    api.get(`/platform-courses/${courseId}/review-status`).then(x => setReview(x.data || null)).catch(() => setReview(null));
     setShortDesc(r.data.shortDescription ?? '');
     setOutcomes(r.data.outcomes ?? []);
   }
@@ -590,174 +596,224 @@ export default function CourseBuilderPage() {
   );
   const totalLessons = course.modules.reduce((a, m) => a + m.lessons.length, 0);
 
+  const STATUS: Record<string, string> = { DRAFT: 'Draft', PENDING_REVIEW: 'In review', PUBLISHED: 'Published', ARCHIVED: 'Archived' };
+  const base = isAdmin ? `/admin/courses/${courseId}` : `/teacher/courses/${courseId}`;
+  const tabs: [string, string | null][] = [
+    ['Content', null],
+    ['Quizzes', isAdmin ? null : `/teacher/quiz-builder/${courseId}`],
+    ['Pricing', isAdmin ? '/admin/courses' : `/teacher/courses/${courseId}/pricing`],
+    ['Discussion', isAdmin ? null : `/teacher/courses/${courseId}/discussion`],
+  ];
+  const notesFromReviewer = review?.reviewNotes && (review.reviewStatus === 'REJECTED' || course.status === 'DRAFT');
+
+  async function adminAction(kind: 'publish' | 'reject') {
+    setActing(kind);
+    try {
+      if (kind === 'publish') await api.post(`/platform-courses/${courseId}/publish`);
+      else await api.post(`/platform-courses/${courseId}/reject`, { notes: sendBack ?? '' });
+      notify.success(kind === 'publish' ? 'Course published' : 'Sent back to the teacher');
+      setSendBack(null);
+      await load();
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'That didn’t work'); }
+    finally { setActing(null); }
+  }
+
   return (
     <>
     <div className="flex flex-col min-h-full">
       <Topbar
+        backHref={isAdmin ? '/admin/courses' : '/teacher/courses'}
+        backLabel={isAdmin ? 'Courses' : 'My courses'}
         title={course.title}
-        subtitle={[course.programme?.shortName, course.subject?.name].filter(Boolean).join(' · ') || 'Course Builder'}
-        backHref={`/teacher/courses/${courseId}`}
-        backLabel="Course detail"
+        subtitle={[STATUS[course.status] ?? course.status, course.programme?.shortName, course.subject?.name, `${course.modules.length} modules · ${totalLessons} lessons`].filter(Boolean).join(' · ')}
+        actions={<>
+          {!isAdmin && course.status === 'DRAFT' && (
+            <Button size="sm" loading={acting === 'review'} disabled={checklist?.readyToSubmit === false} onClick={submitForReview}
+              title={checklist?.readyToSubmit === false ? 'Finish the required items in “Ready to submit?” first' : undefined}>
+              Submit for review
+            </Button>
+          )}
+          {!isAdmin && course.status === 'PENDING_REVIEW' && <span className="text-[13px] font-semibold text-muted">Waiting for review</span>}
+        </>}
       />
-      <div className="flex-1 p-6 space-y-5">
-        <div className="flex items-center gap-4 text-xs text-royal/50">
-          <span className="flex items-center gap-1"><Icon name="notebook" size={12} />{course.modules.length} modules</span>
-          <span className="flex items-center gap-1"><Icon name="play" size={12} />{totalLessons} lessons</span>
-          <span className={`font-semibold ${course.status === 'PUBLISHED' ? 'text-azure' : course.status === 'PENDING_REVIEW' ? 'text-amber-500' : 'text-royal/50'}`}>
-            {course.status.replace(/_/g, ' ')}
+      <div role="tablist" aria-label="Course" className="flex gap-1 border-b border-line bg-white px-4 lg:px-7">
+        {tabs.map(([l, href]) => href === null && l !== 'Content' ? null : href ? (
+          <Link key={l} href={href} role="tab" aria-selected={false} className="-mb-px inline-flex h-12 items-center border-b-2 border-transparent px-3 text-[13.5px] font-medium text-muted hover:text-navy">{l}</Link>
+        ) : (
+          <span key={l} role="tab" aria-selected className="-mb-px inline-flex h-12 items-center border-b-2 border-azure-strong px-3 text-[13.5px] font-semibold text-navy">{l}</span>
+        ))}
+      </div>
+
+      {isAdmin && (
+        <div className="mx-4 mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-azure bg-accent-soft px-4 py-3 text-[13.5px] text-ink2 lg:mx-7">
+          <span className="min-w-0 flex-1">
+            <strong className="text-navy">Admin view.</strong>{' '}
+            {[review?.teacher && `Teacher: ${review.teacher}`,
+              review?.reviewer ? `Reviewer: ${review.reviewer}${review.reviewStatus !== 'PENDING' && review.reviewedAt ? ` (${review.reviewStatus === 'APPROVED' ? 'approved' : 'asked for changes'} ${new Date(review.reviewedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })})` : review.reviewStatus === 'PENDING' ? ' (reviewing)' : ''}` : 'No reviewer assigned',
+              `Status: ${STATUS[course.status] ?? course.status}`].filter(Boolean).join(' · ')}
           </span>
-          {course.status === 'DRAFT' && (
-            <button
-              onClick={submitForReview}
-              disabled={acting === 'review' || checklist?.readyToSubmit === false}
-              title={checklist?.readyToSubmit === false ? 'Complete the required items in Course readiness first' : undefined}
-              className="flex items-center gap-1.5 rounded-xl bg-azure px-3 py-1.5 text-xs font-semibold text-white hover:bg-royal transition disabled:opacity-50">
-              {acting === 'review' ? 'Submitting…' : 'Submit for Review'}
+          {course.status === 'PENDING_REVIEW' && <>
+            <Button size="sm" variant="secondary" onClick={() => setSendBack('')}>Send back</Button>
+            <Button size="sm" loading={acting === 'publish'} onClick={() => adminAction('publish')}>Publish</Button>
+          </>}
+          <Link href={base} className="text-[13px] font-semibold text-azure-strong hover:underline">Course settings</Link>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-start gap-5 p-4 lg:px-7 lg:py-6">
+        <div className="min-w-0 flex-[999_1_560px] space-y-4">
+          {course.modules.length === 0 && (
+            <div className="rounded-2xl border-2 border-dashed border-azure/40 bg-azure/5 p-5 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex-1">
+                <p className="text-sm font-bold text-navy">Start from the CareerPath course template</p>
+                <p className="text-xs text-royal/60 mt-0.5">
+                  Adds 3 modules — Introduction (with a starting-level quiz), Core content (with a module check) and Exam practice (with a practice test).
+                  You fill in the videos, text and questions.
+                </p>
+              </div>
+              <Button size="sm" loading={applyingTemplate} onClick={applyTemplate}>Use template</Button>
+            </div>
+          )}
+  
+          <DndContext sensors={moduleSensors} collisionDetection={closestCenter} onDragEnd={handleModuleDragEnd}>
+            <SortableContext items={course.modules.map(m => m.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-4">
+                {course.modules.map((mod, modIdx) => (
+                  <SortableModule key={mod.id}
+                    mod={mod} modIdx={modIdx} acting={acting} courseId={courseId}
+                    editModuleId={editModuleId} editModuleTitle={editModuleTitle}
+                    setEditModuleId={setEditModuleId} setEditModuleTitle={setEditModuleTitle}
+                    editLesson={editLesson} setEditLesson={setEditLesson}
+                    addingLessonTo={addingLessonTo} setAddingLessonTo={setAddingLessonTo}
+                    lessonForm={lessonForm} setLessonForm={setLessonForm}
+                    onRename={renameModule} onDelete={deleteModule}
+                    onAddLesson={addLesson} onUpdateLesson={updateLesson} onDeleteLesson={deleteLesson}
+                    onLessonsReorder={handleLessonsReorder}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+  
+          {addingModule ? (
+            <form onSubmit={addModule}>
+              <div className="flex items-center gap-2 rounded-2xl border-2 border-azure bg-white px-4 py-3">
+                <input value={moduleTitle} onChange={e => setModuleTitle(e.target.value)}
+                  placeholder="Module title e.g. Introduction to Electricity" required autoFocus
+                  className="flex-1 bg-transparent text-sm font-semibold text-navy outline-none placeholder:text-royal/40" />
+                <Button type="submit" size="sm" loading={acting === 'module'}>Add</Button>
+                <Button type="button" size="sm" variant="secondary" onClick={() => setAddingModule(false)}>Cancel</Button>
+              </div>
+            </form>
+          ) : (
+            <button onClick={() => setAddingModule(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-cloud py-4 text-sm font-semibold text-royal/50 hover:border-azure hover:text-azure transition">
+              <Icon name="add" size={16} /> Add module
             </button>
           )}
-          <Link href={`/teacher/courses/${courseId}/discussion`}
-            className="flex items-center gap-1.5 rounded-xl border border-cloud px-3 py-1.5 text-xs font-semibold text-navy hover:bg-cloud transition">
-            <Icon name="community" size={12} /> Discussion
-          </Link>
-          <span className="text-[10px] text-royal/30 hidden sm:flex items-center gap-1">
-            <svg width="8" height="12" viewBox="0 0 10 16" fill="currentColor" className="opacity-50">
-              <circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/>
-              <circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/>
-              <circle cx="2" cy="14" r="1.5"/><circle cx="8" cy="14" r="1.5"/>
-            </svg>
-            Drag to reorder
-          </span>
-          <Link href="/teacher/courses" className="ml-auto text-azure hover:text-royal transition text-xs font-semibold">
-            ← Back to courses
-          </Link>
         </div>
 
-        {/* Course meta — cover image + short description */}
-        <Card padding="md">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-4">Course Details</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {/* Cover image */}
-            <div>
-              <p className="text-xs font-semibold text-navy mb-2">Cover Image</p>
-              <div
-                {...(getCoverRootProps() as React.HTMLAttributes<HTMLDivElement>)}
-                className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed cursor-pointer transition overflow-hidden
-                  ${isCoverDrag ? 'border-azure bg-azure/10' : 'border-cloud hover:border-azure hover:bg-azure/5'}
-                  ${uploadingCover ? 'opacity-60 pointer-events-none' : ''}`}
-                style={{ minHeight: 140 }}
-              >
-                <input {...getCoverInputProps()} />
-                {course.coverUrl ? (
-                  <>
-                    <Image src={course.coverUrl} alt="Cover" fill className="object-cover rounded-xl" />
-                    <div className="absolute inset-0 bg-navy/40 flex items-center justify-center opacity-0 hover:opacity-100 transition rounded-xl">
-                      <p className="text-xs font-semibold text-white">Click or drag to replace</p>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center gap-2 py-6 text-center px-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cloud">
-                      <Icon name="image" size={18} className="text-azure" />
-                    </div>
-                    <p className="text-xs font-semibold text-navy">
-                      {uploadingCover ? 'Uploading…' : 'Drop image or click to upload'}
-                    </p>
-                    <p className="text-[10px] text-royal/40">JPG, PNG, WEBP · max 5 MB</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Short description */}
-            <div className="flex flex-col gap-3">
+        <aside className="min-w-0 flex-[1_1_320px] space-y-4">
+          {course.status === 'DRAFT' && <CourseChecklistPanel checklist={checklist} />}
+          {notesFromReviewer && (
+            <section className="space-y-1.5 rounded-lg border border-azure bg-white p-4">
+              <h3 className="text-[15px] font-semibold text-navy">Reviewer notes</h3>
+              <p className="whitespace-pre-wrap text-[13px] text-ink2">“{review!.reviewNotes}”</p>
+              <p className="text-xs text-muted">{review!.reviewer ?? 'Reviewer'}{review!.reviewedAt ? ` · ${new Date(review!.reviewedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}</p>
+              {review!.checklist && Object.entries(review!.checklist).some(([, v]) => v === 'fix') && (
+                <p className="text-xs text-navy">To fix: {Object.entries(review!.checklist).filter(([, v]) => v === 'fix').map(([k]) => ({ accuracy: 'content accuracy', syllabus: 'syllabus match', media: 'video and audio', quizzes: 'quizzes', preview: 'free preview' } as Record<string, string>)[k] ?? k).join(', ')}</p>
+              )}
+            </section>
+          )}
+          {/* Course meta — cover image + short description */}
+          <Card padding="md">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-4">Course Details</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              {/* Cover image */}
               <div>
-                <p className="text-xs font-semibold text-navy mb-2">Short Description</p>
-                <textarea
-                  value={shortDesc}
-                  onChange={e => setShortDesc(e.target.value)}
-                  rows={4}
-                  maxLength={200}
-                  placeholder="One or two sentences shown on course cards…"
-                  className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40 resize-none"
-                />
-                <p className="text-[10px] text-royal/30 text-right">{shortDesc.length}/200</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-navy">What students will be able to do</p>
-                <p className="mb-2 text-[11px] text-muted">Up to 8 short lines, shown on the course page. For example: “Simplify and rationalise surds”.</p>
-                <div className="space-y-1.5">
-                  {outcomes.map((o, i) => (
-                    <div key={i} className="flex gap-2">
-                      <input value={o} maxLength={160} onChange={e => setOutcomes(list => list.map((x, j) => j === i ? e.target.value : x))}
-                        placeholder={`Outcome ${i + 1}`} className="input-base h-9 flex-1" />
-                      <button type="button" onClick={() => setOutcomes(list => list.filter((_, j) => j !== i))} className="text-[12px] font-semibold text-muted hover:text-error">Remove</button>
+                <p className="text-xs font-semibold text-navy mb-2">Cover Image</p>
+                <div
+                  {...(getCoverRootProps() as React.HTMLAttributes<HTMLDivElement>)}
+                  className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed cursor-pointer transition overflow-hidden
+                    ${isCoverDrag ? 'border-azure bg-azure/10' : 'border-cloud hover:border-azure hover:bg-azure/5'}
+                    ${uploadingCover ? 'opacity-60 pointer-events-none' : ''}`}
+                  style={{ minHeight: 140 }}
+                >
+                  <input {...getCoverInputProps()} />
+                  {course.coverUrl ? (
+                    <>
+                      <Image src={course.coverUrl} alt="Cover" fill className="object-cover rounded-xl" />
+                      <div className="absolute inset-0 bg-navy/40 flex items-center justify-center opacity-0 hover:opacity-100 transition rounded-xl">
+                        <p className="text-xs font-semibold text-white">Click or drag to replace</p>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 py-6 text-center px-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cloud">
+                        <Icon name="image" size={18} className="text-azure" />
+                      </div>
+                      <p className="text-xs font-semibold text-navy">
+                        {uploadingCover ? 'Uploading…' : 'Drop image or click to upload'}
+                      </p>
+                      <p className="text-[10px] text-royal/40">JPG, PNG, WEBP · max 5 MB</p>
                     </div>
-                  ))}
-                  {outcomes.length < 8 && (
-                    <button type="button" onClick={() => setOutcomes(list => [...list, ''])} className="text-[12.5px] font-semibold text-azure-strong hover:underline">Add an outcome</button>
                   )}
                 </div>
               </div>
-              <Button size="sm" loading={savingMeta} onClick={saveMeta} className="self-start">
-                Save Details
-              </Button>
+  
+              {/* Short description */}
+              <div className="flex flex-col gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-navy mb-2">Short Description</p>
+                  <textarea
+                    value={shortDesc}
+                    onChange={e => setShortDesc(e.target.value)}
+                    rows={4}
+                    maxLength={200}
+                    placeholder="One or two sentences shown on course cards…"
+                    className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40 resize-none"
+                  />
+                  <p className="text-[10px] text-royal/30 text-right">{shortDesc.length}/200</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-navy">What students will be able to do</p>
+                  <p className="mb-2 text-[11px] text-muted">Up to 8 short lines, shown on the course page. For example: “Simplify and rationalise surds”.</p>
+                  <div className="space-y-1.5">
+                    {outcomes.map((o, i) => (
+                      <div key={i} className="flex gap-2">
+                        <input value={o} maxLength={160} onChange={e => setOutcomes(list => list.map((x, j) => j === i ? e.target.value : x))}
+                          placeholder={`Outcome ${i + 1}`} className="input-base h-9 flex-1" />
+                        <button type="button" onClick={() => setOutcomes(list => list.filter((_, j) => j !== i))} className="text-[12px] font-semibold text-muted hover:text-error">Remove</button>
+                      </div>
+                    ))}
+                    {outcomes.length < 8 && (
+                      <button type="button" onClick={() => setOutcomes(list => [...list, ''])} className="text-[12.5px] font-semibold text-azure-strong hover:underline">Add an outcome</button>
+                    )}
+                  </div>
+                </div>
+                <Button size="sm" loading={savingMeta} onClick={saveMeta} className="self-start">
+                  Save Details
+                </Button>
+              </div>
             </div>
-          </div>
-        </Card>
-
-        {course.status === 'DRAFT' && <CourseChecklistPanel checklist={checklist} />}
-
-        {course.modules.length === 0 && (
-          <div className="rounded-2xl border-2 border-dashed border-azure/40 bg-azure/5 p-5 flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="flex-1">
-              <p className="text-sm font-bold text-navy">Start from the CareerPath course template</p>
-              <p className="text-xs text-royal/60 mt-0.5">
-                Adds 3 modules — Introduction (with a starting-level quiz), Core content (with a module check) and Exam practice (with a practice test).
-                You fill in the videos, text and questions.
-              </p>
-            </div>
-            <Button size="sm" loading={applyingTemplate} onClick={applyTemplate}>Use template</Button>
-          </div>
-        )}
-
-        <DndContext sensors={moduleSensors} collisionDetection={closestCenter} onDragEnd={handleModuleDragEnd}>
-          <SortableContext items={course.modules.map(m => m.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-4">
-              {course.modules.map((mod, modIdx) => (
-                <SortableModule key={mod.id}
-                  mod={mod} modIdx={modIdx} acting={acting} courseId={courseId}
-                  editModuleId={editModuleId} editModuleTitle={editModuleTitle}
-                  setEditModuleId={setEditModuleId} setEditModuleTitle={setEditModuleTitle}
-                  editLesson={editLesson} setEditLesson={setEditLesson}
-                  addingLessonTo={addingLessonTo} setAddingLessonTo={setAddingLessonTo}
-                  lessonForm={lessonForm} setLessonForm={setLessonForm}
-                  onRename={renameModule} onDelete={deleteModule}
-                  onAddLesson={addLesson} onUpdateLesson={updateLesson} onDeleteLesson={deleteLesson}
-                  onLessonsReorder={handleLessonsReorder}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-
-        {addingModule ? (
-          <form onSubmit={addModule}>
-            <div className="flex items-center gap-2 rounded-2xl border-2 border-azure bg-white px-4 py-3">
-              <input value={moduleTitle} onChange={e => setModuleTitle(e.target.value)}
-                placeholder="Module title e.g. Introduction to Electricity" required autoFocus
-                className="flex-1 bg-transparent text-sm font-semibold text-navy outline-none placeholder:text-royal/40" />
-              <Button type="submit" size="sm" loading={acting === 'module'}>Add</Button>
-              <Button type="button" size="sm" variant="secondary" onClick={() => setAddingModule(false)}>Cancel</Button>
-            </div>
-          </form>
-        ) : (
-          <button onClick={() => setAddingModule(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-cloud py-4 text-sm font-semibold text-royal/50 hover:border-azure hover:text-azure transition">
-            <Icon name="add" size={16} /> Add module
-          </button>
-        )}
+          </Card>
+        </aside>
       </div>
     </div>
+
+    {sendBack !== null && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/30 px-4">
+        <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-card-lg">
+          <p className="text-base font-bold text-navy">Send back to the teacher</p>
+          <textarea rows={4} autoFocus value={sendBack} onChange={e => setSendBack(e.target.value)} placeholder="What should they change?"
+            className="mt-3 w-full resize-none rounded-md border border-line px-3 py-2 text-sm text-navy outline-none focus:border-azure" />
+          <div className="mt-4 flex justify-end gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setSendBack(null)}>Cancel</Button>
+            <Button size="sm" loading={acting === 'reject'} disabled={!sendBack.trim()} onClick={() => adminAction('reject')}>Send back</Button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* Inline confirm dialog */}
     {confirming && (
