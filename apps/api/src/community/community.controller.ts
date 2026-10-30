@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CommunityService } from './community.service';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -37,6 +37,40 @@ export class CommunityController {
     @Body() dto: CreatePostDto,
   ) {
     return this.communityService.createPost(courseId, user, dto);
+  }
+
+  // ── Community page ───────────────────────────────────────
+
+  @Get('feed')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Questions across my courses with teacher answers, plus success stories' })
+  feed(@CurrentUser() user: UserProfile, @Query('courseId') courseId?: string, @Query('show') show?: string) {
+    return this.communityService.feed(user, { courseId, show });
+  }
+
+  @Post('posts')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Ask a question (optionally about a lesson) or reply to one' })
+  ask(@CurrentUser() user: UserProfile, @Body() body: { courseId: string; body: string; lessonId?: string; parentId?: string }) {
+    return this.communityService.ask(user, body);
+  }
+
+  @Post('posts/:id/upvote')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Toggle my upvote on a question or reply' })
+  upvote(@CurrentUser() user: UserProfile, @Param('id') id: string) {
+    return this.communityService.toggleUpvote(user, id);
+  }
+
+  @Post('posts/:id/pin')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[Teacher] Pin or unpin a question in my course' })
+  pin(@CurrentUser() user: UserProfile, @Param('id') id: string) {
+    return this.communityService.togglePin(user, id);
   }
 
   // ── Success stories ───────────────────────────────────────
