@@ -28,6 +28,13 @@ export class MentorshipController {
     return this.mentorshipService.createSlot(user, dto);
   }
 
+  @Get('allowance')
+  @Roles(UserRole.STUDENT)
+  @ApiOperation({ summary: '[Student] Mentorship sessions left this month' })
+  allowance(@CurrentUser() user: UserProfile) {
+    return this.mentorshipService.getAllowance(user.id);
+  }
+
   @Get('mentors/slots/mine')
   @Roles(UserRole.TEACHER)
   @ApiOperation({ summary: '[Teacher] List own upcoming slots with booking status' })

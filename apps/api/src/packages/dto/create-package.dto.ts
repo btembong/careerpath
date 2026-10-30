@@ -55,6 +55,12 @@ export class CreatePackageDto {
   @IsOptional()
   faq?: { q: string; a: string }[] | null;
 
+  @ApiPropertyOptional({ example: 2, description: 'Mentorship sessions per month; null = no limit' })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  mentorshipSessionsPerMonth?: number | null;
+
   @ApiPropertyOptional({ description: 'Cohort ID to auto-enroll students into on purchase' })
   @IsString()
   @IsOptional()

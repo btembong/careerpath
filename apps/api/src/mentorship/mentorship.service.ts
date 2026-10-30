@@ -47,9 +47,40 @@ export class MentorshipService {
       throw new BadRequestException('Cannot create a slot in the past');
     }
 
-    return this.prisma.mentorSlot.create({
-      data: { teacherId: teacher.id, startsAt, endsAt, durationMins },
+    // The same time each week; skip any week where it would overlap a slot the teacher already has
+    const weeks = Math.min(Math.max(dto.repeatWeeks ?? 1, 1), 12);
+    const WEEK = 7 * 86_400_000;
+    const wanted = Array.from({ length: weeks }, (_, i) => ({ s: new Date(startsAt.getTime() + i * WEEK), e: new Date(endsAt.getTime() + i * WEEK) }));
+    const existing = await this.prisma.mentorSlot.findMany({
+      where: { teacherId: teacher.id, startsAt: { lt: wanted[wanted.length - 1].e }, endsAt: { gt: wanted[0].s } },
+      select: { startsAt: true, endsAt: true },
     });
+    const free = wanted.filter(w => !existing.some(x => x.startsAt < w.e && x.endsAt > w.s));
+    if (!free.length) throw new ConflictException('You already have a time slot then');
+    await this.prisma.mentorSlot.createMany({ data: free.map(w => ({ teacherId: teacher.id, startsAt: w.s, endsAt: w.e, durationMins })) });
+    return { created: free.length, skipped: weeks - free.length };
+  }
+
+  /**
+   * How many sessions the student may still book this month. Packages can set a monthly number;
+   * if none of the student's active packages does, there is no limit.
+   */
+  async getAllowance(studentId: string) {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const [purchases, used] = await Promise.all([
+      this.prisma.packagePurchase.findMany({
+        where: { studentId, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+        select: { package: { select: { mentorshipSessionsPerMonth: true } } },
+      }),
+      this.prisma.mentorBooking.count({
+        where: { studentId, status: { not: 'CANCELLED' }, slot: { startsAt: { gte: monthStart, lt: nextMonth } } },
+      }),
+    ]);
+    const limits = purchases.map(p => p.package.mentorshipSessionsPerMonth).filter((n): n is number => n != null);
+    const perMonth = limits.length ? limits.reduce((a, b) => a + b, 0) : null;
+    return { hasPackage: purchases.length > 0, perMonth, used, left: perMonth == null ? null : Math.max(0, perMonth - used) };
   }
 
   async getMySlots(teacherId: string) {
@@ -190,6 +221,10 @@ export class MentorshipService {
     });
     if (!activePurchase) {
       throw new ForbiddenException('You need an active package to book mentorship sessions.');
+    }
+    const allowance = await this.getAllowance(student.id);
+    if (allowance.left === 0) {
+      throw new ForbiddenException(`You’ve used all ${allowance.perMonth} mentorship sessions in your package this month.`);
     }
 
     // Create Daily.co room for the session

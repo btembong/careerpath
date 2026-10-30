@@ -12,4 +12,11 @@ export class CreateSlotDto {
   @Min(15)
   @Max(120)
   durationMins?: number;
+
+  @ApiPropertyOptional({ example: 6, description: 'Repeat the same time every week for this many weeks (1 = just once)' })
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  @IsOptional()
+  repeatWeeks?: number;
 }
