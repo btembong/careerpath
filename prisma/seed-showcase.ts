@@ -21,6 +21,8 @@ import { PrismaClient, CourseStatus, LessonType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 const DAY = 86_400_000;
+/** A demo worksheet hand-in, served by the portal */
+const DEMO_WORK = '/demo/quadratics-worksheet.svg';
 const SAMPLE_VIDEO = 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4';
 
 const TEACHER = 'teacher@test.com';
@@ -280,10 +282,12 @@ async function main() {
       await prisma.submission.upsert({
         where: { studentId_assignmentId: { studentId: c.id, assignmentId: a.id } },
         update: {},
-        create: { assignmentId: a.id, studentId: c.id, status: 'PENDING_REVIEW', note: i === 0 ? 'I wasn’t sure about question 7.' : null,
+        create: { assignmentId: a.id, studentId: c.id, status: 'PENDING_REVIEW', note: i === 0 ? 'I wasn’t sure about question 7.' : null, fileUrl: DEMO_WORK,
           submittedAt: i === 2 ? new Date(Date.now() - 2 * 3_600_000) : new Date(Date.now() - (i + 1) * DAY) },
       });
     }
+    // Earlier runs left the seeded hand-ins without a file
+    await prisma.submission.updateMany({ where: { assignmentId: quad.id, studentId: { in: classmates.map(c => c.id) }, fileUrl: null, grade: null }, data: { fileUrl: DEMO_WORK } });
     if (!(await prisma.progressAlert.findFirst({ where: { cohortId, teacherId: teacher.id, type: 'INACTIVE' } }))) {
       await prisma.progressAlert.create({ data: { cohortId, teacherId: teacher.id, type: 'INACTIVE', thresholdDays: 7, enabled: true } });
     }
@@ -309,6 +313,214 @@ async function main() {
     });
   }
   log('Study plan: five study sessions over two weeks');
+
+  // ── Leaderboard: points this week, earlier this month, and before ──────
+  const people = [student, ...classmates];
+  const seeded = await prisma.xPEvent.count({ where: { userId: { in: people.map(x => x.id) }, meta: { path: ['seed'], equals: 'showcase' } } });
+  if (!seeded) {
+    // [days ago, type] per person: the demo student sits 4th this week, higher over the month
+    const plans: [number, string][][] = [
+      [[0, 'LESSON_COMPLETE'], [1, 'LESSON_COMPLETE'], [1, 'QUIZ_PASS'], [2, 'FORUM_POST'], [3, 'ASSIGNMENT_SUBMIT'], [12, 'QUIZ_PASS'], [15, 'ASSIGNMENT_PASS'], [20, 'LESSON_COMPLETE'], [40, 'CERTIFICATE_EARNED']],
+      [[0, 'QUIZ_PASS'], [1, 'QUIZ_PASS'], [1, 'ASSIGNMENT_PASS'], [2, 'LESSON_COMPLETE'], [2, 'LESSON_COMPLETE'], [3, 'STREAK_BONUS'], [10, 'LESSON_COMPLETE'], [45, 'LESSON_COMPLETE']],
+      [[0, 'ASSIGNMENT_PASS'], [1, 'QUIZ_PASS'], [2, 'LESSON_COMPLETE'], [4, 'LESSON_COMPLETE'], [5, 'FORUM_POST'], [9, 'QUIZ_PASS'], [18, 'ASSIGNMENT_PASS'], [25, 'QUIZ_PASS']],
+      [[0, 'QUIZ_PASS'], [2, 'ASSIGNMENT_PASS'], [3, 'LESSON_COMPLETE'], [6, 'LESSON_COMPLETE'], [8, 'LESSON_COMPLETE'], [22, 'LESSON_COMPLETE']],
+    ];
+    const XP: Record<string, number> = { LESSON_COMPLETE: 10, QUIZ_PASS: 25, ASSIGNMENT_SUBMIT: 10, ASSIGNMENT_PASS: 30, FORUM_POST: 5, STREAK_BONUS: 15, CERTIFICATE_EARNED: 100 };
+    for (const [i, who] of people.entries()) {
+      const plan = plans[i] ?? plans[plans.length - 1];
+      await prisma.xPEvent.createMany({
+        data: plan.map(([d, type], j) => ({ userId: who.id, type: type as any, points: XP[type], meta: { seed: 'showcase', key: `showcase:${i}:${j}` }, createdAt: new Date(Date.now() - d * DAY - 3_600_000) })),
+      });
+      await prisma.userProfile.update({ where: { id: who.id }, data: { xpTotal: { increment: plan.reduce((n, [, t]) => n + XP[t], 0) }, streak: [6, 9, 4, 2][i] ?? 1, lastActiveDate: new Date() } });
+    }
+  }
+  for (const badge of ['FIRST_LESSON', 'QUIZ_PERFECT', 'CERTIFICATE_FIRST'] as const) {
+    await prisma.userBadge.upsert({ where: { userId_badge: { userId: student.id, badge } }, update: {}, create: { userId: student.id, badge } });
+  }
+  // A fuller cohort, so the board has a podium above the demo student
+  if (pkg.cohortId) {
+    const extra: [string, string, string, number, number[]][] = [
+      ['student4@test.com', 'Joyce', 'Kuffour', 99_913, [0, 0, 1, 1, 2, 3, 3, 5, 6, 14]],
+      ['student5@test.com', 'Yaw', 'Boateng', 99_914, [0, 1, 1, 2, 2, 4, 5, 6, 20]],
+      ['student6@test.com', 'Nana', 'Adjei', 99_915, [0, 1, 2, 3, 4, 5, 6, 9]],
+    ];
+    for (const [i, [email, firstName, lastName, wpUserId, days]] of extra.entries()) {
+      const u = await prisma.userProfile.upsert({
+        where: { email }, update: {},
+        create: { email, firstName, lastName, wpUserId, role: 'STUDENT', onboardingCompleted: true },
+      });
+      await prisma.cohortRoster.upsert({
+        where: { studentId_cohortId: { studentId: u.id, cohortId: pkg.cohortId } }, update: {},
+        create: { studentId: u.id, cohortId: pkg.cohortId },
+      });
+      if (!(await prisma.xPEvent.count({ where: { userId: u.id } }))) {
+        // Mostly quiz passes (25) and lessons (10): about 300 points this week each, Joyce highest
+        await prisma.xPEvent.createMany({
+          data: days.map((d, j) => ({ userId: u.id, type: (j % 2 ? 'LESSON_COMPLETE' : 'QUIZ_PASS') as any, points: j % 2 ? 10 : 25, meta: { seed: 'showcase', key: `showcase:x${i}:${j}` }, createdAt: new Date(Date.now() - d * DAY - 3_600_000) })),
+        });
+        await prisma.xPEvent.createMany({
+          data: [0, 1, 2, 3].slice(0, 3 - i).map(j => ({ userId: u.id, type: 'ASSIGNMENT_PASS' as any, points: 30, meta: { seed: 'showcase', key: `showcase:x${i}:a${j}` }, createdAt: new Date(Date.now() - j * DAY - 7_200_000) })),
+        });
+        const sum = await prisma.xPEvent.aggregate({ where: { userId: u.id }, _sum: { points: true } });
+        await prisma.userProfile.update({ where: { id: u.id }, data: { xpTotal: sum._sum.points ?? 0, streak: [9, 7, 3][i], lastActiveDate: new Date() } });
+      }
+    }
+  }
+  // The demo student's display name was its login handle; show the real name instead
+  if (!student.name || student.name === student.email.split('@')[0]) {
+    await prisma.userProfile.update({ where: { id: student.id }, data: { name: [student.firstName ?? 'Demo', student.lastName ?? 'Student'].join(' ') } });
+  }
+  // Keep the demo student 4th this week, just behind the podium, whatever they've done themselves
+  if (pkg.cohortId) {
+    const weekAgo = new Date(Date.now() - 7 * DAY);
+    const mine = (await prisma.xPEvent.aggregate({ where: { userId: student.id, createdAt: { gte: weekAgo } }, _sum: { points: true } }))._sum.points ?? 0;
+    for (const [email, ahead] of [['student4@test.com', 190], ['student5@test.com', 110], ['student6@test.com', 40]] as const) {
+      const u = await prisma.userProfile.findUnique({ where: { email } });
+      if (!u) continue;
+      const theirs = (await prisma.xPEvent.aggregate({ where: { userId: u.id, createdAt: { gte: weekAgo } }, _sum: { points: true } }))._sum.points ?? 0;
+      const need = mine + ahead - theirs;
+      if (need <= 0) continue;
+      const n = Math.ceil(need / 25);
+      await prisma.xPEvent.createMany({
+        data: Array.from({ length: n }, (_, j) => ({ userId: u.id, type: 'QUIZ_PASS' as any, points: 25, meta: { seed: 'showcase', key: `showcase:top:${email}:${Date.now()}:${j}` }, createdAt: new Date(Date.now() - (j % 6) * DAY - 5_400_000) })),
+      });
+      await prisma.userProfile.update({ where: { id: u.id }, data: { xpTotal: { increment: n * 25 } } });
+    }
+  }
+  // One classmate keeps their name private, to show how that looks
+  if (classmates[2]) await prisma.userProfile.update({ where: { id: classmates[2].id }, data: { leaderboardVisible: false } });
+  log('Leaderboard: a week, a month and more of points; three badges; one private classmate');
+
+  // The package course this teacher teaches: its discussion and quiz belong to them
+  const teachCourse = await prisma.platformCourse.findFirst({
+    where: { id: { in: pkg.courseIds }, teacherId: teacher.id },
+    include: { modules: { orderBy: { sortOrder: 'asc' }, include: { lessons: { orderBy: { sortOrder: 'asc' } } } } },
+  });
+  const teachLessons = teachCourse?.modules.flatMap(m => m.lessons).filter(l => l.type !== 'QUIZ') ?? [];
+
+  // ── Community: questions, a teacher answer, upvotes, success stories ───
+  if (teachCourse) {
+    const lessonOf = (n: number) => teachLessons[n]?.id ?? null;
+    const post = async (authorId: string, body: string, opts: { lessonId?: string | null; parentId?: string; hoursAgo: number; upvotes?: number; pinned?: boolean }) =>
+      (await prisma.courseDiscussionPost.findFirst({ where: { courseId: teachCourse.id, body } }))
+      ?? prisma.courseDiscussionPost.create({ data: {
+        courseId: teachCourse.id, authorId, body, parentId: opts.parentId ?? null, lessonId: opts.parentId ? null : opts.lessonId ?? null,
+        upvoteCount: opts.upvotes ?? 0, isPinned: !!opts.pinned, createdAt: new Date(Date.now() - opts.hoursAgo * 3_600_000),
+      } });
+    const [c0, c1, c2] = classmates;
+    if (c0) await post(c0.id, 'Why do we flip the inequality sign when dividing by a negative?', { lessonId: lessonOf(0), hoursAgo: 2, upvotes: 3 });
+    if (c1) {
+      const q = await post(c1.id, 'How do I know when to use the formula instead of factorising?', { lessonId: lessonOf(1), hoursAgo: 26, upvotes: 12 });
+      await post(teacher.id, 'Try factorising first; if no whole-number pair multiplies to ac and adds to b within a minute, use the formula. In the exam the formula is never wrong — factorising is just faster.', { parentId: q.id, hoursAgo: 22, upvotes: 6 });
+      await post(student.id, 'This helped me — I was wasting time trying every pair.', { parentId: q.id, hoursAgo: 20, upvotes: 1 });
+    }
+    if (c2) {
+      const q = await post(c2.id, 'Is question 7 on the Quadratics worksheet a typo? It says 3x but the answer key uses 3x².', { lessonId: lessonOf(2), hoursAgo: 50, upvotes: 5 });
+      await post(teacher.id, 'Yes — it should be 3x². Thanks for spotting it; I’ve fixed the worksheet.', { parentId: q.id, hoursAgo: 46, upvotes: 4 });
+    }
+    await post(student.id, 'Does anyone have a trick for remembering the laws of indices?', { lessonId: lessonOf(0), hoursAgo: 5, upvotes: 2 });
+    await post(teacher.id, 'Before Wednesday’s class: post the past-paper question you found hardest, and we’ll do the top three together.', { hoursAgo: 30, upvotes: 7, pinned: true });
+
+    const stories: [typeof student | undefined, string, 'APPROVED' | 'PENDING'][] = [
+      [c1, 'I went from a D7 to a B3 in Core Maths. The past-paper walkthroughs showed me where I was losing marks.', 'APPROVED'],
+      [c0, 'The live classes made statistics finally click. Being able to rewatch the recording before the test helped a lot.', 'APPROVED'],
+      [student, 'The study plan kept me revising every evening, even in exam week.', 'PENDING'],
+    ];
+    for (const [who, story, status] of stories) {
+      if (!who) continue;
+      if (!(await prisma.successStorySubmission.findFirst({ where: { studentId: who.id, story } }))) {
+        await prisma.successStorySubmission.create({ data: { studentId: who.id, story, consentToPublish: true, status } });
+      }
+    }
+    log('Community: four questions (two answered by the teacher, one pinned) and three success stories');
+  }
+
+  // ── Certificates: one earned, the main course on the way ───────────────
+  const doneCourseId = pkg.courseIds.find(id => id !== mainCourse?.id);
+  if (doneCourseId && !(await prisma.certificate.findFirst({ where: { studentId: student.id, courseId: doneCourseId } }))) {
+    await prisma.certificate.create({ data: { studentId: student.id, courseId: doneCourseId, verifyCode: `CPA-${student.id.slice(0, 4).toUpperCase()}-91`, pdfUrl: '', issuedAt: at(-16, 10) } });
+  }
+  log(doneCourseId ? 'Certificate: one earned' : 'Certificate: skipped (the package has only one course)');
+
+  // ── Settings: notification choices ─────────────────────────────────────
+  await prisma.userProfile.update({
+    where: { id: student.id },
+    data: { notificationPrefs: { news: { inApp: true, email: false }, community: { inApp: true, email: false } }, displayPrefs: { language: 'en', textSize: 'normal', dataSaver: false } },
+  });
+  log('Settings: announcement emails off for the demo student');
+
+  // ── Rubric for the Quadratics worksheet ────────────────────────────────
+  if (pkg.cohortId) {
+    const quad = await prisma.assignment.findFirst({ where: { cohortId: pkg.cohortId, title: 'Quadratics worksheet' } });
+    if (quad && !(await prisma.assignmentRubric.findUnique({ where: { assignmentId: quad.id } }))) {
+      const crit: [string, number, [number, string][]][] = [
+        ['Correct method', 8, [[0, 'No method'], [3, 'Started'], [6, 'Small slip'], [8, 'All correct']]],
+        ['Accurate answers', 8, [[0, 'None right'], [3, 'A few'], [6, 'Most'], [8, 'All']]],
+        ['Working shown', 4, [[0, 'Answers only'], [1, 'Some steps'], [3, 'Most steps'], [4, 'Every step']]],
+      ];
+      await prisma.assignmentRubric.create({ data: {
+        assignmentId: quad.id,
+        criteria: { create: crit.map(([title, weight, levels], i) => ({ title, weight, sortOrder: i, descriptors: levels.map(([points, label]) => ({ points, label })) })) },
+      } });
+    }
+    log('Rubric: Quadratics worksheet, three criteria out of 20');
+  }
+
+  // ── Quiz: a module quiz with every question type, and answers to mark ──
+  if (teachCourse?.modules[0]) {
+    let quiz = teachCourse.modules.flatMap(m => m.lessons).find(l => l.type === 'QUIZ');
+    if (!quiz) {
+      const m0 = teachCourse.modules[0];
+      quiz = await prisma.lesson.create({ data: {
+        moduleId: m0.id, title: 'Number & Algebra quiz', type: 'QUIZ', sortOrder: (m0.lessons.at(-1)?.sortOrder ?? 0) + 1,
+        passMark: 60, timeLimitSecs: 900, maxAttempts: 3, shuffleQuestions: true,
+      } });
+    }
+    const quizId = quiz.id;
+    await prisma.lesson.update({ where: { id: quizId }, data: { passMark: quiz.passMark ?? 60, timeLimitSecs: quiz.timeLimitSecs ?? 900, maxAttempts: quiz.maxAttempts || 3, shuffleQuestions: true } });
+    {
+      const opts = (xs: string[]) => xs.map((text, i) => ({ id: 'abcd'[i], text }));
+      const qs = [
+        { type: 'MCQ', questionText: 'Simplify (2³ × 2⁴) ÷ 2⁵', options: opts(['2', '4', '8', '16']), correctAnswer: 'b', explanation: 'Add the powers when multiplying (3 + 4 = 7), subtract when dividing (7 − 5 = 2): 2² = 4.', points: 2, videoAtSec: 220 },
+        { type: 'MCQ', questionText: 'True or false: a⁰ = 0', options: [{ id: 'a', text: 'True' }, { id: 'b', text: 'False' }], correctAnswer: 'b', explanation: 'Any non-zero number to the power 0 is 1.', points: 1, tags: ['true-false'] },
+        { type: 'SHORT_ANSWER', questionText: 'Write √50 in simplest form', correctAnswer: '5√2|5 root 2|5sqrt2', explanation: '√50 = √(25 × 2) = 5√2.', points: 2 },
+        { type: 'MCQ', questionText: 'Solve 2x + 3 = 11', options: opts(['x = 3', 'x = 4', 'x = 7', 'x = 8']), correctAnswer: 'b', explanation: 'Subtract 3 (2x = 8), then divide by 2.', points: 1 },
+        { type: 'MCQ', questionText: 'Factorise x² + 5x + 6', options: opts(['(x + 1)(x + 6)', '(x + 2)(x + 3)', '(x − 2)(x − 3)', '(x + 5)(x + 1)']), correctAnswer: 'b', explanation: 'Find two numbers that multiply to 6 and add to 5: 2 and 3.', points: 2 },
+        { type: 'WRITTEN', questionText: 'Explain why 2⁻¹ = ½', correctAnswer: 'Dividing powers: 2⁰ ÷ 2¹ = 2⁻¹, and 1 ÷ 2 = ½. A negative power means one over the positive power.', explanation: 'A negative power is the reciprocal: 2⁻¹ = 1/2¹.', points: 4 },
+      ];
+      // Add any of these the quiz doesn't have yet, after its own questions
+      const have = await prisma.questionBank.findMany({ where: { lessonId: quizId }, select: { questionText: true, sortOrder: true } });
+      const missing = qs.filter(q => !have.some(h => h.questionText === q.questionText));
+      const start = Math.max(0, ...have.map(h => h.sortOrder));
+      if (missing.length) await prisma.questionBank.createMany({ data: missing.map((q, i) => ({ courseId: teachCourse.id, lessonId: quizId, sortOrder: start + i + 1, difficulty: 'MEDIUM' as const, tags: [], ...q, type: q.type as any })) });
+    }
+    // Two classmates' attempts wait for their written answer to be marked
+    const questions = await prisma.questionBank.findMany({ where: { lessonId: quizId }, orderBy: { sortOrder: 'asc' } });
+    const written = questions.find(q => q.type === 'WRITTEN');
+    // Each classmate's written answers, matched to the question's topic
+    const writtenAnswer = (i: number, question: string) =>
+      /2⁻¹/.test(question) ? ['Because 2⁻¹ means 1 over 2, so it is a half. Like 2² = 4 and 2⁻² = 1/4.', 'When you divide 2 by 2 squared you get 2 to the minus 1, which is the same as 2/4 = ½.'][i]
+      : /percent/i.test(question) ? ['72 ÷ 120 = 0.6, and 0.6 × 100 = 60%.', '72/120 = 6/10 so it is 60 percent.'][i]
+      : ['I showed my working on paper: first simplify, then substitute.', 'I am not sure but I think you rearrange first.'][i];
+    for (const i of [0, 1]) {
+      const c = classmates[i];
+      if (!c || !written || (await prisma.quizAttempt.count({ where: { studentId: c.id, lessonId: quizId } }))) continue;
+      const given: Record<string, string> = {};
+      let auto = 0;
+      for (const q of questions) {
+        if (q.type === 'WRITTEN') { given[q.id] = writtenAnswer(i, q.questionText); continue; }
+        const right = i === 0 || q.sortOrder % 2 === 1;
+        given[q.id] = q.type === 'SHORT_ANSWER' ? (right ? '5√2' : '25√2') : right ? q.correctAnswer : (q.correctAnswer === 'a' ? 'b' : 'a');
+        if (right) auto += q.points;
+      }
+      await prisma.quizAttempt.create({ data: {
+        studentId: c.id, courseId: teachCourse.id, lessonId: quizId, answersJson: given, autoScore: auto, finalScore: auto,
+        maxScore: questions.reduce((n, q) => n + q.points, 0), passed: false, isFullyGraded: false,
+        submittedAt: new Date(Date.now() - (i === 0 ? 2 * DAY : 5 * 3_600_000)), timeTakenSecs: 600 + i * 120,
+      } });
+    }
+    log('Quiz: Number & Algebra quiz with 6 questions of every type; two written answers to mark');
+  }
 
   // ── Messages and notifications ─────────────────────────────────────────
   const thread = await prisma.messageThread.findFirst({
