@@ -1,622 +1,282 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
-import Image from 'next/image';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
+import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
 import { VideoEmbed } from '@/components/ui/VideoEmbed';
 import { notify } from '@/lib/notify';
 import { uploadVideo } from '@/lib/uploadVideo';
 import api from '@/lib/api';
 import { parseVideoUrl } from '@cpa/shared';
 
-const STATUS_COLORS: Record<string, string> = {
-  PUBLISHED:      'bg-green-100 text-green-700',
-  PENDING_REVIEW: 'bg-amber-100 text-amber-700',
-  DRAFT:          'bg-cloud text-royal/60',
-  ARCHIVED:       'bg-red-100 text-red-600',
-};
+interface Profile {
+  id: string; email: string; name: string | null; firstName: string | null; lastName: string | null;
+  avatarUrl: string | null; bio: string | null; videoIntroUrl: string | null; countryId: string | null;
+  teacherApplication: { subjectAreas: string[]; yearsExperience: number | null } | null;
+  teachingSubjects: { id: string; name: string }[];
+  platformCourses: { id: string; status: string }[];
+  avgRating: number | null; reviewCount: number; studentCount: number;
+}
+interface Payout { bankName: string; accountNumber: string; bankCode: string | null; country: string; isVerified: boolean }
 
-interface Me {
-  email: string; firstName?: string | null; lastName?: string | null;
-  phone?: string | null; avatarUrl?: string | null; bio?: string | null;
-  linkedinUrl?: string | null; websiteUrl?: string | null;
-  subjectAreas?: string[]; qualification?: string | null;
-  yearsExperience?: number | null;
-  agreementAcceptedAt?: string | null;
-  agreementVersion?: string | null;
-}
-interface TeacherProfileData {
-  videoIntroUrl?: string | null; avgRating?: number | null;
-  reviewCount: number;
-  platformCourses?: Array<{
-    id: string; title: string; status: string;
-    createdAt: string; wpCourseId?: string | null;
-  }>;
-}
+const MOMO = ['MTN Mobile Money', 'Telecel Cash', 'AirtelTigo Money', 'Orange Money', 'M-Pesa', 'Airtel Money', 'Wave'];
+const input = 'h-[38px] rounded-md border border-line bg-white px-2.5 text-[13.5px] text-navy outline-none focus:border-azure disabled:bg-subtle disabled:text-ink2';
+const card = 'flex flex-col gap-3 rounded-lg border border-line bg-white p-[18px]';
+const Field = ({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) => (
+  <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">{label}</span>{children}{hint && <span className="text-xs text-muted">{hint}</span>}</label>
+);
 
 export default function TeacherProfilePage() {
-  const [me, setMe] = useState<Me | null>(null);
-  const [teacherProfile, setTeacherProfile] = useState<TeacherProfileData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [p, setP] = useState<Profile | null>(null);
+  const [payout, setPayout] = useState<Payout | null | undefined>(undefined);
+  const [countries, setCountries] = useState<{ id: string; name: string }[]>([]);
+  const [about, setAbout] = useState({ name: '', bio: '', countryId: '' });
+  const [savingAbout, setSavingAbout] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [preview, setPreview] = useState(false);
+  const photoRef = useRef<HTMLInputElement>(null);
 
-  // Basic info
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [savingBasic, setSavingBasic] = useState(false);
-
-  // Professional
-  const [bio, setBio] = useState('');
-  const [linkedinUrl, setLinkedinUrl] = useState('');
-  const [websiteUrl, setWebsiteUrl] = useState('');
-  const [savingPro, setSavingPro] = useState(false);
-
-  // Avatar upload
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-
-  // Video intro
-  const [videoIntroUrl, setVideoIntroUrl] = useState('');       // link input
-  const [savedVideoUrl, setSavedVideoUrl] = useState('');       // what students see
-  const [videoProgress, setVideoProgress] = useState<number | null>(null);
-  const [savingVideo, setSavingVideo] = useState(false);
-  const uploadingVideo = videoProgress !== null;
-
-  const handleVideoFile = useCallback(async (file: File) => {
-    setVideoProgress(0);
-    try {
-      const url = await uploadVideo(file, setVideoProgress);
-      await api.patch('/teachers/me/profile', { videoIntroUrl: url });
-      setSavedVideoUrl(url);
-      setVideoIntroUrl('');
-      notify.success('Intro video uploaded');
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? err?.message ?? 'Upload failed');
-    } finally { setVideoProgress(null); }
+  useEffect(() => {
+    api.get('/teachers/me/profile').then(r => {
+      const d: Profile = r.data;
+      setP(d);
+      setAbout({ name: d.name || [d.firstName, d.lastName].filter(Boolean).join(' '), bio: d.bio ?? '', countryId: d.countryId ?? '' });
+    }).catch(() => notify.error('Could not load your profile'));
+    api.get('/payout-accounts/me').then(r => setPayout(r.data || null)).catch(() => setPayout(null));
+    api.get('/auth/me/preferences').then(r => setCountries(r.data.countries ?? [])).catch(() => {});
   }, []);
 
-  const { getRootProps: getVideoRootProps, getInputProps: getVideoInputProps, isDragActive: isVideoDrag } = useDropzone({
+  const subjects = p ? (p.teachingSubjects.length ? p.teachingSubjects.map(s => s.name) : p.teacherApplication?.subjectAreas ?? []) : [];
+  const steps = p ? [
+    { done: !!p.avatarUrl, todo: 'add a photo' },
+    { done: (p.bio ?? '').trim().length >= 100, todo: 'write a bio of at least 100 characters' },
+    { done: subjects.length > 0, todo: 'choose your subjects' },
+    { done: !!p.videoIntroUrl, todo: 'add an intro video' },
+    { done: !!payout, todo: 'add your payout account so you can be paid' },
+  ] : [];
+  const doneCount = steps.filter(s => s.done).length;
+  const todo = steps.filter(s => !s.done);
+
+  async function saveAbout() {
+    if (about.bio.trim() && about.bio.trim().length < 100) { notify.error('Write at least 100 characters in your bio'); return; }
+    setSavingAbout(true);
+    try {
+      await api.patch('/auth/me', { name: about.name.trim() || undefined, bio: about.bio.trim(), countryId: about.countryId || undefined });
+      setP(prev => prev ? { ...prev, name: about.name.trim() || prev.name, bio: about.bio.trim(), countryId: about.countryId || prev.countryId } : prev);
+      notify.success('Profile saved');
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not save'); } finally { setSavingAbout(false); }
+  }
+
+  async function uploadPhoto(file: File) {
+    setUploadingPhoto(true);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const r = await api.post('/files/upload?folder=avatars', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const url = r.data?.url ?? r.data?.fileUrl ?? r.data;
+      await api.patch('/auth/me', { avatarUrl: url });
+      setP(prev => prev ? { ...prev, avatarUrl: url } : prev); notify.success('Photo updated');
+    } catch { notify.error('Upload failed'); } finally { setUploadingPhoto(false); }
+  }
+
+  const displayName = about.name || p?.email.split('@')[0] || '';
+  const initials = displayName.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+  return (
+    <div className="flex min-h-full flex-col">
+      <Topbar title="My profile" subtitle="What students see, and where your earnings are paid"
+        actions={<Button variant="secondary" size="sm" onClick={() => setPreview(true)} disabled={!p}>See it as a student</Button>} />
+      {!p ? <div className="m-4 h-96 rounded-lg bg-subtle animate-pulse lg:mx-7 lg:my-6" /> : (
+        <div className="flex flex-wrap items-start gap-5 p-4 lg:px-7 lg:py-6">
+          <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-4">
+            <section className={clsx('flex flex-col gap-2 rounded-lg border bg-white px-[18px] py-4', todo.length ? 'border-azure' : 'border-line')}>
+              <div className="flex flex-wrap justify-between gap-2"><strong className="text-[15px] text-navy">Profile {doneCount} of {steps.length} done</strong><span className="text-[13px] text-muted">Complete profiles get more mentorship bookings</span></div>
+              <span className="block h-1.5 rounded-full bg-subtle"><span className="block h-1.5 rounded-full bg-azure" style={{ width: `${(doneCount / steps.length) * 100}%` }} /></span>
+              <p className="text-[13px] text-ink2">{todo.length ? <>Still to do: <strong className="text-navy">{todo.map(t => t.todo).join(', ')}</strong>.</> : 'Everything’s done. Students see your full profile.'}</p>
+            </section>
+
+            <section className={card}>
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-bold text-navy">About you</h2>
+                <span className="flex items-center gap-2.5">
+                  {p.avatarUrl ? <img src={p.avatarUrl} alt="" className="h-9 w-9 rounded-md object-cover" /> : <span className="grid h-9 w-9 place-items-center rounded-md bg-accent-soft text-xs font-extrabold text-azure-strong">{initials}</span>}
+                  <input ref={photoRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); e.target.value = ''; }} />
+                  <button onClick={() => photoRef.current?.click()} className="text-[13px] font-semibold text-azure-strong hover:underline">{uploadingPhoto ? 'Uploading…' : p.avatarUrl ? 'Change photo' : 'Add photo'}</button>
+                </span>
+              </div>
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                <Field label="Name shown to students"><input className={input} value={about.name} onChange={e => setAbout({ ...about, name: e.target.value })} placeholder="Mr A. Tabi" maxLength={80} /></Field>
+                <Field label="Subjects" hint="Ask an admin to change your subjects."><input className={input} value={subjects.join(', ') || 'Not set'} disabled /></Field>
+                <Field label="Years teaching"><input className={input} value={p.teacherApplication?.yearsExperience ?? '—'} disabled /></Field>
+                <Field label="Country">
+                  <select className={input} value={about.countryId} onChange={e => setAbout({ ...about, countryId: e.target.value })}>
+                    <option value="">Choose…</option>{countries.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </Field>
+              </div>
+              <Field label="Bio" hint={`${about.bio.trim().length} characters · at least 100`}>
+                <textarea rows={4} value={about.bio} onChange={e => setAbout({ ...about, bio: e.target.value })} maxLength={2000}
+                  placeholder="Mathematics teacher with 9 years of WASSCE and GCE exam preparation…" className="min-h-16 resize-y rounded-md border border-line p-2.5 text-[13.5px] text-ink2 outline-none focus:border-azure" />
+              </Field>
+              <div><Button size="sm" onClick={saveAbout} loading={savingAbout}>Save profile</Button></div>
+            </section>
+
+            <IntroVideo url={p.videoIntroUrl} onChange={url => setP(prev => prev ? { ...prev, videoIntroUrl: url } : prev)} />
+          </div>
+
+          <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-3.5">
+            <PayoutCard payout={payout} countries={countries} onSaved={setPayout} />
+            <section className="flex flex-col gap-1.5 rounded-lg border border-line bg-white p-[18px]">
+              <h3 className="text-[15px] font-semibold text-navy">What students see</h3>
+              <p className="text-[13px] text-navy">
+                <strong>{p.avgRating != null ? `${p.avgRating} ★` : 'No ratings yet'}</strong>
+                <span className="text-muted"> · {p.reviewCount} rating{p.reviewCount === 1 ? '' : 's'} · {p.studentCount} student{p.studentCount === 1 ? '' : 's'} · {p.platformCourses.filter(c => c.status === 'PUBLISHED').length} course{p.platformCourses.filter(c => c.status === 'PUBLISHED').length === 1 ? '' : 's'}</span>
+              </p>
+            </section>
+          </aside>
+        </div>
+      )}
+
+      {preview && p && (
+        <Dialog open onOpenChange={o => { if (!o) setPreview(false); }}>
+          <DialogContent title="How students see you" size="lg">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3.5">
+                {p.avatarUrl ? <img src={p.avatarUrl} alt="" className="h-16 w-16 rounded-[10px] object-cover" /> : <span className="grid h-16 w-16 place-items-center rounded-[10px] bg-accent-soft text-xl font-extrabold text-azure-strong">{initials}</span>}
+                <div>
+                  <p className="text-lg font-extrabold text-navy">{displayName}</p>
+                  <p className="text-[13px] text-ink2">{[subjects.join(', '), p.teacherApplication?.yearsExperience ? `${p.teacherApplication.yearsExperience} years teaching` : ''].filter(Boolean).join(' · ')}</p>
+                  <p className="text-[13px] text-muted">{p.avgRating != null ? `${p.avgRating} ★ · ${p.reviewCount} ratings` : 'No ratings yet'}</p>
+                </div>
+              </div>
+              {p.videoIntroUrl && <VideoEmbed url={p.videoIntroUrl} />}
+              <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink2">{about.bio || 'No bio yet.'}</p>
+            </div>
+            <DialogFooter><Button size="sm" variant="secondary" onClick={() => setPreview(false)}>Close</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
+function IntroVideo({ url, onChange }: { url: string | null; onChange: (url: string | null) => void }) {
+  const [replacing, setReplacing] = useState(false);
+  const [link, setLink] = useState('');
+  const [progress, setProgress] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const handleFile = useCallback(async (file: File) => {
+    setProgress(0);
+    try {
+      const u = await uploadVideo(file, setProgress);
+      await api.patch('/teachers/me/profile', { videoIntroUrl: u });
+      onChange(u); setReplacing(false); notify.success('Intro video uploaded');
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? e?.message ?? 'Upload failed'); } finally { setProgress(null); }
+  }, [onChange]);
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: { 'video/mp4': ['.mp4'], 'video/quicktime': ['.mov'], 'video/webm': ['.webm'] },
-    maxSize: 100 * 1024 * 1024,
-    multiple: false,
-    disabled: uploadingVideo,
-    onDropAccepted: ([file]) => handleVideoFile(file),
+    maxSize: 100 * 1024 * 1024, multiple: false, disabled: progress !== null,
+    onDropAccepted: ([f]) => handleFile(f),
     onDropRejected: ([r]) => notify.error(r?.errors[0]?.code === 'file-too-large' ? 'Video must be 100 MB or smaller' : 'Use an MP4, MOV or WebM video'),
   });
 
-  const removeVideo = () => saveVideoUrl('');
-
-  async function saveVideoUrl(value = videoIntroUrl) {
-    const link = value.trim();
-    if (link && !parseVideoUrl(link)) { notify.error('Paste a YouTube or Vimeo link'); return; }
-    setSavingVideo(true);
+  async function saveLink(value: string) {
+    const v = value.trim();
+    if (v && !parseVideoUrl(v)) { notify.error('Paste a YouTube or Vimeo link'); return; }
+    setSaving(true);
     try {
-      const { data } = await api.patch('/teachers/me/profile', { videoIntroUrl: link || null });
-      setSavedVideoUrl(data?.videoIntroUrl ?? '');
-      setVideoIntroUrl('');
-      notify.success(link ? 'Intro video saved' : 'Intro video removed');
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to save');
-    } finally { setSavingVideo(false); }
+      const { data } = await api.patch('/teachers/me/profile', { videoIntroUrl: v || null });
+      onChange(data?.videoIntroUrl ?? null); setLink(''); setReplacing(false);
+      notify.success(v ? 'Intro video saved' : 'Intro video removed');
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not save'); } finally { setSaving(false); }
   }
 
-  const uploadAvatar = useCallback(async (file: File) => {
-    setUploadingAvatar(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const r = await api.post('/files/upload?folder=avatars', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const url = r.data?.url ?? r.data?.fileUrl ?? r.data;
-      await api.patch('/auth/me', { avatarUrl: url });
-      setMe(prev => prev ? { ...prev, avatarUrl: url } : prev);
-      notify.success('Avatar updated');
-    } catch {
-      notify.error('Upload failed');
-    } finally { setUploadingAvatar(false); }
-  }, []);
+  const editing = replacing || !url;
+  return (
+    <section className={card}>
+      <div className="flex justify-between">
+        <h2 className="text-base font-bold text-navy">Intro video</h2>
+        {url && <span className="flex gap-3 text-[13px] font-semibold">
+          <button onClick={() => setReplacing(r => !r)} className="text-azure-strong hover:underline">{replacing ? 'Cancel' : 'Replace'}</button>
+          <button onClick={() => { if (confirm('Remove your intro video?')) saveLink(''); }} className="text-muted hover:text-navy">Remove</button>
+        </span>}
+      </div>
+      {url && !replacing ? <VideoEmbed url={url} /> : (
+        <div className="flex flex-col gap-2.5">
+          <div {...(getRootProps() as React.HTMLAttributes<HTMLDivElement>)}
+            className={clsx('grid h-40 cursor-pointer place-items-center rounded-md border border-dashed px-4 text-center text-[13px]', isDragActive ? 'border-azure bg-accent-soft' : 'border-line bg-subtle')}>
+            <input {...getInputProps()} />
+            {progress !== null ? <span className="text-navy">Uploading… {progress}%</span>
+              : <span className="text-ink2">Your 1-minute intro · students see it before booking<br /><strong className="text-azure-strong">Upload a video</strong> (MP4, MOV or WebM, up to 100 MB)</span>}
+          </div>
+          {editing && (
+            <div className="flex gap-2">
+              <input value={link} onChange={e => setLink(e.target.value)} placeholder="…or paste a YouTube or Vimeo link" className={clsx(input, 'min-w-0 flex-1')} />
+              <Button size="sm" variant="secondary" onClick={() => saveLink(link)} loading={saving} disabled={!link.trim()}>Save link</Button>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
 
-  const { getRootProps: getAvatarRootProps, getInputProps: getAvatarInputProps, isDragActive: isAvatarDrag } = useDropzone({
-    accept: { 'image/*': ['.jpg', '.jpeg', '.png', '.webp'] },
-    maxSize: 5 * 1024 * 1024,
-    multiple: false,
-    onDropAccepted: ([file]) => uploadAvatar(file),
-  });
-
-  // Bank / payout
-  const [bankName, setBankName]       = useState('');
-  const [accountNumber, setAccountNumber] = useState('');
-  const [bankCode, setBankCode]       = useState('');
-  const [bankCountry, setBankCountry] = useState('');
-  const [bankVerified, setBankVerified] = useState(false);
-  const [savingBank, setSavingBank]   = useState(false);
+function PayoutCard({ payout, countries, onSaved }: { payout: Payout | null | undefined; countries: { id: string; name: string }[]; onSaved: (p: Payout) => void }) {
+  const isMomo = (n: string | undefined) => !!n && (MOMO.includes(n) || /money|momo|cash|pesa|wave/i.test(n));
+  const [method, setMethod] = useState<'momo' | 'bank'>('momo');
+  const [f, setF] = useState({ bankName: MOMO[0], accountNumber: '', bankCode: '', country: '' });
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      api.get('/auth/me').catch(() => ({ data: null })),
-      api.get('/payout-accounts/me').catch(() => ({ data: null })),
-      api.get('/teachers/me/profile').catch(() => ({ data: null })),
-    ]).then(([meRes, bankRes, tpRes]) => {
-      const d = meRes.data;
-      if (d) {
-        setMe(d);
-        setFirstName(d.firstName ?? '');
-        setLastName(d.lastName ?? '');
-        setPhone(d.phone ?? '');
-        setBio(d.bio ?? '');
-        setLinkedinUrl(d.linkedinUrl ?? '');
-        setWebsiteUrl(d.websiteUrl ?? '');
-      }
-      const b = bankRes.data;
-      if (b) {
-        setBankName(b.bankName ?? '');
-        setAccountNumber(b.accountNumber ?? '');
-        setBankCode(b.bankCode ?? '');
-        setBankCountry(b.country ?? '');
-        setBankVerified(b.isVerified ?? false);
-      }
-      if (tpRes.data) {
-        setTeacherProfile(tpRes.data);
-        setSavedVideoUrl(tpRes.data.videoIntroUrl ?? '');
-      } else {
-        // WP-created teachers have no teacherProfile record yet.
-        // Send a no-op PATCH to initialise the row on the backend.
-        api.patch('/teachers/me/profile', {}).catch(() => {});
-      }
-    }).finally(() => setLoading(false));
-  }, []);
+    if (!payout) return;
+    setMethod(isMomo(payout.bankName) ? 'momo' : 'bank');
+    setF({ bankName: payout.bankName, accountNumber: payout.accountNumber, bankCode: payout.bankCode ?? '', country: payout.country });
+  }, [payout]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function saveBank(e: React.FormEvent) {
-    e.preventDefault();
-    if (!bankName.trim() || !accountNumber.trim() || !bankCountry.trim()) {
-      notify.error('Bank name, account number, and country are required');
-      return;
-    }
-    setSavingBank(true);
-    try {
-      await api.post('/payout-accounts/me', {
-        bankName: bankName.trim(),
-        accountNumber: accountNumber.trim(),
-        bankCode: bankCode.trim() || undefined,
-        country: bankCountry.trim(),
-      });
-      setBankVerified(false); // reset verification since details changed
-      notify.success('Bank details saved — awaiting admin verification');
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to save bank details');
-    } finally { setSavingBank(false); }
+  function pick(m: 'momo' | 'bank') {
+    setMethod(m);
+    if (m === 'momo' && !isMomo(f.bankName)) setF({ ...f, bankName: MOMO[0] });
+    if (m === 'bank' && isMomo(f.bankName)) setF({ ...f, bankName: '' });
   }
 
-  async function saveBasic(e: React.FormEvent) {
-    e.preventDefault();
-    setSavingBasic(true);
+  async function save() {
+    if (!f.bankName.trim() || !f.accountNumber.trim() || !f.country.trim()) { notify.error(method === 'momo' ? 'Choose the network, number and country' : 'Bank, account number and country are needed'); return; }
+    setSaving(true);
     try {
-      await api.patch('/auth/me', {
-        firstName: firstName.trim() || undefined,
-        lastName: lastName.trim() || undefined,
-        phone: phone.trim() || undefined,
-      });
-      notify.success('Profile updated');
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to update profile');
-    } finally { setSavingBasic(false); }
+      const r = await api.post('/payout-accounts/me', { bankName: f.bankName.trim(), accountNumber: f.accountNumber.trim(), bankCode: method === 'bank' ? f.bankCode.trim() || undefined : undefined, country: f.country.trim() });
+      onSaved(r.data); notify.success('Payout account saved', { description: 'An admin will verify it before the next payout.' });
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not save'); } finally { setSaving(false); }
   }
-
-  async function saveProfessional(e: React.FormEvent) {
-    e.preventDefault();
-    if (bio.trim().length < 100) {
-      notify.error('Bio must be at least 100 characters');
-      return;
-    }
-    setSavingPro(true);
-    try {
-      await api.patch('/auth/me', {
-        bio: bio.trim() || undefined,
-        linkedinUrl: linkedinUrl.trim() || undefined,
-        websiteUrl: websiteUrl.trim() || undefined,
-      });
-      notify.success('Professional profile updated');
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to update professional profile');
-    } finally { setSavingPro(false); }
-  }
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar back />
-      <div className="flex-1 p-6 space-y-6 max-w-2xl w-full mx-auto">
-        <SkeletonCard lines={2} />
-        <SkeletonCard lines={2} />
-        <SkeletonCard lines={4} />
-        <SkeletonCard lines={4} />
-        <SkeletonCard lines={4} />
-        <SkeletonCard lines={2} />
-      </div>
-    </div>
-  );
-
-  const completionItems = [
-    { label: 'Profile photo',    done: !!me?.avatarUrl },
-    { label: 'Bio (100+ chars)', done: bio.trim().length >= 100 },
-    { label: 'Bank details',     done: !!(bankName && accountNumber) },
-    { label: 'Intro video',      done: !!savedVideoUrl },
-  ];
-  const completionPct = Math.round((completionItems.filter(i => i.done).length / completionItems.length) * 100);
-  const isComplete = completionPct === 100;
-  const hasVideo = !!savedVideoUrl;
 
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="My Profile" subtitle="Update your teaching profile visible to students"
-        backHref="/teacher/dashboard" backLabel="Dashboard" />
-
-      <div className="flex-1 p-6 space-y-6 max-w-2xl w-full mx-auto">
-
-        {/* Completeness banner */}
-        {!isComplete && (
-          <Card padding="md" className="border-cloud bg-surface">
-            <div className="flex items-start justify-between gap-4 mb-3">
-              <div>
-                <p className="text-sm font-semibold text-navy">Profile completeness</p>
-                <p className="text-sm font-medium text-royal/60 mt-0.5">
-                  {completionPct}% complete{!hasVideo ? ' — add an intro video to make your mentorship slots visible to students' : ' — finish your profile to appear in student searches'}
-                </p>
-              </div>
-              <span className="flex-shrink-0 text-2xl font-bold text-navy">{completionPct}%</span>
-            </div>
-            <div className="w-full h-2 rounded-full bg-cloud overflow-hidden mb-3">
-              <div className="h-full rounded-full bg-azure transition-all duration-500" style={{ width: `${completionPct}%` }} />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {completionItems.map(item => (
-                <span key={item.label}
-                  className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${
-                    item.done ? 'bg-green-100 text-green-700' : 'bg-cloud text-royal/60'
-                  }`}>
-                  {item.done
-                    ? <Icon name="check" size={12} />
-                    : <span className="h-2 w-2 rounded-full bg-royal/30" />
-                  }
-                  {item.label}
-                </span>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {/* Avatar upload */}
-        <Card padding="md">
-          <p className="text-sm font-semibold text-navy mb-4">Profile photo</p>
-          <div className="flex items-center gap-5">
-            <div className="relative flex-shrink-0">
-              {me?.avatarUrl ? (
-                <Image src={me.avatarUrl} alt="Avatar" width={72} height={72}
-                  className="w-18 h-18 rounded-2xl object-cover" />
-              ) : (
-                <div className="w-18 h-18 rounded-2xl bg-cloud flex items-center justify-center text-azure font-bold text-2xl">
-                  {(me?.firstName?.[0] ?? me?.email?.[0] ?? '?').toUpperCase()}
-                </div>
-              )}
-            </div>
-            <div {...(getAvatarRootProps() as React.HTMLAttributes<HTMLDivElement>)}
-              className={`flex-1 border-2 border-dashed rounded-xl px-4 py-4 text-center cursor-pointer transition-colors
-                ${isAvatarDrag ? 'border-azure bg-cloud' : 'border-cloud hover:border-azure/50'}`}>
-              <input {...getAvatarInputProps()} />
-              {uploadingAvatar ? (
-                <p className="text-xs text-royal/40">Uploading…</p>
-              ) : (
-                <>
-                  <Icon name="upload" size={18} className="text-azure mx-auto mb-1" />
-                  <p className="text-xs font-semibold text-navy">Drop photo or click to browse</p>
-                  <p className="text-[10px] text-royal/40 mt-0.5">JPG, PNG, WebP — max 5 MB</p>
-                </>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        {/* Video intro */}
-        <Card padding="md" className={!hasVideo ? 'border-amber-200 bg-amber-50/30' : undefined}>
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div>
-              <p className="text-sm font-semibold text-navy">Intro video</p>
-              {!hasVideo && (
-                <p className="text-[10px] font-semibold text-amber-600 mt-0.5 flex items-center gap-1">
-                  <span>⚠</span> Required — your slots are hidden from students until this is added
-                </p>
-              )}
-            </div>
-            {hasVideo && (
-              <span className="flex items-center gap-1 rounded-md bg-green-100 px-2.5 py-1 text-[10px] font-bold text-green-700 flex-shrink-0">
-                <Icon name="check" size={11} />
-                Live on your profile
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-royal/50 mb-4">
-            A 60–90 second intro video is required before your availability slots appear to students. It helps them choose you with confidence.
-          </p>
-          {savedVideoUrl && <VideoEmbed url={savedVideoUrl} className="mb-4" />}
-          <div {...(getVideoRootProps() as React.HTMLAttributes<HTMLDivElement>)}
-            className={`border-2 border-dashed rounded-xl px-4 py-5 text-center cursor-pointer transition-colors mb-4
-              ${isVideoDrag ? 'border-azure bg-cloud' : 'border-cloud hover:border-azure/50'}`}>
-            <input {...getVideoInputProps()} />
-            {uploadingVideo ? (
-              <div className="space-y-2">
-                <p className="text-xs text-royal/60">Uploading video… {videoProgress}%</p>
-                <div className="h-1.5 rounded-full bg-cloud overflow-hidden">
-                  <div className="h-full bg-azure transition-all" style={{ width: `${videoProgress}%` }} />
-                </div>
-              </div>
-            ) : (
-              <>
-                <Icon name="live" size={20} className="text-azure mx-auto mb-2" />
-                <p className="text-xs font-semibold text-navy">Drop video or click to upload</p>
-                <p className="text-[10px] text-royal/40 mt-0.5">MP4, MOV, WebM — max 100 MB</p>
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <input value={videoIntroUrl} onChange={e => setVideoIntroUrl(e.target.value)}
-              type="url" placeholder="Or paste a YouTube / Vimeo link"
-              className="flex-1 input-base" />
-            <Button size="sm" loading={savingVideo} disabled={!videoIntroUrl.trim()} onClick={() => saveVideoUrl()}>Save</Button>
-            {savedVideoUrl && (
-              <Button size="sm" variant="ghost" loading={savingVideo} onClick={removeVideo}>Remove</Button>
-            )}
-          </div>
-        </Card>
-
-        {/* Basic info */}
-        <Card padding="md">
-          <p className="text-sm font-semibold text-navy mb-5">Basic information</p>
-          <form onSubmit={saveBasic} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-navy">First name</label>
-                <input value={firstName} onChange={e => setFirstName(e.target.value)}
-                  placeholder="First name"
-                  className="input-base" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-navy">Last name</label>
-                <input value={lastName} onChange={e => setLastName(e.target.value)}
-                  placeholder="Last name"
-                  className="input-base" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-navy">Phone number</label>
-                <input value={phone} onChange={e => setPhone(e.target.value)}
-                  placeholder="+234 800 000 0000"
-                  className="input-base" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-navy">Email address</label>
-                <input value={me?.email ?? ''} disabled
-                  className="input-base" />
-              </div>
-            </div>
-            <Button type="submit" size="sm" loading={savingBasic}>
-              <Icon name="check" size={13} /> Save
-            </Button>
-          </form>
-        </Card>
-
-        {/* Professional profile */}
-        <Card padding="md">
-          <p className="text-sm font-semibold text-navy mb-5">Professional profile</p>
-          <form onSubmit={saveProfessional} className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-navy">
-                Bio <span className="font-normal text-royal/40">(min. 100 characters)</span>
-              </label>
-              <textarea value={bio} onChange={e => setBio(e.target.value)} rows={5}
-                placeholder="Describe your expertise, teaching style, and experience…"
-                className="input-base resize-none" />
-              <p className={`text-[10px] ${bio.length < 100 && bio.length > 0 ? 'text-amber-500' : 'text-royal/40'}`}>
-                {bio.length} / 100 minimum characters
-              </p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-navy">
-                LinkedIn URL <span className="font-normal text-royal/40">(optional)</span>
-              </label>
-              <input value={linkedinUrl} onChange={e => setLinkedinUrl(e.target.value)}
-                type="url" placeholder="https://linkedin.com/in/yourname"
-                className="w-full rounded-xl border border-cloud bg-white px-4 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/30" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-navy">
-                Website <span className="font-normal text-royal/40">(optional)</span>
-              </label>
-              <input value={websiteUrl} onChange={e => setWebsiteUrl(e.target.value)}
-                type="url" placeholder="https://yourwebsite.com"
-                className="w-full rounded-xl border border-cloud bg-white px-4 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/30" />
-            </div>
-            <Button type="submit" size="sm" loading={savingPro}>
-              <Icon name="check" size={13} /> Save professional profile
-            </Button>
-          </form>
-        </Card>
-
-        {/* Bank / payout details */}
-        <Card padding="md">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-semibold text-navy">Bank / payout details</p>
-            {bankVerified && (
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-green-600">
-                <Icon name="check" size={11} /> Verified
-              </span>
-            )}
-          </div>
-          <form onSubmit={saveBank} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-navy">Bank name</label>
-                <input value={bankName} onChange={e => setBankName(e.target.value)}
-                  placeholder="e.g. First Bank Nigeria"
-                  className="input-base" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-navy">Account number</label>
-                <input value={accountNumber} onChange={e => setAccountNumber(e.target.value)}
-                  placeholder="0123456789"
-                  className="input-base" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-navy">
-                  Bank code / sort code <span className="font-normal text-royal/40">(optional)</span>
-                </label>
-                <input value={bankCode} onChange={e => setBankCode(e.target.value)}
-                  placeholder="011"
-                  className="input-base" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-navy">Country</label>
-                <input value={bankCountry} onChange={e => setBankCountry(e.target.value)}
-                  placeholder="NG"
-                  className="input-base" />
-              </div>
-            </div>
-            <p className="text-[10px] text-royal/40">
-              Details are reviewed and verified by the admin team before your first payout. You'll receive an email once verified.
-            </p>
-            <Button type="submit" size="sm" loading={savingBank}>
-              <Icon name="check" size={13} /> Save bank details
-            </Button>
-          </form>
-        </Card>
-
-        {/* Teaching info (read-only) */}
-        {(!!me?.subjectAreas?.length || me?.qualification || me?.yearsExperience) && (
-          <Card padding="md">
-            <p className="text-sm font-semibold text-navy mb-4">Teaching credentials</p>
-            <div className="divide-y divide-cloud">
-              {me?.qualification && (
-                <div className="flex items-center justify-between py-3">
-                  <p className="text-xs text-royal/50">Qualification</p>
-                  <p className="text-xs font-semibold text-navy capitalize">{me.qualification.toLowerCase().replace('_', ' ')}</p>
-                </div>
-              )}
-              {me?.yearsExperience !== undefined && me?.yearsExperience !== null && (
-                <div className="flex items-center justify-between py-3">
-                  <p className="text-xs text-royal/50">Years of experience</p>
-                  <p className="text-xs font-semibold text-navy">{me.yearsExperience} year{me.yearsExperience !== 1 ? 's' : ''}</p>
-                </div>
-              )}
-              {!!me?.subjectAreas?.length && (
-                <div className="flex items-start justify-between py-3 gap-4">
-                  <p className="text-xs text-royal/50 flex-shrink-0">Subject areas</p>
-                  <div className="flex flex-wrap gap-1.5 justify-end">
-                    {(me?.subjectAreas ?? []).map((s: string) => (
-                      <span key={s} className="rounded-md bg-cloud px-2.5 py-1 text-[10px] font-semibold text-navy">{s}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-            <p className="text-[10px] text-royal/40 mt-3">
-              Teaching credentials are set during registration. Contact support to update them.
-            </p>
-          </Card>
-        )}
-
-        {/* Rating summary */}
-        {teacherProfile && (
-          <Card padding="md">
-            <p className="text-sm font-semibold text-navy mb-4">Student ratings</p>
-            {teacherProfile.reviewCount === 0 ? (
-              <p className="text-sm text-royal/40">No reviews yet. Students can leave reviews on your public profile.</p>
-            ) : (
-              <div className="flex items-center gap-4">
-                <div className="text-center">
-                  <p className="text-4xl font-black text-navy">{teacherProfile.avgRating}</p>
-                  <div className="flex gap-0.5 mt-1 justify-center">
-                    {[1,2,3,4,5].map(s => (
-                      <Icon key={s} name="star" size={14}
-                        className={s <= Math.round(teacherProfile.avgRating ?? 0) ? 'text-amber-400' : 'text-cloud'} />
-                    ))}
-                  </div>
-                </div>
-                <div className="text-sm text-royal/40">
-                  Based on <span className="font-semibold text-navy">{teacherProfile.reviewCount}</span> student review{teacherProfile.reviewCount !== 1 ? 's' : ''}
-                </div>
-              </div>
-            )}
-          </Card>
-        )}
-
-        {/* Agreement */}
-        <Card padding="md">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-azure mb-1">Legal</p>
-              <p className="text-sm font-bold text-navy">Content Ownership Agreement</p>
-              <p className="text-xs text-royal/50 mt-0.5">Tutor Offer Letter &amp; Content Ownership Agreement {me?.agreementVersion ?? 'v1.0 · 2026'}</p>
-            </div>
-            {me?.agreementAcceptedAt ? (
-              <span className="inline-flex items-center gap-1.5 rounded-md bg-green-50 border border-green-200 px-3 py-1 text-xs font-bold text-green-700 flex-shrink-0">
-                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                Signed
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-3 py-1 text-xs font-bold text-amber-700 flex-shrink-0">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-                Not signed
-              </span>
-            )}
-          </div>
-
-          {me?.agreementAcceptedAt && (
-            <p className="text-xs text-royal/50 mt-3">
-              Accepted on {new Date(me.agreementAcceptedAt).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </p>
-          )}
-
-          <div className="flex items-center gap-3 mt-4 pt-4 border-t border-cloud">
-            <a href="/legal/tutor-agreement" target="_blank" rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-cloud bg-white px-3 py-2 text-xs font-semibold text-navy hover:bg-cloud transition">
-              <Icon name="file" size={12} />
-              View agreement
-            </a>
-            {!me?.agreementAcceptedAt && (
-              <p className="text-xs text-amber-600">
-                Please review and accept the agreement to continue using the platform.
-              </p>
-            )}
-          </div>
-        </Card>
-
-        {/* My courses */}
-        {!!teacherProfile?.platformCourses?.length && (
-          <Card padding="md">
-            <p className="text-sm font-semibold text-navy mb-4">
-              My courses ({teacherProfile?.platformCourses?.length ?? 0})
-            </p>
-            <div className="divide-y divide-cloud">
-              {(teacherProfile?.platformCourses ?? []).map(course => (
-                <div key={course.id} className="flex items-center justify-between py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-navy line-clamp-1">{course.title}</p>
-                    <p className="text-xs text-royal/40">
-                      {new Date(course.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      {course.wpCourseId ? ' · WordPress' : ' · Native'}
-                    </p>
-                  </div>
-                  <span className={`ml-4 text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${STATUS_COLORS[course.status] ?? 'bg-cloud text-royal/60'}`}>
-                    {course.status.replace('_', ' ')}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-
+    <section className={card}>
+      <div className="flex items-center justify-between">
+        <h3 className="text-[15px] font-semibold text-navy">Payout account</h3>
+        {payout && <span className={clsx('rounded px-2 py-0.5 text-xs font-semibold', payout.isVerified ? 'bg-accent-soft text-navy' : 'border border-line bg-subtle text-ink2')}>{payout.isVerified ? 'Verified' : 'Awaiting check'}</span>}
       </div>
-    </div>
+      <p className="text-[13px] text-ink2">Where your share of course sales is sent each month.</p>
+      <div className="flex gap-1.5">
+        {([['momo', 'Mobile money'], ['bank', 'Bank']] as const).map(([k, l]) => (
+          <button key={k} onClick={() => pick(k)} className={clsx('rounded-md px-2.5 py-1.5 text-[12.5px] font-semibold text-navy', method === k ? 'border border-azure bg-accent-soft' : 'border border-line hover:bg-subtle')}>{l}</button>
+        ))}
+      </div>
+      {payout === undefined ? <div className="h-24 rounded bg-subtle animate-pulse" /> : <>
+        {method === 'momo' ? (
+          <select className={input} value={f.bankName} onChange={e => setF({ ...f, bankName: e.target.value })}>{MOMO.map(m => <option key={m}>{m}</option>)}</select>
+        ) : (
+          <input className={input} value={f.bankName} onChange={e => setF({ ...f, bankName: e.target.value })} placeholder="Bank name" />
+        )}
+        <input className={input} value={f.accountNumber} onChange={e => setF({ ...f, accountNumber: e.target.value })} placeholder={method === 'momo' ? 'Mobile money number' : 'Account number'} inputMode={method === 'momo' ? 'tel' : 'numeric'} />
+        {method === 'bank' && <input className={input} value={f.bankCode} onChange={e => setF({ ...f, bankCode: e.target.value })} placeholder="Branch or sort code (optional)" />}
+        <select className={input} value={f.country} onChange={e => setF({ ...f, country: e.target.value })}>
+          <option value="">Country…</option>
+          {countries.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+          {f.country && !countries.some(c => c.name === f.country) && <option value={f.country}>{f.country}</option>}
+        </select>
+        <Button onClick={save} loading={saving}>Save payout account</Button>
+      </>}
+    </section>
   );
 }

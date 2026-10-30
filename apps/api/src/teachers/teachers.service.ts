@@ -188,9 +188,11 @@ export class TeachersService {
           orderBy: { createdAt: 'desc' },
         },
         teacherReviews: { select: { rating: true } },
+        teachingSubjects: { select: { id: true, name: true } },
       },
     });
     if (!profile) throw new NotFoundException('Profile not found');
+    const studentCount = await this.prisma.courseEnrollment.count({ where: { course: { teacherId } } });
 
     const ratings = profile.teacherReviews.map((r) => r.rating);
     const avgRating = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
@@ -199,6 +201,7 @@ export class TeachersService {
       ...profile,
       avgRating: avgRating ? Math.round(avgRating * 10) / 10 : null,
       reviewCount: ratings.length,
+      studentCount,
     };
   }
 
