@@ -150,6 +150,13 @@ export class PlatformCoursesController {
     return this.svc.priceGuide(id, user);
   }
 
+  @Get(':id/review-status')
+  @Roles(UserRole.ADMIN, UserRole.TEACHER)
+  @ApiOperation({ summary: '[Teacher] Review status, reviewer notes and checklist for the builder' })
+  reviewStatus(@Param('id') id: string, @CurrentUser() user: UserProfile) {
+    return this.svc.reviewStatus(id, user);
+  }
+
   @Get(':id/teacher-share')
   @Roles(UserRole.ADMIN, UserRole.TEACHER)
   @ApiOperation({ summary: '[Teacher] Commission the teacher earns on sales of this course' })
@@ -332,14 +339,14 @@ export class PlatformCoursesController {
   // ── Signed video URL ──────────────────────────────────────
 
   @Get(':id/lessons/:lessonId/signed-video')
-  @Roles(UserRole.STUDENT)
+  @Roles(UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN, UserRole.SUBJECT_REVIEWER)
   @ApiOperation({ summary: '[Student] Get a short-lived signed URL for a video lesson (2 h window)' })
   getSignedVideo(
     @Param('id') courseId: string,
     @Param('lessonId') lessonId: string,
     @CurrentUser() user: UserProfile,
   ) {
-    return this.svc.getSignedVideoUrl(courseId, lessonId, user.id);
+    return this.svc.getSignedVideoUrl(courseId, lessonId, user);
   }
 
   // ── Student Progress ──────────────────────────────────────

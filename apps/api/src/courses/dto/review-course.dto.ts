@@ -1,4 +1,4 @@
-import { IsEnum, IsString, IsOptional } from 'class-validator';
+import { IsEnum, IsString, IsOptional, IsObject } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum ReviewDecision {
@@ -15,4 +15,9 @@ export class ReviewCourseDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({ description: "Checklist: { accuracy: good | fix, syllabus, media, quizzes, preview }" })
+  @IsObject()
+  @IsOptional()
+  checklist?: Record<string, 'good' | 'fix'>;
 }

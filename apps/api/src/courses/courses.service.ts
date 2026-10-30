@@ -85,6 +85,63 @@ export class CoursesService {
     });
   }
 
+  // ── Reviewer: queue, history and earnings ────────────────
+
+  async getReviewerOverview(reviewerId: string) {
+    const DAY = 86_400_000;
+    const now = Date.now();
+    const assignments = await this.prisma.courseAssignment.findMany({ where: { reviewerId } });
+    const courses = await this.prisma.platformCourse.findMany({
+      where: { id: { in: assignments.map(a => a.courseId) } },
+      select: {
+        id: true, title: true, status: true,
+        programme: { select: { name: true, shortName: true } },
+        teacher: { select: { name: true, firstName: true, lastName: true, email: true } },
+        modules: { select: { lessons: { select: { type: true } } } },
+      },
+    });
+    const byId = new Map(courses.map(c => [c.id, c]));
+    const row = (a: (typeof assignments)[number]) => {
+      const c = byId.get(a.courseId);
+      if (!c) return null;
+      const lessons = c.modules.flatMap(m => m.lessons);
+      const t = c.teacher;
+      return {
+        courseId: c.id, title: c.title, courseStatus: c.status,
+        programme: c.programme ? c.programme.shortName ?? c.programme.name : null,
+        teacher: t.name || [t.firstName, t.lastName].filter(Boolean).join(' ') || t.email.split('@')[0],
+        lessons: lessons.length, quizzes: lessons.filter(l => l.type === 'QUIZ').length,
+        submittedAt: a.submittedAt, reviewedAt: a.reviewedAt, decision: a.reviewStatus,
+        notes: a.reviewNotes, checklist: a.reviewChecklist,
+        commissionPct: a.reviewerCommissionPct,
+        // A course that was sent back before and has come in again
+        resubmitted: a.reviewStatus === 'PENDING' && !!a.reviewedAt,
+      };
+    };
+    const queue = assignments.filter(a => a.reviewStatus === 'PENDING').map(row).filter(Boolean)
+      .sort((x, y) => (x!.submittedAt?.getTime() ?? 0) - (y!.submittedAt?.getTime() ?? 0));
+    const history = assignments.filter(a => a.reviewStatus !== 'PENDING' && a.reviewedAt).map(row).filter(Boolean)
+      .sort((x, y) => y!.reviewedAt!.getTime() - x!.reviewedAt!.getTime());
+    const timed = history.filter(h => h!.submittedAt && h!.reviewedAt! >= h!.submittedAt!);
+    const earnings = await this.prisma.walletTransaction.groupBy({
+      by: ['currency'],
+      where: { wallet: { userId: reviewerId }, source: 'REVIEW_COMMISSION' },
+      _sum: { amount: true },
+    });
+    const oldest = queue[0]?.submittedAt;
+    return {
+      stats: {
+        toReview: queue.length,
+        oldestWaitDays: oldest ? Math.floor((now - oldest.getTime()) / DAY) : null,
+        reviewed: history.length,
+        avgReviewDays: timed.length ? Math.round((timed.reduce((n, h) => n + (h!.reviewedAt!.getTime() - h!.submittedAt!.getTime()), 0) / timed.length / DAY) * 10) / 10 : null,
+        earned: earnings.map(e => ({ currency: e.currency, amount: e._sum.amount ?? 0 })),
+      },
+      queue,
+      history,
+    };
+  }
+
   // ── Reviewer: approve or reject ──────────────────────────
 
   async reviewCourse(courseId: string, reviewer: UserProfile, dto: ReviewCourseDto) {
@@ -112,6 +169,7 @@ export class CoursesService {
         reviewStatus: dto.decision,
         reviewNotes: dto.notes ?? null,
         reviewedAt: new Date(),
+        ...(dto.checklist && { reviewChecklist: cleanChecklist(dto.checklist) }),
       },
     });
 
@@ -136,4 +194,10 @@ export class CoursesService {
 
     return updated;
   }
+}
+
+const CHECKLIST_KEYS = ['accuracy', 'syllabus', 'media', 'quizzes', 'preview'];
+/** Only the known checklist items, each 'good' or 'fix' */
+function cleanChecklist(c: Record<string, string>) {
+  return Object.fromEntries(CHECKLIST_KEYS.filter(k => c[k] === 'good' || c[k] === 'fix').map(k => [k, c[k]]));
 }

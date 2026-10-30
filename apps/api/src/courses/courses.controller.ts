@@ -38,6 +38,13 @@ export class CoursesController {
     return this.coursesService.getReviewerQueue(user.id);
   }
 
+  @Get('reviewer/overview')
+  @Roles(UserRole.SUBJECT_REVIEWER, UserRole.ADMIN)
+  @ApiOperation({ summary: '[Reviewer] Queue, past reviews, average review time and earnings' })
+  getOverview(@CurrentUser() user: UserProfile) {
+    return this.coursesService.getReviewerOverview(user.id);
+  }
+
   @Patch('reviewer/courses/:courseId/review')
   @Roles(UserRole.SUBJECT_REVIEWER, UserRole.ADMIN)
   @ApiOperation({ summary: '[Reviewer] Approve or reject a course, with notes' })

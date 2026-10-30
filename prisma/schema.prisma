@@ -251,6 +251,8 @@ model Package {
   cohortId     String?
   /// What mentorship the package includes, e.g. "Monthly 1-to-1 session"; shown only when set
   mentorship   String?
+  /// 1-to-1 mentorship sessions a buyer can book each month; null = no limit
+  mentorshipSessionsPerMonth Int?
   /// Questions and answers shown on the package page: [{ q, a }]; empty = the standard questions
   faq          Json?
   createdAt    DateTime          @default(now())
@@ -523,6 +525,10 @@ model CourseAssignment {
   reviewStatus          ReviewStatus @default(PENDING)
   reviewedAt            DateTime?
   reviewNotes           String?
+  /// When the teacher last sent the course for review
+  submittedAt           DateTime?
+  /// The reviewer's checklist: { accuracy: "good" | "fix", ... }
+  reviewChecklist       Json?
   updatedAt             DateTime     @updatedAt
   programmeId           String?
   subjectId             String?

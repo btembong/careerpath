@@ -157,8 +157,8 @@ export class PlatformCoursesService {
 
     // Admins and the course's own teacher see everything; anyone else only sees paid lesson content
     // when they have access (free previews excepted) — otherwise this endpoint bypassed the paywall.
-    const isOwnerOrAdmin = (viewer.role as UserRole) === UserRole.ADMIN || course.teacherId === viewer.id;
-    if (isOwnerOrAdmin) return course;
+    // The course's teacher, admins and its assigned reviewer see everything
+    if (await this.isCourseStaff(course, viewer)) return course;
     const hasAccess = isStudent && (await this.studentHasCourseAccess(viewer.id, id));
     return {
       ...course,
@@ -233,6 +233,12 @@ export class PlatformCoursesService {
     if (missing.length) {
       throw new BadRequestException(`Before submitting: ${missing.map(i => i.label.toLowerCase()).join('; ')}.`);
     }
+    // Back into the reviewer's queue (again, after changes), dated so review time can be measured
+    await this.prisma.courseAssignment.upsert({
+      where: { courseId: id },
+      update: { reviewStatus: 'PENDING', submittedAt: new Date() },
+      create: { courseId: id, teacherId: course.teacherId, reviewStatus: 'PENDING', submittedAt: new Date() },
+    });
     return this.prisma.platformCourse.update({
       where: { id }, data: { status: CourseStatus.PENDING_REVIEW },
     });
@@ -567,9 +573,13 @@ export class PlatformCoursesService {
    * Validates that the student is enrolled before signing.
    * Non-R2 URLs (YouTube / Vimeo) pass through unsigned.
    */
-  async getSignedVideoUrl(courseId: string, lessonId: string, studentId: string): Promise<{ url: string; lowUrl: string | null }> {
-    // Package buyers usually have no CourseEnrollment row, so check real access, not just enrollment
-    const lesson = await this.assertStudentLesson(studentId, courseId, lessonId);
+  async getSignedVideoUrl(courseId: string, lessonId: string, viewer: UserProfile): Promise<{ url: string; lowUrl: string | null }> {
+    const course = await this.prisma.platformCourse.findUnique({ where: { id: courseId }, select: { id: true, teacherId: true } });
+    if (!course) throw new NotFoundException('Course not found');
+    // Staff can play any lesson; students need access (package buyers usually have no CourseEnrollment row)
+    const lesson = await this.isCourseStaff(course, viewer)
+      ? await this.lessonOfCourse(courseId, lessonId)
+      : await this.assertStudentLesson(viewer.id, courseId, lessonId);
     if (!lesson.videoUrl) throw new NotFoundException('Lesson has no video');
 
     const [url, lowUrl] = await Promise.all([
@@ -577,6 +587,31 @@ export class PlatformCoursesService {
       lesson.videoUrlLow ? this.files.signUrl(lesson.videoUrlLow) : null,
     ]);
     return { url, lowUrl };
+  }
+
+  /** Where the course stands in review, for the builder: status, notes and checklist from the reviewer */
+  async reviewStatus(courseId: string, actor: UserProfile) {
+    await this.assertCourseAccess(courseId, actor);
+    const a = await this.prisma.courseAssignment.findUnique({ where: { courseId } });
+    if (!a) return null;
+    const [reviewer, teacher] = await Promise.all([
+      a.reviewerId ? this.prisma.userProfile.findUnique({ where: { id: a.reviewerId }, select: { name: true, firstName: true, lastName: true, email: true } }) : null,
+      a.teacherId ? this.prisma.userProfile.findUnique({ where: { id: a.teacherId }, select: { name: true, firstName: true, lastName: true, email: true } }) : null,
+    ]);
+    const nm = (p: { name: string | null; firstName: string | null; lastName: string | null; email: string } | null) => p ? p.name || [p.firstName, p.lastName].filter(Boolean).join(' ') || p.email : null;
+    return {
+      reviewStatus: a.reviewStatus, reviewNotes: a.reviewNotes, reviewedAt: a.reviewedAt, submittedAt: a.submittedAt,
+      checklist: a.reviewChecklist, reviewer: nm(reviewer), teacher: nm(teacher),
+    };
+  }
+
+  /** Admins, the course's teacher, and the subject reviewer assigned to it */
+  private async isCourseStaff(course: { id: string; teacherId: string }, user: UserProfile) {
+    const role = user.role as UserRole;
+    if (role === UserRole.ADMIN || course.teacherId === user.id) return true;
+    if (role !== UserRole.SUBJECT_REVIEWER) return false;
+    const a = await this.prisma.courseAssignment.findUnique({ where: { courseId: course.id }, select: { reviewerId: true } });
+    return a?.reviewerId === user.id;
   }
 
   // ── Quiz: Questions ──────────────────────────────────────
@@ -597,7 +632,9 @@ export class PlatformCoursesService {
     if (role === UserRole.STUDENT) {
       await this.assertStudentLesson(viewer.id, courseId, lessonId);
     } else {
-      await this.assertCourseAccess(courseId, viewer); // owner teacher or admin
+      // The course's teacher, admins and its assigned reviewer see questions with answers
+      const course = await this.prisma.platformCourse.findUnique({ where: { id: courseId }, select: { id: true, teacherId: true } });
+      if (!course || !(await this.isCourseStaff(course, viewer))) throw new ForbiddenException('Not your course');
       await this.lessonOfCourse(courseId, lessonId);
     }
     const questions = await this.prisma.questionBank.findMany({
