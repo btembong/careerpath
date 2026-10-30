@@ -77,6 +77,7 @@ export default function TeacherAssignmentsPage() {
                   <p className="mb-1 text-[12.5px] text-ink2">{a.submitted} of {a.students} handed in{a.late ? ` · ${a.late} late` : ''}</p>
                   <span className="block h-1.5 overflow-hidden rounded-[3px] bg-subtle"><span className="block h-1.5 bg-azure" style={{ width: `${a.students ? Math.round((a.submitted / a.students) * 100) : 0}%` }} /></span>
                 </div>
+                <Link href={`/teacher/rubrics/${a.id}`} className={btn(false)}>Rubric</Link>
                 <Link href={`/teacher/cohorts/${a.cohort.id}`} className={btn(false)}>Cohort</Link>
               </div>
             ))

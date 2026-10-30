@@ -8,5 +8,6 @@ import { MailModule } from '../mail/mail.module';
   imports: [CertificatesModule, MailModule],
   controllers: [EducationController],
   providers: [EducationService],
+  exports: [EducationService],
 })
 export class EducationModule {}

@@ -120,9 +120,9 @@ export default function TeacherDashboard() {
   const queue = [
     ...submissions.map(s => {
       const due = s.assignment?.dueDate ? new Date(s.assignment.dueDate) : null;
-      return { key: 's' + s.id, student: person(s.student), work: s.assignment?.title ?? 'Assignment', kind: 'Assignment', at: s.submittedAt, late: !!due && new Date(s.submittedAt) > due, href: `/teacher/grade/${s.id}` };
+      return { key: 's' + s.id, student: person(s.student), work: s.assignment?.title ?? 'Assignment', kind: 'Assignment', at: s.submittedAt, late: !!due && new Date(s.submittedAt) > due, href: `/teacher/grading?item=${s.id}` };
     }),
-    ...written.map(w => ({ key: 'w' + w.id, student: person(w.student), work: 'Written quiz answers', kind: 'Written quiz', at: w.submittedAt, late: false, href: '/teacher/quiz-grading' })),
+    ...written.map(w => ({ key: 'w' + w.id, student: person(w.student), work: 'Written quiz answers', kind: 'Written quiz', at: w.submittedAt, late: false, href: `/teacher/grading?item=${w.id}` })),
   ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
   const stats = [
@@ -181,7 +181,7 @@ export default function TeacherDashboard() {
             <section className={card}>
               <div className="flex items-center justify-between">
                 <h2 className={h2}>Waiting for you {queue.length > 0 && <span className={count}>{queue.length}</span>}</h2>
-                <Link href="/teacher/quiz-grading" className={link}>Grading queue</Link>
+                <Link href="/teacher/grading" className={link}>Grading queue</Link>
               </div>
               {queue.length ? (
                 <div className="overflow-x-auto">

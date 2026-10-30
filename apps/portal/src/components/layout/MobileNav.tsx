@@ -57,10 +57,11 @@ const TEACHER_MORE: NavGroup[] = [
   { title: 'Teach', items: [
     { label: 'Live Classes',  href: '/teacher/live',         icon: 'live'        },
     { label: 'Assignments',   href: '/teacher/assignments',  icon: 'assignments' },
-    { label: 'Quiz Grading',  href: '/teacher/quiz-grading', icon: 'notebook'    },
+    { label: 'Grading',       href: '/teacher/grading',      icon: 'notebook'    },
   ]},
   { title: 'Connect', items: [
     { label: 'Mentorship',    href: '/teacher/mentorship',   icon: 'graduate'    },
+    { label: 'Community',     href: '/teacher/community',    icon: 'community'   },
     { label: 'Messages',      href: '/teacher/messages',     icon: 'messages'    },
     { label: 'Notifications', href: '/teacher/notifications', icon: 'bell'       },
     { label: 'Alerts',        href: '/teacher/alerts',       icon: 'alert'       },

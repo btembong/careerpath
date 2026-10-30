@@ -83,12 +83,13 @@ const TEACHER: Item[] = [
   ]},
   { label: 'Classes', icon: 'calendar', children: [
     { label: 'Cohorts',     href: '/teacher/cohorts' },
-    { label: 'Assignments', href: '/teacher/assignments', also: ['/teacher/rubrics', '/teacher/grade'] },
+    { label: 'Assignments', href: '/teacher/assignments', also: ['/teacher/rubrics'] },
   ]},
-  { label: 'Grading', icon: 'clipboard', href: '/teacher/quiz-grading' },
+  { label: 'Grading', icon: 'clipboard', href: '/teacher/grading', also: ['/teacher/quiz-grading', '/teacher/grade'] },
   { label: 'Students', icon: 'users', children: [
     { label: 'My Students',    href: '/teacher/students', also: ['/teacher/alerts'] },
     { label: 'Mentorship',     href: '/teacher/mentorship' },
+    { label: 'Community',      href: '/teacher/community' },
   ]},
   { label: 'Messages', icon: 'message', href: '/teacher/messages' },
   { label: 'Earnings', icon: 'wallet', href: '/teacher/wallet' },
