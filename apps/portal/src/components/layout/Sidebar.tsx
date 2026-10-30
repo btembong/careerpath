@@ -87,7 +87,7 @@ const TEACHER: Item[] = [
   ]},
   { label: 'Grading', icon: 'clipboard', href: '/teacher/quiz-grading' },
   { label: 'Students', icon: 'users', children: [
-    { label: 'Student Alerts', href: '/teacher/alerts' },
+    { label: 'My Students',    href: '/teacher/students', also: ['/teacher/alerts'] },
     { label: 'Mentorship',     href: '/teacher/mentorship' },
   ]},
   { label: 'Messages', icon: 'message', href: '/teacher/messages' },
