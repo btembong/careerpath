@@ -13,7 +13,8 @@
     "db:studio": "prisma studio --schema=prisma/schema.prisma",
     "db:seed": "ts-node prisma/seed.ts",
     "db:seed-demo": "ts-node prisma/seed-demo.ts",
-    "db:seed-cohort": "ts-node prisma/seed-cohort.ts"
+    "db:seed-cohort": "ts-node prisma/seed-cohort.ts",
+    "db:seed-showcase": "ts-node prisma/seed-showcase.ts"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
