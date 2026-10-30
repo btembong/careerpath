@@ -625,7 +625,7 @@ export default function CourseBuilderPage() {
         backHref={isAdmin ? '/admin/courses' : '/teacher/courses'}
         backLabel={isAdmin ? 'Courses' : 'My courses'}
         title={course.title}
-        subtitle={[STATUS[course.status] ?? course.status, course.programme?.shortName, course.subject?.name, `${course.modules.length} modules · ${totalLessons} lessons`].filter(Boolean).join(' · ')}
+        subtitle={[STATUS[course.status] ?? course.status, course.programme?.shortName, course.subject?.name, `${course.modules.length} module${course.modules.length === 1 ? '' : 's'} · ${totalLessons} lesson${totalLessons === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}
         actions={<>
           {!isAdmin && course.status === 'DRAFT' && (
             <Button size="sm" loading={acting === 'review'} disabled={checklist?.readyToSubmit === false} onClick={submitForReview}
@@ -728,7 +728,7 @@ export default function CourseBuilderPage() {
           {/* Course meta — cover image + short description */}
           <Card padding="md">
             <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-4">Course Details</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 gap-5">
               {/* Cover image */}
               <div>
                 <p className="text-xs font-semibold text-navy mb-2">Cover Image</p>

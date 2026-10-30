@@ -168,7 +168,7 @@ export default function ReviewCoursePage() {
           </label>
           {!decided && <>
             <div className="flex gap-2">
-              <Button variant="secondary" className="flex-1" loading={busy === 'REJECTED'} onClick={() => decide('REJECTED')}>Ask for changes</Button>
+              <Button variant="secondary" className="flex-1 whitespace-nowrap" loading={busy === 'REJECTED'} onClick={() => decide('REJECTED')}>Ask for changes</Button>
               <Button className="flex-1" loading={busy === 'APPROVED'} disabled={fixes > 0} onClick={() => decide('APPROVED')}>Approve</Button>
             </div>
             <p className="text-[12.5px] text-muted">
