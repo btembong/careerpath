@@ -1,6 +1,6 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { UserProfile } from '@prisma/client';
+import { UserProfile, AlertType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CertificatesService } from '../certificates/certificates.service';
 
@@ -13,11 +13,18 @@ export class AlertsService {
   }
 
   async upsertAlert(teacherId: string, dto: { cohortId: string; type: string; thresholdDays?: number; thresholdScore?: number; enabled: boolean }) {
-    return this.prisma.progressAlert.upsert({
-      where: { cohortId_teacherId_type: { cohortId: dto.cohortId, teacherId, type: dto.type as any } } as any,
-      create: { teacherId, cohortId: dto.cohortId, type: dto.type as any, thresholdDays: dto.thresholdDays, thresholdScore: dto.thresholdScore, enabled: dto.enabled },
-      update: { thresholdDays: dto.thresholdDays, thresholdScore: dto.thresholdScore, enabled: dto.enabled },
-    });
+    // Only for the teacher's own cohorts
+    const cohort = await this.prisma.cohort.findUnique({ where: { id: dto.cohortId }, select: { teacherId: true } });
+    if (!cohort || cohort.teacherId !== teacherId) throw new ForbiddenException('Not your cohort');
+    const TYPES = ['INACTIVE', 'QUIZ_BELOW_THRESHOLD', 'ASSIGNMENT_OVERDUE', 'LOW_COMPLETION'];
+    if (!TYPES.includes(dto.type)) throw new BadRequestException('Unknown alert type');
+    const type = dto.type as AlertType;
+    // One rule per cohort and type (there is no unique key, so look it up first)
+    const existing = await this.prisma.progressAlert.findFirst({ where: { cohortId: dto.cohortId, teacherId, type } });
+    const data = { thresholdDays: dto.thresholdDays, thresholdScore: dto.thresholdScore, enabled: dto.enabled !== false };
+    return existing
+      ? this.prisma.progressAlert.update({ where: { id: existing.id }, data })
+      : this.prisma.progressAlert.create({ data: { teacherId, cohortId: dto.cohortId, type, ...data } });
   }
 
   async deleteAlert(id: string, teacherId: string) {

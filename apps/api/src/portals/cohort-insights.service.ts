@@ -32,7 +32,7 @@ export class CohortInsightsService {
         liveClasses: { orderBy: { scheduledAt: 'asc' } },
         assignments: { orderBy: { dueDate: 'asc' }, include: { submissions: { select: { studentId: true, grade: true, status: true, submittedAt: true } } } },
         packages: { select: { id: true, name: true, courseIds: true, priceAmount: true, currency: true, validityDays: true, isPublished: true, _count: { select: { purchases: true } } } },
-        progressAlerts: { where: { enabled: true, type: 'INACTIVE' }, select: { thresholdDays: true } },
+        progressAlerts: { select: { type: true, enabled: true, thresholdDays: true } },
       },
     });
     if (!cohort) throw new NotFoundException('Cohort not found');
@@ -86,7 +86,11 @@ export class CohortInsightsService {
     const overdue = subs.filter(x => !x.s && x.a.dueDate.getTime() < now).length;
     const graded = subs.filter(x => x.s?.grade != null && x.a.maxPoints > 0);
     const avgGrade = graded.length ? Math.round(graded.reduce((n, x) => n + (x.s!.grade! / x.a.maxPoints) * 100, 0) / graded.length) : null;
-    const inactiveLimit = cohort.progressAlerts[0]?.thresholdDays ?? INACTIVE_DAYS;
+    const rule = (t: string) => cohort.progressAlerts.find(a => a.type === t);
+    const inactiveRule = rule('INACTIVE');
+    const inactiveLimit = inactiveRule?.enabled === false ? Infinity : inactiveRule?.thresholdDays ?? INACTIVE_DAYS;
+    // Overdue work flags a student unless the teacher turned that rule off
+    const flagOverdue = rule('ASSIGNMENT_OVERDUE')?.enabled !== false;
     const since = lastActive ?? joinedAt;
     const inactiveDays = Math.floor((now - since.getTime()) / DAY);
     const inactive = inactiveDays >= inactiveLimit;
@@ -94,7 +98,7 @@ export class CohortInsightsService {
     const flag = inactive && missing ? 'Falling behind'
       : missing ? `Missed ${missedRecent} classes`
       : inactive ? `Inactive ${inactiveDays} days`
-      : overdue ? `${overdue} overdue`
+      : overdue && flagOverdue ? `${overdue} overdue`
       : null;
     const reasons = [
       missing && `missed ${missedRecent} of the last ${lastFour.length} classes`,

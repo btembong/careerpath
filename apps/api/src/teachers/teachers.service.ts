@@ -281,6 +281,7 @@ export class TeachersService {
       reviewCount: ratings.length,
       cohortCount: t.teacherCohorts?.length ?? 0,
       courseCount: t.platformCourses?.length ?? 0,
+      courseIds: (t.platformCourses ?? []).map((c: any) => c.id),
       badge,
     };
   }
