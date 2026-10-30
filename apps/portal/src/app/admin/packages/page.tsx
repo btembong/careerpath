@@ -19,12 +19,12 @@ interface Pkg {
   id: string; name: string; description: string | null;
   priceAmount: number; currency: string; courseIds: string[];
   validityDays: number | null; categoryTags: string[]; isPublished: boolean;
-  cohortId: string | null; cohort?: Cohort | null; mentorship: string | null; faq?: { q: string; a: string }[] | null;
+  cohortId: string | null; cohort?: Cohort | null; mentorship: string | null; mentorshipSessionsPerMonth?: number | null; faq?: { q: string; a: string }[] | null;
   _count?: { purchases: number };
 }
 interface Form {
   name: string; description: string; currency: string; price: string; validityDays: string;
-  courseIds: string[]; tags: string; cohortId: string; mentorship: string; faq: { q: string; a: string }[]; isPublished: boolean;
+  courseIds: string[]; tags: string; cohortId: string; mentorship: string; sessions: string; faq: { q: string; a: string }[]; isPublished: boolean;
 }
 
 const CURRENCIES = ['GHS', 'XAF', 'NGN', 'USD', 'XOF', 'LRD', 'KES', 'ZAR', 'RWF', 'UGX'];
@@ -44,8 +44,8 @@ function toForm(p?: Pkg): Form {
   return p ? {
     name: p.name, description: p.description ?? '', currency: p.currency,
     price: String(minorToMajor(p.priceAmount, p.currency)), validityDays: p.validityDays ? String(p.validityDays) : '',
-    courseIds: p.courseIds, tags: p.categoryTags.join(', '), cohortId: p.cohortId ?? '', mentorship: p.mentorship ?? '', faq: Array.isArray(p.faq) ? p.faq : [], isPublished: p.isPublished,
-  } : { name: 'New package', description: '', currency: 'GHS', price: '', validityDays: '365', courseIds: [], tags: '', cohortId: '', mentorship: '', faq: [], isPublished: false };
+    courseIds: p.courseIds, tags: p.categoryTags.join(', '), cohortId: p.cohortId ?? '', mentorship: p.mentorship ?? '', sessions: p.mentorshipSessionsPerMonth ? String(p.mentorshipSessionsPerMonth) : '', faq: Array.isArray(p.faq) ? p.faq : [], isPublished: p.isPublished,
+  } : { name: 'New package', description: '', currency: 'GHS', price: '', validityDays: '365', courseIds: [], tags: '', cohortId: '', mentorship: '', sessions: '', faq: [], isPublished: false };
 }
 
 export default function AdminPackagesPage() {
@@ -100,6 +100,7 @@ export default function AdminPackagesPage() {
       categoryTags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
       cohortId: form.cohortId || null,
       mentorship: form.mentorship.trim() || null,
+      mentorshipSessionsPerMonth: Number(form.sessions) > 0 ? Math.floor(Number(form.sessions)) : null,
       faq: form.faq.filter(r => r.q.trim() && r.a.trim()),
       ...(publish !== undefined && { isPublished: publish }),
     };
@@ -244,6 +245,11 @@ export default function AdminPackagesPage() {
             <label className="flex flex-col gap-1.5"><span className={label}>Mentorship</span>
               <input value={form.mentorship} onChange={e => set({ mentorship: e.target.value })} maxLength={80} placeholder="For example: Monthly 1-to-1 session" className="input-base" />
               <span className="text-xs text-muted">Leave empty if the package has no mentorship. Students only see it when it’s filled in.</span>
+            </label>
+
+            <label className="flex flex-col gap-1.5"><span className={label}>Mentorship sessions per month</span>
+              <input inputMode="numeric" value={form.sessions} onChange={e => set({ sessions: e.target.value })} placeholder="No limit" className="input-base w-32" />
+              <span className="text-xs text-muted">How many one-to-one sessions a buyer can book each month. Empty = no limit.</span>
             </label>
 
             <div className="flex flex-col gap-2">
