@@ -22,6 +22,13 @@ export class CohortInsightsController {
     return this.svc.studentOverview(user, cohortId || undefined);
   }
 
+  @Get('teacher/my-students')
+  @Roles(UserRole.TEACHER)
+  @ApiOperation({ summary: '[Teacher] Students across all cohorts with progress and attention flags' })
+  teacherStudents(@CurrentUser() user: UserProfile) {
+    return this.svc.teacherStudents(user);
+  }
+
   @Get('teacher/cohorts/:id/overview')
   @Roles(UserRole.TEACHER, UserRole.ADMIN)
   @ApiOperation({ summary: '[Teacher] Cohort students with progress and attention flags, classes and assignments' })

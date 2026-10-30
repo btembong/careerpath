@@ -6,4 +6,9 @@ export class SubmitAssignmentDto {
   @IsUrl()
   @IsOptional()
   fileUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Note to the teacher' })
+  @IsString()
+  @IsOptional()
+  note?: string;
 }

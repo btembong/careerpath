@@ -10,6 +10,8 @@ export enum ApprovalStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
+  /** An approved teacher an admin has paused */
+  SUSPENDED = 'SUSPENDED',
 }
 
 export enum ClassStatus {

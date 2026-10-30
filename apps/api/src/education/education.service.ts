@@ -116,6 +116,7 @@ export class EducationService {
     student: UserProfile,
     assignmentId: string,
     fileUrl: string | undefined,
+    note?: string,
   ) {
     const assignment = await this.prisma.assignment.findUnique({
       where: { id: assignmentId },
@@ -132,9 +133,9 @@ export class EducationService {
     });
     if (!roster) throw new ForbiddenException('You are not enrolled in this cohort');
 
-    if (new Date() > assignment.dueDate) {
-      throw new BadRequestException('The submission deadline has passed');
-    }
+    // Late work is accepted; teachers see it marked late
+    const existing = await this.prisma.submission.findUnique({ where: { studentId_assignmentId: { studentId: student.id, assignmentId } }, select: { grade: true } });
+    if (existing?.grade != null) throw new BadRequestException('This assignment has already been graded');
 
     const submission = await this.prisma.submission.upsert({
       where: { studentId_assignmentId: { studentId: student.id, assignmentId } },
@@ -142,16 +143,111 @@ export class EducationService {
         assignmentId,
         studentId: student.id,
         fileUrl: fileUrl ?? null,
+        note: note?.trim().slice(0, 1000) || null,
         status: 'PENDING_REVIEW',
       },
       update: {
         fileUrl: fileUrl ?? null,
+        note: note?.trim().slice(0, 1000) || null,
+        submittedAt: new Date(),
         status: 'PENDING_REVIEW',
         feedback: null,
       },
     });
     await this.gamification.awardOnce(student.id, 'ASSIGNMENT_SUBMIT', assignmentId);
     return submission;
+  }
+
+  // ── Assignment overviews (student and teacher pages) ─────
+
+  /** Everything a student was set across their cohorts, with what they handed in and their grades */
+  async studentAssignmentOverview(studentId: string) {
+    const DAY = 86_400_000;
+    const now = Date.now();
+    const rosters = await this.prisma.cohortRoster.findMany({ where: { studentId }, select: { cohortId: true } });
+    const assignments = await this.prisma.assignment.findMany({
+      where: { cohortId: { in: rosters.map(r => r.cohortId) } },
+      include: {
+        cohort: { select: { id: true, name: true, teacher: { select: { name: true, firstName: true, lastName: true, email: true } } } },
+        submissions: { where: { studentId }, select: { id: true, fileUrl: true, grade: true, feedback: true, status: true, submittedAt: true, note: true } },
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+    const rows = assignments.map(a => {
+      const s = a.submissions[0] ?? null;
+      const t = a.cohort.teacher;
+      const state = !s ? (a.dueDate.getTime() < now ? 'overdue' : 'todo') : s.grade != null ? 'graded' : 'submitted';
+      return {
+        id: a.id, title: a.title, description: a.description, dueDate: a.dueDate, maxPoints: a.maxPoints,
+        cohort: { id: a.cohort.id, name: a.cohort.name },
+        teacher: t.name || [t.firstName, t.lastName].filter(Boolean).join(' ') || t.email.split('@')[0],
+        state, late: !!s && s.submittedAt > a.dueDate,
+        submission: s,
+      };
+    });
+    const graded = rows.filter(r => r.state === 'graded' && r.maxPoints > 0);
+    const weekEnd = now + 7 * DAY;
+    return {
+      stats: {
+        dueThisWeek: rows.filter(r => r.state === 'todo' && r.dueDate.getTime() < weekEnd).length,
+        nextDue: rows.find(r => r.state === 'todo') ?? null,
+        overdue: rows.filter(r => r.state === 'overdue').length,
+        avgGradePct: graded.length ? Math.round(graded.reduce((n, r) => n + (r.submission!.grade! / r.maxPoints) * 100, 0) / graded.length) : null,
+        graded: graded.length, submitted: rows.filter(r => r.submission).length, total: rows.length,
+      },
+      assignments: rows,
+    };
+  }
+
+  /** A teacher's assignments across their cohorts: what to grade, what's set, what's graded */
+  async teacherAssignmentOverview(teacher: UserProfile) {
+    const DAY = 86_400_000;
+    const now = Date.now();
+    const cohorts = await this.prisma.cohort.findMany({
+      where: { teacherId: teacher.id },
+      select: { id: true, name: true, _count: { select: { students: true } } },
+    });
+    const assignments = await this.prisma.assignment.findMany({
+      where: { cohortId: { in: cohorts.map(c => c.id) } },
+      include: {
+        cohort: { select: { id: true, name: true, _count: { select: { students: true } } } },
+        submissions: { include: { student: { select: { id: true, name: true, firstName: true, lastName: true, email: true } } }, orderBy: { submittedAt: 'asc' } },
+      },
+      orderBy: { dueDate: 'desc' },
+    });
+    const nm = (p: { name: string | null; firstName: string | null; lastName: string | null; email: string }) => p.name || [p.firstName, p.lastName].filter(Boolean).join(' ') || p.email.split('@')[0];
+    const subRow = (a: (typeof assignments)[number], s: (typeof assignments)[number]['submissions'][number]) => ({
+      id: s.id, assignmentId: a.id, title: a.title, maxPoints: a.maxPoints, dueDate: a.dueDate,
+      cohort: { id: a.cohort.id, name: a.cohort.name },
+      student: { id: s.student.id, name: nm(s.student) },
+      fileUrl: s.fileUrl, note: s.note, grade: s.grade, feedback: s.feedback,
+      submittedAt: s.submittedAt, late: s.submittedAt > a.dueDate,
+    });
+    const all = assignments.flatMap(a => a.submissions.map(s => subRow(a, s)));
+    const toGrade = all.filter(s => s.grade == null).sort((x, y) => x.submittedAt.getTime() - y.submittedAt.getTime());
+    const graded = all.filter(s => s.grade != null && s.maxPoints > 0);
+    const recentGraded = graded.filter(s => s.submittedAt.getTime() > now - 30 * DAY);
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    return {
+      cohorts: cohorts.map(c => ({ id: c.id, name: c.name, students: c._count.students })),
+      stats: {
+        toGrade: toGrade.length,
+        oldestWaitDays: toGrade[0] ? Math.floor((now - toGrade[0].submittedAt.getTime()) / DAY) : null,
+        // Assignments have no created date; count those due this month
+        setThisMonth: assignments.filter(a => a.dueDate >= monthStart).length,
+        onTimePct: all.length ? Math.round((all.filter(s => !s.late).length / all.length) * 100) : null,
+        avgGradePct: recentGraded.length ? Math.round(recentGraded.reduce((n, s) => n + (s.grade! / s.maxPoints) * 100, 0) / recentGraded.length) : null,
+      },
+      toGrade,
+      graded: graded.sort((x, y) => y.submittedAt.getTime() - x.submittedAt.getTime()).slice(0, 50),
+      assignments: assignments.map(a => ({
+        id: a.id, title: a.title, description: a.description, dueDate: a.dueDate, maxPoints: a.maxPoints,
+        cohort: { id: a.cohort.id, name: a.cohort.name },
+        students: a.cohort._count.students, submitted: a.submissions.length,
+        graded: a.submissions.filter(s => s.grade != null).length,
+        late: a.submissions.filter(s => s.submittedAt > a.dueDate).length,
+      })),
+    };
   }
 
   // ── Assignment grading (teacher) ──────────────────────────

@@ -45,6 +45,20 @@ export class EducationController {
     return this.educationService.getStudentAssignments(user.id);
   }
 
+  @Get('student/assignments-overview')
+  @Roles(UserRole.STUDENT)
+  @ApiOperation({ summary: '[Student] Assignments with state, grades and stats' })
+  studentOverview(@CurrentUser() user: UserProfile) {
+    return this.educationService.studentAssignmentOverview(user.id);
+  }
+
+  @Get('teacher/assignments-overview')
+  @Roles(UserRole.TEACHER)
+  @ApiOperation({ summary: '[Teacher] What to grade, assignments set and recent grades across cohorts' })
+  teacherOverview(@CurrentUser() user: UserProfile) {
+    return this.educationService.teacherAssignmentOverview(user);
+  }
+
   @Post('assignments/:assignmentId/submit')
   @Roles(UserRole.STUDENT)
   @ApiOperation({ summary: '[Student] Submit an assignment (optional file URL from /files/upload)' })
@@ -53,7 +67,7 @@ export class EducationController {
     @Param('assignmentId') assignmentId: string,
     @Body() dto: SubmitAssignmentDto,
   ) {
-    return this.educationService.submitAssignment(user, assignmentId, dto.fileUrl);
+    return this.educationService.submitAssignment(user, assignmentId, dto.fileUrl, dto.note);
   }
 
   // ── Teacher: grading queues ──────────────────────────────

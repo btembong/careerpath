@@ -258,6 +258,40 @@ export class CohortInsightsService {
     };
   }
 
+  /** Every student across the teacher's cohorts, with progress and why they need attention */
+  async teacherStudents(user: UserProfile) {
+    const cohorts = await this.prisma.cohort.findMany({ where: { teacherId: user.id }, select: { id: true, name: true } });
+    const now = Date.now();
+    const rows: { id: string; name: string; cohort: { id: string; name: string }; progress: number; attended: number; held: number; submitted: number; assignments: number; lastActive: Date | null; flag: string | null; flagReason: string | null }[] = [];
+    for (const c of cohorts) {
+      const ctx = await this.load(c.id);
+      const ids = ctx.cohort.students.map(s => s.studentId);
+      const { out } = await this.progress(ids, ctx.courseIds);
+      for (const r of ctx.cohort.students) {
+        const f = this.studentFacts(ctx, r.studentId, r.addedAt, r.student.lastActiveDate, now);
+        const m = out.get(r.studentId);
+        rows.push({
+          id: r.studentId, name: nameOf(r.student), cohort: { id: c.id, name: c.name },
+          progress: m && m.size ? Math.round([...m.values()].reduce((a, b) => a + b, 0) / m.size) : 0,
+          attended: f.came, held: f.held, submitted: f.submitted, assignments: ctx.cohort.assignments.length,
+          lastActive: r.student.lastActiveDate, flag: f.flag, flagReason: f.flagReason,
+        });
+      }
+    }
+    rows.sort((a, b) => Number(!!b.flag) - Number(!!a.flag) || a.progress - b.progress);
+    const unique = new Set(rows.map(r => r.id));
+    return {
+      cohorts,
+      stats: {
+        students: unique.size,
+        attention: rows.filter(r => r.flag).length,
+        avgProgress: rows.length ? Math.round(rows.reduce((n, r) => n + r.progress, 0) / rows.length) : null,
+        activeThisWeek: new Set(rows.filter(r => r.lastActive && now - r.lastActive.getTime() < 7 * DAY).map(r => r.id)).size,
+      },
+      students: rows,
+    };
+  }
+
   // ── Admin ──────────────────────────────────────────────────────────────
 
   private status(c: { startDate: Date | null; examDate: Date | null }, now: number) {

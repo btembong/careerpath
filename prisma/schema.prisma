@@ -41,6 +41,7 @@ model UserProfile {
   cohorts             CohortRoster[]
   discussionPosts     CourseDiscussionPost[]
   courseEnrollments   CourseEnrollment[]
+  studyBlocks         StudyBlock[]             @relation("StudentStudyBlocks")
   coursePurchases     CoursePurchase[]
   discussionUpvotes   DiscussionUpvote[]
   flashcardReviews    FlashcardReview[]
@@ -395,6 +396,8 @@ model Submission {
   status       SubmissionStatus @default(PENDING_REVIEW)
   submittedAt  DateTime         @default(now())
   aiFeedback   String?
+  /// The student's note to the teacher when handing in
+  note         String?
   peerReviews  PeerReview[]
   rubricScores RubricScore[]
   assignment   Assignment       @relation(fields: [assignmentId], references: [id])
@@ -1065,6 +1068,8 @@ enum ApprovalStatus {
   PENDING
   APPROVED
   REJECTED
+  /// An approved teacher an admin has paused: cannot sign in, hidden from students
+  SUSPENDED
 }
 
 enum ClassStatus {
@@ -1199,4 +1204,19 @@ model PlatformSetting {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+/// Study time a student plans on their calendar
+model StudyBlock {
+  id           String      @id @default(uuid())
+  studentId    String
+  startsAt     DateTime
+  durationMins Int         @default(60)
+  topic        String
+  courseId     String?
+  done         Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  student      UserProfile @relation("StudentStudyBlocks", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId, startsAt])
 }

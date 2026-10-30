@@ -161,6 +161,10 @@ export class AuthService {
       );
     }
 
+    if (profile.approvalStatus === ApprovalStatus.SUSPENDED) {
+      throw new ForbiddenException('Your teacher account is paused. Please contact support.');
+    }
+
     if (profile.approvalStatus === ApprovalStatus.REJECTED) {
       throw new ForbiddenException(
         'Your application was not approved. Please contact support if you believe this is an error.',
