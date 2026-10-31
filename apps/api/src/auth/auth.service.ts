@@ -368,6 +368,22 @@ export class AuthService {
     return { updated: true };
   }
 
+  // ── Editable profile (profile pages) ─────────────────────
+
+  async getProfile(userId: string) {
+    const p = await this.prisma.userProfile.findUnique({
+      where: { id: userId },
+      select: {
+        id: true, email: true, role: true, name: true, firstName: true, lastName: true, phone: true, avatarUrl: true, bio: true,
+        countryId: true, createdAt: true, country: { select: { name: true, currency: true, repCommissionPercent: true, perStudentBonus: true } },
+        teachingSubjects: { select: { name: true } },
+      },
+    });
+    if (!p) throw new NotFoundException('User profile not found');
+    const { teachingSubjects, ...rest } = p;
+    return { ...rest, subjects: teachingSubjects.map(s => s.name) };
+  }
+
   // ── Preferences (Settings) ───────────────────────────────
 
   async getPreferences(userId: string) {

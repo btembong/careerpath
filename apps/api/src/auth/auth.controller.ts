@@ -140,6 +140,14 @@ export class AuthController {
     return this.authService.getMe(user.id);
   }
 
+  @Get('me/profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Editable profile fields: name, phone, photo, bio, country and subjects' })
+  getProfile(@CurrentUser() user: UserProfile) {
+    return this.authService.getProfile(user.id);
+  }
+
   @Get('me/preferences')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

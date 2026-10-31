@@ -136,6 +136,10 @@ export class CoursesService {
         reviewed: history.length,
         avgReviewDays: timed.length ? Math.round((timed.reduce((n, h) => n + (h!.reviewedAt!.getTime() - h!.submittedAt!.getTime()), 0) / timed.length / DAY) * 10) / 10 : null,
         earned: earnings.map(e => ({ currency: e.currency, amount: e._sum.amount ?? 0 })),
+        approved: history.filter(h => h!.decision === 'APPROVED').length,
+        sentBack: history.filter(h => h!.decision === 'REJECTED').length,
+        // The share of each sale a reviewer earns, as set by admins per course (usually the same everywhere)
+        commissionPct: (() => { const xs = assignments.map(a => a.reviewerCommissionPct).filter((x): x is number => x != null); return xs.length ? Math.round((xs.reduce((n, x) => n + x, 0) / xs.length) * 10) / 10 : null; })(),
       },
       queue,
       history,
