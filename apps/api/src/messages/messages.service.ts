@@ -174,7 +174,8 @@ export class MessagesService {
       (await this.prisma.cohortRoster.findMany({ where: { cohortId: { in: cohorts.map(c => c.id) } }, select: { studentId: true } })).forEach(r => ids.add(r.studentId));
       (await this.prisma.courseEnrollment.findMany({ where: { course: { teacherId: me.id } }, select: { studentId: true }, take: 300 })).forEach(e => ids.add(e.studentId));
     } else if (me.role === 'COUNTRY_REP' && me.countryId) {
-      (await this.prisma.userProfile.findMany({ where: { countryId: me.countryId, role: 'TEACHER' }, select: { id: true } })).forEach(t => ids.add(t.id));
+      // Teachers and students in their country (reps follow up on renewals)
+      (await this.prisma.userProfile.findMany({ where: { countryId: me.countryId, role: { in: ['TEACHER', 'STUDENT'] } }, select: { id: true } })).forEach(t => ids.add(t.id));
     } else if (me.role === 'SUBJECT_REVIEWER') {
       const assigned = await this.prisma.courseAssignment.findMany({ where: { reviewerId: me.id }, select: { courseId: true } });
       (await this.prisma.platformCourse.findMany({ where: { id: { in: assigned.map(a => a.courseId) } }, select: { teacherId: true } })).forEach(c => ids.add(c.teacherId));
@@ -204,6 +205,10 @@ export class MessagesService {
       select: { id: true }, orderBy: { lastMessageAt: 'desc' },
     });
     if (existing) return { threadId: existing.id };
+    // A new conversation only with someone they're allowed to reach (admins can reach anyone)
+    if (me.role !== 'ADMIN' && !(await this.contacts(me)).some(c => c.id === otherId)) {
+      throw new ForbiddenException('You can’t start a conversation with this person');
+    }
     const [a, b] = [me.id, otherId].sort();
     const thread = await this.prisma.messageThread.upsert({
       where: { participantAId_participantBId: { participantAId: a, participantBId: b } },

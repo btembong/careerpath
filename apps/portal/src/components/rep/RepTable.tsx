@@ -5,15 +5,15 @@ import { Topbar } from '@/components/layout/Topbar';
 export interface Stat { l: string; v: string; sub: string }
 
 /** Header, stat tiles, a tabbed and searchable table, and a note — the layout of the rep's Packages and Teachers pages */
-export function RepTable({ title, subtitle, stats, tabs, tab, onTab, search, onSearch, searchLabel, cols, loading, empty, note, children }: {
-  title: string; subtitle: string; stats: Stat[];
+export function RepTable({ title, subtitle, actions, stats, tabs, tab, onTab, search, onSearch, searchLabel, cols, loading, empty, note, children }: {
+  title: string; subtitle: string; actions?: React.ReactNode; stats: Stat[];
   tabs: { key: string; label: string; count: number }[]; tab: string; onTab: (k: string) => void;
   search: string; onSearch: (v: string) => void; searchLabel: string;
   cols: string[]; loading: boolean; empty: string | null; note: string; children: React.ReactNode;
 }) {
   return (
     <div className="flex min-h-full flex-col">
-      <Topbar title={title} subtitle={subtitle} />
+      <Topbar title={title} subtitle={subtitle} actions={actions} />
       <div className="flex flex-col gap-[18px] p-4 lg:px-7 lg:py-6">
         <dl className="grid gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
           {stats.map(x => (

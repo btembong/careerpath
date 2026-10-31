@@ -210,4 +210,59 @@ export class RepInsightsService {
       rows,
     };
   }
+
+  /** Students in the rep's country: what they bought, how far they are, and when their access ends */
+  async students(rep: UserProfile) {
+    const country = await this.countryOf(rep);
+    const now = new Date();
+    const students = await this.prisma.userProfile.findMany({
+      where: { countryId: country.id, role: 'STUDENT' },
+      select: {
+        id: true, name: true, firstName: true, lastName: true, email: true, createdAt: true, lastActiveDate: true,
+        purchases: { select: { purchasedAt: true, expiresAt: true, amountPaid: true, currency: true, package: { select: { name: true, courseIds: true } } }, orderBy: { purchasedAt: 'desc' } },
+        coursePurchases: { select: { purchasedAt: true, expiresAt: true, amountPaid: true, currency: true, courseId: true, course: { select: { title: true } } }, orderBy: { purchasedAt: 'desc' } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    // Lessons in the courses each student has bought, and how many they've finished
+    const courseIds = [...new Set(students.flatMap(st => [...st.purchases.flatMap(p => p.package.courseIds), ...st.coursePurchases.map(c => c.courseId)]))];
+    const lessonCounts = courseIds.length ? await this.prisma.lesson.groupBy({ by: ['moduleId'], where: { module: { courseId: { in: courseIds } } }, _count: { _all: true } }) : [];
+    const modules = courseIds.length ? await this.prisma.courseModule.findMany({ where: { courseId: { in: courseIds } }, select: { id: true, courseId: true } }) : [];
+    const lessonsInCourse = new Map<string, number>();
+    for (const m of modules) lessonsInCourse.set(m.courseId, (lessonsInCourse.get(m.courseId) ?? 0) + (lessonCounts.find(l => l.moduleId === m.id)?._count._all ?? 0));
+    const done = students.length ? await this.prisma.lessonProgress.groupBy({ by: ['studentId'], where: { studentId: { in: students.map(st => st.id) }, completed: true, lesson: { module: { courseId: { in: courseIds } } } }, _count: { _all: true } }) : [];
+    const doneBy = new Map(done.map(x => [x.studentId, x._count._all]));
+    const lastLesson = students.length ? await this.prisma.lessonProgress.groupBy({ by: ['studentId'], where: { studentId: { in: students.map(st => st.id) } }, _max: { updatedAt: true } }) : [];
+    const lastBy = new Map(lastLesson.map(x => [x.studentId, x._max.updatedAt]));
+
+    const rows = students.map(st => {
+      const buys = [
+        ...st.purchases.map(p => ({ name: p.package.name, at: p.purchasedAt, expiresAt: p.expiresAt, amount: p.amountPaid ?? 0, currency: p.currency ?? country.currency, courses: p.package.courseIds })),
+        ...st.coursePurchases.map(c => ({ name: c.course.title, at: c.purchasedAt, expiresAt: c.expiresAt, amount: c.amountPaid, currency: c.currency, courses: [c.courseId] })),
+      ].sort((a, b) => +b.at - +a.at);
+      const active = buys.filter(b => !b.expiresAt || b.expiresAt > now);
+      const ends = active.length && active.every(b => b.expiresAt) ? new Date(Math.max(...active.map(b => +b.expiresAt!))) : null;
+      const total = [...new Set(buys.flatMap(b => b.courses))].reduce((n, id) => n + (lessonsInCourse.get(id) ?? 0), 0);
+      const lastActive = [st.lastActiveDate, lastBy.get(st.id)].filter((x): x is Date => !!x).sort((a, b) => +b - +a)[0] ?? null;
+      return {
+        id: st.id, name: nameOf(st), email: st.email, joinedAt: st.createdAt, lastActive,
+        bought: buys[0] ? { name: buys[0].name, amount: buys[0].amount, currency: buys[0].currency, at: buys[0].at, more: buys.length - 1 } : null,
+        lessons: { done: Math.min(doneBy.get(st.id) ?? 0, total), total },
+        access: active.length ? (ends ? 'until' : 'open') : buys.length ? 'ended' : 'none',
+        endsAt: ends,
+      };
+    });
+    const week = new Date(+now + 7 * 86_400_000), monthStart = new Date(now.getFullYear(), now.getMonth(), 1), lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return {
+      country: { name: country.name, currency: country.currency },
+      stats: {
+        students: rows.length,
+        active: rows.filter(r => r.access === 'until' || r.access === 'open').length,
+        joinedThisMonth: rows.filter(r => r.joinedAt >= monthStart).length,
+        joinedLastMonth: rows.filter(r => r.joinedAt >= lastMonth && r.joinedAt < monthStart).length,
+        endingThisWeek: rows.filter(r => r.endsAt && r.endsAt <= week).length,
+      },
+      rows,
+    };
+  }
 }

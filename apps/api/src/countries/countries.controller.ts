@@ -85,4 +85,13 @@ export class CountriesController {
   repTeachers(@CurrentUser() user: UserProfile) {
     return this.rep.teachers(user);
   }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get('country-rep/students')
+  @Roles(UserRole.COUNTRY_REP)
+  @ApiOperation({ summary: '[Country Rep] Students in my country: what they bought, progress and when access ends' })
+  repStudents(@CurrentUser() user: UserProfile) {
+    return this.rep.students(user);
+  }
 }

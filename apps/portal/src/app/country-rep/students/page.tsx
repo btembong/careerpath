@@ -1,207 +1,98 @@
 'use client';
-import { useEffect, useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { Topbar } from '@/components/layout/Topbar';
-import { Card, IconBox } from '@/components/ui/Card';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Badge } from '@/components/ui/Badge';
-import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
-import { Avatar } from '@/components/ui/Avatar';
-import { spring } from '@/lib/motion';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { clsx } from 'clsx';
+import { minorToMajor } from '@cpa/shared';
+import { RepTable, td } from '@/components/rep/RepTable';
+import { notify } from '@/lib/notify';
+import { money } from '@/lib/money';
 import api from '@/lib/api';
 
-interface Student {
-  id: string;
-  email: string;
-  name: string | null;
-  enrolledAt: string;
-  packageName?: string;
-  expiresAt?: string | null;
+interface Row {
+  id: string; name: string; email: string; joinedAt: string; lastActive: string | null;
+  bought: { name: string; amount: number; currency: string; at: string; more: number } | null;
+  lessons: { done: number; total: number }; access: 'until' | 'open' | 'ended' | 'none'; endsAt: string | null;
 }
+interface Data { country: { name: string; currency: string }; stats: { students: number; active: number; joinedThisMonth: number; joinedLastMonth: number; endingThisWeek: number }; rows: Row[] }
 
-interface CountryInfo {
-  name: string; currency: string; code?: string;
-}
-interface DashboardData {
-  country: CountryInfo;
-}
+const DAY = 86_400_000;
+const ago = (iso: string | null) => {
+  if (!iso) return 'never';
+  const days = Math.floor((+new Date(new Date().toDateString()) - +new Date(new Date(iso).toDateString())) / DAY);
+  return days <= 0 ? 'today' : days === 1 ? 'yesterday' : days < 30 ? `${days} days ago` : new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+};
+const soon = (r: Row) => !!r.endsAt && +new Date(r.endsAt) - Date.now() <= 7 * DAY;
 
-export default function CountryRepStudentsPage() {
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [students,  setStudents]  = useState<Student[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [search,    setSearch]    = useState('');
+export default function RepStudentsPage() {
+  const [d, setD] = useState<Data | null>(null);
+  const [tab, setTab] = useState('all');
+  const [q, setQ] = useState('');
+  useEffect(() => { api.get('/countries/country-rep/students').then(r => setD(r.data)).catch(e => notify.error(e?.response?.data?.message ?? 'Could not load students')); }, []);
 
-  useEffect(() => {
-    Promise.all([
-      api.get('/countries/country-rep/dashboard').catch(() => ({ data: null })),
-      api.get('/countries/country-rep/students').catch(() => ({ data: [] })),
-    ]).then(([dash, st]) => {
-      setDashboard(dash.data);
-      // Flatten students from purchases if dedicated endpoint returns nothing
-      const directStudents: Student[] = st.data ?? [];
-      if (directStudents.length > 0) {
-        setStudents(directStudents);
-      } else {
-        // Derive from recentPurchases in dashboard
-        const purchases: any[] = dash.data?.recentPurchases ?? [];
-        setStudents(purchases.map((p: any) => ({
-          id: p.id,
-          email: p.student?.email ?? p.user?.email ?? '—',
-          name: p.student?.name ?? p.student?.firstName
-            ? `${p.student.firstName ?? ''} ${p.student.lastName ?? ''}`.trim()
-            : (p.user?.name ?? null),
-          enrolledAt: p.purchasedAt ?? p.createdAt,
-          packageName: p.package?.name,
-          expiresAt: p.expiresAt ?? null,
-        })));
-      }
-    }).finally(() => setLoading(false));
-  }, []);
+  const filters: Record<string, (r: Row) => boolean> = {
+    all: () => true,
+    active: r => r.access === 'until' || r.access === 'open',
+    ending: soon,
+    notStarted: r => !!r.bought && r.lessons.done === 0,
+  };
+  const rows = (d?.rows ?? []).filter(filters[tab]).filter(r => !q.trim() || `${r.name} ${r.email}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const s = d?.stats;
+  const change = s ? s.joinedThisMonth - s.joinedLastMonth : 0;
 
-  const country  = (dashboard?.country ?? {}) as Partial<CountryInfo>;
-  const currency = country.currency ?? 'USD';
-
-  const filtered = useMemo(() => {
-    if (!search.trim()) return students;
-    const q = search.toLowerCase();
-    return students.filter(s =>
-      (s.name ?? '').toLowerCase().includes(q) ||
-      s.email.toLowerCase().includes(q) ||
-      (s.packageName ?? '').toLowerCase().includes(q)
-    );
-  }, [students, search]);
-
-  // Stats
-  const now = Date.now();
-  const active  = students.filter(s => !s.expiresAt || new Date(s.expiresAt).getTime() > now).length;
-  const expired = students.length - active;
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 p-6 space-y-6">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => <div key={i} className="rounded-2xl border border-cloud bg-white h-24 animate-pulse" />)}
-        </div>
-        <SkeletonCard />
-      </div>
-    </div>
-  );
-
-  function daysLeft(expiresAt: string | null | undefined) {
-    if (!expiresAt) return null;
-    const diff = new Date(expiresAt).getTime() - now;
-    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  function download() {
+    if (!d) return;
+    const lines = [['Name', 'Email', 'Joined', 'Last active', 'Bought', 'Amount', 'Currency', 'Lessons done', 'Lessons', 'Access ends'],
+      ...rows.map(r => [r.name, r.email, r.joinedAt.slice(0, 10), r.lastActive?.slice(0, 10) ?? '', r.bought?.name ?? '', r.bought ? minorToMajor(r.bought.amount, r.bought.currency) : '', r.bought?.currency ?? '', r.lessons.done, r.lessons.total, r.endsAt?.slice(0, 10) ?? ''])];
+    const text = lines.map(l => l.map(c => /[",\n]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : c).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+    a.download = `students-${d.country.name.toLowerCase()}.csv`; a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar
-        title="Students"
-        subtitle={`Students in ${country.name ?? 'your country'}`}
-      />
-
-      <div className="flex-1 p-6 space-y-6">
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: 'Total students',   value: students.length, icon: 'graduate'     as const, sub: 'all time' },
-            { label: 'Active',           value: active,          icon: 'check'        as const, sub: 'enrolled now' },
-            { label: 'Expired',          value: expired,         icon: 'clock'        as const, sub: 'access lapsed' },
-            { label: 'Country',          value: country.name ?? '—', icon: 'countries' as const, sub: country.code ?? '' },
-          ].map((stat, i) => (
-            <motion.div key={stat.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06, ...spring.smooth }}>
-              <Card padding="md">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">{stat.label}</p>
-                    <p className="mt-1 text-2xl font-bold text-navy">{stat.value}</p>
-                    <p className="text-xs text-royal/40 mt-0.5">{stat.sub}</p>
-                  </div>
-                  <IconBox><Icon name={stat.icon} size={16} /></IconBox>
-                </div>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Search */}
-        <div className="relative max-w-md">
-          <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-royal/40 pointer-events-none" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name or email…"
-            className="w-full rounded-xl border border-cloud bg-white pl-9 pr-10 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/30"
-          />
-          {search && (
-            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-royal/30 hover:text-navy transition">
-              <Icon name="close" size={14} />
-            </button>
-          )}
-        </div>
-
-        {/* Student list */}
-        {filtered.length === 0 ? (
-          <Card padding="lg">
-            <EmptyState
-                icon="graduate"
-                title={search ? 'No students match your search' : 'No students yet'}
-                description={search ? 'Try a different search term' : 'Students who purchase packages in your country will appear here'}
-              />
-          </Card>
-        ) : (
-          <Card padding="none">
-            <div className="px-5 py-3 border-b border-cloud flex items-center justify-between">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-royal/40">
-                {filtered.length} student{filtered.length !== 1 ? 's' : ''}
-              </p>
-            </div>
-            <ul className="divide-y divide-cloud">
-              {filtered.map(student => {
-                const days = daysLeft(student.expiresAt);
-                const isActive = days === null || days > 0;
-                const isExpiring = days !== null && days > 0 && days <= 7;
-                return (
-                  <li key={student.id} className="flex items-center gap-4 px-5 py-4 hover:bg-cloud/20 transition">
-                    <Avatar name={student.name ?? student.email} size="md" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-navy truncate">
-                        {student.name ?? student.email}
-                      </p>
-                      {student.name && (
-                        <p className="text-xs text-royal/40 truncate">{student.email}</p>
-                      )}
-                      {student.packageName && (
-                        <p className="text-[10px] text-azure font-semibold mt-0.5">{student.packageName}</p>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                      {isActive ? (
-                        <Badge variant="active">Active</Badge>
-                      ) : (
-                        <Badge variant="default">Expired</Badge>
-                      )}
-                      {isExpiring && (
-                        <span className="text-[10px] font-semibold text-amber-500">
-                          Expires in {days}d
-                        </span>
-                      )}
-                      {student.enrolledAt && (
-                        <span className="text-[10px] text-royal/30">
-                          Joined {new Date(student.enrolledAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </span>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </Card>
-        )}
-
-      </div>
-    </div>
+    <RepTable title="Students" subtitle={`Everyone learning in ${d?.country.name ?? 'your country'}, what they bought and how they’re doing`}
+        actions={<button onClick={download} disabled={!d} className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle disabled:opacity-50">Download CSV</button>}
+        stats={[
+          { l: 'Students', v: s ? String(s.students) : '—', sub: `in ${d?.country.name ?? 'your country'}` },
+          { l: 'Active access', v: s ? String(s.active) : '—', sub: 'package or course' },
+          { l: 'Joined this month', v: s ? String(s.joinedThisMonth) : '—', sub: s ? `${change >= 0 ? '+' : '−'}${Math.abs(change)} on last month` : '' },
+          { l: 'Ending this week', v: s ? String(s.endingThisWeek) : '—', sub: 'chase the renewal' },
+        ]}
+        tabs={[
+          { key: 'all', label: 'All', count: d?.rows.length ?? 0 },
+          { key: 'active', label: 'Active', count: d?.rows.filter(filters.active).length ?? 0 },
+          { key: 'ending', label: 'Ending soon', count: d?.rows.filter(filters.ending).length ?? 0 },
+          { key: 'notStarted', label: 'Not started', count: d?.rows.filter(filters.notStarted).length ?? 0 },
+        ]}
+        tab={tab} onTab={setTab} search={q} onSearch={setQ} searchLabel="Search students"
+        cols={['Student', 'Bought', 'Progress', 'Last active', 'Access', '']}
+        loading={!d} empty={d && !rows.length ? (d.rows.length ? 'Nobody matches.' : `No students in ${d.country.name} yet.`) : null}
+        note="Students with access ending this week are the easiest renewals — a friendly message usually does it.">
+        {rows.map(r => {
+          const pct = r.lessons.total ? Math.round((r.lessons.done / r.lessons.total) * 100) : 0;
+          return (
+            <tr key={r.id} className="hover:bg-subtle">
+              <td className={td}><strong className="text-navy">{r.name}</strong><br /><span className="text-[12.5px] text-muted">{r.email}</span></td>
+              <td className={clsx(td, 'text-navy')}>
+                {r.bought ? <>{r.bought.name}{r.bought.more > 0 && <span className="text-muted"> +{r.bought.more}</span>}<br /><span className="text-[12.5px] text-muted">{r.bought.amount ? money(r.bought.amount, r.bought.currency) : 'free'} · {ago(r.bought.at)}</span></> : <span className="text-muted">Nothing yet</span>}
+              </td>
+              <td className={clsx(td, 'w-40')}>
+                {r.lessons.total ? <>
+                  <span className="block h-1.5 rounded-[3px] bg-subtle"><span className="block h-1.5 rounded-[3px] bg-azure" style={{ width: `${pct}%` }} /></span>
+                  <span className="text-[12px] text-muted">{r.lessons.done ? `${r.lessons.done} of ${r.lessons.total} lessons` : 'not started'}</span>
+                </> : <span className="text-[12.5px] text-muted">—</span>}
+              </td>
+              <td className={clsx(td, 'text-ink2')}>{ago(r.lastActive)}</td>
+              <td className={td}>
+                <span className={clsx('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-[12px] font-semibold', soon(r) || r.access === 'ended' ? 'border border-dashed border-azure text-azure-strong' : 'border border-line bg-subtle text-ink2')}>
+                  {r.access === 'open' ? 'no end date' : r.access === 'ended' ? 'ended' : r.access === 'none' ? 'no access' : soon(r) ? `ends in ${Math.max(0, Math.ceil((+new Date(r.endsAt!) - Date.now()) / DAY))} days` : `until ${new Date(r.endsAt!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                </span>
+              </td>
+              <td className={clsx(td, 'text-right')}><Link href={`/country-rep/messages?to=${r.id}`} className="font-semibold text-azure-strong hover:underline">Message</Link></td>
+            </tr>
+          );
+        })}
+      </RepTable>
   );
 }
