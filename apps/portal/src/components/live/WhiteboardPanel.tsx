@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { io, Socket } from 'socket.io-client';
+import { SOCKET_ORIGIN } from '@/lib/images';
 import Cookies from 'js-cookie';
 
 // Excalidraw has no SSR support — must be dynamically imported
@@ -23,7 +24,8 @@ interface WhiteboardState {
   canDraw: boolean;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// socket.io reads the URL path as the namespace, so connect to the API origin, not /api/v1
+const API_URL = SOCKET_ORIGIN;
 const WS_PATH = '/whiteboard';
 
 export function WhiteboardPanel({ classId, isTeacher, userId }: Props) {

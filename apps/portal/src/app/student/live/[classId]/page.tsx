@@ -6,10 +6,12 @@ import { clsx } from 'clsx';
 import { WhiteboardPanel } from '@/components/live/WhiteboardPanel';
 import { useAuth } from '@/hooks/useAuth';
 import { io, Socket } from 'socket.io-client';
+import { SOCKET_ORIGIN } from '@/lib/images';
 import Cookies from 'js-cookie';
 import api from '@/lib/api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// socket.io reads the URL path as the namespace, so connect to the API origin, not /api/v1
+const API_URL = SOCKET_ORIGIN;
 
 interface ClassInfo {
   id: string; title: string; description: string | null; scheduledAt: string; durationMins: number;
