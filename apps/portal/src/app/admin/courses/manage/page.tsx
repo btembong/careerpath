@@ -1,899 +1,309 @@
 'use client';
-import { notify } from '@/lib/notify';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Icon } from '@/components/ui/Icon';
-import { SkeletonTopbar, SkeletonTable } from '@/components/ui/Skeleton';
-import { Select } from '@/components/ui/Select';
+import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent, DrawerSection } from '@/components/ui/Dialog';
+import { QuickAdd, TagPickers, useTaxonomy, progName, type TaxOptions } from '@/components/admin/taxonomy';
+import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-/* ── Types ──────────────────────────────────────────────────────── */
-interface Country   { id: string; name: string; code: string; currency: string; }
-interface Subject   { id: string; name: string; }
-interface Level     { id: string; name: string; }
-interface ProgrammeCountry { id: string; code: string; name: string; }
-interface Programme {
-  id: string; name: string; shortName: string | null; type: string;
-  countries?: ProgrammeCountry[];
-  subjects: Subject[]; levels: Level[];
+type Tags = { programmeId: string | null; subjectId: string | null; levelId: string | null };
+interface Row {
+  id: string; title: string; source: 'NATIVE' | 'WORDPRESS'; status: 'DRAFT' | 'PENDING_REVIEW' | 'PUBLISHED' | 'ARCHIVED'; hidden: boolean;
+  wpCourseUrl: string | null; pulledAt: string | null; updatedAt: string;
+  programme: { id: string; name: string; shortName: string | null } | null; subject: { id: string; name: string } | null; level: { id: string; name: string } | null;
+  teacher: { id: string; name: string } | null; students: number;
+  suggestion: (Tags & { from: string | null; label: string }) | null;
 }
-interface PlatformCourse {
-  id: string; title: string; description: string | null; status: string;
-  source: 'NATIVE' | 'WORDPRESS';
-  wpCourseId: number | null;
-  wpCourseUrl: string | null;
-  programme: { id: string; name: string; shortName: string | null } | null;
-  subject:   { id: string; name: string } | null;
-  level:     { id: string; name: string } | null;
-  teacher:   { id: string; email: string };
-  _count:    { modules: number; enrollments: number };
+interface Stats { all: number; published: number; review: number; drafts: number; untagged: number; untaggedWithSuggestion: number; noTeacher: number; hidden: number; lastPull: { createdAt: string; kind: string } | null }
+
+const STATUS: Record<Row['status'], string> = { DRAFT: 'Draft', PENDING_REVIEW: 'In review', PUBLISHED: 'Live', ARCHIVED: 'Archived' };
+const sel = 'h-[34px] rounded-md border border-line bg-white px-2 text-[13px] text-navy outline-none focus:border-azure';
+function ago(iso: string | null) {
+  if (!iso) return '';
+  const d = Math.floor((Date.now() - +new Date(iso)) / 86_400_000);
+  return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`;
 }
 
-/* ── Programme type config (matches Prisma ProgrammeType enum) ──── */
-const PROG_TYPES: { value: string; label: string; sub: string; color: string }[] = [
-  { value: 'NATIONAL_CURRICULUM',    label: 'National Curriculum',  sub: 'WAEC · KCSE · Matric · GCE · BAC · BEPC',  color: 'text-azure bg-azure/10' },
-  { value: 'INTERNATIONAL_EXAM',     label: 'International Exams',  sub: 'Cambridge · IB · SAT · GRE · GMAT · LSAT', color: 'text-royal bg-royal/10' },
-  { value: 'PROFESSIONAL_LICENSURE', label: 'Professional',         sub: 'ACCA · CFA · ICAN · ICAG · CIMA · PMP',    color: 'text-amber-600 bg-amber-50' },
-  { value: 'LANGUAGE_PROFICIENCY',   label: 'Language Proficiency', sub: 'IELTS · TOEFL · DELF/DALF · TEF',          color: 'text-green-700 bg-green-50' },
-  { value: 'CPD',                    label: 'CPD',                  sub: 'Continuing Professional Development',       color: 'text-purple-700 bg-purple-50' },
-  { value: 'UNIVERSITY',             label: 'University',           sub: 'Foundation · Licence · Master · LMD',      color: 'text-navy bg-navy/10' },
-];
-const TYPE_MAP = Object.fromEntries(PROG_TYPES.map(t => [t.value, t]));
+export default function CourseManagementPage() {
+  const router = useRouter();
+  const { opts, reload } = useTaxonomy();
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [rows, setRows] = useState<Row[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [f, setF] = useState({ q: '', source: '', status: '', programmeId: '', untagged: false, noTeacher: false });
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulkTags, setBulkTags] = useState<Tags>({ programmeId: null, subjectId: null, levelId: null });
+  const [bulkTeacher, setBulkTeacher] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [adding, setAdding] = useState<{ kind: 'programme' | 'subject'; programmeId?: string | null; then: (id: string) => void } | null>(null);
+  const PAGE = 25;
 
-const STATUS_BADGE: Record<string, 'active' | 'muted' | 'default'> = {
-  PUBLISHED: 'active', PENDING_REVIEW: 'muted', DRAFT: 'default', ARCHIVED: 'default',
-};
-const STATUS_LABEL: Record<string, string> = {
-  PUBLISHED: 'Published', PENDING_REVIEW: 'Under Review', DRAFT: 'Draft', ARCHIVED: 'Archived',
-};
+  const load = useCallback(async () => {
+    const params = { q: f.q || undefined, source: f.source || undefined, status: f.status || undefined, programmeId: f.programmeId || undefined, untagged: f.untagged ? '1' : undefined, noTeacher: f.noTeacher ? '1' : undefined, page, pageSize: PAGE };
+    const [l, s] = await Promise.all([api.get('/admin/course-manage', { params }), api.get('/admin/course-manage/stats')]);
+    setRows(l.data.rows); setTotal(l.data.total); setStats(s.data);
+  }, [f, page]);
+  useEffect(() => { const t = setTimeout(() => load().catch(() => notify.error('Could not load courses')), f.q ? 300 : 0); return () => clearTimeout(t); }, [load, f.q]);
+  useEffect(() => { setPage(1); }, [f]);
 
-/* ═══════════════════════════════════════════════════════════════════
-   PANEL 1 — Programme grouped tree
-═══════════════════════════════════════════════════════════════════ */
-function ProgrammePanel({
-  programmes, countries, selected, selCountry,
-  onSelect, onAdd, onCountryChange,
-}: {
-  programmes: Programme[];
-  countries: Country[];
-  selected: string | null;
-  selCountry: string;
-  onSelect: (id: string) => void;
-  onAdd: (name: string, shortName: string, type: string, countryIds: string[]) => Promise<void>;
-  onCountryChange: (id: string) => void;
-}) {
-  const [search, setSearch] = useState('');
-  const [adding,     setAdding]     = useState(false);
-  const [saving,     setSaving]     = useState(false);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(
-    Object.fromEntries(PROG_TYPES.map(t => [t.value, true]))
-  );
-
-  const [name,        setName]        = useState('');
-  const [shortName,   setShortName]   = useState('');
-  const [type,        setType]        = useState('NATIONAL_CURRICULUM');
-  const [selCountries, setSelCountries] = useState<string[]>([]);
-
-  function toggleCountry(id: string) {
-    setSelCountries(c => c.includes(id) ? c.filter(x => x !== id) : [...c, id]);
+  async function bulk(action: string, extra: Record<string, unknown> = {}, ids = [...picked]) {
+    if (!ids.length) return;
+    setBusy(true);
+    try {
+      const r = await api.post('/admin/course-manage/bulk', { courseIds: ids, action, ...extra });
+      notify.success(`${r.data.updated} course${r.data.updated === 1 ? '' : 's'} updated`);
+      setPicked(new Set()); await load();
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not update'); } finally { setBusy(false); }
   }
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
+  const allOnPage = !!rows?.length && rows.every(r => picked.has(r.id));
+  const toggleAll = () => setPicked(prev => { const n = new Set(prev); rows?.forEach(r => allOnPage ? n.delete(r.id) : n.add(r.id)); return n; });
+  const pages = Math.max(1, Math.ceil(total / PAGE));
+
+  return (
+    <div className="flex min-h-full flex-col">
+      <Topbar title="Course management" subtitle="Every course, where it sits in the catalogue, and who teaches it"
+        actions={<div className="flex flex-wrap gap-2">
+          <Link href="/admin/courses/taxonomy" className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Taxonomy</Link>
+          <Link href="/admin/courses/wordpress" className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Pull from WordPress</Link>
+          <Button size="sm" onClick={() => setCreating(true)} disabled={!opts}>New course</Button>
+        </div>} />
+      <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-[22px]">
+        {stats && stats.untagged > 0 && (
+          <section className="flex flex-wrap items-center gap-3.5 rounded-lg border border-azure bg-white px-[18px] py-4">
+            <div className="min-w-0 flex-1">
+              <p className="text-base font-extrabold text-navy">{stats.untagged} course{stats.untagged === 1 ? ' isn’t' : 's aren’t'} in the catalogue yet</p>
+              <p className="mt-0.5 text-[13px] text-ink2">
+                Without a programme and subject, students browsing by exam never see them.
+                {stats.untaggedWithSuggestion ? ` We’ve suggested tags for ${stats.untaggedWithSuggestion} from their WordPress categories.` : ' Pull from WordPress to get suggested tags from their categories.'}
+              </p>
+            </div>
+            {stats.untaggedWithSuggestion > 0
+              ? <Button size="sm" onClick={() => setF({ ...f, untagged: true })}>Review suggested tags</Button>
+              : <Link href="/admin/courses/wordpress" className="inline-flex h-9 items-center rounded-md bg-azure-strong px-3.5 text-[13.5px] font-semibold text-on-accent">Pull from WordPress</Link>}
+          </section>
+        )}
+
+        <dl className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]">
+          {[
+            ['All courses', stats?.all, () => setF({ q: '', source: '', status: '', programmeId: '', untagged: false, noTeacher: false })],
+            ['Live', stats?.published, () => setF({ ...f, status: 'PUBLISHED' })],
+            ['In review', stats?.review, () => setF({ ...f, status: 'PENDING_REVIEW' })],
+            ['Drafts', stats?.drafts, () => setF({ ...f, status: 'DRAFT' })],
+            ['Not tagged', stats?.untagged, () => setF({ ...f, untagged: true })],
+            ['No teacher yet', stats?.noTeacher, () => setF({ ...f, noTeacher: true })],
+          ].map(([l, v, on]) => (
+            <button key={l as string} onClick={on as () => void} className="rounded-lg border border-line bg-white px-3.5 py-3 text-left hover:border-azure">
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{l as string}</dt>
+              <dd className="mt-1 text-xl font-extrabold text-navy">{v == null ? '—' : String(v)}</dd>
+            </button>
+          ))}
+        </dl>
+
+        <section className="rounded-lg border border-line bg-white">
+          <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
+            <input value={f.q} onChange={e => setF({ ...f, q: e.target.value })} placeholder="Search courses or teachers" aria-label="Search courses"
+              className="h-[34px] min-w-[200px] flex-1 rounded-md border border-line px-2.5 text-[13px] text-navy outline-none focus:border-azure" />
+            <select aria-label="Source" className={sel} value={f.source} onChange={e => setF({ ...f, source: e.target.value })}><option value="">Source: all</option><option value="NATIVE">Built on the portal</option><option value="WORDPRESS">From WordPress</option></select>
+            <select aria-label="Status" className={sel} value={f.status} onChange={e => setF({ ...f, status: e.target.value })}><option value="">Status: all</option><option value="PUBLISHED">Live</option><option value="PENDING_REVIEW">In review</option><option value="DRAFT">Draft</option><option value="HIDDEN">Hidden from catalogue</option><option value="ARCHIVED">Archived</option></select>
+            <select aria-label="Programme" className={clsx(sel, 'max-w-[200px]')} value={f.programmeId} onChange={e => setF({ ...f, programmeId: e.target.value })}><option value="">Programme: all</option>{opts?.programmes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+            {([['untagged', 'Not tagged only'], ['noTeacher', 'No teacher yet']] as const).map(([k, l]) => (
+              <button key={k} onClick={() => setF({ ...f, [k]: !f[k] })} aria-pressed={f[k]}
+                className={clsx('h-[34px] rounded-md px-2.5 text-[13px]', f[k] ? 'border border-azure bg-accent-soft font-semibold text-navy' : 'border border-line text-navy')}>{l}</button>
+            ))}
+          </div>
+
+          {picked.size > 0 && opts && (
+            <div className="flex flex-wrap items-center gap-2 border-b border-azure bg-accent-soft px-4 py-2.5 text-[13px]">
+              <strong className="text-navy">{picked.size} selected</strong>
+              <span className="text-ink2">Put them in</span>
+              <TagPickers compact opts={opts} value={bulkTags} onChange={setBulkTags} />
+              <Button size="sm" loading={busy} disabled={!bulkTags.programmeId && !bulkTags.subjectId && !bulkTags.levelId}
+                onClick={() => bulk('tag', Object.fromEntries(Object.entries(bulkTags).filter(([, v]) => v)))}>Apply</Button>
+              <button onClick={() => setAdding({ kind: 'programme', then: id => { reload(); setBulkTags(t => ({ ...t, programmeId: id })); } })} className="font-semibold text-azure-strong hover:underline">+ Programme</button>
+              <button onClick={() => setAdding({ kind: 'subject', programmeId: bulkTags.programmeId, then: id => { reload(); setBulkTags(t => ({ ...t, subjectId: id })); } })} className="font-semibold text-azure-strong hover:underline">+ Subject</button>
+              <span className="flex-1" />
+              {rows?.some(r => picked.has(r.id) && r.suggestion) && <button onClick={() => bulk('accept')} className="font-semibold text-azure-strong hover:underline">Accept suggestions</button>}
+              <select aria-label="Teacher" className={sel} value={bulkTeacher} onChange={e => { const v = e.target.value; setBulkTeacher(''); if (v) bulk('teacher', { teacherId: v === 'none' ? null : v }); }}>
+                <option value="">Change teacher…</option><option value="none">No teacher yet</option>{opts.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              <button onClick={() => bulk('publish')} className="font-semibold text-azure-strong hover:underline">Publish</button>
+              <button onClick={() => bulk('unpublish')} className="font-semibold text-azure-strong hover:underline">Unpublish</button>
+              <button onClick={() => bulk('hide')} className="font-semibold text-azure-strong hover:underline">Hide</button>
+              <button onClick={() => setPicked(new Set())} className="text-ink2 hover:text-navy" aria-label="Clear selection">✕</button>
+            </div>
+          )}
+
+          {!rows ? <div className="m-4 h-64 rounded-md bg-subtle animate-pulse" /> : !rows.length ? (
+            <p className="px-4 py-10 text-center text-[13px] text-ink2">No courses match.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] border-collapse text-[13.5px]">
+                <thead><tr>
+                  <th className="w-10 border-b border-line px-3.5 py-2.5"><input type="checkbox" aria-label="Select all on this page" checked={allOnPage} onChange={toggleAll} /></th>
+                  {['Course', 'Programme · subject · level', 'Teacher', 'Students', 'Status', ''].map(h => <th key={h} className="border-b border-line px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{h}</th>)}
+                </tr></thead>
+                <tbody>
+                  {rows.map(r => {
+                    const on = picked.has(r.id);
+                    const tagged = !!(r.programme && r.subject);
+                    return (
+                      <tr key={r.id} className={clsx(on ? 'bg-[#F6F9FF]' : 'hover:bg-subtle')}>
+                        <td className="border-b border-line px-3.5 py-3 align-top"><input type="checkbox" aria-label={`Select ${r.title}`} checked={on} onChange={() => setPicked(p => { const n = new Set(p); on ? n.delete(r.id) : n.add(r.id); return n; })} /></td>
+                        <td className="max-w-[320px] border-b border-line px-3.5 py-3 align-top">
+                          <button onClick={() => setOpenId(r.id)} className="text-left font-semibold text-navy hover:underline">{r.title}</button>
+                          <p className="text-xs text-muted">{r.source === 'WORDPRESS' ? `WordPress${r.pulledAt ? ` · pulled ${ago(r.pulledAt)}` : ''}` : 'Built on the portal'}</p>
+                        </td>
+                        <td className="border-b border-line px-3.5 py-3 align-top">
+                          {r.programme || r.subject ? (
+                            <span className="text-navy">{[r.programme && progName(r.programme), r.subject?.name, r.level?.name].filter(Boolean).join(' · ')}{!tagged && <span className="ml-1 text-xs text-muted">(incomplete)</span>}</span>
+                          ) : <span className="inline-flex rounded border border-dashed border-line px-2 py-0.5 text-[12.5px] text-muted">Not tagged</span>}
+                          {!tagged && r.suggestion && (
+                            <p className="mt-1 text-xs text-azure-strong">Suggested: {r.suggestion.label} · <button onClick={() => bulk('accept', {}, [r.id])} className="font-semibold underline">Accept</button></p>
+                          )}
+                        </td>
+                        <td className="border-b border-line px-3.5 py-3 align-top text-ink2">{r.teacher?.name ?? <span className="text-muted">CareerPath (no teacher yet)</span>}</td>
+                        <td className="border-b border-line px-3.5 py-3 align-top text-ink2">{r.students || '—'}</td>
+                        <td className="border-b border-line px-3.5 py-3 align-top">
+                          <span className={clsx('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs font-semibold', r.status === 'PUBLISHED' && !r.hidden ? 'bg-accent-soft text-navy' : 'border border-line bg-subtle text-ink2')}>{r.hidden ? 'Hidden' : STATUS[r.status]}</span>
+                        </td>
+                        <td className="border-b border-line px-3.5 py-3 text-right align-top"><button onClick={() => setOpenId(r.id)} className="font-semibold text-azure-strong hover:underline">Open</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="flex items-center justify-between px-4 py-3 text-[12.5px] text-muted">
+            <span>{total ? `Showing ${(page - 1) * PAGE + 1}–${Math.min(total, page * PAGE)} of ${total}` : ''}</span>
+            <span className="flex items-center gap-2">
+              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="rounded px-2 py-1 font-semibold text-navy disabled:opacity-40">‹ Previous</button>
+              <span>Page {page} of {pages}</span>
+              <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="rounded px-2 py-1 font-semibold text-navy disabled:opacity-40">Next ›</button>
+            </span>
+          </div>
+        </section>
+      </div>
+
+      {openId && opts && <CourseDrawer id={openId} opts={opts} onClose={() => setOpenId(null)} onSaved={load}
+        onAdd={(kind, programmeId, then) => setAdding({ kind, programmeId, then: id => { reload(); then(id); } })} />}
+      {creating && opts && <NewCourse opts={opts} onClose={() => setCreating(false)}
+        onCreated={id => router.push(`/admin/courses/${id}/builder`)}
+        onAdd={(kind, programmeId, then) => setAdding({ kind, programmeId, then: id => { reload(); then(id); } })} />}
+      {adding && opts && <QuickAdd kind={adding.kind} opts={opts} programmeId={adding.programmeId} onClose={() => setAdding(null)} onAdded={id => { adding.then(id); setAdding(null); }} />}
+    </div>
+  );
+}
+
+interface Detail {
+  id: string; title: string; source: string; status: Row['status']; catalogueHidden: boolean; wpCourseUrl: string | null; wpCategories: string[]; wpAuthorEmail: string | null;
+  programmeId: string | null; subjectId: string | null; levelId: string | null; teacher: { id: string; name: string } | null; students: number; modules: number;
+  suggestion: (Tags & { from: string | null }) | null;
+}
+
+function CourseDrawer({ id, opts, onClose, onSaved, onAdd }: { id: string; opts: TaxOptions; onClose: () => void; onSaved: () => Promise<void>; onAdd: (kind: 'programme' | 'subject', programmeId: string | null, then: (id: string) => void) => void }) {
+  const [d, setD] = useState<Detail | null>(null);
+  const [tags, setTags] = useState<Tags>({ programmeId: null, subjectId: null, levelId: null });
+  const [teacher, setTeacher] = useState('none');
+  const [status, setStatus] = useState<Row['status']>('DRAFT');
+  const [listed, setListed] = useState(true);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    api.get(`/admin/course-manage/${id}`).then(r => {
+      const x: Detail = r.data; setD(x);
+      setTags({ programmeId: x.programmeId, subjectId: x.subjectId, levelId: x.levelId });
+      setTeacher(x.teacher?.id ?? 'none'); setStatus(x.status); setListed(!x.catalogueHidden);
+    }).catch(() => notify.error('Could not open this course'));
+  }, [id]);
+
+  async function save() {
+    if (!d) return;
+    setSaving(true);
+    const one = (action: string, extra: Record<string, unknown> = {}) => api.post('/admin/course-manage/bulk', { courseIds: [d.id], action, ...extra });
+    try {
+      if (tags.programmeId !== d.programmeId || tags.subjectId !== d.subjectId || tags.levelId !== d.levelId) await one('tag', tags);
+      if (teacher !== (d.teacher?.id ?? 'none')) await one('teacher', { teacherId: teacher === 'none' ? null : teacher });
+      if (status !== d.status) await one(status === 'PUBLISHED' ? 'publish' : status === 'ARCHIVED' ? 'archive' : 'unpublish');
+      if (listed === d.catalogueHidden) await one(listed ? 'show' : 'hide');
+      notify.success('Course saved'); await onSaved(); onClose();
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not save'); } finally { setSaving(false); }
+  }
+  const s = d?.suggestion;
+  const sName = s ? [opts.programmes.find(p => p.id === s.programmeId), opts.subjects.find(x => x.id === s.subjectId), opts.levels.find(l => l.id === s.levelId)].filter(Boolean).map(x => 'shortName' in x! && x.shortName ? x.shortName : x!.name).join(' · ') : '';
+
+  return (
+    <Drawer open onOpenChange={o => { if (!o) onClose(); }}>
+      <DrawerContent title={d?.title ?? 'Course'} description={d ? `${d.source === 'WORDPRESS' ? 'WordPress course' : 'Built on the portal'} · ${d.students} student${d.students === 1 ? '' : 's'}${d.source === 'NATIVE' ? ` · ${d.modules} module${d.modules === 1 ? '' : 's'}` : ''}` : ' '}
+        footer={<>
+          {d?.wpCourseUrl && <a href={d.wpCourseUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy">Open on WordPress</a>}
+          {d?.source === 'NATIVE' && <Link href={`/admin/courses/${d.id}/builder`} className="inline-flex h-9 items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy">Course builder</Link>}
+          <span className="flex-1" />
+          <Button size="sm" onClick={save} loading={saving} disabled={!d}>Save</Button>
+        </>}>
+        {!d ? <div className="h-64 rounded bg-subtle animate-pulse" /> : <>
+          {s && sName && (tags.programmeId !== s.programmeId || tags.subjectId !== s.subjectId) && (
+            <p className="rounded-md bg-accent-soft px-3 py-2.5 text-[13px] text-navy">
+              Suggested from WordPress {s.from ? `(“${s.from}”)` : ''}: <strong>{sName}</strong> —{' '}
+              <button onClick={() => setTags({ programmeId: tags.programmeId ?? s.programmeId, subjectId: tags.subjectId ?? s.subjectId, levelId: tags.levelId ?? s.levelId })} className="font-semibold text-azure-strong underline">Use this</button>
+            </p>
+          )}
+          <TagPickers opts={opts} value={tags} onChange={setTags} onAdd={kind => onAdd(kind, tags.programmeId, id => setTags(t => kind === 'programme' ? { ...t, programmeId: id } : { ...t, subjectId: id }))} />
+          <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Teacher</span>
+            <select className="input-base" value={teacher} onChange={e => setTeacher(e.target.value)}>
+              <option value="none">CareerPath (no teacher yet)</option>{opts.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            {d.wpAuthorEmail && !d.teacher && <span className="text-xs text-muted">WordPress author: {d.wpAuthorEmail} (no portal teacher with this email)</span>}
+          </label>
+          <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Status</span>
+            <select className="input-base" value={status} onChange={e => setStatus(e.target.value as Row['status'])}>
+              <option value="DRAFT">Draft</option>{d.status === 'PENDING_REVIEW' && <option value="PENDING_REVIEW">In review</option>}<option value="PUBLISHED">Live</option><option value="ARCHIVED">Archived</option>
+            </select>
+          </label>
+          <label className="flex items-center justify-between gap-3 rounded-md border border-line px-3.5 py-2.5 text-[13.5px] text-navy">
+            <span>Show in the catalogue<span className="block text-xs text-muted">Off: students who have it keep it, but it isn’t listed</span></span>
+            <input type="checkbox" checked={listed} onChange={e => setListed(e.target.checked)} />
+          </label>
+          {d.wpCategories.length > 0 && <DrawerSection title="WordPress categories"><div className="flex flex-wrap gap-1.5">{d.wpCategories.map(c => <span key={c} className="rounded border border-line bg-subtle px-2 py-1 text-xs text-ink2">{c}</span>)}</div></DrawerSection>}
+        </>}
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+function NewCourse({ opts, onClose, onCreated, onAdd }: { opts: TaxOptions; onClose: () => void; onCreated: (id: string) => void; onAdd: (kind: 'programme' | 'subject', programmeId: string | null, then: (id: string) => void) => void }) {
+  const [title, setTitle] = useState('');
+  const [tags, setTags] = useState<Tags>({ programmeId: null, subjectId: null, levelId: null });
+  const [teacherId, setTeacherId] = useState('');
+  const [saving, setSaving] = useState(false);
+  async function create() {
+    if (!title.trim()) { notify.error('Give the course a title'); return; }
+    if (!tags.programmeId || !tags.subjectId) { notify.error('Choose a programme and subject so students can find it'); return; }
     setSaving(true);
     try {
-      await onAdd(name, shortName, type, selCountries);
-      setAdding(false);
-      setName(''); setShortName(''); setType('NATIONAL_CURRICULUM'); setSelCountries([]);
-    } finally { setSaving(false); }
+      const r = await api.post('/platform-courses', { title: title.trim(), programmeId: tags.programmeId, subjectId: tags.subjectId, levelId: tags.levelId || undefined, teacherId: teacherId || undefined });
+      notify.success('Course created'); onCreated(r.data.id);
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not create the course'); } finally { setSaving(false); }
   }
-
-  function toggleSection(typeVal: string) {
-    setExpanded(e => ({ ...e, [typeVal]: !e[typeVal] }));
-  }
-
-  const filtered = programmes.filter(p => {
-    if (search && !p.name.toLowerCase().includes(search.toLowerCase()) &&
-        !(p.shortName ?? '').toLowerCase().includes(search.toLowerCase())) return false;
-    if (selCountry && (p.countries ?? []).length > 0 && !(p.countries ?? []).some(c => c.id === selCountry)) return false;
-    return true;
-  });
-
-  const KNOWN_TYPES = new Set(PROG_TYPES.map(t => t.value));
-  const grouped: Record<string, Programme[]> = {};
-  filtered.forEach(p => {
-    const t = KNOWN_TYPES.has(p.type) ? p.type : 'OTHER';
-    if (!grouped[t]) grouped[t] = [];
-    grouped[t].push(p);
-  });
-
-  const orderedTypes = [
-    ...PROG_TYPES.filter(t => grouped[t.value]?.length > 0 || !search),
-    ...(grouped['OTHER']?.length > 0
-      ? [{ value: 'OTHER', label: 'Other', sub: 'Uncategorised programmes', color: 'text-royal/60 bg-cloud' }]
-      : []),
-  ];
-
   return (
-    <div className="flex flex-col h-full border-r border-cloud bg-white">
-      <div className="px-4 pt-3 pb-2 border-b border-cloud flex-shrink-0 space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-azure">PROGRAMMES</p>
-          <button onClick={() => setAdding(v => !v)}
-            className="flex items-center gap-1 rounded-md border border-cloud bg-white px-2.5 py-1 text-xs font-semibold text-navy hover:bg-cloud transition">
-            <Icon name="add" size={12} /> New
-          </button>
+    <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent title="New course" description="Place it in the catalogue now — the teacher builds it, a reviewer approves it.">
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Title</span><input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. WASSCE Physics — Mechanics" className="input-base" /></label>
+          <TagPickers opts={opts} value={tags} onChange={setTags} onAdd={kind => onAdd(kind, tags.programmeId, id => setTags(t => kind === 'programme' ? { ...t, programmeId: id } : { ...t, subjectId: id }))} />
+          <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Teacher</span>
+            <select className="input-base" value={teacherId} onChange={e => setTeacherId(e.target.value)}><option value="">Choose later</option>{opts.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+          </label>
         </div>
-
-        <div className="relative">
-          <Icon name="search" size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-royal/40 pointer-events-none" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search programmes…"
-            className="w-full rounded-md border border-cloud bg-surface pl-7 pr-3 py-1.5 text-xs text-navy outline-none focus:border-azure placeholder:text-royal/30" />
-        </div>
-
-        <select value={selCountry} onChange={e => onCountryChange(e.target.value)}
-          className="w-full rounded-md border border-cloud bg-white px-2.5 py-1.5 text-xs text-navy outline-none focus:border-azure">
-          <option value="">All countries</option>
-          {countries.map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-      </div>
-
-      {adding && (
-        <form onSubmit={handleAdd}
-          className="border-b border-cloud bg-azure/5 px-4 py-3 space-y-2.5 flex-shrink-0">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-azure">NEW PROGRAMME</p>
-
-          <input value={name} onChange={e => setName(e.target.value)} required autoFocus
-            placeholder="Full name  e.g. West Africa Senior School Certificate"
-            className="w-full rounded-md border border-cloud bg-white px-3 py-1.5 text-xs text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-
-          <div className="flex gap-2">
-            <input value={shortName} onChange={e => setShortName(e.target.value)}
-              placeholder="Short  e.g. WASSCE"
-              className="flex-1 rounded-md border border-cloud bg-white px-3 py-1.5 text-xs text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-            <select value={type} onChange={e => setType(e.target.value)}
-              className="flex-1 rounded-md border border-cloud bg-white px-2 py-1.5 text-xs text-navy outline-none focus:border-azure">
-              {PROG_TYPES.map(t => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-royal/50 mb-1.5">
-              Countries that use this programme
-            </p>
-            {countries.length === 0 ? (
-              <p className="text-[10px] text-royal/30 italic">No countries configured yet</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-x-2 gap-y-1 max-h-32 overflow-y-auto pr-1">
-                {countries.map(c => (
-                  <label key={c.id}
-                    className="flex items-center gap-1.5 cursor-pointer rounded px-1.5 py-1 hover:bg-cloud transition">
-                    <input type="checkbox" checked={selCountries.includes(c.id)}
-                      onChange={() => toggleCountry(c.id)}
-                      className="rounded accent-azure" />
-                    <span className="text-[10px] font-medium text-navy truncate">{c.code}</span>
-                    <span className="text-[10px] text-royal/40 truncate">{c.name}</span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="flex gap-2 pt-1">
-            <Button type="submit" size="sm" loading={saving}>Save</Button>
-            <Button type="button" size="sm" variant="secondary" onClick={() => setAdding(false)}>Cancel</Button>
-          </div>
-        </form>
-      )}
-
-      <ul className="flex-1 overflow-y-auto">
-        {orderedTypes.length === 0 && (
-          <li className="px-4 py-8 text-center text-xs text-royal/40">
-            {search || selCountry ? 'No programmes match the filter' : 'No programmes yet — click New to add one'}
-          </li>
-        )}
-
-        {orderedTypes.map(typeDef => {
-          const group = grouped[typeDef.value] ?? [];
-          if (search && group.length === 0) return null;
-          const isOpen = expanded[typeDef.value] ?? true;
-
-          return (
-            <li key={typeDef.value}>
-              <button
-                onClick={() => toggleSection(typeDef.value)}
-                className="flex items-center gap-2 w-full px-4 py-2 text-left bg-surface border-b border-cloud hover:bg-cloud/50 transition">
-                <Icon name={isOpen ? 'chevronDown' : 'chevronRight'} size={12} className="text-royal/40 flex-shrink-0" />
-                <span className={`text-[10px] font-bold uppercase tracking-widest ${TYPE_MAP[typeDef.value]?.color?.split(' ')[0] ?? 'text-navy'}`}>
-                  {typeDef.label}
-                </span>
-                <span className="ml-auto text-[10px] font-semibold text-royal/40 flex-shrink-0">
-                  {group.length}
-                </span>
-              </button>
-
-              {isOpen && group.map(p => {
-                const isSelected = selected === p.id;
-                const typeConf = TYPE_MAP[p.type];
-                const progCountries = p.countries ?? [];
-
-                return (
-                  <button key={p.id} onClick={() => onSelect(p.id)}
-                    className={`flex items-start gap-3 w-full px-4 py-2.5 text-left border-b border-cloud/60 transition-all ${
-                      isSelected ? 'bg-azure text-white' : 'hover:bg-cloud/40 text-navy'
-                    }`}>
-
-                    <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-[10px] font-black leading-none mt-0.5 ${
-                      isSelected
-                        ? 'bg-white/20 text-white'
-                        : (typeConf?.color ?? 'bg-cloud text-azure')
-                    }`}>
-                      {(p.shortName ?? p.name).slice(0, 3).toUpperCase()}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-xs font-semibold truncate leading-tight ${isSelected ? 'text-white' : 'text-navy'}`}>
-                        {p.shortName ?? p.name}
-                      </p>
-                      {p.shortName && (
-                        <p className={`text-[10px] truncate leading-tight ${isSelected ? 'text-white/60' : 'text-royal/40'}`}>
-                          {p.name}
-                        </p>
-                      )}
-                      {progCountries.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {progCountries.slice(0, 4).map(c => (
-                            <span key={c.id}
-                              className={`rounded px-1 py-0.5 text-[9px] font-bold uppercase ${
-                                isSelected ? 'bg-white/20 text-white' : 'bg-cloud text-royal/60'
-                              }`}>
-                              {c.code}
-                            </span>
-                          ))}
-                          {progCountries.length > 4 && (
-                            <span className={`rounded px-1 py-0.5 text-[9px] font-bold ${isSelected ? 'text-white/50' : 'text-royal/30'}`}>
-                              +{progCountries.length - 4}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex-shrink-0 flex flex-col items-end gap-1 mt-0.5">
-                      <Icon name="chevronRight" size={11} className={isSelected ? 'text-white/60' : 'text-royal/20'} />
-                      <span className={`text-[9px] ${isSelected ? 'text-white/50' : 'text-royal/30'}`}>
-                        {p.subjects.length}s · {p.levels.length}l
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-
-              {isOpen && group.length === 0 && (
-                <div className="px-4 py-2 text-[10px] text-royal/30 italic border-b border-cloud/60">
-                  No {typeDef.label.toLowerCase()} programmes
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-
-      <div className="px-4 py-2 border-t border-cloud flex-shrink-0">
-        <p className="text-[10px] text-royal/40">
-          {filtered.length} of {programmes.length} programme{programmes.length !== 1 ? 's' : ''}
-          {selCountry && ` · ${countries.find(c => c.id === selCountry)?.name ?? 'Country'}`}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   PANEL 2 — Subjects + Levels
-═══════════════════════════════════════════════════════════════════ */
-function TaxonomyPanel({
-  programme, countries, selCountry,
-  selectedSubject, selectedLevel,
-  onSelectSubject, onSelectLevel,
-  onAddSubject, onAddLevel,
-  onDeleteSubject, onDeleteLevel,
-}: {
-  programme: Programme; countries: Country[]; selCountry: string;
-  selectedSubject: string | null; selectedLevel: string | null;
-  onSelectSubject: (id: string | null) => void;
-  onSelectLevel:   (id: string | null) => void;
-  onAddSubject:    (name: string) => Promise<void>;
-  onAddLevel:      (name: string) => Promise<void>;
-  onDeleteSubject: (id: string) => Promise<void>;
-  onDeleteLevel:   (id: string) => Promise<void>;
-}) {
-  const [addingSubj, setAddingSubj] = useState(false);
-  const [addingLvl,  setAddingLvl]  = useState(false);
-  const [subjName,   setSubjName]   = useState('');
-  const [lvlName,    setLvlName]    = useState('');
-  const [saving,     setSaving]     = useState<string | null>(null);
-
-  const typeConf = TYPE_MAP[programme.type];
-  const progCountries = programme.countries ?? [];
-
-  async function handleAddSubj(e: React.FormEvent) {
-    e.preventDefault(); setSaving('subj');
-    try { await onAddSubject(subjName); setAddingSubj(false); setSubjName(''); }
-    finally { setSaving(null); }
-  }
-  async function handleAddLvl(e: React.FormEvent) {
-    e.preventDefault(); setSaving('lvl');
-    try { await onAddLevel(lvlName); setAddingLvl(false); setLvlName(''); }
-    finally { setSaving(null); }
-  }
-
-  return (
-    <div className="flex flex-col h-full border-r border-cloud bg-white">
-      <div className="px-4 py-3 border-b border-cloud flex-shrink-0">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-azure">TAXONOMY</p>
-        <p className="text-sm font-bold text-navy truncate mt-0.5">{programme.shortName ?? programme.name}</p>
-
-        <span className={`inline-block rounded px-2 py-0.5 text-[10px] font-bold mt-1 ${typeConf?.color ?? 'bg-cloud text-navy'}`}>
-          {typeConf?.label ?? programme.type}
-        </span>
-
-        {progCountries.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {progCountries.map(c => (
-              <span key={c.id} className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
-                selCountry === c.id
-                  ? 'bg-azure text-white'
-                  : 'bg-cloud text-royal/60'
-              }`}>
-                {c.code}
-              </span>
-            ))}
-          </div>
-        )}
-        {selCountry && progCountries.length > 0 && !progCountries.find(c => c.id === selCountry) && (
-          <p className="text-[10px] text-amber-500 mt-1.5">
-            ⚠ Programme not tagged to selected country
-          </p>
-        )}
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-4 pt-3 pb-1">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-royal/50">
-              Subjects <span className="text-royal/30 ml-1">({programme.subjects.length})</span>
-            </p>
-            <button onClick={() => setAddingSubj(v => !v)}
-              className="text-azure hover:text-royal transition flex items-center gap-0.5 text-[10px] font-semibold">
-              <Icon name="add" size={12} /> Add
-            </button>
-          </div>
-
-          {addingSubj && (
-            <form onSubmit={handleAddSubj} className="flex gap-1.5 mb-2">
-              <input value={subjName} onChange={e => setSubjName(e.target.value)} required autoFocus
-                placeholder="Subject name"
-                className="flex-1 rounded-md border border-azure bg-white px-2.5 py-1.5 text-xs text-navy outline-none placeholder:text-royal/40" />
-              <Button type="submit" size="sm" loading={saving === 'subj'}>Add</Button>
-            </form>
-          )}
-
-          <ul className="space-y-0.5">
-            <li>
-              <button onClick={() => onSelectSubject(null)}
-                className={`flex w-full items-center rounded-md px-2.5 py-1.5 text-xs transition ${
-                  selectedSubject === null ? 'bg-azure/10 text-azure font-semibold' : 'text-royal/50 hover:bg-cloud'
-                }`}>
-                All subjects
-              </button>
-            </li>
-            {programme.subjects.map(s => (
-              <li key={s.id} className="group flex items-center gap-1">
-                <button onClick={() => onSelectSubject(selectedSubject === s.id ? null : s.id)}
-                  className={`flex-1 text-left rounded-md px-2.5 py-1.5 text-xs transition ${
-                    selectedSubject === s.id ? 'bg-azure/10 text-azure font-semibold' : 'text-navy hover:bg-cloud'
-                  }`}>
-                  {s.name}
-                </button>
-                <button onClick={() => onDeleteSubject(s.id)}
-                  className="opacity-0 group-hover:opacity-100 flex-shrink-0 rounded p-1 text-royal/30 hover:text-red-400 transition">
-                  <Icon name="close" size={10} />
-                </button>
-              </li>
-            ))}
-            {programme.subjects.length === 0 && (
-              <li className="px-2.5 py-2 text-[10px] text-royal/30 italic">No subjects yet</li>
-            )}
-          </ul>
-        </div>
-
-        <div className="border-t border-cloud mx-4 my-3" />
-
-        <div className="px-4 pb-4">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-royal/50">
-              Levels <span className="text-royal/30 ml-1">({programme.levels.length})</span>
-            </p>
-            <button onClick={() => setAddingLvl(v => !v)}
-              className="text-azure hover:text-royal transition flex items-center gap-0.5 text-[10px] font-semibold">
-              <Icon name="add" size={12} /> Add
-            </button>
-          </div>
-
-          {addingLvl && (
-            <form onSubmit={handleAddLvl} className="flex gap-1.5 mb-2">
-              <input value={lvlName} onChange={e => setLvlName(e.target.value)} required autoFocus
-                placeholder="Level name"
-                className="flex-1 rounded-md border border-azure bg-white px-2.5 py-1.5 text-xs text-navy outline-none placeholder:text-royal/40" />
-              <Button type="submit" size="sm" loading={saving === 'lvl'}>Add</Button>
-            </form>
-          )}
-
-          <ul className="space-y-0.5">
-            <li>
-              <button onClick={() => onSelectLevel(null)}
-                className={`flex w-full items-center rounded-md px-2.5 py-1.5 text-xs transition ${
-                  selectedLevel === null ? 'bg-azure/10 text-azure font-semibold' : 'text-royal/50 hover:bg-cloud'
-                }`}>
-                All levels
-              </button>
-            </li>
-            {programme.levels.map(l => (
-              <li key={l.id} className="group flex items-center gap-1">
-                <button onClick={() => onSelectLevel(selectedLevel === l.id ? null : l.id)}
-                  className={`flex-1 text-left rounded-md px-2.5 py-1.5 text-xs transition ${
-                    selectedLevel === l.id ? 'bg-azure/10 text-azure font-semibold' : 'text-navy hover:bg-cloud'
-                  }`}>
-                  {l.name}
-                </button>
-                <button onClick={() => onDeleteLevel(l.id)}
-                  className="opacity-0 group-hover:opacity-100 flex-shrink-0 rounded p-1 text-royal/30 hover:text-red-400 transition">
-                  <Icon name="close" size={10} />
-                </button>
-              </li>
-            ))}
-            {programme.levels.length === 0 && (
-              <li className="px-2.5 py-2 text-[10px] text-royal/30 italic">No levels yet</li>
-            )}
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   PANEL 3 — Courses
-═══════════════════════════════════════════════════════════════════ */
-function CoursesPanel({
-  courses, programme, teachers, acting,
-  onPublish, onTag, onRefresh,
-}: {
-  courses: PlatformCourse[];
-  programme: Programme | null;
-  teachers: { id: string; email: string }[];
-  acting: string | null;
-  onPublish: (id: string) => void;
-  onTag: (id: string, progId: string, subjId: string, lvlId: string) => Promise<void>;
-  onRefresh: () => Promise<void>;
-}) {
-  const [showCreate, setShowCreate] = useState(false);
-  const [creating,   setCreating]   = useState(false);
-  const [syncing,    setSyncing]    = useState(false);
-  const [tagTarget,  setTagTarget]  = useState<string | null>(null);
-  const [sourceFilter, setSourceFilter] = useState<'ALL' | 'NATIVE' | 'WORDPRESS'>('ALL');
-  const [form, setForm] = useState({ title: '', description: '', subjectId: '', levelId: '', teacherId: '' });
-
-  const displayed = sourceFilter === 'ALL' ? courses : courses.filter(c => c.source === sourceFilter);
-
-  async function syncWp() {
-    setSyncing(true);
-    try {
-      const r = await api.post('/platform-courses/wp-sync');
-      notify.success(`Synced: ${r.data.created} new, ${r.data.updated} updated (${r.data.total} total)`);
-      await onRefresh();
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'WP sync failed');
-    } finally { setSyncing(false); }
-  }
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault(); setCreating(true);
-    try {
-      await api.post('/platform-courses', {
-        title: form.title,
-        description: form.description || undefined,
-        programmeId: programme?.id ?? undefined,
-        subjectId: form.subjectId || undefined,
-        levelId:   form.levelId   || undefined,
-        teacherId: form.teacherId || undefined,
-      });
-      setShowCreate(false);
-      setForm({ title: '', description: '', subjectId: '', levelId: '', teacherId: '' });
-      await onRefresh();
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to create course');
-    } finally { setCreating(false); }
-  }
-
-  return (
-    <div className="flex flex-col h-full bg-surface">
-      <div className="px-5 py-3 border-b border-cloud bg-white flex-shrink-0 space-y-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-azure">COURSES</p>
-            <p className="text-xs font-semibold text-navy">
-              {displayed.length} of {courses.length} course{courses.length !== 1 ? 's' : ''}
-              {programme ? ` · ${programme.shortName ?? programme.name}` : ' · All programmes'}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={syncWp} disabled={syncing}
-              className="flex items-center gap-1.5 rounded-md border border-cloud bg-white px-3 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-50 transition disabled:opacity-50">
-              <Icon name="live" size={12} />
-              {syncing ? 'Syncing…' : 'Sync WP'}
-            </button>
-            <Button size="sm" onClick={() => setShowCreate(v => !v)}>
-              <Icon name="add" size={13} /> New course
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex gap-1">
-          {(['ALL', 'NATIVE', 'WORDPRESS'] as const).map(s => (
-            <button key={s} onClick={() => setSourceFilter(s)}
-              className={`rounded-md px-3 py-1 text-[10px] font-bold uppercase tracking-widest transition ${
-                sourceFilter === s
-                  ? s === 'WORDPRESS' ? 'bg-orange-100 text-orange-600' : 'bg-azure text-white'
-                  : 'bg-cloud text-royal/50 hover:bg-cloud/80'
-              }`}>
-              {s === 'ALL' ? 'All' : s === 'NATIVE' ? 'Native' : 'WordPress'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {showCreate && (
-          <div className="rounded-md border-2 border-azure/20 bg-white p-4 space-y-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-azure">NEW COURSE</p>
-            <form onSubmit={handleCreate} className="space-y-3">
-              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required
-                placeholder="Course title *"
-                className="w-full rounded-md border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-              <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                rows={2} placeholder="Description (optional)"
-                className="w-full rounded-md border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40 resize-none" />
-              {programme && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">Subject</label>
-                    <Select value={form.subjectId} onValueChange={v => setForm(f => ({ ...f, subjectId: v }))}
-                      placeholder="— Any —"
-                      options={programme.subjects.map(s => ({ value: s.id, label: s.name }))} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">Level</label>
-                    <Select value={form.levelId} onValueChange={v => setForm(f => ({ ...f, levelId: v }))}
-                      placeholder="— Any —"
-                      options={programme.levels.map(l => ({ value: l.id, label: l.name }))} />
-                  </div>
-                </div>
-              )}
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">Assign Teacher</label>
-                <Select value={form.teacherId} onValueChange={v => setForm(f => ({ ...f, teacherId: v }))}
-                  placeholder="— Assign later —"
-                  options={teachers.map(t => ({ value: t.id, label: t.email, avatar: t.email[0].toUpperCase() }))} />
-              </div>
-              <div className="flex gap-2 pt-1">
-                <Button type="submit" size="sm" loading={creating}>Create</Button>
-                <Button type="button" size="sm" variant="secondary" onClick={() => setShowCreate(false)}>Cancel</Button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {displayed.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-md bg-cloud mb-3">
-              <Icon name="courses" size={20} className="text-azure" />
-            </div>
-            <p className="text-sm font-semibold text-navy">No courses here yet</p>
-            <p className="text-xs text-royal/50 mt-1">
-              {sourceFilter === 'WORDPRESS'
-                ? 'Click "Sync WP" to import courses from WordPress'
-                : programme
-                  ? `Create a course tagged to ${programme.shortName ?? programme.name}`
-                  : 'Select a programme in Panel 1 to filter, or create a course'}
-            </p>
-          </div>
-        ) : (
-          displayed.map(course => (
-            <div key={course.id} className="rounded-md border border-cloud bg-white p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                    <Badge variant={STATUS_BADGE[course.status]}>{STATUS_LABEL[course.status]}</Badge>
-                    {course.source === 'WORDPRESS' && (
-                      <span className="rounded bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-600 uppercase">WP</span>
-                    )}
-                    {course.subject && (
-                      <span className="rounded bg-cloud px-2 py-0.5 text-[10px] font-semibold text-royal/60">
-                        {course.subject.name}
-                      </span>
-                    )}
-                    {course.level && (
-                      <span className="rounded bg-azure/10 px-2 py-0.5 text-[10px] font-semibold text-azure">
-                        {course.level.name}
-                      </span>
-                    )}
-                  </div>
-                  <Link href={`/admin/courses/${course.id}`}
-                    className="text-sm font-bold text-navy leading-snug hover:text-azure transition line-clamp-2">
-                    {course.title}
-                  </Link>
-                  {course.description && (
-                    <p className="text-xs text-royal/50 mt-0.5 line-clamp-1">{course.description}</p>
-                  )}
-                  <div className="flex items-center gap-3 mt-2 text-[10px] text-royal/40">
-                    <span><Icon name="mentorship" size={10} className="inline mr-1" />{course.teacher.email}</span>
-                    <span><Icon name="notebook" size={10} className="inline mr-1" />{course._count.modules} modules</span>
-                    <span><Icon name="graduate" size={10} className="inline mr-1" />{course._count.enrollments} enrolled</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-cloud flex-wrap">
-                <InlineTagForm
-                  course={course} programme={programme}
-                  open={tagTarget === course.id}
-                  onOpen={() => setTagTarget(course.id)}
-                  onClose={() => setTagTarget(null)}
-                  onSave={onTag}
-                  acting={acting === course.id}
-                />
-                {course.source === 'WORDPRESS' && course.wpCourseUrl && (
-                  <a href={course.wpCourseUrl} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-100 transition">
-                    <Icon name="live" size={12} /> Open in WP
-                  </a>
-                )}
-                {course.source === 'NATIVE' && course.status === 'PENDING_REVIEW' && (
-                  <Button size="sm" loading={acting === course.id} onClick={() => onPublish(course.id)}>
-                    Publish
-                  </Button>
-                )}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ── Inline tag form ────────────────────────────────────────────── */
-function InlineTagForm({ course, programme, open, onOpen, onClose, onSave, acting }: {
-  course: PlatformCourse; programme: Programme | null;
-  open: boolean; onOpen: () => void; onClose: () => void;
-  onSave: (id: string, progId: string, subjId: string, lvlId: string) => Promise<void>;
-  acting: boolean;
-}) {
-  const [progId, setProgId] = useState(course.programme?.id ?? '');
-  const [subjId, setSubjId] = useState(course.subject?.id  ?? '');
-  const [lvlId,  setLvlId]  = useState(course.level?.id    ?? '');
-
-  if (!open) {
-    return (
-      <button onClick={onOpen}
-        className="flex items-center gap-1.5 rounded-md border border-cloud px-3 py-1.5 text-xs font-semibold text-navy hover:bg-cloud transition">
-        <Icon name="tag" size={12} />
-        {course.subject ? course.subject.name : 'Tag subject/level'}
-      </button>
-    );
-  }
-
-  return (
-    <div className="flex-1 flex items-center gap-2 flex-wrap">
-      {programme && (
-        <>
-          <Select value={subjId} onValueChange={setSubjId} placeholder="Subject"
-            options={programme.subjects.map(s => ({ value: s.id, label: s.name }))} />
-          <Select value={lvlId} onValueChange={setLvlId} placeholder="Level"
-            options={programme.levels.map(l => ({ value: l.id, label: l.name }))} />
-        </>
-      )}
-      <Button size="sm" loading={acting} onClick={() => onSave(course.id, progId, subjId, lvlId)}>Save</Button>
-      <Button size="sm" variant="secondary" onClick={onClose}>Cancel</Button>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   PAGE ROOT
-═══════════════════════════════════════════════════════════════════ */
-export default function AdminCoursesManagePage() {
-  const [programmes, setProgrammes] = useState<Programme[]>([]);
-  const [courses,    setCourses]    = useState<PlatformCourse[]>([]);
-  const [countries,  setCountries]  = useState<Country[]>([]);
-  const [teachers,   setTeachers]   = useState<{ id: string; email: string }[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [acting,     setActing]     = useState<string | null>(null);
-
-  const [selProg,    setSelProg]    = useState<string | null>(null);
-  const [selSubj,    setSelSubj]    = useState<string | null>(null);
-  const [selLevel,   setSelLevel]   = useState<string | null>(null);
-  const [selCountry, setSelCountry] = useState('');
-
-  async function loadAll() {
-    const [cr, pr] = await Promise.all([
-      api.get('/platform-courses'),
-      api.get('/catalogue/programmes'),
-    ]);
-    setCourses(cr.data);
-    setProgrammes(pr.data);
-  }
-
-  useEffect(() => {
-    Promise.all([
-      loadAll(),
-      api.get('/countries/admin/countries')
-        .then(r => setCountries(r.data ?? [])).catch(() => {}),
-      api.get('/portals/admin/teachers')
-        .then(r => setTeachers(r.data?.map((t: any) => ({ id: t.id, email: t.email })) ?? []))
-        .catch(() => {}),
-    ]).finally(() => setLoading(false));
-  }, []);
-
-  async function addProgramme(name: string, shortName: string, type: string, countryIds: string[]) {
-    try {
-      await api.post('/catalogue/programmes', {
-        name, shortName: shortName || undefined, type,
-        countryIds: countryIds.length > 0 ? countryIds : undefined,
-      });
-      await loadAll();
-      notify.success('Programme created');
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-  }
-
-  async function addSubject(progId: string, name: string) {
-    try {
-      await api.post(`/catalogue/programmes/${progId}/subjects`, { name });
-      await loadAll();
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-  }
-  async function addLevel(progId: string, name: string) {
-    try {
-      await api.post(`/catalogue/programmes/${progId}/levels`, { name });
-      await loadAll();
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-  }
-  async function deleteSubject(subjectId: string) {
-    if (!confirm('Remove this subject?')) return;
-    try {
-      await api.delete(`/catalogue/subjects/${subjectId}`);
-      await loadAll();
-      if (selSubj === subjectId) setSelSubj(null);
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-  }
-  async function deleteLevel(levelId: string) {
-    if (!confirm('Remove this level?')) return;
-    try {
-      await api.delete(`/catalogue/levels/${levelId}`);
-      await loadAll();
-      if (selLevel === levelId) setSelLevel(null);
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-  }
-
-  async function tagCourse(id: string, progId: string, subjId: string, lvlId: string) {
-    setActing(id);
-    try {
-      await api.patch(`/platform-courses/${id}`, {
-        programmeId: progId || null,
-        subjectId:   subjId || null,
-        levelId:     lvlId  || null,
-      });
-      await loadAll();
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-    finally { setActing(null); }
-  }
-  async function publishCourse(id: string) {
-    setActing(id);
-    try {
-      await api.post(`/platform-courses/${id}/publish`);
-      notify.success('Course published');
-      await loadAll();
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-    finally { setActing(null); }
-  }
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 p-6 space-y-5 max-w-6xl mx-auto w-full">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[0,1,2,3].map(i => <div key={i} className="h-20 rounded-2xl bg-cloud animate-pulse" />)}
-        </div>
-        <SkeletonTable />
-      </div>
-    </div>
-  );
-
-  const selectedProg = programmes.find(p => p.id === selProg) ?? null;
-
-  const filteredCourses = courses.filter(c => {
-    if (selProg  && c.programme?.id !== selProg)  return false;
-    if (selSubj  && c.subject?.id   !== selSubj)  return false;
-    if (selLevel && c.level?.id     !== selLevel) return false;
-    if (selCountry && !selProg) {
-      const prog = programmes.find(p => p.id === c.programme?.id);
-      if (prog && (prog.countries ?? []).length > 0 && !(prog.countries ?? []).some(ct => ct.id === selCountry)) return false;
-    }
-    return true;
-  });
-
-  return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="Manage Courses" subtitle="Programmes · Subjects · Levels · Courses" backHref="/admin/courses" backLabel="Courses" />
-
-      <div
-        className="flex-1 grid overflow-hidden"
-        style={{
-          height: 'calc(100vh - 65px)',
-          gridTemplateColumns: '320px 280px 1fr',
-        }}>
-
-        <ProgrammePanel
-          programmes={programmes}
-          countries={countries}
-          selected={selProg}
-          selCountry={selCountry}
-          onSelect={id => { setSelProg(id); setSelSubj(null); setSelLevel(null); }}
-          onAdd={addProgramme}
-          onCountryChange={setSelCountry}
-        />
-
-        {selectedProg ? (
-          <TaxonomyPanel
-            programme={selectedProg}
-            countries={countries}
-            selCountry={selCountry}
-            selectedSubject={selSubj}  selectedLevel={selLevel}
-            onSelectSubject={setSelSubj} onSelectLevel={setSelLevel}
-            onAddSubject={name => addSubject(selectedProg.id, name)}
-            onAddLevel={name   => addLevel(selectedProg.id, name)}
-            onDeleteSubject={deleteSubject}
-            onDeleteLevel={deleteLevel}
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center border-r border-cloud bg-white text-center px-6">
-            <Icon name="notebook" size={22} className="text-royal/20 mb-2" />
-            <p className="text-xs text-royal/40 leading-relaxed">
-              Select a programme to manage its subjects and levels
-            </p>
-          </div>
-        )}
-
-        <CoursesPanel
-          courses={filteredCourses}
-          programme={selectedProg}
-          teachers={teachers}
-          acting={acting}
-          onPublish={publishCourse}
-          onTag={tagCourse}
-          onRefresh={loadAll}
-        />
-      </div>
-    </div>
+        <DialogFooter><Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={create} loading={saving}>Create and open the builder</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

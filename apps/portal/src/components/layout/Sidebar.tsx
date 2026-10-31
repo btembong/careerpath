@@ -100,6 +100,7 @@ const ADMIN: Item[] = [
   { label: 'Reports',   icon: 'chart',     href: '/admin/reports' },
   { label: 'Content', icon: 'box', children: [
     { label: 'Courses',         href: '/admin/courses' },
+    { label: 'Course management', href: '/admin/courses/manage', also: ['/admin/courses/wordpress', '/admin/courses/taxonomy'] },
     { label: 'Packages',        href: '/admin/packages' },
     { label: 'Coupons',         href: '/admin/coupons' },
     { label: 'Live Classes',    href: '/admin/live' },
