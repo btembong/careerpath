@@ -8,7 +8,8 @@ import { GamificationService } from '../gamification/gamification.service';
 import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { randomBytes } from 'crypto';
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
+import { embedBrandFonts } from '../payments/pdf-fonts';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -176,9 +177,10 @@ export class CertificatesService {
     const page = doc.addPage([842, 595]); // A4 landscape
     const { width, height } = page.getSize();
 
-    const boldFont    = await doc.embedFont(StandardFonts.HelveticaBold);
-    const regularFont = await doc.embedFont(StandardFonts.Helvetica);
-    const italicFont  = await doc.embedFont(StandardFonts.HelveticaOblique);
+    // Bricolage Grotesque, so names with accents and other letters print exactly as typed
+    const { regular: regularFont, bold: boldFont } = await embedBrandFonts(doc);
+    const italicFont = regularFont;
+    const centred = (t: string, size: number, font = regularFont) => font.widthOfTextAtSize(t, size) / 2;
 
     // Brand colours
     const navy  = rgb(0.027, 0.125, 0.380); // #072061
@@ -208,7 +210,7 @@ export class CertificatesService {
     // "C" circle logo
     page.drawEllipse({ x: 85, y: height - 45, xScale: 22, yScale: 22, color: azure });
     page.drawText('C', {
-      x: 79, y: height - 52,
+      x: 85 - boldFont.widthOfTextAtSize('C', 22) / 2, y: height - 52,
       size: 22, font: boldFont, color: white,
     });
 
@@ -217,12 +219,12 @@ export class CertificatesService {
       size: 16, font: boldFont, color: white,
     });
     page.drawText('Africa', {
-      x: 218, y: height - 40,
+      x: 115 + boldFont.widthOfTextAtSize('CareerPath ', 16), y: height - 40,
       size: 16, font: boldFont, color: azure,
     });
 
     page.drawText('CERTIFICATE OF COMPLETION', {
-      x: width - 380, y: height - 55,
+      x: width - 48 - boldFont.widthOfTextAtSize('CERTIFICATE OF COMPLETION', 13), y: height - 55,
       size: 13, font: boldFont, color: azure,
     });
 
@@ -230,7 +232,7 @@ export class CertificatesService {
     const centerX = (width + 28) / 2; // center of the right panel
 
     page.drawText('This is to certify that', {
-      x: centerX - 75, y: height - 135,
+      x: centerX - centred('This is to certify that', 11), y: height - 135,
       size: 11, font: italicFont, color: grey,
     });
 
@@ -251,7 +253,7 @@ export class CertificatesService {
     });
 
     page.drawText('has successfully completed', {
-      x: centerX - 83, y: height - 215,
+      x: centerX - centred('has successfully completed', 11), y: height - 215,
       size: 11, font: italicFont, color: grey,
     });
 
@@ -268,7 +270,7 @@ export class CertificatesService {
       day: 'numeric', month: 'long', year: 'numeric',
     });
     page.drawText(`Issued: ${issuedStr}`, {
-      x: centerX - 60, y: height - 310,
+      x: centerX - centred(`Issued: ${issuedStr}`, 10), y: height - 310,
       size: 10, font: regularFont, color: grey,
     });
 
@@ -280,11 +282,11 @@ export class CertificatesService {
       thickness: 1, color: navy,
     });
     page.drawText('Authorised Signatory', {
-      x: sigX + 10, y: height - 375,
+      x: sigX + 70 - centred('Authorised Signatory', 9), y: height - 375,
       size: 9, font: regularFont, color: grey,
     });
     page.drawText('CareerPath Africa', {
-      x: sigX + 22, y: height - 388,
+      x: sigX + 70 - centred('CareerPath Africa', 9, boldFont), y: height - 388,
       size: 9, font: boldFont, color: navy,
     });
 
@@ -295,7 +297,7 @@ export class CertificatesService {
       size: 8, font: regularFont, color: grey,
     });
     page.drawText(`Code: ${data.verifyCode}`, {
-      x: width - 200, y: footerY,
+      x: width - 48 - boldFont.widthOfTextAtSize(`Code: ${data.verifyCode}`, 8), y: footerY,
       size: 8, font: boldFont, color: navy,
     });
 
