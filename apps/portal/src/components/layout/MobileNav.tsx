@@ -113,6 +113,8 @@ const COUNTRY_REP_TABS: NavItem[] = [
 
 const COUNTRY_REP_MORE: NavGroup[] = [
   { title: 'Account', items: [
+    { label: 'Teachers',   href: '/country-rep/teachers', icon: 'graduate' },
+    { label: 'Messages',   href: '/country-rep/messages', icon: 'messages' },
     { label: 'My Profile', href: '/country-rep/profile', icon: 'user' },
   ]},
 ];
@@ -121,11 +123,13 @@ const COUNTRY_REP_MORE: NavGroup[] = [
 
 const REVIEWER_TABS: NavItem[] = [
   { label: 'Reviews',  href: '/reviewer/dashboard', icon: 'assignments' },
+  { label: 'Courses',  href: '/reviewer/courses',   icon: 'courses'     },
   { label: 'Earnings', href: '/reviewer/wallet',    icon: 'wallet'      },
 ];
 
 const REVIEWER_MORE: NavGroup[] = [
   { title: 'Account', items: [
+    { label: 'Messages',   href: '/reviewer/messages', icon: 'messages' },
     { label: 'My Profile', href: '/reviewer/profile', icon: 'user' },
   ]},
 ];

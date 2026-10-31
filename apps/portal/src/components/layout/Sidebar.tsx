@@ -125,7 +125,9 @@ const ADMIN: Item[] = [
 ];
 
 const REVIEWER: Item[] = [
-  { label: 'Review Queue', icon: 'inbox',  href: '/reviewer/dashboard', also: ['/reviewer/courses'] },
+  { label: 'Review Queue', icon: 'inbox',  href: '/reviewer/dashboard' },
+  { label: 'Courses',      icon: 'book',   href: '/reviewer/courses' },
+  { label: 'Messages',     icon: 'message', href: '/reviewer/messages' },
   { label: 'Earnings',     icon: 'wallet', href: '/reviewer/wallet' },
   { label: 'My Profile',   icon: 'user',   href: '/reviewer/profile' },
 ];
@@ -133,6 +135,8 @@ const REVIEWER: Item[] = [
 const COUNTRY_REP: Item[] = [
   { label: 'Dashboard',  icon: 'dashboard', href: '/country-rep/dashboard' },
   { label: 'Packages',   icon: 'box',       href: '/country-rep/packages' },
+  { label: 'Teachers',   icon: 'book',      href: '/country-rep/teachers' },
+  { label: 'Messages',   icon: 'message',   href: '/country-rep/messages' },
   { label: 'Students',   icon: 'users',     href: '/country-rep/students' },
   { label: 'Wallet',     icon: 'wallet',    href: '/country-rep/wallet' },
   { label: 'My Profile', icon: 'user',      href: '/country-rep/profile' },

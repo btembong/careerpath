@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CountriesService } from './countries.service';
+import { RepInsightsService } from './rep-insights.service';
 import { CreateCountryDto } from './dto/create-country.dto';
 import { UpdateCountryDto } from './dto/update-country.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
@@ -13,7 +14,7 @@ import { UserProfile } from '@prisma/client';
 @ApiTags('countries')
 @Controller('countries')
 export class CountriesController {
-  constructor(private readonly countriesService: CountriesService) {}
+  constructor(private readonly countriesService: CountriesService, private readonly rep: RepInsightsService) {}
 
   /** Public — used by registration page to populate country selector */
   @Get()
@@ -56,5 +57,32 @@ export class CountriesController {
   @ApiOperation({ summary: "[Country Rep] Own country's revenue, active students, and wallet" })
   getRepDashboard(@CurrentUser() user: UserProfile) {
     return this.countriesService.getRepDashboard(user);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get('country-rep/overview')
+  @Roles(UserRole.COUNTRY_REP)
+  @ApiOperation({ summary: '[Country Rep] Sales, students, weekly trend, best sellers and earnings for a period' })
+  repOverview(@CurrentUser() user: UserProfile, @Query('range') range?: string) {
+    return this.rep.overview(user, range);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get('country-rep/packages')
+  @Roles(UserRole.COUNTRY_REP)
+  @ApiOperation({ summary: '[Country Rep] Packages and single courses on sale, and how they sell in my country' })
+  repPackages(@CurrentUser() user: UserProfile) {
+    return this.rep.packages(user);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get('country-rep/teachers')
+  @Roles(UserRole.COUNTRY_REP)
+  @ApiOperation({ summary: '[Country Rep] Teachers in my country, including applications' })
+  repTeachers(@CurrentUser() user: UserProfile) {
+    return this.rep.teachers(user);
   }
 }
