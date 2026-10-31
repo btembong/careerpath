@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PayoutsService } from './payouts.service';
 import { GeneratePayoutsDto } from './dto/generate-payouts.dto';
@@ -39,8 +39,29 @@ export class PayoutsController {
     summary:
       '[Admin] Confirm a payout was sent. Writes a DEBIT transaction so the wallet balance reflects what\'s still owed.',
   })
-  markPaid(@Param('id') id: string) {
-    return this.payoutsService.markPaid(id);
+  markPaid(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: { reference?: string; paidOn?: string; note?: string; override?: boolean }) {
+    return this.payoutsService.markPaid(user, id, body ?? {});
+  }
+
+  @Get('admin/payouts/overview')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Statements with payout accounts, totals per currency, and what is owed but not yet on a statement' })
+  overview(@Query('month') month?: string) {
+    return this.payoutsService.overview(month);
+  }
+
+  @Post('admin/payouts/month')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Create statements for everything earned in a month (YYYY-MM)' })
+  createMonth(@Body('month') month: string) {
+    return this.payoutsService.createMonth(month);
+  }
+
+  @Post('admin/payouts/remind')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Remind people to add a payout account' })
+  remind(@Body('recipientIds') ids: string[]) {
+    return this.payoutsService.remind(Array.isArray(ids) ? ids.slice(0, 200) : []);
   }
 
   @Get('me/payouts')

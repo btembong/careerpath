@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { WalletsService } from './wallets.service';
+import { EarningsService } from './earnings.service';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -13,7 +14,14 @@ import { UserProfile } from '@prisma/client';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('wallets')
 export class WalletsController {
-  constructor(private readonly walletsService: WalletsService) {}
+  constructor(private readonly walletsService: WalletsService, private readonly earnings: EarningsService) {}
+
+  @Get('me/earnings')
+  @Roles(UserRole.TEACHER, UserRole.SUBJECT_REVIEWER, UserRole.COUNTRY_REP)
+  @ApiOperation({ summary: 'What I am owed, earned in a period, where it came from, and my payouts' })
+  myEarnings(@CurrentUser() user: UserProfile, @Query('range') range?: string) {
+    return this.earnings.mine(user, range);
+  }
 
   @Get('me/wallet')
   @Roles(UserRole.TEACHER, UserRole.SUBJECT_REVIEWER, UserRole.COUNTRY_REP)

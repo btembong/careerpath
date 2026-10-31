@@ -11,10 +11,12 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Res,
 } from '@nestjs/common';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
+import { BillingService } from './billing.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import { CreateCourseCheckoutDto } from './dto/create-course-checkout.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
@@ -27,7 +29,27 @@ import { UserProfile } from '@prisma/client';
 @ApiTags('payments')
 @Controller()
 export class PaymentsController {
-  constructor(private readonly paymentsService: PaymentsService) {}
+  constructor(private readonly paymentsService: PaymentsService, private readonly billing: BillingService) {}
+
+  @Get('payments/me/billing')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.STUDENT)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Student: what I have access to (with time left), my payments and totals' })
+  myBilling(@CurrentUser() user: UserProfile) {
+    return this.billing.billing(user.id);
+  }
+
+  @Get('payments/me/receipts/:kind/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.STUDENT)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Student: a PDF receipt for one of my purchases (kind = package | course)' })
+  async receipt(@CurrentUser() user: UserProfile, @Param('kind') kind: string, @Param('id') id: string, @Res() res: Response) {
+    const { pdf, filename } = await this.billing.receipt(user.id, kind, id);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}"`, 'Cache-Control': 'private, no-store' });
+    res.send(Buffer.from(pdf));
+  }
 
   @Post('payments/create-checkout-session')
   @UseGuards(JwtAuthGuard, RolesGuard)

@@ -1,3 +1,4 @@
+import { BillingService } from './billing.service';
 import { Module } from '@nestjs/common';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
@@ -11,6 +12,6 @@ import { MailModule } from '../mail/mail.module';
 @Module({
   imports: [WordPressModule, CouponsModule, MailModule],
   controllers: [PaymentsController],
-  providers: [PaymentsService, PaystackGateway, TranzakGateway, StripeGateway],
+  providers: [PaymentsService, BillingService, PaystackGateway, TranzakGateway, StripeGateway],
 })
 export class PaymentsModule {}
