@@ -66,16 +66,16 @@ export class FilesController {
   })
   @ApiQuery({
     name: 'folder',
-    enum: ['teacher-docs', 'submissions', 'avatars'],
+    enum: ['teacher-docs', 'submissions', 'avatars', 'messages'],
     required: true,
   })
   async upload(
     @UploadedFile() file: Express.Multer.File,
-    @Query('folder') folder: 'teacher-docs' | 'submissions' | 'avatars',
+    @Query('folder') folder: 'teacher-docs' | 'submissions' | 'avatars' | 'messages',
   ) {
     if (!file) throw new BadRequestException('No file provided');
-    if (!['teacher-docs', 'submissions', 'avatars'].includes(folder)) {
-      throw new BadRequestException('folder must be teacher-docs, submissions, or avatars');
+    if (!['teacher-docs', 'submissions', 'avatars', 'messages'].includes(folder)) {
+      throw new BadRequestException('folder must be teacher-docs, submissions, avatars or messages');
     }
     return this.filesService.upload(file, folder);
   }

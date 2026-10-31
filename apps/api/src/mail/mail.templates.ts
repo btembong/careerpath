@@ -445,6 +445,31 @@ export function announcementTemplate(title: string, message: string): string {
   return base(hero, body);
 }
 
+// ── 5b2. New message (only when the person isn't online) ─────────────────────
+
+/** Sender name and message text are typed by users, so they're escaped. */
+export function newMessageTemplate(fromName: string, preview: string, where: string | null, link: string): string {
+  const hero = `
+    ${heroBadge('global')}
+    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
+      New message${where ? ' · ' + escapeHtml(where) : ''}
+    </p>
+    <h1 style="margin:0;font-size:26px;font-weight:900;color:#ffffff;line-height:1.2;font-family:system-ui,-apple-system,Arial,sans-serif">
+      ${escapeHtml(fromName)} wrote to you
+    </h1>`;
+
+  const body = `
+    <p style="margin:0 0 20px;padding:14px 16px;border-radius:8px;background:#F4F6FB;font-size:15px;color:#072061;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+      ${escapeHtml(preview).replace(/\n/g, '<br>')}
+    </p>
+    ${ctaButton('Reply on CareerPath', link)}
+    <p style="margin:16px 0 0;font-size:12px;color:#405FAD;opacity:0.7;font-family:system-ui,-apple-system,Arial,sans-serif">
+      You get this email because you weren’t online. Turn message emails off in Settings → Notifications.
+    </p>`;
+
+  return base(hero, body);
+}
+
 // ── 5c. Course Approved ──────────────────────────────────────────────────────
 
 export function courseApprovedTemplate(courseTitle: string): string {

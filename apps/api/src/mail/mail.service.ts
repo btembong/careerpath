@@ -23,6 +23,7 @@ import {
   certificateEarnedTemplate,
   liveSessionReminderTemplate,
   announcementTemplate,
+  newMessageTemplate,
 } from './mail.templates';
 
 // Sender names — same email address, different display name per context
@@ -90,6 +91,10 @@ export class MailService {
 
   async sendAnnouncement(email: string, title: string, message: string): Promise<void> {
     await this.send(email, title, announcementTemplate(title, message), 'support');
+  }
+
+  async sendNewMessage(email: string, fromName: string, preview: string, where: string | null, link: string): Promise<void> {
+    await this.send(email, `${fromName} sent you a message${where ? ` in ${where}` : ''}`, newMessageTemplate(fromName, preview, where, link), 'support');
   }
 
   // ── Support / Onboarding ─────────────────────────────────

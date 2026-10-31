@@ -37,7 +37,7 @@ export class FilesService {
    */
   async upload(
     file: Express.Multer.File,
-    folder: 'teacher-docs' | 'submissions' | 'avatars' | 'certificates',
+    folder: 'teacher-docs' | 'submissions' | 'avatars' | 'certificates' | 'messages',
   ): Promise<{ url: string; key: string }> {
     const ext = extname(file.originalname).toLowerCase();
     const key = `${folder}/${randomUUID()}${ext}`;

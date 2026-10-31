@@ -8,87 +8,88 @@ datasource db {
 }
 
 model UserProfile {
-  id                  String                   @id @default(uuid())
-  wpUserId            Int                      @unique
-  email               String                   @unique
-  role                UserRole                 @default(STUDENT)
-  approvalStatus      ApprovalStatus           @default(APPROVED)
-  countryId           String?
-  currentLevelId      String?
-  onboardingCompleted Boolean                  @default(false)
-  avatarUrl           String?
-  name                String?
-  phone               String?
-  firstName           String?
-  lastName            String?
-  bio                 String?
-  linkedinUrl         String?
-  websiteUrl          String?
-  timezone            String?
-  videoIntroUrl       String?
-  googleId            String?                  @unique
-  lastActiveDate      DateTime?
+  id                   String                   @id @default(uuid())
+  wpUserId             Int                      @unique
+  email                String                   @unique
+  role                 UserRole                 @default(STUDENT)
+  approvalStatus       ApprovalStatus           @default(APPROVED)
+  countryId            String?
+  currentLevelId       String?
+  onboardingCompleted  Boolean                  @default(false)
+  avatarUrl            String?
+  name                 String?
+  phone                String?
+  firstName            String?
+  lastName             String?
+  bio                  String?
+  linkedinUrl          String?
+  websiteUrl           String?
+  timezone             String?
+  videoIntroUrl        String?
+  googleId             String?                  @unique
+  lastActiveDate       DateTime?
   /// When the account was created (backfilled for older accounts from their first activity)
-  createdAt           DateTime            @default(now())
-  microsoftId         String?                  @unique
-  streak              Int                      @default(0)
-  xpTotal             Int                      @default(0)
+  createdAt            DateTime                 @default(now())
+  microsoftId          String?                  @unique
+  streak               Int                      @default(0)
+  xpTotal              Int                      @default(0)
   /// Whether classmates see this student's name on leaderboards (they always see their own)
-  leaderboardVisible  Boolean                  @default(true)
+  leaderboardVisible   Boolean                  @default(true)
   /// Per notification type: { [type]: { inApp: boolean, email: boolean } }
-  notificationPrefs   Json?
+  notificationPrefs    Json?
   /// { language, textSize, dataSaver, autoplay, downloadOnWifi }
-  displayPrefs        Json?
-  agreementAcceptedAt DateTime?
-  agreementVersion    String?
-  agreementIp         String?
-  certificates        Certificate[]
-  teacherCohorts      Cohort[]                 @relation("TeacherCohorts")
-  cohorts             CohortRoster[]
-  discussionPosts     CourseDiscussionPost[]
-  courseEnrollments   CourseEnrollment[]
-  studyBlocks         StudyBlock[]             @relation("StudentStudyBlocks")
-  coursePurchases     CoursePurchase[]
-  discussionUpvotes   DiscussionUpvote[]
-  flashcardReviews    FlashcardReview[]
-  lessonBookmarks     LessonBookmark[]
-  lessonNotes         LessonNote[]
-  lessonProgress      LessonProgress[]
-  liveAttendance      LiveAttendance[]         @relation("StudentAttendance")
-  mentorBookings      MentorBooking[]          @relation("StudentBookings")
-  mentorSlots         MentorSlot[]             @relation("TeacherSlots")
-  sentMessages        Message[]                @relation("SentMessages")
-  messageThreadsAsA   MessageThread[]          @relation("ThreadParticipantA")
-  messageThreadsAsB   MessageThread[]          @relation("ThreadParticipantB")
-  purchases           PackagePurchase[]
-  payoutAccount       PayoutAccount?
-  peerReviewsGiven    PeerReview[]             @relation("PeerReviewGiver")
-  platformCourses     PlatformCourse[]         @relation("TeacherCourses")
-  progressAlerts      ProgressAlert[]
-  quizAttempts        QuizAttempt[]
-  rubricScores        RubricScore[]            @relation("GraderRubricScores")
-  submissions         Submission[]
-  successStories      SuccessStorySubmission[]
-  supportTickets      SupportTicket[]
-  teacherApplication  TeacherApplication?
-  studentReviews      TeacherReview[]          @relation("StudentTeacherReviews")
-  teacherReviews      TeacherReview[]          @relation("TeacherReviews")
-  userBadges          UserBadge[]
-  country             Country?                 @relation(fields: [countryId], references: [id])
-  wallet              Wallet?
-  xpEvents            XPEvent[]
-  programmeInterests  Programme[]              @relation("StudentProgrammeInterests")
-  teachingProgrammes  Programme[]              @relation("TeacherProgrammes")
-  teachingSubjects    Subject[]                @relation("TeacherSubjects")
+  displayPrefs         Json?
+  agreementAcceptedAt  DateTime?
+  agreementVersion     String?
+  agreementIp          String?
+  certificates         Certificate[]
+  teacherCohorts       Cohort[]                 @relation("TeacherCohorts")
+  cohorts              CohortRoster[]
+  discussionPosts      CourseDiscussionPost[]
+  courseEnrollments    CourseEnrollment[]
+  studyBlocks          StudyBlock[]             @relation("StudentStudyBlocks")
+  threadReads          ThreadRead[]
+  coursePurchases      CoursePurchase[]
+  discussionUpvotes    DiscussionUpvote[]
+  flashcardReviews     FlashcardReview[]
+  lessonBookmarks      LessonBookmark[]
+  lessonNotes          LessonNote[]
+  lessonProgress       LessonProgress[]
+  liveAttendance       LiveAttendance[]         @relation("StudentAttendance")
+  mentorBookings       MentorBooking[]          @relation("StudentBookings")
+  mentorSlots          MentorSlot[]             @relation("TeacherSlots")
+  sentMessages         Message[]                @relation("SentMessages")
+  messageThreadsAsA    MessageThread[]          @relation("ThreadParticipantA")
+  messageThreadsAsB    MessageThread[]          @relation("ThreadParticipantB")
+  purchases            PackagePurchase[]
+  payoutAccount        PayoutAccount?
+  peerReviewsGiven     PeerReview[]             @relation("PeerReviewGiver")
+  platformCourses      PlatformCourse[]         @relation("TeacherCourses")
+  progressAlerts       ProgressAlert[]
+  quizAttempts         QuizAttempt[]
+  rubricScores         RubricScore[]            @relation("GraderRubricScores")
+  submissions          Submission[]
+  successStories       SuccessStorySubmission[]
+  supportTickets       SupportTicket[]
+  teacherApplication   TeacherApplication?
+  studentReviews       TeacherReview[]          @relation("StudentTeacherReviews")
+  teacherReviews       TeacherReview[]          @relation("TeacherReviews")
+  userBadges           UserBadge[]
+  country              Country?                 @relation(fields: [countryId], references: [id])
+  wallet               Wallet?
+  xpEvents             XPEvent[]
+  programmeInterests   Programme[]              @relation("StudentProgrammeInterests")
+  teachingProgrammes   Programme[]              @relation("TeacherProgrammes")
+  teachingSubjects     Subject[]                @relation("TeacherSubjects")
   onboardingVideoViews OnboardingVideoView[]
   practiceAttempts     PracticeAttempt[]
   notifications        Notification[]
   broadcastsSent       Broadcast[]
   /// Shareable code, generated the first time the student opens the referrals page
-  referralCode         String?        @unique
+  referralCode         String?                  @unique
   referredById         String?
-  referredBy           UserProfile?   @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
-  referrals            UserProfile[]  @relation("Referrals")
+  referredBy           UserProfile?             @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals            UserProfile[]            @relation("Referrals")
 }
 
 /// In-app inbox item. `type` matches the portal's icons: live | assignment | grade | certificate | message | system.
@@ -203,27 +204,27 @@ model EducationLevel {
 }
 
 model Programme {
-  id                String           @id @default(uuid())
-  name              String           @unique
+  id                String               @id @default(uuid())
+  name              String               @unique
   shortName         String?
   description       String?
   type              ProgrammeType
-  scope             ProgrammeScope   @default(GLOBAL)
+  scope             ProgrammeScope       @default(GLOBAL)
   educationSystemId String?
   cpdProfession     String?
   cpdBody           String?
   cpdHoursPerCycle  Int?
   logoUrl           String?
-  isActive          Boolean          @default(true)
-  createdAt         DateTime         @default(now())
+  isActive          Boolean              @default(true)
+  createdAt         DateTime             @default(now())
   platformCourses   PlatformCourse[]
-  educationSystem   EducationSystem? @relation(fields: [educationSystemId], references: [id])
-  countries         Country[]        @relation("ProgrammeCountries")
-  levels            EducationLevel[] @relation("ProgrammeLevels")
-  subjects          Subject[]        @relation("ProgrammeSubjects")
-  studentInterests  UserProfile[]    @relation("StudentProgrammeInterests")
-  teacherProfiles   UserProfile[]    @relation("TeacherProgrammes")
-  priceDefaults CoursePriceDefault[]
+  educationSystem   EducationSystem?     @relation(fields: [educationSystemId], references: [id])
+  countries         Country[]            @relation("ProgrammeCountries")
+  levels            EducationLevel[]     @relation("ProgrammeLevels")
+  subjects          Subject[]            @relation("ProgrammeSubjects")
+  studentInterests  UserProfile[]        @relation("StudentProgrammeInterests")
+  teacherProfiles   UserProfile[]        @relation("TeacherProgrammes")
+  priceDefaults     CoursePriceDefault[]
 }
 
 model Subject {
@@ -246,25 +247,25 @@ model ExchangeRate {
 }
 
 model Package {
-  id           String            @id @default(uuid())
-  name         String
-  description  String?
-  priceAmount  Int
-  currency     String
-  courseIds    String[]
-  categoryTags String[]
-  validityDays Int?
-  isPublished  Boolean           @default(false)
-  cohortId     String?
+  id                         String            @id @default(uuid())
+  name                       String
+  description                String?
+  priceAmount                Int
+  currency                   String
+  courseIds                  String[]
+  categoryTags               String[]
+  validityDays               Int?
+  isPublished                Boolean           @default(false)
+  cohortId                   String?
   /// What mentorship the package includes, e.g. "Monthly 1-to-1 session"; shown only when set
-  mentorship   String?
+  mentorship                 String?
   /// 1-to-1 mentorship sessions a buyer can book each month; null = no limit
   mentorshipSessionsPerMonth Int?
   /// Questions and answers shown on the package page: [{ q, a }]; empty = the standard questions
-  faq          Json?
-  createdAt    DateTime          @default(now())
-  purchases    PackagePurchase[]
-  cohort       Cohort?           @relation("PackageCohort", fields: [cohortId], references: [id])
+  faq                        Json?
+  createdAt                  DateTime          @default(now())
+  purchases                  PackagePurchase[]
+  cohort                     Cohort?           @relation("PackageCohort", fields: [cohortId], references: [id])
 }
 
 model PackagePurchase {
@@ -336,6 +337,7 @@ model Cohort {
   liveClasses    LiveClass[]
   progressAlerts ProgressAlert[]
   packages       Package[]       @relation("PackageCohort")
+  chat           MessageThread?
 }
 
 model CohortRoster {
@@ -720,43 +722,43 @@ model SuccessStorySubmission {
 }
 
 model PlatformCourse {
-  id                 String             @id @default(uuid())
-  title              String
-  description        String?
-  coverUrl           String?
-  teacherId          String
-  programmeId        String?
-  subjectId          String?
-  levelId            String?
-  status             CourseStatus       @default(DRAFT)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  source             CourseSource       @default(NATIVE)
-  wpCourseId         Int?               @unique
-  wpCourseUrl        String?
-  isSoldIndividually Boolean            @default(false)
+  id                    String             @id @default(uuid())
+  title                 String
+  description           String?
+  coverUrl              String?
+  teacherId             String
+  programmeId           String?
+  subjectId             String?
+  levelId               String?
+  status                CourseStatus       @default(DRAFT)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  source                CourseSource       @default(NATIVE)
+  wpCourseId            Int?               @unique
+  wpCourseUrl           String?
+  isSoldIndividually    Boolean            @default(false)
   /// A teacher's proposed single-course price (minor units), waiting for an admin decision
   proposedPriceAmount   Int?
   proposedPriceCurrency String?
   priceProposedAt       DateTime?
-  priceAmount        Int?
-  priceCurrency      String?
-  shortDescription   String?
+  priceAmount           Int?
+  priceCurrency         String?
+  shortDescription      String?
   /// How long a single-course purchase gives access, in months; null = no time limit
-  accessMonths       Int?               @default(12)
+  accessMonths          Int?               @default(12)
   /// Teaching language, e.g. "English" or "French"; shown to students only when set
-  language           String?
+  language              String?
   /// What students will be able to do after the course; shown on the course page when set
-  outcomes           String[]           @default([])
-  certificates       Certificate[]
-  enrollments        CourseEnrollment[]
-  modules            CourseModule[]
-  coursePurchases    CoursePurchase[]
-  flashcardDecks     FlashcardDeck[]
-  level              EducationLevel?    @relation(fields: [levelId], references: [id])
-  programme          Programme?         @relation(fields: [programmeId], references: [id])
-  subject            Subject?           @relation(fields: [subjectId], references: [id])
-  teacher            UserProfile        @relation("TeacherCourses", fields: [teacherId], references: [id])
+  outcomes              String[]           @default([])
+  certificates          Certificate[]
+  enrollments           CourseEnrollment[]
+  modules               CourseModule[]
+  coursePurchases       CoursePurchase[]
+  flashcardDecks        FlashcardDeck[]
+  level                 EducationLevel?    @relation(fields: [levelId], references: [id])
+  programme             Programme?         @relation(fields: [programmeId], references: [id])
+  subject               Subject?           @relation(fields: [subjectId], references: [id])
+  teacher               UserProfile        @relation("TeacherCourses", fields: [teacherId], references: [id])
 }
 
 model CourseModule {
@@ -806,17 +808,17 @@ model LessonAttachment {
 }
 
 model LessonProgress {
-  id          String      @id @default(uuid())
-  studentId   String
-  lessonId    String
-  completed   Boolean     @default(false)
+  id           String      @id @default(uuid())
+  studentId    String
+  lessonId     String
+  completed    Boolean     @default(false)
   /// Total seconds actually played (study time)
-  watchedSecs Int         @default(0)
+  watchedSecs  Int         @default(0)
   /// Last playback position, for "resume where you stopped"
-  positionSecs Int        @default(0)
-  updatedAt   DateTime    @updatedAt
-  lesson      Lesson      @relation(fields: [lessonId], references: [id])
-  student     UserProfile @relation(fields: [studentId], references: [id])
+  positionSecs Int         @default(0)
+  updatedAt    DateTime    @updatedAt
+  lesson       Lesson      @relation(fields: [lessonId], references: [id])
+  student      UserProfile @relation(fields: [studentId], references: [id])
 
   @@unique([studentId, lessonId])
 }
@@ -900,28 +902,48 @@ model AuditLog {
 }
 
 /// A conversation thread between two users (student↔teacher or teacher↔teacher).
+/// A one-to-one conversation (two participants) or a cohort's group chat (cohortId set, no participants)
 model MessageThread {
-  id             String      @id @default(uuid())
-  participantAId String
-  participantBId String
-  lastMessageAt  DateTime    @default(now())
-  createdAt      DateTime    @default(now())
+  id             String       @id @default(uuid())
+  participantAId String?
+  participantBId String?
+  cohortId       String?      @unique
+  lastMessageAt  DateTime     @default(now())
+  createdAt      DateTime     @default(now())
   messages       Message[]
-  participantA   UserProfile @relation("ThreadParticipantA", fields: [participantAId], references: [id])
-  participantB   UserProfile @relation("ThreadParticipantB", fields: [participantBId], references: [id])
+  reads          ThreadRead[]
+  participantA   UserProfile? @relation("ThreadParticipantA", fields: [participantAId], references: [id])
+  participantB   UserProfile? @relation("ThreadParticipantB", fields: [participantBId], references: [id])
+  cohort         Cohort?      @relation(fields: [cohortId], references: [id], onDelete: Cascade)
 
   @@unique([participantAId, participantBId])
 }
 
+/// How far each member has read a group chat (one-to-one threads use Message.readAt)
+model ThreadRead {
+  threadId   String
+  userId     String
+  lastReadAt DateTime      @default(now())
+  thread     MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user       UserProfile   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([threadId, userId])
+}
+
 model Message {
-  id        String        @id @default(uuid())
-  threadId  String
-  senderId  String
-  body      String
-  readAt    DateTime?
-  createdAt DateTime      @default(now())
-  sender    UserProfile   @relation("SentMessages", fields: [senderId], references: [id])
-  thread    MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  id             String        @id @default(uuid())
+  threadId       String
+  senderId       String
+  body           String
+  readAt         DateTime?
+  createdAt      DateTime      @default(now())
+  /// A file sent with the message: R2 key (served through a signed link), original name, type and size
+  attachmentKey  String?
+  attachmentName String?
+  attachmentType String?
+  attachmentSize Int?
+  sender         UserProfile   @relation("SentMessages", fields: [senderId], references: [id])
+  thread         MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 }
 
 model LessonNote {

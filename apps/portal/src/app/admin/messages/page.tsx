@@ -2,5 +2,5 @@
 import MessagesInbox from '@/components/messaging/MessagesInbox';
 
 export default function AdminMessagesPage() {
-  return <MessagesInbox backHref="/admin/dashboard" />;
+  return <MessagesInbox backHref="/admin/dashboard" role="admin" />;
 }
