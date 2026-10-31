@@ -1,249 +1,135 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card } from '@/components/ui/Card';
-import { Icon } from '@/components/ui/Icon';
+import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-interface Course {
-  id: string;
-  title: string;
-  description?: string;
-  thumbnailUrl?: string;
-  lessonCount?: number;
-  progress?: number;
-  status?: 'locked' | 'available' | 'in_progress' | 'completed';
-  order?: number;
+type StepState = 'done' | 'now' | 'next' | 'later';
+interface Step { kind: 'module' | 'live' | 'revision' | 'exam'; course: string; courseId: string | null; lessonId: string | null; title: string; detail: string; state: StepState; date: string | null }
+interface Programme {
+  id: string; name: string;
+  exam: { date: string; label: string | null; cohort: string | null; courses: string[] } | null;
+  pace: { daysLeft: number | null; studyDaysLeft: number | null; donePct: number; expectedPct: number | null; behindDays: number | null; lessonsLeft: number; quizzesLeft: number; lessonsDone: number; lessonsTotal: number; perDayNeeded: number | null };
+  steps: Step[];
+  week: { kind: string; title: string; at: string; done: boolean }[];
 }
+interface Data { programmes: { id: string; name: string }[]; programme: Programme | null }
 
-interface Package {
-  id: string;
-  name: string;
-  description?: string;
-  courses: Course[];
-}
+const STATE: Record<StepState, string> = { done: 'Done', now: 'Now', next: 'Next', later: 'Later' };
+const day = (iso: string, opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }) => new Date(iso).toLocaleDateString('en-GB', opts);
 
-interface Cohort {
-  id: string;
-  name: string;
-  package?: Package;
-}
-
-const COURSE_COLORS = [
-  // One accent: flat shades of the brand blue
-  'from-azure to-azure',
-  'from-royal to-royal',
-  'from-azure-strong to-azure-strong',
-  'from-azure to-azure',
-  'from-royal to-royal',
-  'from-azure-strong to-azure-strong',
-];
-
-function StatusBadge({ status }: { status: Course['status'] }) {
-  const map = {
-    completed:   { bg: 'bg-emerald-100 text-emerald-600', label: 'Done' },
-    in_progress: { bg: 'bg-azure/10 text-azure',          label: 'In Progress' },
-    available:   { bg: 'bg-amber-100 text-amber-600',     label: 'Start' },
-    locked:      { bg: 'bg-cloud text-royal/40',          label: 'Locked' },
-  };
-  const s = map[status ?? 'locked'];
-  return (
-    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${s.bg}`}>{s.label}</span>
-  );
-}
-
-function CourseNode({ course, index, isLast }: { course: Course; index: number; isLast: boolean }) {
-  const isLeft = index % 2 === 0;
-  const color  = COURSE_COLORS[index % COURSE_COLORS.length];
-  const done   = course.status === 'completed';
-  const locked = course.status === 'locked';
-
-  return (
-    <div className="relative flex items-center gap-0">
-      {/* Left card */}
-      <div className={`flex-1 ${isLeft ? 'pr-8' : 'pl-8 invisible'}`}>
-        {isLeft && (
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: index * 0.07 }}
-          >
-            <CourseCard course={course} color={color} />
-          </motion.div>
-        )}
-      </div>
-
-      {/* Centre spine + node */}
-      <div className="flex flex-col items-center z-10">
-        <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ring-4 ring-white
-          ${done ? 'bg-emerald-400' : locked ? 'bg-cloud' : `bg-gradient-to-br ${color}`}`}>
-          {done
-            ? <Icon name="certificates" size={16} className="text-white" />
-            : locked
-              ? <Icon name="shield" size={14} className="text-royal/30" />
-              : <span className="text-xs font-bold text-white">{index + 1}</span>
-          }
-        </div>
-        {!isLast && <div className="w-0.5 h-16 bg-cloud mt-1" />}
-      </div>
-
-      {/* Right card */}
-      <div className={`flex-1 ${!isLeft ? 'pl-8' : 'pr-8 invisible'}`}>
-        {!isLeft && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: index * 0.07 }}
-          >
-            <CourseCard course={course} color={color} />
-          </motion.div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function CourseCard({ course, color }: { course: Course; color: string }) {
-  const locked = course.status === 'locked';
-  const href   = locked ? '#' : `/student/learn/${course.id}`;
-
-  return (
-    <Link href={href} className={locked ? 'pointer-events-none' : ''}>
-      <div className={`rounded-2xl border border-cloud bg-white p-4 hover:shadow-md transition-shadow
-        ${locked ? 'opacity-50' : 'hover:border-azure/30'}`}>
-        {/* Thumbnail strip */}
-        <div className={`h-1.5 w-full rounded-full bg-gradient-to-r ${color} mb-3 opacity-60`} />
-        <p className="text-xs font-bold text-navy leading-snug">{course.title}</p>
-        {course.description && (
-          <p className="text-[10px] text-royal/50 mt-1 leading-relaxed line-clamp-2">{course.description}</p>
-        )}
-        <div className="flex items-center justify-between mt-3">
-          {course.lessonCount !== undefined && (
-            <span className="text-[10px] text-royal/40">{course.lessonCount} lessons</span>
-          )}
-          <StatusBadge status={course.status} />
-        </div>
-        {course.progress !== undefined && course.progress > 0 && (
-          <div className="mt-2 h-1 w-full rounded-full bg-cloud overflow-hidden">
-            <div className="h-full rounded-full bg-azure" style={{ width: `${course.progress}%` }} />
-          </div>
-        )}
-      </div>
-    </Link>
-  );
+function headline(p: Programme['pace']) {
+  if (p.lessonsLeft + p.quizzesLeft === 0) return 'You’ve finished every lesson';
+  if (p.behindDays == null) return `${p.donePct}% done`;
+  if (p.behindDays >= 3) return `You’re about ${p.behindDays >= 10 ? `${Math.round(p.behindDays / 7)} weeks` : p.behindDays >= 6 ? 'a week' : `${p.behindDays} days`} behind`;
+  if (p.behindDays <= -3) return 'You’re ahead of schedule';
+  return 'You’re on track';
 }
 
 export default function RoadmapPage() {
-  const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
+  const [d, setD] = useState<Data | null>(null);
+  const [pkg, setPkg] = useState<string>('');
   useEffect(() => {
-    api.get('/portals/student/cohorts')
-      .then(r => {
-        const data: Cohort[] = r.data ?? [];
-        setCohorts(data);
-        if (data.length > 0) setSelected(data[0].id);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  const cohort   = cohorts.find(c => c.id === selected);
-  const courses  = (cohort?.package?.courses ?? []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  const done     = courses.filter(c => c.status === 'completed').length;
-  const pct      = courses.length ? Math.round((done / courses.length) * 100) : 0;
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <div className="h-14 bg-cloud animate-pulse" />
-      <div className="p-6 space-y-4">
-        {[1,2,3,4].map(i => <div key={i} className="h-20 rounded-2xl bg-cloud animate-pulse" />)}
-      </div>
-    </div>
-  );
+    api.get('/portals/student/roadmap', { params: { packageId: pkg || undefined } }).then(r => setD(r.data)).catch(() => notify.error('Could not load your roadmap'));
+  }, [pkg]);
+  const p = d?.programme ?? null;
 
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar
-        title="Learning Roadmap"
-        subtitle="Your course sequence within each programme"
-        backHref="/student/dashboard"
-        backLabel="Dashboard"
-      />
-
-      <div className="flex-1 p-4 md:p-6 max-w-3xl">
-
-        {cohorts.length === 0 ? (
-          <Card padding="md" className="flex flex-col items-center py-16 text-center">
-            <Icon name="notebook" size={36} className="text-cloud mb-3" />
-            <p className="text-sm font-bold text-navy">No cohorts yet</p>
-            <p className="text-xs text-royal/40 mt-1">Join a programme to see your roadmap</p>
-            <Link href="/packages" className="mt-4 rounded-xl bg-azure px-4 py-2 text-xs font-bold text-white">
-              Browse packages
-            </Link>
-          </Card>
-        ) : (
-          <>
-            {/* Package selector tabs */}
-            {cohorts.length > 1 && (
-              <div className="flex gap-2 flex-wrap mb-5">
-                {cohorts.map(c => (
-                  <button
-                    key={c.id}
-                    onClick={() => setSelected(c.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition
-                      ${selected === c.id ? 'bg-azure text-white' : 'bg-cloud text-navy hover:bg-azure/10'}`}>
-                    {c.package?.name ?? c.name}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Progress bar */}
-            {cohort && (
-              <Card padding="md" className="mb-6">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <p className="text-sm font-bold text-navy">{cohort.package?.name ?? cohort.name}</p>
-                    {cohort.package?.description && (
-                      <p className="text-xs text-royal/50 mt-0.5">{cohort.package.description}</p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-black text-azure">{pct}%</p>
-                    <p className="text-[10px] text-royal/40">{done}/{courses.length} done</p>
-                  </div>
+    <div className="flex min-h-full flex-col">
+      <Topbar title="Roadmap"
+        subtitle={p?.exam ? `Your path to ${p.exam.label ?? 'the exam'} · ${day(p.exam.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}` : 'Your path through your programme'}
+        actions={d && d.programmes.length > 0 && (
+          <label className="flex h-9 items-center gap-1 rounded-md border border-line bg-white px-3 text-[13.5px] text-navy">Programme:
+            <select value={p?.id ?? ''} onChange={e => setPkg(e.target.value)} className="max-w-[220px] bg-transparent font-semibold outline-none">
+              {d.programmes.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+          </label>
+        )} />
+      {!d ? <div className="m-4 h-96 rounded-lg bg-subtle animate-pulse lg:mx-7 lg:my-6" /> : !p ? (
+        <div className="p-4 lg:px-7 lg:py-6">
+          <div className="rounded-lg border border-line bg-white px-6 py-12 text-center">
+            <p className="text-base font-bold text-navy">No programme yet</p>
+            <p className="mt-1 text-[13.5px] text-ink2">Your roadmap appears when you join a package — it plans your way to the exam.</p>
+            <Link href="/packages" className="mt-4 inline-flex h-9 items-center rounded-md bg-azure-strong px-4 text-[13.5px] font-semibold text-on-accent">See packages</Link>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-start gap-5 p-4 lg:px-7 lg:py-6">
+          <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-4">
+            <section className="flex flex-wrap items-center gap-[18px] rounded-lg border border-azure bg-white px-5 py-[18px]">
+              {p.pace.daysLeft != null && p.pace.daysLeft >= 0 && (
+                <div className="border-r border-line px-4 py-1.5 text-center">
+                  <p className="text-[30px] font-extrabold text-azure-strong">{p.pace.daysLeft}</p>
+                  <p className="text-xs text-muted">day{p.pace.daysLeft === 1 ? '' : 's'} to the exam</p>
                 </div>
-                <div className="h-2 w-full rounded-full bg-cloud overflow-hidden">
-                  <motion.div
-                    className="h-full rounded-full bg-azure-strong"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${pct}%` }}
-                    transition={{ duration: 0.8, ease: 'easeOut' }}
-                  />
-                </div>
-              </Card>
-            )}
-
-            {/* Zigzag timeline */}
-            {courses.length === 0 ? (
-              <Card padding="md" className="flex flex-col items-center py-12 text-center">
-                <Icon name="notebook" size={28} className="text-cloud mb-2" />
-                <p className="text-xs font-semibold text-navy">No courses in this programme yet</p>
-              </Card>
-            ) : (
-              <div className="relative">
-                {courses.map((course, i) => (
-                  <CourseNode key={course.id} course={course} index={i} isLast={i === courses.length - 1} />
-                ))}
+              )}
+              <div className="min-w-0 flex-[1_1_260px]">
+                <p className="text-[17px] font-extrabold text-navy">{headline(p.pace)}</p>
+                <p className="mt-[3px] text-[13.5px] text-ink2">
+                  {p.pace.lessonsLeft} lesson{p.pace.lessonsLeft === 1 ? '' : 's'} and {p.pace.quizzesLeft} quiz{p.pace.quizzesLeft === 1 ? '' : 'zes'} left.
+                  {p.pace.perDayNeeded ? ` Finishing ${p.pace.perDayNeeded} a day gets you there with time to revise.` : ''}
+                </p>
+                <span className="relative mt-2.5 block h-2 rounded-full bg-subtle">
+                  <span className="block h-2 rounded-full bg-azure" style={{ width: `${p.pace.donePct}%` }} />
+                  {p.pace.expectedPct != null && <span className="absolute -top-1 h-4 w-0.5 bg-navy" style={{ left: `${p.pace.expectedPct}%` }} title="Where you should be by now" />}
+                </span>
+                <p className="mt-1 flex justify-between text-[11.5px] text-muted"><span>{p.pace.donePct}% done</span>{p.pace.expectedPct != null && <span>where you should be: {p.pace.expectedPct}%</span>}</p>
               </div>
+              <Link href="/student/calendar" className="inline-flex h-[38px] items-center rounded-md bg-azure-strong px-4 text-[13.5px] font-semibold text-on-accent hover:opacity-90">Plan my study time</Link>
+            </section>
+
+            <section className="rounded-lg border border-line bg-white px-5 pb-3 pt-2">
+              {p.steps.map((s, i) => {
+                const last = i === p.steps.length - 1;
+                const href = s.kind === 'module' && s.courseId ? (s.lessonId ? `/student/learn/${s.courseId}/lesson/${s.lessonId}` : `/student/courses/${s.courseId}`) : s.kind === 'live' ? '/student/live' : null;
+                const body = (
+                  <div className="flex flex-1 flex-wrap items-center gap-2.5 pb-3.5 pt-3">
+                    <div className="min-w-0 flex-[1_1_260px]">
+                      <p className="text-xs text-muted">{s.course}</p>
+                      <p className="mt-0.5 text-[14.5px] font-[650] text-navy">{s.title}</p>
+                      <p className="mt-0.5 text-[12.5px] text-ink2">{s.detail}</p>
+                    </div>
+                    {s.date && <span className="text-[12.5px] text-muted">{s.state === 'done' ? `done ${day(s.date)}` : s.kind === 'module' ? `aim: by ${day(s.date)}` : s.kind === 'revision' ? `from ${day(s.date)}` : day(s.date, { weekday: 'short', day: 'numeric', month: 'short' })}</span>}
+                    <span className={clsx('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs font-semibold', s.state === 'now' ? 'bg-accent-soft text-navy' : 'border border-line bg-subtle text-ink2')}>{s.kind === 'exam' ? 'Exam' : STATE[s.state]}</span>
+                  </div>
+                );
+                return (
+                  <div key={`${s.kind}-${i}`} className="flex gap-3.5">
+                    <div className="flex w-[22px] flex-col items-center">
+                      <span className={clsx('mt-4 h-3.5 w-3.5 shrink-0 rounded-full', s.state === 'done' ? 'bg-azure' : s.state === 'now' ? 'border-[3px] border-azure-strong bg-white' : 'border-2 border-line bg-white')} />
+                      {!last && <span className={clsx('w-0.5 flex-1', s.state === 'done' ? 'bg-azure' : 'bg-line')} />}
+                    </div>
+                    {href ? <Link href={href} className="flex flex-1 rounded-md hover:bg-subtle">{body}</Link> : body}
+                  </div>
+                );
+              })}
+            </section>
+          </div>
+
+          <aside className="flex min-w-0 flex-[1_1_280px] flex-col gap-3.5">
+            <section className="flex flex-col gap-[9px] rounded-lg border border-line bg-white p-4">
+              <h3 className="text-[15px] font-semibold text-navy">This week</h3>
+              {!p.week.length ? <p className="text-[13px] text-ink2">Nothing planned. <Link href="/student/calendar" className="font-semibold text-azure-strong">Plan study time</Link></p> : p.week.map((w, i) => (
+                <p key={i} className="flex gap-2 text-[13px]">
+                  <span className={clsx('mt-0.5 h-3.5 w-3.5 shrink-0 rounded-[3px]', w.done ? 'bg-azure' : 'border-[1.5px] border-line')} aria-label={w.done ? 'Done' : 'To do'} />
+                  <span className={clsx('min-w-0 flex-1', w.done ? 'text-muted' : 'text-navy')}>{w.title}</span>
+                  <span className="shrink-0 text-muted">{new Date(w.at).toLocaleDateString('en-GB', { weekday: 'short' })}{w.kind === 'live' ? ` ${new Date(w.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}</span>
+                </p>
+              ))}
+            </section>
+            {p.exam && (
+              <section className="flex flex-col gap-1.5 rounded-lg border border-line bg-white p-4">
+                <h3 className="text-[15px] font-semibold text-navy">The exam</h3>
+                <p className="text-[13px] text-ink2">{[p.exam.label, p.exam.courses.join(', ')].filter(Boolean).join(' · ')}</p>
+                <p className="text-[13px] font-bold text-navy">{day(p.exam.date, { weekday: 'long', day: 'numeric', month: 'long' })}, {new Date(p.exam.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
+                {p.exam.cohort && <p className="text-[12.5px] text-muted">Your cohort: {p.exam.cohort}</p>}
+              </section>
             )}
-          </>
-        )}
-      </div>
+          </aside>
+        </div>
+      )}
     </div>
   );
 }

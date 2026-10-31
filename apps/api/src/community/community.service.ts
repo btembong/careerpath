@@ -3,6 +3,7 @@ import { UserRole } from '@cpa/shared';
 import { GamificationService } from '../gamification/gamification.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { studentCourseIds } from '../prisma/student-courses';
 import { CreatePostDto } from './dto/create-post.dto';
 import { SubmitStoryDto } from './dto/submit-story.dto';
 import { ReviewStoryDto } from './dto/review-story.dto';
@@ -119,14 +120,7 @@ export class CommunityService {
     if (role === UserRole.TEACHER) {
       return this.prisma.platformCourse.findMany({ where: { teacherId: user.id }, select: { id: true, title: true, teacherId: true }, orderBy: { title: 'asc' } });
     }
-    const now = new Date();
-    const active = { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
-    const [enrolled, bought, packages] = await Promise.all([
-      this.prisma.courseEnrollment.findMany({ where: { studentId: user.id }, select: { courseId: true } }),
-      this.prisma.coursePurchase.findMany({ where: { studentId: user.id, ...active }, select: { courseId: true } }),
-      this.prisma.packagePurchase.findMany({ where: { studentId: user.id, ...active }, select: { package: { select: { courseIds: true } } } }),
-    ]);
-    const ids = [...new Set([...enrolled.map(e => e.courseId), ...bought.map(b => b.courseId), ...packages.flatMap(p => p.package.courseIds)])];
+    const ids = await studentCourseIds(this.prisma, user.id);
     return this.prisma.platformCourse.findMany({ where: { id: { in: ids }, status: 'PUBLISHED' }, select: { id: true, title: true, teacherId: true }, orderBy: { title: 'asc' } });
   }
 

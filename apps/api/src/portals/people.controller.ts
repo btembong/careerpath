@@ -8,13 +8,41 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { StudentCalendarService } from './student-calendar.service';
 import { AdminTeachersService } from './admin-teachers.service';
+import { StudentProgressService } from './student-progress.service';
 
 @ApiTags('portals')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('portals')
 export class PeopleController {
-  constructor(private readonly calendar: StudentCalendarService, private readonly teachers: AdminTeachersService) {}
+  constructor(
+    private readonly calendar: StudentCalendarService,
+    private readonly teachers: AdminTeachersService,
+    private readonly progress: StudentProgressService,
+  ) {}
+
+  // ── Student quiz history and roadmap ─────────────────────
+
+  @Get('student/quiz-history')
+  @Roles(UserRole.STUDENT)
+  @ApiOperation({ summary: '[Student] Every quiz attempt, scores over time and the questions missed most' })
+  quizHistory(@CurrentUser() user: UserProfile) {
+    return this.progress.quizHistory(user.id);
+  }
+
+  @Get('student/quiz-history/:attemptId')
+  @Roles(UserRole.STUDENT)
+  @ApiOperation({ summary: '[Student] One attempt question by question' })
+  quizAttempt(@CurrentUser() user: UserProfile, @Param('attemptId') attemptId: string) {
+    return this.progress.quizAttempt(user.id, attemptId);
+  }
+
+  @Get('student/roadmap')
+  @Roles(UserRole.STUDENT)
+  @ApiOperation({ summary: '[Student] Path through a programme to its exam, with pace and this week' })
+  roadmap(@CurrentUser() user: UserProfile, @Query('packageId') packageId?: string) {
+    return this.progress.roadmap(user.id, packageId);
+  }
 
   // ── Student study calendar ───────────────────────────────
 
