@@ -84,7 +84,8 @@ export class WpPullService {
     for (const t of terms) {
       const existing = byId.get(t.id);
       const base = { name: decodeEntities(t.name), parentId: t.parent || null, courseCount: t.count };
-      if (existing?.setBy === 'ADMIN') {
+      // Only name-matched rows are re-matched; rows set or suggested by a person are left alone
+      if (existing && existing.setBy !== 'AUTO') {
         await this.prisma.wpCategoryMap.update({ where: { wpTermId: t.id }, data: base });
         continue;
       }
@@ -104,10 +105,11 @@ export class WpPullService {
 
   /** Programme, subject and level for a course from its categories, looking up each category's parents too */
   suggest(categoryIds: number[], maps: Map<number, MapRow>): Suggestion {
-    const out: Suggestion = { programmeId: null, subjectId: null, levelId: null, from: null };
-    const used: string[] = [];
-    for (const id of categoryIds) {
-      // Walk from the category up to the top, nearest first
+    // Each category plus its parents is one reading of the course ("Secondary School › Biology").
+    // Use the most complete reading rather than mixing pieces from unrelated categories.
+    const chain = (id: number): Suggestion => {
+      const out: Suggestion = { programmeId: null, subjectId: null, levelId: null, from: null };
+      const used: string[] = [];
       let cur = maps.get(id); let guard = 0;
       while (cur && guard++ < 10) {
         if (!cur.ignored) {
@@ -115,13 +117,17 @@ export class WpPullService {
           if (!out.programmeId && cur.programmeId) { out.programmeId = cur.programmeId; hit = true; }
           if (!out.subjectId && cur.subjectId) { out.subjectId = cur.subjectId; hit = true; }
           if (!out.levelId && cur.levelId) { out.levelId = cur.levelId; hit = true; }
-          if (hit && !used.includes(cur.name)) used.push(cur.name);
+          if (hit) used.unshift(cur.name);
         }
         cur = cur.parentId ? maps.get(cur.parentId) : undefined;
       }
-    }
-    out.from = used.length ? used.join(', ') : null;
-    return out;
+      out.from = used.length ? used.join(' › ') : null;
+      return out;
+    };
+    const score = (s: Suggestion) => (s.programmeId ? 2 : 0) + (s.subjectId ? 2 : 0) + (s.levelId ? 1 : 0);
+    let best: Suggestion = { programmeId: null, subjectId: null, levelId: null, from: null };
+    for (const id of categoryIds) { const s = chain(id); if (score(s) > score(best)) best = s; }
+    return best;
   }
 
   private path(id: number, maps: Map<number, MapRow>) {

@@ -309,7 +309,7 @@ function Mapping({ opts }: { opts: TaxOptions }) {
                     <td className="border-b border-line px-3.5 py-2.5"><select aria-label="Subject" className={sel} disabled={r.ignored} value={r.subject?.id ?? ''} onChange={e => save(r, { subjectId: e.target.value || null })}><option value="">—</option>{opts.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></td>
                     <td className="border-b border-line px-3.5 py-2.5"><select aria-label="Level" className={sel} disabled={r.ignored} value={r.level?.id ?? ''} onChange={e => save(r, { levelId: e.target.value || null })}><option value="">—</option>{opts.levels.map(l => <option key={l.id} value={l.id}>{l.name} · {l.system.name}</option>)}</select></td>
                     <td className="border-b border-line px-3.5 py-2.5 text-xs text-muted">
-                      <span className="mr-2">{r.ignored ? 'ignored' : r.setBy === 'ADMIN' ? 'set by you' : r.mapped ? 'matched by name' : 'not mapped'}</span>
+                      <span className={clsx('mr-2', r.setBy === 'SUGGESTED' && 'font-semibold text-azure-strong')}>{r.setBy === 'SUGGESTED' ? (r.ignored ? 'suggested: ignore — please check' : 'suggested — please check') : r.ignored ? 'ignored' : r.setBy === 'ADMIN' ? 'set by you' : r.mapped ? 'matched by name' : 'not mapped'}</span>
                       <button onClick={() => save(r, { ignored: !r.ignored })} className="font-semibold text-azure-strong hover:underline">{r.ignored ? 'Use it' : 'Ignore'}</button>
                     </td>
                   </tr>
