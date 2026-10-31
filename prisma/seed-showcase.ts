@@ -753,7 +753,109 @@ async function main() {
     });
   }
   log('Messages and notifications for the demo student');
+
+  // ── Money: payout accounts, six months of earnings, paid and pending statements ─
+  await seedMoney(teacher, reviewer, student, pkg.courseIds);
   console.log('Done.');
+}
+
+type Person = { id: string; email: string };
+const monthStart = (back: number) => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth() - back, 1); };
+
+async function seedMoney(teacher: Person, reviewer: Person, student: Person, packageCourseIds: string[]) {
+  const rep = await prisma.userProfile.findUnique({ where: { email: 'rep@test.com' } });
+  const other = await prisma.userProfile.findUnique({ where: { email: 'teacher.demo@cpa.test' } });
+  if (await prisma.payoutStatement.count({ where: { recipientId: teacher.id } })) { log('Money: already seeded'); return; }
+  const currency = 'GHS';
+  const courses = await prisma.platformCourse.findMany({ where: { OR: [{ id: { in: packageCourseIds } }, { teacherId: teacher.id }] }, select: { id: true, title: true, teacherId: true }, take: 6 });
+  const mine = courses.filter(c => c.teacherId === teacher.id);
+  const names = ['Abena M.', 'Kofi O.', 'Yaw B.', 'Akosua D.', 'Kwame A.', 'Efua T.', 'Nana K.', 'Ama S.'];
+
+  // Payout accounts: verified MoMo for the teacher and rep, a bank account the reviewer just changed
+  const account = (userId: string, bankName: string, accountNumber: string, verified: boolean, verifiedDaysAgo: number | null) =>
+    prisma.payoutAccount.upsert({
+      where: { userId }, update: {},
+      create: { userId, bankName, accountNumber, country: 'Ghana', isVerified: verified, verifiedAt: verifiedDaysAgo == null ? null : new Date(Date.now() - verifiedDaysAgo * DAY) },
+    });
+  await account(teacher.id, 'MTN Mobile Money', '024 555 1182', true, 28);
+  if (rep) await account(rep.id, 'MTN Mobile Money', '020 555 0142', true, 60);
+  await account(reviewer.id, 'GCB Bank', '1021 3300 4402', false, 95);
+
+  const walletOf = async (userId: string) => prisma.wallet.upsert({ where: { userId }, update: {}, create: { userId, balance: 0, currency } });
+  // Credits spread over a month: n sales of roughly `each`, on random-looking but fixed days
+  const credits = async (walletId: string, back: number, n: number, each: number, source: 'COURSE_SALE' | 'REVIEW_COMMISSION' | 'COUNTRY_BONUS', label: (i: number) => { description: string; courseId?: string }) => {
+    const start = monthStart(back), end = back === 0 ? new Date() : monthStart(back - 1);
+    const span = +end - +start;
+    for (let i = 0; i < n; i++) {
+      const createdAt = new Date(+start + ((i * 7919) % 97) / 97 * span * 0.98 + 3_600_000);
+      await prisma.walletTransaction.create({ data: { walletId, type: 'CREDIT', source, amount: each + ((i * 37) % 5) * 500, currency, createdAt, ...label(i) } });
+    }
+  };
+  // Statements: older months paid on the 1st with a reference, last month waiting
+  const statements = async (userId: string, walletId: string, type: 'TEACHER' | 'SUBJECT_REVIEWER' | 'COUNTRY_REP', paidTo: string | null, tag: string) => {
+    for (let back = 5; back >= 1; back--) {
+      const periodStart = monthStart(back), periodEnd = new Date(+monthStart(back - 1) - 1);
+      const sum = (await prisma.walletTransaction.aggregate({ where: { walletId, type: 'CREDIT', source: { not: 'PAYOUT' }, createdAt: { gte: periodStart, lte: periodEnd } }, _sum: { amount: true } }))._sum.amount ?? 0;
+      if (!sum) continue;
+      const paid = back >= 2 && paidTo;
+      const paidAt = new Date(+monthStart(back - 1) + 9 * 3_600_000);
+      const reference = paid ? `MP${String(paidAt.getFullYear()).slice(2)}${String(paidAt.getMonth() + 1).padStart(2, '0')}01.${tag}` : null;
+      await prisma.payoutStatement.create({ data: { recipientId: userId, recipientType: type, periodStart, periodEnd, amount: sum, currency, status: paid ? 'PAID' : 'PENDING', paidAt: paid ? paidAt : null, reference, paidTo: paid ? paidTo : null } });
+      if (paid) await prisma.walletTransaction.create({ data: { walletId, type: 'DEBIT', source: 'PAYOUT', amount: sum, currency, createdAt: paidAt, description: `Payout for ${periodStart.toISOString().slice(0, 10)} – ${periodEnd.toISOString().slice(0, 10)} to ${paidTo} · ref ${reference}` } });
+    }
+  };
+  const settle = async (walletId: string) => {
+    const [c, d] = await Promise.all(['CREDIT', 'DEBIT'].map(type => prisma.walletTransaction.aggregate({ where: { walletId, type: type as 'CREDIT' }, _sum: { amount: true } })));
+    await prisma.wallet.update({ where: { id: walletId }, data: { balance: (c._sum.amount ?? 0) - (d._sum.amount ?? 0) } });
+  };
+
+  // Teacher: course sales growing month by month
+  const tw = await walletOf(teacher.id);
+  const sales = [9, 12, 11, 15, 17, 14];
+  for (let back = 5; back >= 0; back--) {
+    await credits(tw.id, back, sales[5 - back], 6000, 'COURSE_SALE', i => {
+      const c = mine[i % Math.max(1, mine.length)];
+      return { courseId: c?.id, description: `${names[(i + back) % names.length]} · ${i % 3 ? 'package' : 'single course'}` };
+    });
+  }
+  await statements(teacher.id, tw.id, 'TEACHER', 'MTN Mobile Money ·· 1182', 'C1182');
+  await settle(tw.id);
+
+  // Reviewer: a share of approved courses' sales; the account was changed, so last month can't be paid yet
+  const rw = await walletOf(reviewer.id);
+  for (let back = 4; back >= 0; back--) {
+    await credits(rw.id, back, 5 + back, 1500, 'REVIEW_COMMISSION', i => ({ courseId: courses[i % courses.length]?.id, description: `${names[(i + 3) % names.length]} · review share` }));
+  }
+  await statements(reviewer.id, rw.id, 'SUBJECT_REVIEWER', 'GCB Bank ·· 4402', 'B4402');
+  await settle(rw.id);
+
+  // Rep: older months of commission (this month's come from the rep section above)
+  if (rep) {
+    const pw = await walletOf(rep.id);
+    for (let back = 5; back >= 2; back--) {
+      await credits(pw.id, back, 4 + (5 - back) * 2, 4500, 'COUNTRY_BONUS', i => ({ description: `Commission · ${names[i % names.length]}` }));
+    }
+    await statements(rep.id, pw.id, 'COUNTRY_REP', 'MTN Mobile Money ·· 0142', 'R0142');
+    await settle(pw.id);
+  }
+
+  // A second teacher owed money with no payout account yet
+  if (other) {
+    // Two "Demo Teacher"s on the payouts list would look like one person paid twice
+    if (other.name === 'Demo Teacher' || !other.name) await prisma.userProfile.update({ where: { id: other.id }, data: { name: 'Ama Owusu', firstName: 'Ama', lastName: 'Owusu' } });
+    const ow = await walletOf(other.id);
+    await credits(ow.id, 1, 6, 5000, 'COURSE_SALE', i => ({ description: `${names[(i + 5) % names.length]} · single course` }));
+    await statements(other.id, ow.id, 'TEACHER', null, 'X');
+    await settle(ow.id);
+  }
+
+  // Demo student: a single course paid by card, so billing has a real receipt
+  const solo = await prisma.platformCourse.findFirst({ where: { id: { in: packageCourseIds }, isSoldIndividually: true, priceAmount: { gt: 0 } } });
+  if (solo?.priceAmount && !(await prisma.coursePurchase.findUnique({ where: { studentId_courseId: { studentId: student.id, courseId: solo.id } } }))) {
+    const at = new Date(Date.now() - 88 * DAY);
+    await prisma.coursePurchase.create({ data: { studentId: student.id, courseId: solo.id, amountPaid: solo.priceAmount, currency: solo.priceCurrency ?? currency, purchasedAt: at, expiresAt: new Date(+at + 365 * DAY), gateway: 'paystack', gatewayRef: 'T418820937', invoiceNo: 'CPA-2026-00288' } });
+  }
+  log('Money: payout accounts, six months of earnings, paid and pending statements, a card purchase for the student');
 }
 
 main().catch(e => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());

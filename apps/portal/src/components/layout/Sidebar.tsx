@@ -67,9 +67,8 @@ const STUDENT: Item[] = [
     { label: 'Mentorship', href: '/student/mentorship' },
     { label: 'Teachers',   href: '/student/teachers' },
   ]},
-  { label: 'Wallet', icon: 'wallet', children: [
-    { label: 'Wallet',       href: '/student/wallet' },
-    { label: 'Billing',      href: '/student/billing' },
+  { label: 'Billing', icon: 'wallet', children: [
+    { label: 'Billing',      href: '/student/billing', also: ['/student/wallet'] },
     { label: 'Packages',     href: '/packages' },
     { label: 'Refer & Earn', href: '/student/referrals' },
   ]},

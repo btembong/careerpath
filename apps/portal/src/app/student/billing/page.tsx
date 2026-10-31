@@ -1,189 +1,129 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { SkeletonTopbar, SkeletonListRow } from '@/components/ui/Skeleton';
-import { Card, IconBox } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Icon } from '@/components/ui/Icon';
-import { minorToMajor } from '@cpa/shared';
+import { notify } from '@/lib/notify';
+import { money } from '@/lib/money';
 import api from '@/lib/api';
 
-interface Purchase {
-  id: string;
-  type: 'package' | 'course';
-  name: string;
-  amount: number | null;
-  currency: string | null;
-  gateway: string | null;
-  invoiceNo: string | null;
-  purchasedAt: string;
-  expiresAt: string | null;
-  status: 'ACTIVE' | 'EXPIRED';
+interface Access { kind: 'package' | 'course' | 'free'; id: string; title: string; detail: string; examDate: string | null; expiresAt: string | null; pctUsed: number; daysLeft: number | null; ended: boolean; href: string }
+interface Payment { id: string; kind: 'package' | 'course'; title: string; at: string; amount: number; currency: string; method: string; invoiceNo: string | null }
+interface Data { access: Access[]; payments: Payment[]; paidThisYear: { currency: string; amount: number }[] }
+
+const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const sameDay = (a: string, b: string) => new Date(a).toDateString() === new Date(b).toDateString();
+
+function left(a: Access) {
+  if (!a.expiresAt) return 'No end date';
+  if (a.ended) return `Ended ${date(a.expiresAt)}`;
+  const d = a.daysLeft ?? 0;
+  const span = d <= 31 ? `${d} day${d === 1 ? '' : 's'} left` : `${Math.round(d / 30)} months left`;
+  return `Ends ${date(a.expiresAt)} · ${span}${a.examDate && sameDay(a.examDate, a.expiresAt) ? ', the day of your exam' : ''}`;
 }
 
-function fmtAmount(amount: number, currency: string) {
-  return `${currency} ${minorToMajor(amount, currency).toLocaleString()}`;
-}
-
-function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-export default function StudentBillingPage() {
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [loading,   setLoading]   = useState(true);
+export default function BillingPage() {
+  const [d, setD] = useState<Data | null>(null);
+  const [ref, setRef] = useState<{ totalReferrals: number; enrolled: number } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
-    api.get('/payments/me/purchases')
-      .then(r => setPurchases(r.data ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    api.get('/payments/me/billing').then(r => setD(r.data)).catch(e => notify.error(e?.response?.data?.message ?? 'Could not load your billing'));
+    api.get('/referrals/stats').then(r => setRef(r.data)).catch(() => {});
   }, []);
 
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 p-4 md:p-6 space-y-6 max-w-3xl w-full mx-auto">
-        <div className="grid grid-cols-3 gap-3">
-          {[1,2,3].map(i => <div key={i} className="rounded-2xl border border-cloud bg-white h-20 animate-pulse" />)}
-        </div>
-        <div className="rounded-2xl border border-cloud bg-white overflow-hidden">
-          {[1,2,3,4].map(i => <SkeletonListRow key={i} />)}
-        </div>
-      </div>
-    </div>
-  );
+  async function receipt(p: Payment) {
+    setBusy(p.id);
+    try {
+      const r = await api.get(`/payments/me/receipts/${p.kind}/${p.id}`, { responseType: 'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(r.data);
+      a.download = `receipt-${(p.invoiceNo ?? p.id.slice(0, 8)).replace(/[^\w-]/g, '')}.pdf`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch { notify.error('Could not download the receipt'); }
+    finally { setBusy(null); }
+  }
 
-  const active  = purchases.filter(p => p.status === 'ACTIVE');
-  const spendByCurrency = purchases.reduce<Record<string, number>>((acc, p) => {
-    if (p.amount && p.currency) acc[p.currency] = (acc[p.currency] ?? 0) + p.amount;
-    return acc;
-  }, {});
-  const spendEntries = Object.entries(spendByCurrency);
+  const year = new Date().getFullYear();
+  const paid = d?.paidThisYear.length ? d.paidThisYear.map(x => money(x.amount, x.currency)).join(' + ') : null;
 
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="Billing" subtitle="Your purchase history and receipts" />
+    <div className="flex min-h-full flex-col">
+      <Topbar title="Billing" subtitle="What you have access to, what you’ve paid, and your receipts" />
+      <div className="flex flex-wrap items-start gap-5 p-4 lg:px-7 lg:py-6">
+        <div className="flex min-w-0 flex-[999_1_540px] flex-col gap-4">
+          <section className="flex flex-col gap-2.5">
+            <h2 className="text-[16px] font-bold text-navy">Your access</h2>
+            {!d ? [1, 2].map(i => <div key={i} className="h-[92px] animate-pulse rounded-lg border border-line bg-white" />) : d.access.length ? d.access.map(a => {
+              // Ending within two weeks (or ended): offer to extend a paid package or course
+              const warn = a.kind !== 'free' && a.expiresAt != null && (a.ended || (a.daysLeft ?? 99) <= 14);
+              const extendHref = a.kind === 'package' ? a.href : `/courses/${a.id}`;
+              return (
+                <article key={a.kind + a.id} className={clsx('flex flex-wrap items-center gap-4 rounded-lg border bg-white px-[18px] py-4', warn ? 'border-azure' : 'border-line')}>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14.5px] font-bold text-navy">{a.title}</p>
+                    <p className="mt-0.5 text-[12.5px] text-muted">{a.detail}</p>
+                    <span className="mt-2 block h-1.5 rounded-[3px] bg-subtle"><span className="block h-1.5 rounded-[3px] bg-azure" style={{ width: `${a.ended ? 100 : a.pctUsed}%` }} /></span>
+                    <p className="mt-1 text-[12px] text-muted">{left(a)}</p>
+                  </div>
+                  <Link href={warn ? extendHref : a.href}
+                    className={clsx('inline-flex h-[34px] items-center rounded-md px-3.5 text-[13px] font-semibold', warn ? 'bg-azure-strong text-white' : 'border border-line text-navy hover:bg-subtle')}>
+                    {warn ? (a.ended ? 'Renew access' : 'Extend access') : a.kind === 'package' ? 'Open package' : 'Open course'}
+                  </Link>
+                </article>
+              );
+            }) : (
+              <div className="rounded-lg border border-line bg-white px-5 py-8 text-center text-[13.5px] text-ink2">
+                Nothing yet. <Link href="/student/catalogue" className="font-semibold text-azure-strong hover:underline">Browse courses</Link> or <Link href="/packages" className="font-semibold text-azure-strong hover:underline">see packages</Link>.
+              </div>
+            )}
+          </section>
 
-      <div className="flex-1 p-4 md:p-6 space-y-6 max-w-3xl w-full mx-auto">
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3">
-          <Card className="flex flex-col items-center py-4 px-2 text-center col-span-1">
-            <p className="text-2xl font-black text-navy">
-              {spendEntries.length === 0 ? '—' : spendEntries.map(([cur, amt]) => fmtAmount(amt, cur)).join(' / ')}
-            </p>
-            <p className="text-[10px] font-bold text-royal/50 mt-0.5">Total Spent</p>
-          </Card>
-          <Card className="flex flex-col items-center py-4 px-2 text-center">
-            <p className="text-2xl font-black text-navy">{purchases.length}</p>
-            <p className="text-[10px] font-bold text-royal/50 mt-0.5">Purchases</p>
-          </Card>
-          <Card className="flex flex-col items-center py-4 px-2 text-center">
-            <p className="text-2xl font-black text-navy">{active.length}</p>
-            <p className="text-[10px] font-bold text-royal/50 mt-0.5">Active</p>
-          </Card>
+          <section className="rounded-lg border border-line bg-white">
+            <div className="flex flex-wrap justify-between gap-2 border-b border-line px-[18px] py-3.5">
+              <h2 className="text-[16px] font-bold text-navy">Payments</h2>
+              {paid && <span className="text-[13px] text-muted">{paid} paid in {year}</span>}
+            </div>
+            {!d ? <div className="m-4 h-32 animate-pulse rounded-md bg-subtle" /> : d.payments.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[620px] border-collapse text-[13.5px]">
+                  <thead><tr>{['What', 'Date', 'Paid with', 'Amount', ''].map((c, i) => <th key={i} className="border-b border-line px-[18px] py-[9px] text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{c}</th>)}</tr></thead>
+                  <tbody>
+                    {d.payments.map(p => (
+                      <tr key={p.kind + p.id}>
+                        <td className="border-b border-line px-[18px] py-3"><strong className="text-navy">{p.title}</strong><br /><span className="text-[12.5px] text-muted">{p.amount ? p.invoiceNo ?? `CPA-${p.id.slice(0, 8).toUpperCase()}` : 'Free'}</span></td>
+                        <td className="border-b border-line px-[18px] py-3 text-ink2">{date(p.at)}</td>
+                        <td className="border-b border-line px-[18px] py-3 text-ink2">{p.amount ? p.method : '—'}</td>
+                        <td className="border-b border-line px-[18px] py-3 font-bold text-navy">{money(p.amount, p.currency)}</td>
+                        <td className="border-b border-line px-[18px] py-3 text-right">
+                          <button onClick={() => receipt(p)} disabled={busy === p.id} className="font-semibold text-azure-strong hover:underline disabled:opacity-50">{busy === p.id ? 'Preparing…' : 'Receipt (PDF)'}</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <p className="px-4 py-10 text-center text-[13px] text-ink2">No payments yet.</p>}
+          </section>
         </div>
 
-        {/* Purchase history */}
-        {purchases.length === 0 ? (
-          <Card>
-            <EmptyState
-              icon="card"
-              title="No purchases yet"
-              description="Your payment history will appear here after your first purchase."
-              action={{ label: 'Browse packages', href: '/packages' }}
-            />
-          </Card>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-azure px-1">Purchase history</p>
-            <Card padding="none" className="divide-y divide-cloud">
-              {purchases.map(p => {
-                const isActive  = p.status === 'ACTIVE';
-                const isPackage = p.type === 'package';
-                return (
-                  <div key={p.id} className="flex items-center gap-4 px-5 py-4">
-                    <IconBox className={isActive ? '' : 'opacity-40'}>
-                      <Icon name={isPackage ? 'packages' : 'courses'} size={18} />
-                    </IconBox>
-
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-navy truncate">{p.name}</p>
-                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                        <span className="text-xs text-royal/50">{fmtDate(p.purchasedAt)}</span>
-                        {p.gateway && (
-                          <Badge variant="muted" className="capitalize">{p.gateway}</Badge>
-                        )}
-                        {p.invoiceNo && (
-                          <span className="text-xs font-mono text-royal/40">{p.invoiceNo}</span>
-                        )}
-                      </div>
-                      {p.expiresAt && (
-                        <p className={`text-xs mt-0.5 ${!isActive ? 'text-red-400' : 'text-royal/50'}`}>
-                          {isActive ? `Expires ${fmtDate(p.expiresAt)}` : `Expired ${fmtDate(p.expiresAt)}`}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                      {p.amount != null && p.currency && (
-                        <p className="text-sm font-bold text-navy tabular-nums">
-                          {fmtAmount(p.amount, p.currency)}
-                        </p>
-                      )}
-                      <Badge variant={isActive ? 'active' : 'muted'}>
-                        {isActive ? 'Active' : 'Expired'}
-                      </Badge>
-                      <a
-                        href={`mailto:billing@careerpathafrica.com?subject=Receipt request — ${p.invoiceNo ?? p.id}`}
-                        className="text-[10px] text-azure hover:text-royal transition underline underline-offset-2"
-                      >
-                        Request receipt
-                      </a>
-                    </div>
-                  </div>
-                );
-              })}
-            </Card>
-          </div>
-        )}
-
-        {/* Upsell */}
-        <Card className="flex items-start gap-4 bg-navy border-0">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white/10">
-            <Icon name="packages" size={18} className="text-azure" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-white">Ready to unlock more?</p>
-            <p className="text-xs text-white/50 mt-0.5 leading-relaxed">
-              Browse packages for live classes, mentorship and full course libraries — or buy individual courses with lifetime access.
+        <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-3.5">
+          <section className="flex flex-col gap-1.5 rounded-lg border border-line bg-white p-4">
+            <h3 className="text-[15px] font-semibold text-navy">Refer a friend</h3>
+            <p className="text-[13px] text-ink2">
+              {ref && ref.totalReferrals > 0
+                ? `${ref.totalReferrals} friend${ref.totalReferrals === 1 ? '' : 's'} joined with your link${ref.enrolled ? `, ${ref.enrolled} now learning` : ''}. Share it with classmates preparing for the same exam.`
+                : 'Share your link with classmates preparing for the same exam and study together.'}
             </p>
-            <div className="flex gap-2 mt-3 flex-wrap">
-              <Link href="/packages"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-azure px-3.5 py-2 text-xs font-bold text-white hover:bg-royal transition">
-                <Icon name="packages" size={12} /> Browse packages
-              </Link>
-              <Link href="/courses"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 px-3.5 py-2 text-xs font-semibold text-white/70 hover:bg-white/10 transition">
-                <Icon name="courses" size={12} /> Individual courses
-              </Link>
-            </div>
-          </div>
-        </Card>
-
-        {/* Footer */}
-        <p className="text-xs text-royal/40 text-center leading-relaxed">
-          Receipts are emailed to you at time of purchase.{' '}
-          Contact{' '}
-          <a href="mailto:billing@careerpathafrica.com" className="text-azure hover:text-royal transition">
-            billing@careerpathafrica.com
-          </a>
-          {' '}for invoice queries.
-        </p>
-
+            <Link href="/student/referrals" className="text-[13px] font-semibold text-azure-strong hover:underline">Get your link</Link>
+          </section>
+          <section className="flex flex-col gap-1.5 rounded-lg border border-line bg-white p-4">
+            <h3 className="text-[15px] font-semibold text-navy">A problem with a payment?</h3>
+            <p className="text-[13px] text-ink2">Paid but can’t see your course, or charged twice? Send us the receipt number and we’ll sort it within a day.</p>
+            <Link href="/student/support" className="text-[13px] font-semibold text-azure-strong hover:underline">Contact billing support</Link>
+          </section>
+        </aside>
       </div>
     </div>
   );
