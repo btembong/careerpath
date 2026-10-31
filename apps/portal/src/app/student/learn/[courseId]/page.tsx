@@ -28,6 +28,8 @@ interface CourseDetail {
   description: string | null;
   source: 'NATIVE' | 'WORDPRESS';
   wpCourseUrl: string | null;
+  /** Content copied from Tutor: plays in the portal's player like a native course */
+  contentImportedAt?: string | null;
   programme: { name: string; shortName: string | null } | null;
   subject: { name: string } | null;
   level: { name: string } | null;
@@ -122,7 +124,7 @@ export default function StudentCourseLandingPage() {
 
         const courseData: CourseDetail | null = courseRes.data;
 
-        if (courseData?.source === 'WORDPRESS') {
+        if (courseData?.source === 'WORDPRESS' && !courseData.contentImportedAt) {
           await api.post(`/platform-courses/${courseId}/enroll`).catch(() => {});
           setCourse(courseData);
           setProgress({ courseId, totalLessons: 0, completedLessons: 0, percentComplete: 0, modules: [] });
@@ -157,6 +159,9 @@ export default function StudentCourseLandingPage() {
             if (msLeft > 0 && msLeft < sevenDays) setExpiringPackage(activePkg);
           }
         }
+
+        // Website courses are free to join; once imported they play here
+        if (courseData?.source === 'WORDPRESS') await api.post(`/platform-courses/${courseId}/enroll`).catch(() => {});
 
         // The server decides access (package, purchase, school seat or enrolment) — the same check that guards the lessons
         const pr = await api.get(`/platform-courses/${courseId}/progress`);
@@ -223,7 +228,7 @@ export default function StudentCourseLandingPage() {
   if (!course || !progress) return null;
 
   // ── Course hosted on the website ──
-  if (course.source === 'WORDPRESS') {
+  if (course.source === 'WORDPRESS' && !course.contentImportedAt) {
     return (
       <div className="flex flex-col" style={{ height: '100dvh' }}>
         <div className="flex flex-shrink-0 items-center gap-3 border-b border-line bg-white px-5 py-3">

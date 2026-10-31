@@ -11,7 +11,7 @@ import api from '@/lib/api';
 
 interface Lesson { id: string; title: string; type: 'VIDEO' | 'TEXT' | 'QUIZ' | 'LIVE'; durationSecs: number | null; isFree: boolean }
 interface Course {
-  id: string; title: string; description: string | null; shortDescription: string | null; source: string; status: string;
+  id: string; title: string; description: string | null; shortDescription: string | null; source: string; contentImportedAt?: string | null; status: string;
   priceAmount: number | null; priceCurrency: string | null; isSoldIndividually: boolean; accessMonths: number | null;
   language: string | null; outcomes: string[]; hasAccess?: boolean;
   programme: { name: string; shortName: string | null } | null;
@@ -72,7 +72,7 @@ export default function CourseDetailPage() {
   const forSale = c.isSoldIndividually && !!c.priceAmount && !!c.priceCurrency;
   const access = months(c.accessMonths);
   const bestPkg = [...pkgs].sort((a, b) => a.priceAmount - b.priceAmount)[0];
-  const website = c.source === 'WORDPRESS';
+  const website = c.source === 'WORDPRESS' && !c.contentImportedAt;
   const tags = [c.programme ? c.programme.shortName ?? c.programme.name : null, c.subject?.name, c.level?.name].filter(Boolean) as string[];
   const facts = [
     { l: 'Modules', v: String(c.modules.length) },

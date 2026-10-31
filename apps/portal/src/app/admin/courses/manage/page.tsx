@@ -75,6 +75,7 @@ export default function CourseManagementPage() {
         <div className="-mb-1 flex flex-wrap justify-end gap-2">
           <Link href="/admin/courses/taxonomy" className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Taxonomy</Link>
           <Link href="/admin/courses/wordpress" className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Pull from WordPress</Link>
+          <Link href="/admin/courses/import" className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Course content from Tutor</Link>
         </div>
         {stats && stats.untagged > 0 && (
           <section className="flex flex-wrap items-center gap-3.5 rounded-lg border border-azure bg-white px-[18px] py-4">

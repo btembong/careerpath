@@ -11,7 +11,7 @@ type Access =
   | { kind: 'single'; expiresAt: string | null; purchasedAt: string }
   | { kind: 'free' | 'website'; expiresAt: null };
 interface Row {
-  id: string; title: string; source: string; programme: string | null; teacher: string | null;
+  id: string; title: string; source: string; contentImportedAt?: string | null; programme: string | null; teacher: string | null;
   lessons: number; done: number; pct: number; state: State; lastOpened: string | null;
   next: { id: string; title: string; type: string; durationSecs: number | null; module: string } | null;
   access: Access; endsInDays: number | null;
@@ -147,7 +147,7 @@ export default function MyCoursesPage() {
             <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
               {shown.map(c => {
                 const warn = c.endsInDays != null && c.endsInDays <= 14 && c.state !== 'done';
-                const href = c.state !== 'done' && c.next && c.source !== 'WORDPRESS' ? `/student/learn/${c.id}/lesson/${c.next.id}` : `/student/learn/${c.id}`;
+                const href = c.state !== 'done' && c.next && (c.source !== 'WORDPRESS' || c.contentImportedAt) ? `/student/learn/${c.id}/lesson/${c.next.id}` : `/student/learn/${c.id}`;
                 const renew = warn ? (c.access.kind === 'package' ? `/packages/${c.access.packageId}` : c.access.kind === 'single' ? `/student/courses/${c.id}` : null) : null;
                 return (
                   <article key={c.id} className="flex flex-col gap-3 rounded-lg border border-line bg-white p-4">
