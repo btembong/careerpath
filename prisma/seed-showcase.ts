@@ -522,12 +522,220 @@ async function main() {
     log('Quiz: Number & Algebra quiz with 6 questions of every type; two written answers to mark');
   }
 
+  // ── Country rep: a demo rep for Ghana, sales and commission ────────────
+  const ghana = student.countryId ? await prisma.country.findUnique({ where: { id: student.countryId } }) : null;
+  const repUser = await prisma.userProfile.findUnique({ where: { email: 'rep@test.com' } });
+  if (ghana && repUser) {
+    await prisma.userProfile.update({
+      where: { id: repUser.id },
+      data: {
+        countryId: repUser.countryId ?? ghana.id,
+        firstName: repUser.firstName ?? 'Kwesi', lastName: repUser.lastName ?? 'Appiah', name: repUser.name ?? 'Kwesi Appiah',
+        phone: repUser.phone ?? '+233 20 555 0142',
+        bio: repUser.bio ?? 'I help schools and families in Ghana get started with CareerPath Africa. Call or WhatsApp me any weekday.',
+      },
+    });
+    if (ghana.repCommissionPercent == null || ghana.perStudentBonus == null) {
+      await prisma.country.update({ where: { id: ghana.id }, data: { repCommissionPercent: ghana.repCommissionPercent ?? 10, perStudentBonus: ghana.perStudentBonus ?? 2000 } });
+    }
+    const pct = ghana.repCommissionPercent ?? 10;
+    const wallet = await prisma.wallet.upsert({ where: { userId: repUser.id }, update: {}, create: { userId: repUser.id, balance: 0, currency: ghana.currency } });
+    const credit = async (amount: number, at: Date, link: { packagePurchaseId?: string; coursePurchaseId?: string }, description: string) => {
+      await prisma.walletTransaction.create({ data: { walletId: wallet.id, type: 'CREDIT', source: 'COUNTRY_BONUS', amount, currency: ghana.currency, createdAt: at, description, ...link } });
+      await prisma.wallet.update({ where: { id: wallet.id }, data: { balance: { increment: amount } } });
+    };
+
+    // Demo classmates live in Ghana and bought the package over the last two months
+    const buyers = await prisma.userProfile.findMany({ where: { email: { in: ['student1@test.com', 'student2@test.com', 'student3@test.com', 'student4@test.com', 'student5@test.com', 'student6@test.com'] } } });
+    await prisma.userProfile.updateMany({ where: { id: { in: buyers.map(b => b.id) }, countryId: null }, data: { countryId: ghana.id } });
+    const daysAgo = [2, 4, 9, 16, 24, 38];
+    for (const [i, b] of buyers.entries()) {
+      if (await prisma.packagePurchase.findFirst({ where: { studentId: b.id, packageId: pkg.id } })) continue;
+      const at = new Date(Date.now() - daysAgo[i] * DAY);
+      // One older buyer's access runs out this week, so there's a renewal to chase
+      const expiresAt = i === 5 ? new Date(Date.now() + 5 * DAY) : new Date(+at + 365 * DAY);
+      const purchase = await prisma.packagePurchase.create({ data: { studentId: b.id, packageId: pkg.id, purchasedAt: at, expiresAt, amountPaid: pkg.priceAmount, currency: pkg.currency, gateway: i % 2 ? 'paystack' : 'tranzak' } });
+      await credit(Math.floor(pkg.priceAmount * pct / 100), at, { packagePurchaseId: purchase.id }, 'Commission from package purchase');
+    }
+    // Two single-course sales
+    const soloCourse = await prisma.platformCourse.findFirst({ where: { id: { in: pkg.courseIds }, isSoldIndividually: true, teacherId: teacher.id } });
+    if (soloCourse?.priceAmount) {
+      for (const [i, email] of ['student5@test.com', 'student6@test.com'].entries()) {
+        const b = buyers.find(x => x.email === email);
+        if (!b || await prisma.coursePurchase.findUnique({ where: { studentId_courseId: { studentId: b.id, courseId: soloCourse.id } } })) continue;
+        const at = new Date(Date.now() - (i ? 11 : 1) * DAY);
+        const purchase = await prisma.coursePurchase.create({ data: { studentId: b.id, courseId: soloCourse.id, amountPaid: soloCourse.priceAmount, currency: soloCourse.priceCurrency ?? ghana.currency, purchasedAt: at, expiresAt: new Date(+at + 365 * DAY), gateway: 'paystack' } });
+        await credit(Math.floor(soloCourse.priceAmount * pct / 100), at, { coursePurchaseId: purchase.id }, 'Commission from course sale');
+      }
+    }
+    // Last month's per-student bonus
+    if (!(await prisma.walletTransaction.count({ where: { walletId: wallet.id, source: 'COUNTRY_BONUS', packagePurchaseId: null, coursePurchaseId: null } }))) {
+      const first = new Date(new Date().getFullYear(), new Date().getMonth(), 1, 2);
+      await credit((ghana.perStudentBonus ?? 2000) * 4, first, {}, `Per-student bonus: 4 active student(s) × ${ghana.perStudentBonus ?? 2000} ${ghana.currency}`);
+    }
+
+    // Teachers in Ghana: the demo teachers, and one application waiting
+    await prisma.userProfile.updateMany({ where: { email: { in: [TEACHER, 'teacher.demo@cpa.test'] }, countryId: null }, data: { countryId: ghana.id } });
+    const applicant = await prisma.userProfile.upsert({
+      where: { email: 'teacher.applicant@test.com' }, update: {},
+      create: { email: 'teacher.applicant@test.com', wpUserId: 99_920, role: 'TEACHER', approvalStatus: 'PENDING', countryId: ghana.id, firstName: 'Esi', lastName: 'Quaye', name: 'Esi Quaye' },
+    });
+    await prisma.teacherApplication.upsert({
+      where: { userId: applicant.id }, update: {},
+      create: { userId: applicant.id, subjectAreas: ['English Language'], yearsExperience: 6, bio: 'English teacher in Takoradi preparing students for WASSCE English for six years.', teachingProgrammeIds: [], teachingSubjectIds: [], submittedAt: new Date(Date.now() - 3 * DAY) },
+    });
+    log('Country rep: rep@test.com covers Ghana; 6 package and 2 course sales with commission; a teacher application');
+  }
+
+  // ── Subject reviewer: name, subjects and commission ────────────────────
+  if (!reviewer.firstName) {
+    const subjects = await prisma.subject.findMany({ where: { name: { in: ['Mathematics', 'Chemistry', 'Physics'] } }, select: { id: true } });
+    await prisma.userProfile.update({
+      where: { id: reviewer.id },
+      data: {
+        firstName: 'Sena', lastName: 'Rahman', name: 'Sena Rahman', phone: '+233 24 000 1182', countryId: reviewer.countryId ?? student.countryId,
+        bio: 'Accurate content that matches the syllabus, clear explanations, quizzes that test the lesson, and good audio.',
+        teachingSubjects: { connect: subjects.map(s => ({ id: s.id })) },
+      },
+    });
+  }
+  await prisma.courseAssignment.updateMany({ where: { reviewerId: reviewer.id, reviewerCommissionPct: null }, data: { reviewerCommissionPct: 10 } });
+  log('Reviewer: Sena Rahman, subjects and a 10% share');
+
+  // ── Flashcards: decks with some cards known and some due ───────────────
+  if (teachCourse && !(await prisma.flashcardDeck.count({ where: { courseId: teachCourse.id } }))) {
+    const algebra = await prisma.platformCourse.findFirst({ where: { title: { startsWith: 'Algebra Foundations' } }, select: { id: true } });
+    const decks: [string | undefined, string, [string, string][], number][] = [
+      [algebra?.id ?? teachCourse.id, 'Indices and surds', [
+        ['What is a surd?', 'A root that can’t be simplified to a whole number, like √2 or √5.'], ['aᵐ × aⁿ = ?', 'aᵐ⁺ⁿ — add the powers.'], ['aᵐ ÷ aⁿ = ?', 'aᵐ⁻ⁿ — subtract the powers.'],
+        ['(aᵐ)ⁿ = ?', 'aᵐⁿ — multiply the powers.'], ['a⁰ = ?', '1, for any a that isn’t 0.'], ['a⁻ⁿ = ?', '1 / aⁿ'], ['a^(1/2) = ?', '√a'], ['Simplify √50', '5√2'],
+        ['Simplify √12 × √3', '6'], ['Rationalise 1/√2', '√2 / 2'], ['Simplify 2√3 + 5√3', '7√3'], ['Write 8^(2/3) as a whole number', '4'],
+      ], 9],
+      [teachCourse.id, 'Quadratic equations', [
+        ['Standard form of a quadratic', 'ax² + bx + c = 0'], ['The quadratic formula', 'x = (−b ± √(b² − 4ac)) / 2a'], ['What is the discriminant?', 'b² − 4ac'],
+        ['Discriminant > 0 means…', 'two different real roots'], ['Discriminant = 0 means…', 'one repeated root'], ['Discriminant < 0 means…', 'no real roots'],
+        ['Factorise x² + 5x + 6', '(x + 2)(x + 3)'], ['Factorise x² − 9', '(x − 3)(x + 3)'], ['Sum of the roots', '−b / a'], ['Product of the roots', 'c / a'],
+        ['Complete the square: x² + 6x', '(x + 3)² − 9'], ['Vertex of y = (x − 2)² + 1', '(2, 1)'], ['Solve x² = 16', 'x = ±4'], ['Solve (x − 1)(x + 4) = 0', 'x = 1 or x = −4'], ['When should you use the formula?', 'When no whole-number pair factorises it quickly.'],
+      ], 6],
+      [teachCourse.id, 'Statistics words', [
+        ['Mean', 'Add the values and divide by how many there are.'], ['Median', 'The middle value when the data is in order.'], ['Mode', 'The value that appears most often.'],
+        ['Range', 'Largest value minus smallest.'], ['Frequency', 'How many times a value occurs.'], ['Cumulative frequency', 'Running total of the frequencies.'],
+        ['Interquartile range', 'Upper quartile minus lower quartile.'], ['Histogram', 'Bars whose area shows frequency.'], ['Outlier', 'A value far from the rest.'], ['Probability of an impossible event', '0'],
+      ], 9],
+    ];
+    for (const [courseId, title, cards, known] of decks) {
+      if (!courseId) continue;
+      const deck = await prisma.flashcardDeck.create({ data: { courseId, title, cards: { create: cards.map(([front, back], i) => ({ front, back, order: i })) } }, include: { cards: { orderBy: { order: 'asc' } } } });
+      // Reviewed over the last four days: the first `known` cards easy (due later), a few hard ones due now
+      await prisma.flashcardReview.createMany({
+        data: deck.cards.slice(0, Math.min(cards.length, known + 2)).map((c, i) => {
+          const reviewedAt = new Date(Date.now() - ((i % 4) + 1) * DAY);
+          const easy = i < known;
+          return { deckId: deck.id, studentId: student.id, cardId: c.id, difficulty: easy ? 1 : 2, reviewedAt, nextReviewAt: new Date(+reviewedAt + (easy ? 6 : 1) * DAY) };
+        }),
+      });
+    }
+    // A deck not started yet
+    const english = await prisma.platformCourse.findFirst({ where: { title: { contains: 'English' }, status: 'PUBLISHED' }, select: { id: true } });
+    if (english) {
+      const words: [string, string][] = [['However', 'Shows contrast'], ['Therefore', 'Shows a result'], ['Furthermore', 'Adds a point'], ['For instance', 'Introduces an example'], ['In conclusion', 'Sums up']];
+      await prisma.flashcardDeck.create({ data: { courseId: english.id, title: 'Essay connectors', cards: { create: words.map(([front, back], i) => ({ front, back, order: i })) } } });
+    }
+    log('Flashcards: four decks, three part-learned with cards due, a four-day review streak');
+  }
+
+  // ── Quiz history for the demo student ──────────────────────────────────
+  if (teachCourse && !(await prisma.quizAttempt.count({ where: { studentId: student.id } }))) {
+    const quizLessons = teachCourse.modules.flatMap(m => m.lessons).filter(l => l.type === 'QUIZ');
+    const attempt = async (lessonId: string, targetPct: number, daysBack: number, opts: { written?: boolean; secs?: number } = {}) => {
+      const qs = await prisma.questionBank.findMany({ where: { lessonId }, orderBy: { sortOrder: 'asc' } });
+      if (!qs.length) return;
+      const auto = qs.filter(q => q.type !== 'WRITTEN');
+      const total = qs.reduce((n, q) => n + q.points, 0);
+      const answers: Record<string, string> = {};
+      let score = 0;
+      const autoTarget = Math.round((total * targetPct) / 100);
+      for (const q of auto) {
+        const right = score + q.points <= autoTarget;
+        if (right) score += q.points;
+        answers[q.id] = q.type === 'SHORT_ANSWER' ? (right ? q.correctAnswer.split('|')[0] : 'not sure') : right ? q.correctAnswer : (q.correctAnswer === 'a' ? 'b' : 'a');
+      }
+      const hasWritten = qs.some(q => q.type === 'WRITTEN');
+      for (const q of qs.filter(q => q.type === 'WRITTEN')) answers[q.id] = /percent/i.test(q.questionText) ? '72 ÷ 120 × 100 = 60%' : 'A negative power means one over the positive power, so 2⁻¹ = 1/2.';
+      const marking = hasWritten && !!opts.written;
+      // Land on the target score: written marks make up the difference (capped by what the written questions are worth)
+      const writtenMax = qs.filter(q => q.type === 'WRITTEN').reduce((n, q) => n + q.points, 0);
+      const target = Math.round((total * targetPct) / 100);
+      if (score > target) score = target;
+      const manual = hasWritten && !marking ? Math.max(0, Math.min(writtenMax, target - score)) : 0;
+      const final = score + manual;
+      await prisma.quizAttempt.create({ data: {
+        studentId: student.id, courseId: teachCourse.id, lessonId, answersJson: answers, autoScore: score, manualScore: manual, finalScore: final, maxScore: total,
+        passed: !marking && final / total * 100 >= 60, isFullyGraded: !marking, submittedAt: new Date(Date.now() - daysBack * DAY - 3_600_000), timeTakenSecs: opts.secs ?? 720,
+        feedback: !marking && hasWritten ? 'Good method on the written question — show the units in your final line.' : null, gradedAt: !marking && hasWritten ? new Date(Date.now() - (daysBack - 1) * DAY) : null,
+      } });
+    };
+    const [q1, q2, q3] = quizLessons;
+    if (q3) await attempt(q3.id, 54, 9, { secs: 840 });
+    if (q3) await attempt(q3.id, 78, 6, { secs: 700 });
+    if (q1) await attempt(q1.id, 82, 1, { secs: 720 });
+    if (q2) await attempt(q2.id, 70, 3, { written: true, secs: 900 });
+    if (q1) await attempt(q1.id, 58, 20, { secs: 960 });
+    log('Quiz history: five attempts — passed, not yet, and one being marked');
+  }
+
+  // ── Messages: the teacher's inbox, and support ─────────────────────────
+  const ensureThread = async (a: string, b: string, msgs: [string, string, number][]) => {
+    const [x, y] = [a, b].sort();
+    if (await prisma.messageThread.findUnique({ where: { participantAId_participantBId: { participantAId: x, participantBId: y } } })) return;
+    const last = Math.min(...msgs.map(m => m[2]));
+    const t = await prisma.messageThread.create({ data: { participantAId: x, participantBId: y, lastMessageAt: new Date(Date.now() - last * 60_000) } });
+    await prisma.message.createMany({
+      data: msgs.map(([from, body, minsAgo], i) => ({ threadId: t.id, senderId: from, body, createdAt: new Date(Date.now() - minsAgo * 60_000), readAt: i < msgs.length - 1 ? new Date() : null })),
+    });
+  };
+  const [abena, kwame, efua] = classmates;
+  if (abena) await ensureThread(abena.id, teacher.id, [
+    [abena.id, 'Good evening sir. Is question 7 on the worksheet a typo? It says 3x.', 14 * 60], [teacher.id, 'Yes — it should be 3x². Well spotted, I’ve fixed it.', 13 * 60 + 40], [abena.id, 'Thank you! Can I hand in on Thursday instead?', 35],
+  ]);
+  if (kwame) await ensureThread(kwame.id, teacher.id, [[teacher.id, 'Kwame, the recording from Monday is up — watch it before Wednesday.', 26 * 60], [kwame.id, 'Thank you, I’ll watch it tonight', 25 * 60]]);
+  if (efua) await ensureThread(efua.id, teacher.id, [[efua.id, 'Sorry my statistics work is late, I was ill on Monday.', 3 * 60]]);
+  const support = await prisma.userProfile.findFirst({ where: { role: 'ADMIN', approvalStatus: 'APPROVED' }, orderBy: { createdAt: 'asc' } });
+  if (support) await ensureThread(student.id, support.id, [[student.id, 'Hello, I paid with mobile money but the package didn’t show at first.', 5 * 24 * 60], [support.id, 'Sorry about that — your payment was received and the package is now on your account.', 5 * 24 * 60 - 90]]);
+  log('Messages: three student threads for the teacher, support for the student');
+
+  // ── Cohort group chat ──────────────────────────────────────────────────
+  if (pkg.cohortId) {
+    const group = await prisma.messageThread.upsert({ where: { cohortId: pkg.cohortId }, update: {}, create: { cohortId: pkg.cohortId } });
+    if (!(await prisma.message.count({ where: { threadId: group.id } }))) {
+      const posts: [string | undefined, string, number][] = [
+        [teacher.id, 'Welcome to the WASSCE Maths group 👋 Ask questions here any time — someone usually answers within the hour.', 6 * 24 * 60],
+        [classmates[0]?.id, 'Has anyone finished question 5 on the quadratics worksheet? I keep getting a negative under the root.', 26 * 60],
+        [classmates[1]?.id, 'Check the sign of c — it should be −1, so b² − 4ac = 16 + 4 = 20.', 25 * 60 + 30],
+        [classmates[0]?.id, 'Ahh I see it now, thank you!', 25 * 60],
+        [teacher.id, 'Reminder: live class on Wednesday at 17:00 — we’ll do three past questions on quadratics. Bring your worksheet.', 3 * 60],
+        [student.id, 'Will the recording be up after? I have church that evening.', 2 * 60],
+        [teacher.id, 'Yes, it goes on the cohort page within an hour.', 100],
+      ];
+      for (const [from, body, minsAgo] of posts) {
+        if (!from) continue;
+        await prisma.message.create({ data: { threadId: group.id, senderId: from, body, createdAt: new Date(Date.now() - minsAgo * 60_000) } });
+      }
+      await prisma.messageThread.update({ where: { id: group.id }, data: { lastMessageAt: new Date(Date.now() - 100 * 60_000) } });
+      // The teacher has read it all; the demo student hasn't seen the last answer
+      await prisma.threadRead.upsert({ where: { threadId_userId: { threadId: group.id, userId: teacher.id } }, update: {}, create: { threadId: group.id, userId: teacher.id } });
+      await prisma.threadRead.upsert({ where: { threadId_userId: { threadId: group.id, userId: student.id } }, update: {}, create: { threadId: group.id, userId: student.id, lastReadAt: new Date(Date.now() - 110 * 60_000) } });
+    }
+    log('Messages: a cohort group chat with the teacher and classmates');
+  }
+
   // ── Messages and notifications ─────────────────────────────────────────
   const thread = await prisma.messageThread.findFirst({
     where: { OR: [{ participantAId: student.id, participantBId: teacher.id }, { participantAId: teacher.id, participantBId: student.id }] },
   });
   if (!thread) {
-    const t = await prisma.messageThread.create({ data: { participantAId: student.id, participantBId: teacher.id, lastMessageAt: new Date(Date.now() - 2 * 3_600_000) } });
+    const [pa, pb] = [student.id, teacher.id].sort(); // the API stores the smaller id first
+    const t = await prisma.messageThread.create({ data: { participantAId: pa, participantBId: pb, lastMessageAt: new Date(Date.now() - 2 * 3_600_000) } });
     await prisma.message.createMany({
       data: [
         { threadId: t.id, senderId: student.id, body: 'Good evening sir, I missed Monday’s class. Is the recording up?', createdAt: new Date(Date.now() - 26 * 3_600_000), readAt: new Date() },
