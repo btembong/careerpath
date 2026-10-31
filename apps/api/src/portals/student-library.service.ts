@@ -41,7 +41,7 @@ export class StudentLibraryService {
       this.prisma.platformCourse.findMany({
         where: { id: { in: ids }, status: 'PUBLISHED' },
         select: {
-          id: true, title: true, coverUrl: true, source: true, wpCourseUrl: true,
+          id: true, title: true, coverUrl: true, source: true, wpCourseUrl: true, contentImportedAt: true,
           programme: { select: { name: true, shortName: true } },
           teacher: { select: { name: true, firstName: true, lastName: true } },
           modules: { orderBy: { sortOrder: 'asc' }, select: { title: true, sortOrder: true, lessons: { orderBy: { sortOrder: 'asc' }, select: { id: true, title: true, type: true, durationSecs: true } } } },
@@ -65,7 +65,7 @@ export class StudentLibraryService {
       const complete = (lessons.length > 0 && done === lessons.length) || !!cert;
       const a = access.get(c.id)!;
       return {
-        id: c.id, title: c.title, coverUrl: c.coverUrl, source: c.source, wpCourseUrl: c.wpCourseUrl,
+        id: c.id, title: c.title, coverUrl: c.coverUrl, source: c.source, wpCourseUrl: c.wpCourseUrl, contentImportedAt: c.contentImportedAt,
         programme: c.programme ? c.programme.shortName ?? c.programme.name : null,
         teacher: c.teacher.name || [c.teacher.firstName, c.teacher.lastName].filter(Boolean).join(' ') || null,
         lessons: lessons.length, done, pct: lessons.length ? Math.round((done / lessons.length) * 100) : 0,

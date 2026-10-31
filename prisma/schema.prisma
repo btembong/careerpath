@@ -485,6 +485,8 @@ model QuestionBank {
   tags           String[]            @default([])
   /// Practice questions on video lessons: where in the video this is explained (seconds)
   videoAtSec     Int?
+  /// Tutor question this was imported from; a re-import updates it in place
+  wpQuestionId   Int?
   attemptAnswers QuizAttemptAnswer[]
 }
 
@@ -772,6 +774,8 @@ model PlatformCourse {
   wpCategoryIds         Int[]              @default([])
   wpAuthorEmail         String?
   wpPulledAt            DateTime?
+  /// Topics, lessons and quizzes were copied from Tutor LMS, so the course plays in the portal's player
+  contentImportedAt     DateTime?
   certificates          Certificate[]
   enrollments           CourseEnrollment[]
   modules               CourseModule[]
@@ -788,6 +792,8 @@ model CourseModule {
   courseId  String
   title     String
   sortOrder Int
+  /// Tutor topic this module was imported from; a re-import updates it in place
+  wpTopicId Int?
   course    PlatformCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
   lessons   Lesson[]
 }
@@ -812,6 +818,8 @@ model Lesson {
   chapters         Json?
   /// Plain-text transcript; lines may start with [mm:ss] to make them clickable timestamps
   transcript       String?
+  /// Tutor lesson or quiz this was imported from; a re-import updates it in place
+  wpItemId         Int?
   module           CourseModule       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   attachments      LessonAttachment[]
   practiceAttempts PracticeAttempt[]
@@ -1297,6 +1305,27 @@ model WpCategoryMap {
 }
 
 /// One check or import of WordPress courses
+/// One run of copying a course's content from Tutor LMS, queued and processed in the background
+model TutorImport {
+  id         String    @id @default(uuid())
+  courseId   String
+  wpCourseId Int
+  /// QUEUED, RUNNING, DONE, FAILED or CANCELLED
+  status     String    @default("QUEUED")
+  /// What it's doing now, e.g. "Reading quizzes (2 of 3)"
+  step       String?
+  byId       String?
+  /// Counts, the course outline and things for an admin to check
+  summary    Json?
+  error      String?
+  createdAt  DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  @@index([courseId, createdAt])
+  @@index([status])
+}
+
 model WpPull {
   id        String       @id @default(uuid())
   createdAt DateTime     @default(now())

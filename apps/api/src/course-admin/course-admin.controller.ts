@@ -9,6 +9,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CourseManageService, BulkInput, ListQuery } from './course-manage.service';
 import { WpPullService, ApplyInput, PullSettings } from './wp-pull.service';
 import { TaxonomyService } from './taxonomy.service';
+import { TutorImportService } from './tutor-import.service';
 
 @ApiTags('admin course management')
 @ApiBearerAuth()
@@ -16,7 +17,25 @@ import { TaxonomyService } from './taxonomy.service';
 @Roles(UserRole.ADMIN)
 @Controller('admin')
 export class CourseAdminController {
-  constructor(private courses: CourseManageService, private pull: WpPullService, private taxonomy: TaxonomyService) {}
+  constructor(private courses: CourseManageService, private pull: WpPullService, private taxonomy: TaxonomyService, private tutor: TutorImportService) {}
+
+  // ── Course content from Tutor LMS ─────────────────────────
+
+  @Get('tutor-import')
+  @ApiOperation({ summary: 'WordPress courses and whether their content has been copied from Tutor, with the import queue' })
+  tutorList() { return this.tutor.list(); }
+
+  @Post('tutor-import/queue')
+  @ApiOperation({ summary: 'Queue courses to have their topics, lessons and quizzes copied from Tutor (runs in the background)' })
+  tutorQueue(@CurrentUser() user: UserProfile, @Body('courseIds') ids: string[]) { return this.tutor.queue(user?.id ?? null, Array.isArray(ids) ? ids : []); }
+
+  @Post('tutor-import/cancel')
+  @ApiOperation({ summary: 'Stop the queue after the course being imported now' })
+  tutorCancel() { return this.tutor.cancel(); }
+
+  @Get('tutor-import/:courseId')
+  @ApiOperation({ summary: 'What the last import of a course copied, and what to check' })
+  tutorResult(@Param('courseId') id: string) { return this.tutor.result(id); }
 
   // ── Course management ────────────────────────────────────
 
