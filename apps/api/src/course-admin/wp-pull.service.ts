@@ -83,12 +83,12 @@ export class WpPullService {
 
     for (const t of terms) {
       const existing = byId.get(t.id);
-      const base = { name: t.name, parentId: t.parent || null, courseCount: t.count };
+      const base = { name: decodeEntities(t.name), parentId: t.parent || null, courseCount: t.count };
       if (existing?.setBy === 'ADMIN') {
         await this.prisma.wpCategoryMap.update({ where: { wpTermId: t.id }, data: base });
         continue;
       }
-      const n = norm(t.name);
+      const n = norm(base.name);
       const auto = { programmeId: progBy.get(n) ?? null, subjectId: progBy.has(n) ? null : subjBy.get(n) ?? null, levelId: levelBy.get(n) ?? null };
       if (existing) await this.prisma.wpCategoryMap.update({ where: { wpTermId: t.id }, data: { ...base, ...auto } });
       else await this.prisma.wpCategoryMap.create({ data: { wpTermId: t.id, ...base, ...auto } });

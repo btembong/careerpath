@@ -34,7 +34,7 @@ export default function TaxonomyPage() {
         actions={<div className="flex flex-wrap gap-2">
           <div role="tablist" className="flex gap-1 rounded-lg border border-line bg-white p-1 text-[13px]">
             {([['programmes', 'Programmes'], ['subjects', 'Subjects'], ['systems', 'Education systems']] as const).map(([k, l]) => (
-              <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={clsx('rounded-md px-3 py-1.5 text-navy', tab === k ? 'bg-accent-soft font-semibold' : 'font-medium hover:bg-subtle')}>{l}</button>
+              <button key={k} role="tab" aria-selected={tab === k} onClick={() => { setSelected(null); setCreating(false); setTab(k); }} className={clsx('rounded-md px-3 py-1.5 text-navy', tab === k ? 'bg-accent-soft font-semibold' : 'font-medium hover:bg-subtle')}>{l}</button>
             ))}
           </div>
           <Button size="sm" onClick={() => { setSelected(null); setCreating(true); }}>{add}</Button>

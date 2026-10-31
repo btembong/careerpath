@@ -70,12 +70,12 @@ export default function CourseManagementPage() {
   return (
     <div className="flex min-h-full flex-col">
       <Topbar title="Course management" subtitle="Every course, where it sits in the catalogue, and who teaches it"
-        actions={<div className="flex flex-wrap gap-2">
+        actions={<Button size="sm" onClick={() => setCreating(true)} disabled={!opts}>New course</Button>} />
+      <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-[22px]">
+        <div className="-mb-1 flex flex-wrap justify-end gap-2">
           <Link href="/admin/courses/taxonomy" className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Taxonomy</Link>
           <Link href="/admin/courses/wordpress" className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Pull from WordPress</Link>
-          <Button size="sm" onClick={() => setCreating(true)} disabled={!opts}>New course</Button>
-        </div>} />
-      <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-[22px]">
+        </div>
         {stats && stats.untagged > 0 && (
           <section className="flex flex-wrap items-center gap-3.5 rounded-lg border border-azure bg-white px-[18px] py-4">
             <div className="min-w-0 flex-1">
