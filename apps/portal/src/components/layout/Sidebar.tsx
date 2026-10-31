@@ -70,7 +70,7 @@ const STUDENT: Item[] = [
   { label: 'Billing', icon: 'wallet', children: [
     { label: 'Billing',      href: '/student/billing', also: ['/student/wallet'] },
     { label: 'Packages',     href: '/packages' },
-    { label: 'Refer & Earn', href: '/student/referrals' },
+    { label: 'Refer a friend', href: '/student/referrals' },
   ]},
 ];
 

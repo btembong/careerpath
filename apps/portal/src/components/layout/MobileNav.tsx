@@ -38,7 +38,7 @@ const STUDENT_MORE: NavGroup[] = [
   { title: 'Account', items: [
     { label: 'Certificates', href: '/student/certificates', icon: 'certificates' },
     { label: 'Billing',      href: '/student/billing',      icon: 'card'         },
-    { label: 'Refer & Earn', href: '/student/referrals',    icon: 'heart'        },
+    { label: 'Refer a friend', href: '/student/referrals',  icon: 'heart'        },
     { label: 'Support',      href: '/student/support',      icon: 'shield'       },
   ]},
 ];

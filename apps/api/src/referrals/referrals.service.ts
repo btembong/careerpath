@@ -49,7 +49,8 @@ export class ReferralsService {
       this.ensureCode(userId),
       this.prisma.userProfile.findMany({
         where: { referredById: userId },
-        select: { _count: { select: { purchases: true, coursePurchases: true } } },
+        select: { name: true, firstName: true, lastName: true, createdAt: true, _count: { select: { purchases: true, coursePurchases: true, courseEnrollments: true } } },
+        orderBy: { createdAt: 'desc' },
       }),
       this.prisma.userProfile.findUnique({
         where: { id: userId },
@@ -61,6 +62,11 @@ export class ReferralsService {
       totalReferrals: referred.length,
       enrolled: referred.filter(r => r._count.purchases + r._count.coursePurchases > 0).length,
       creditsEarned: 0,
+      // First name and initial only: friends see each other on the portal, not each other's details
+      friends: referred.map(r => {
+        const parts = (r.name || [r.firstName, r.lastName].filter(Boolean).join(' ') || 'A friend').trim().split(/s+/);
+        return { name: parts.length > 1 ? `${parts[0]} ${parts[1][0]}.` : parts[0], joinedAt: r.createdAt, learning: r._count.purchases + r._count.coursePurchases + r._count.courseEnrollments > 0 };
+      }),
       currency: profile?.wallet?.currency ?? profile?.country?.currency ?? 'XAF',
     };
   }

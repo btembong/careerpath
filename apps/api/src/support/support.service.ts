@@ -3,10 +3,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UserProfile } from '@prisma/client';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class SupportService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private notifications: NotificationsService) {}
 
   // ── Student ────────────────────────────────────────────────
 
@@ -35,7 +36,14 @@ export class SupportService {
       where: status ? { status } : undefined,
       orderBy: { createdAt: 'desc' },
       include: {
-        student: { select: { id: true, email: true, name: true } },
+        // What support needs to answer without looking elsewhere: who, where, and what they paid for
+        student: {
+          select: {
+            id: true, email: true, name: true, firstName: true, lastName: true, phone: true, country: { select: { name: true } },
+            purchases: { select: { id: true, purchasedAt: true, expiresAt: true, amountPaid: true, currency: true, invoiceNo: true, package: { select: { name: true } } }, orderBy: { purchasedAt: 'desc' }, take: 5 },
+            coursePurchases: { select: { id: true, purchasedAt: true, expiresAt: true, amountPaid: true, currency: true, invoiceNo: true, course: { select: { title: true } } }, orderBy: { purchasedAt: 'desc' }, take: 5 },
+          },
+        },
       },
     });
   }
@@ -43,9 +51,15 @@ export class SupportService {
   async updateTicket(id: string, dto: UpdateTicketDto) {
     const ticket = await this.prisma.supportTicket.findUnique({ where: { id } });
     if (!ticket) throw new NotFoundException('Ticket not found');
-    return this.prisma.supportTicket.update({
+    const reply = dto.adminNote?.trim() || null;
+    const updated = await this.prisma.supportTicket.update({
       where: { id },
-      data: { status: dto.status, adminNote: dto.adminNote },
+      data: { status: dto.status, ...(dto.adminNote !== undefined ? { adminNote: reply } : {}) },
     });
+    // Tell the student when there's a new answer
+    if (reply && reply !== ticket.adminNote) {
+      this.notifications.notify(ticket.studentId, { type: 'system', title: 'Support replied', body: `${ticket.subject}: ${reply.slice(0, 140)}`, href: '/student/support' });
+    }
+    return updated;
   }
 }
