@@ -21,6 +21,7 @@ export class SearchService {
     const rows = await this.prisma.platformCourse.findMany({
       where: {
         status: 'PUBLISHED',
+        catalogueHidden: false,
         OR: [
           { title: { contains: term, mode: 'insensitive' } },
           { shortDescription: { contains: term, mode: 'insensitive' } },

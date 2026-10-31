@@ -213,6 +213,53 @@ export class WordPressService {
     return res.data;
   }
 
+  // ── Course pull (admin) ──────────────────────────────────
+
+  /** Every course in every status (all pages), with its categories, author and last change — for the pull preview */
+  async getCoursesForPull(): Promise<WpPullCourse[]> {
+    const out: WpPullCourse[] = [];
+    for (let page = 1; page <= 50; page++) {
+      const res = await this.client.get<any[]>('/wp/v2/courses', {
+        params: { per_page: 100, page, status: 'publish,draft,private,pending,future', context: 'edit', _fields: 'id,title,content,status,modified_gmt,author,link,course-category' },
+        timeout: 30_000,
+      });
+      for (const c of res.data) {
+        out.push({
+          id: c.id, status: c.status, link: c.link, author: c.author,
+          // Rendered text: what WordPress shows visitors (and what earlier syncs stored)
+          title: (c.title?.rendered ?? c.title?.raw ?? '') as string,
+          content: (c.content?.rendered ?? c.content?.raw ?? '') as string,
+          modifiedGmt: c.modified_gmt ?? null,
+          categoryIds: Array.isArray(c['course-category']) ? c['course-category'] : [],
+        });
+      }
+      if (page >= Number(res.headers['x-wp-totalpages'] ?? 1)) break;
+    }
+    return out;
+  }
+
+  /** Every course category, with its parent, so a path like "Cameroon › GCE O Level › Biology" can be built */
+  async getCourseCategories(): Promise<{ id: number; name: string; parent: number; count: number }[]> {
+    const out: { id: number; name: string; parent: number; count: number }[] = [];
+    for (let page = 1; page <= 20; page++) {
+      const res = await this.client.get<any[]>('/wp/v2/course-category', { params: { per_page: 100, page, _fields: 'id,name,parent,count' }, timeout: 30_000 });
+      out.push(...res.data.map(t => ({ id: t.id, name: t.name, parent: t.parent ?? 0, count: t.count ?? 0 })));
+      if (page >= Number(res.headers['x-wp-totalpages'] ?? 1)) break;
+    }
+    return out;
+  }
+
+  /** Emails of WordPress users (course authors), to match them to portal teachers */
+  async getUserEmails(ids: number[]): Promise<Map<number, string>> {
+    const map = new Map<number, string>();
+    for (let i = 0; i < ids.length; i += 50) {
+      const chunk = ids.slice(i, i + 50);
+      const res = await this.client.get<any[]>('/wp/v2/users', { params: { include: chunk.join(','), per_page: 50, context: 'edit', _fields: 'id,email' }, timeout: 30_000 });
+      for (const u of res.data) if (u.email) map.set(u.id, String(u.email).toLowerCase());
+    }
+    return map;
+  }
+
   /**
    * Fetch a single WP course by ID — cached for 5 minutes.
    */
@@ -365,4 +412,16 @@ export interface CreateWpUserDto {
   firstName: string;
   lastName: string;
   wpRole: 'subscriber' | 'author'; // subscriber = student, author = teacher (pre-approval)
+}
+
+/** A WordPress course as read for the admin pull (raw text, every status) */
+export interface WpPullCourse {
+  id: number;
+  status: string;
+  title: string;
+  content: string;
+  link: string;
+  author: number;
+  modifiedGmt: string | null;
+  categoryIds: number[];
 }

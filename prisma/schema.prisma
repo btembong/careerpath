@@ -49,6 +49,7 @@ model UserProfile {
   courseEnrollments    CourseEnrollment[]
   studyBlocks          StudyBlock[]             @relation("StudentStudyBlocks")
   threadReads          ThreadRead[]
+  wpPulls              WpPull[]
   coursePurchases      CoursePurchase[]
   discussionUpvotes    DiscussionUpvote[]
   flashcardReviews     FlashcardReview[]
@@ -199,6 +200,7 @@ model EducationLevel {
   educationSystem   EducationSystem  @relation(fields: [educationSystemId], references: [id])
   platformCourses   PlatformCourse[]
   programmes        Programme[]      @relation("ProgrammeLevels")
+  wpCategoryMaps    WpCategoryMap[]
 
   @@unique([educationSystemId, sortOrder])
 }
@@ -225,6 +227,7 @@ model Programme {
   studentInterests  UserProfile[]        @relation("StudentProgrammeInterests")
   teacherProfiles   UserProfile[]        @relation("TeacherProgrammes")
   priceDefaults     CoursePriceDefault[]
+  wpCategoryMaps    WpCategoryMap[]
 }
 
 model Subject {
@@ -235,6 +238,7 @@ model Subject {
   platformCourses PlatformCourse[]
   programmes      Programme[]      @relation("ProgrammeSubjects")
   teacherProfiles UserProfile[]    @relation("TeacherSubjects")
+  wpCategoryMaps  WpCategoryMap[]
 
   @@unique([name, category])
 }
@@ -750,6 +754,18 @@ model PlatformCourse {
   language              String?
   /// What students will be able to do after the course; shown on the course page when set
   outcomes              String[]           @default([])
+  /// Kept for enrolled students but not listed in the catalogue, search or packages pickers
+  catalogueHidden       Boolean            @default(false)
+  /// No real teacher yet: teacherId holds the CareerPath owner until an admin assigns one
+  teacherPending        Boolean            @default(false)
+  /// The course as last pulled from WordPress, so the next pull can show what changed there
+  wpTitle               String?
+  wpDescription         String?
+  wpStatus              String?
+  wpModifiedAt          DateTime?
+  wpCategoryIds         Int[]              @default([])
+  wpAuthorEmail         String?
+  wpPulledAt            DateTime?
   certificates          Certificate[]
   enrollments           CourseEnrollment[]
   modules               CourseModule[]
@@ -1253,4 +1269,39 @@ model StudyBlock {
   student      UserProfile @relation("StudentStudyBlocks", fields: [studentId], references: [id], onDelete: Cascade)
 
   @@index([studentId, startsAt])
+}
+
+/// What a WordPress course category means on the portal; used to suggest tags when pulling courses
+model WpCategoryMap {
+  wpTermId    Int             @id
+  name        String
+  parentId    Int?
+  courseCount Int             @default(0)
+  programmeId String?
+  subjectId   String?
+  levelId     String?
+  /// e.g. a country-level category that says nothing about the course itself
+  ignored     Boolean         @default(false)
+  /// AUTO = matched by name, ADMIN = set by an admin (never changed by later pulls)
+  setBy       String          @default("AUTO")
+  updatedAt   DateTime        @updatedAt
+  programme   Programme?      @relation(fields: [programmeId], references: [id], onDelete: SetNull)
+  subject     Subject?        @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  level       EducationLevel? @relation(fields: [levelId], references: [id], onDelete: SetNull)
+}
+
+/// One check or import of WordPress courses
+model WpPull {
+  id        String       @id @default(uuid())
+  createdAt DateTime     @default(now())
+  byId      String?
+  /// MANUAL check, IMPORT (changes brought in) or NIGHTLY check
+  kind      String
+  created   Int          @default(0)
+  updated   Int          @default(0)
+  hidden    Int          @default(0)
+  archived  Int          @default(0)
+  /// What the check found, e.g. { new: 5, changed: 3, same: 110, gone: 2 }
+  found     Json?
+  by        UserProfile? @relation(fields: [byId], references: [id], onDelete: SetNull)
 }

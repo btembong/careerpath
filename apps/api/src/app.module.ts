@@ -38,6 +38,7 @@ import { FlashcardsModule } from './flashcards/flashcards.module';
 import { NotesModule } from './notes/notes.module';
 import { RubricsModule } from './rubrics/rubrics.module';
 import { GradingModule } from './grading/grading.module';
+import { CourseAdminModule } from './course-admin/course-admin.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { AiModule } from './ai/ai.module';
 import { OnboardingVideoModule } from './onboarding-video/onboarding-video.module';
@@ -94,6 +95,7 @@ import { RedisModule } from './redis/redis.module';
     NotesModule,
     RubricsModule,
     GradingModule,
+    CourseAdminModule,
     AlertsModule,
     AiModule,
     OnboardingVideoModule,

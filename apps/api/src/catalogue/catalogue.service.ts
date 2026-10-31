@@ -96,7 +96,8 @@ export class CatalogueService {
 
   /** Public course catalogue — published courses with pricing info */
   async listPublicCourses(opts: { programmeId?: string; subjectId?: string; isSoldIndividually?: boolean }) {
-    const where: any = { status: 'PUBLISHED' };
+    // Hidden courses stay open to students who have them, but aren't listed
+    const where: any = { status: 'PUBLISHED', catalogueHidden: false };
     if (opts.programmeId) where.programmeId = opts.programmeId;
     if (opts.subjectId) where.subjectId = opts.subjectId;
     if (opts.isSoldIndividually) where.isSoldIndividually = true;

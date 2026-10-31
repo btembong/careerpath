@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, UserProfile, CourseStatus, CourseSource, UserRole } from '@prisma/client';
+import { cleanDescription, cleanTitle } from '../course-admin/wp-text';
 import { WordPressService } from '../wordpress/wordpress.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { FilesService } from '../files/files.service';
@@ -44,6 +45,8 @@ export class PlatformCoursesService {
         subjectId: dto.subjectId,
         levelId: dto.levelId,
         teacherId,
+        // An admin creating a course without choosing a teacher owns it only until one is assigned
+        teacherPending: (actor.role as UserRole) === UserRole.ADMIN && !dto.teacherId,
         status: CourseStatus.DRAFT,
       },
       include: courseIncludes(),
@@ -110,9 +113,8 @@ export class PlatformCoursesService {
     let updated = 0;
 
     for (const wc of wpCourses) {
-      const title = (wc.title?.rendered ?? 'Untitled').trim() || 'Untitled';
-      const rawDesc = (wc.content?.rendered ?? '').replace(/<[^>]*>/g, '').trim();
-      const description = rawDesc.slice(0, 500) || null;
+      const title = cleanTitle(wc.title?.rendered ?? '');
+      const description = cleanDescription(wc.content?.rendered ?? '');
       const wpCourseUrl = wc.link ?? null;
 
       const existing = await this.prisma.platformCourse.findUnique({
@@ -133,7 +135,9 @@ export class PlatformCoursesService {
             source: CourseSource.WORDPRESS,
             wpCourseId: wc.id,
             wpCourseUrl,
+            // CareerPath owns it (through the admin) until a teacher is assigned in Course management
             teacherId: adminId,
+            teacherPending: true,
             status: CourseStatus.PUBLISHED,
           },
         });
