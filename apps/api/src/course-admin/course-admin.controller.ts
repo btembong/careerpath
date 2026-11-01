@@ -10,6 +10,7 @@ import { CourseManageService, BulkInput, ListQuery } from './course-manage.servi
 import { WpPullService, ApplyInput, PullSettings } from './wp-pull.service';
 import { TaxonomyService } from './taxonomy.service';
 import { TutorImportService } from './tutor-import.service';
+import { CommissionsService } from './commissions.service';
 
 @ApiTags('admin course management')
 @ApiBearerAuth()
@@ -17,7 +18,20 @@ import { TutorImportService } from './tutor-import.service';
 @Roles(UserRole.ADMIN)
 @Controller('admin')
 export class CourseAdminController {
-  constructor(private courses: CourseManageService, private pull: WpPullService, private taxonomy: TaxonomyService, private tutor: TutorImportService) {}
+  constructor(private courses: CourseManageService, private pull: WpPullService, private taxonomy: TaxonomyService, private tutor: TutorImportService, private commissions: CommissionsService) {}
+
+  // ── Teachers, reviewers and commissions ──────────────────
+
+  @Get('commissions')
+  @ApiOperation({ summary: 'Every course with its teacher, reviewer, their shares and review status' })
+  commissionList() { return this.commissions.list(); }
+
+  @Put('commissions')
+  @ApiOperation({ summary: 'Set the teacher share, reviewer and reviewer share on one or more courses' })
+  commissionSave(@CurrentUser() user: UserProfile, @Body() body: { courseIds: string[]; teacherPct?: number | null; reviewerId?: string | null; reviewerPct?: number | null }) {
+    const { courseIds, ...dto } = body ?? { courseIds: [] };
+    return this.commissions.save(user, Array.isArray(courseIds) ? courseIds.slice(0, 300) : [], dto);
+  }
 
   // ── Course content from Tutor LMS ─────────────────────────
 

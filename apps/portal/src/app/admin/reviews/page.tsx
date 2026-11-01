@@ -1,260 +1,175 @@
 'use client';
-import { notify } from '@/lib/notify';
-import { useEffect, useState, useRef } from 'react';
-import { Topbar } from '@/components/layout/Topbar';
-import { Card } from '@/components/ui/Card';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Badge } from '@/components/ui/Badge';
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { clsx } from 'clsx';
+import { RepTable, td } from '@/components/rep/RepTable';
 import { Button } from '@/components/ui/Button';
-import { SkeletonTopbar, SkeletonTable } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
+import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
+import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-interface UserHit { id: string; email: string; role: string; }
-interface Assignment {
-  courseId: string;
-  teacherId: string | null; teacherCommissionPct: number | null;
-  reviewerId: string | null; reviewerCommissionPct: number | null;
-  reviewStatus: string; reviewedAt: string | null; reviewNotes: string | null;
-  teacher?: { id: string; email: string } | null;
-  reviewer?: { id: string; email: string } | null;
+interface Row {
+  id: string; title: string; source: string; status: string; tag: string; subjectId: string | null;
+  teacher: { id: string; name: string } | null; teacherPct: number | null; paysTo: { id: string; name: string } | null;
+  reviewer: { id: string; name: string } | null; reviewerPct: number | null;
+  review: 'PENDING' | 'APPROVED' | 'REJECTED' | null; submittedAt: string | null; reviewedAt: string | null; waitingDays: number | null;
+}
+interface Reviewer { id: string; name: string; email: string; subjects: { id: string; name: string }[] }
+interface Data {
+  rows: Row[]; reviewers: Reviewer[];
+  stats: { courses: number; fromWordPress: number; noReviewer: number; waiting: number; oldestWaitingDays: number | null; teacherPending: number; wrongPayee: number; defaultTeacherPct: number | null; usualReviewerPct: number | null };
 }
 
-const STATUS_COLOR: Record<string, 'active' | 'muted' | 'default'> = {
-  APPROVED: 'active', PENDING: 'muted', REJECTED: 'default',
-};
+const short = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+const pct = (n: number | null) => (n == null ? '—' : `${n}%`);
 
-function UserSearch({
-  label, value, onSelect, role,
-}: { label: string; value: UserHit | null; onSelect: (u: UserHit | null) => void; role?: string; }) {
-  const [q, setQ]         = useState(value?.email ?? '');
-  const [results, setResults] = useState<UserHit[]>([]);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+export default function CommissionsPage() {
+  const [d, setD] = useState<Data | null>(null);
+  const [tab, setTab] = useState('all');
+  const [q, setQ] = useState('');
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<Row[] | null>(null);
+  const [defaults, setDefaults] = useState(false);
 
-  function handleChange(v: string) {
-    setQ(v);
-    onSelect(null);
-    if (timer.current) clearTimeout(timer.current);
-    if (v.length < 2) { setResults([]); return; }
-    timer.current = setTimeout(async () => {
-      try {
-        const r = await api.get(`/portals/admin/users/search?email=${encodeURIComponent(v)}`);
-        setResults(role ? r.data.filter((u: UserHit) => u.role === role) : r.data);
-      } catch { setResults([]); }
-    }, 300);
-  }
+  const load = useCallback(() => api.get('/admin/commissions').then(r => setD(r.data)).catch(() => notify.error('Could not load courses')), []);
+  useEffect(() => { load(); }, [load]);
 
-  function pick(u: UserHit) {
-    setQ(u.email); setResults([]); onSelect(u);
-  }
+  const filters: Record<string, (r: Row) => boolean> = {
+    all: () => true, noReviewer: r => !r.reviewer, waiting: r => r.review === 'PENDING' && !!r.submittedAt,
+    teacherPending: r => !r.teacher, wrongPayee: r => !!r.paysTo,
+  };
+  const rows = (d?.rows ?? []).filter(filters[tab]).filter(r => !q.trim() || `${r.title} ${r.teacher?.name ?? ''} ${r.reviewer?.name ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const s = d?.stats;
+  const allPicked = rows.length > 0 && rows.every(r => picked.has(r.id));
 
   return (
-    <div className="space-y-1 relative">
-      <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">{label}</label>
-      <div className="relative">
-        <Icon name="search" size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-royal/40 pointer-events-none" />
-        <input value={q} onChange={e => handleChange(e.target.value)} placeholder="Search by email…"
-          className="w-full rounded-xl border border-cloud bg-white pl-8 pr-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-        {value && <Icon name="check" size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-azure" />}
-      </div>
-      {results.length > 0 && (
-        <div className="absolute z-20 left-0 right-0 top-full mt-1 rounded-xl border border-cloud bg-white shadow-lg overflow-hidden">
-          {results.map(u => (
-            <button key={u.id} type="button" onClick={() => pick(u)}
-              className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-cloud transition">
-              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-cloud text-xs font-bold text-azure">
-                {u.email[0].toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm text-navy truncate">{u.email}</p>
-                <p className="text-[10px] text-royal/40">{u.role}</p>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <>
+      <RepTable title="Teachers, reviewers & commissions" subtitle="Who teaches and reviews each course, and their share of its sales"
+        actions={<div className="flex gap-2">
+          {picked.size > 0 && <Button size="sm" onClick={() => setEditing((d?.rows ?? []).filter(r => picked.has(r.id)))}>Change {picked.size} selected</Button>}
+          <button onClick={() => setDefaults(true)} className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Default share</button>
+        </div>}
+        stats={[
+          { l: 'Courses', v: s ? String(s.courses) : '—', sub: s ? `${s.fromWordPress} from WordPress` : '' },
+          { l: 'No reviewer', v: s ? String(s.noReviewer) : '—', sub: 'can’t be approved yet' },
+          { l: 'Waiting for review', v: s ? String(s.waiting) : '—', sub: s?.oldestWaitingDays != null ? `oldest ${s.oldestWaitingDays} day${s.oldestWaitingDays === 1 ? '' : 's'}` : 'none waiting' },
+          { l: 'Default shares', v: s ? `${pct(s.defaultTeacherPct)} · ${pct(s.usualReviewerPct)}` : '—', sub: 'teacher · usual reviewer' },
+        ]}
+        tabs={[
+          { key: 'all', label: 'All', count: d?.rows.length ?? 0 },
+          { key: 'noReviewer', label: 'No reviewer', count: d?.rows.filter(filters.noReviewer).length ?? 0 },
+          { key: 'waiting', label: 'Waiting for review', count: d?.rows.filter(filters.waiting).length ?? 0 },
+          { key: 'teacherPending', label: 'Teacher pending', count: d?.rows.filter(filters.teacherPending).length ?? 0 },
+          ...(s?.wrongPayee ? [{ key: 'wrongPayee', label: 'Paid to someone else', count: s.wrongPayee }] : []),
+        ]}
+        tab={tab} onTab={k => { setTab(k); setPicked(new Set()); }} search={q} onSearch={setQ} searchLabel="Search courses or people"
+        cols={['', 'Course', 'Teacher', 'Reviewer', 'Review', '']}
+        loading={!d} empty={d && !rows.length ? (q ? 'Nothing matches.' : 'Nothing here.') : null}
+        note="Shares are a percentage of each sale after fees. Changing them affects new sales only. Teachers are changed in Course management.">
+        {rows.length > 0 && (
+          <tr><td colSpan={6} className="border-b border-line px-4 py-2 text-[12.5px] text-muted">
+            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={allPicked} onChange={() => setPicked(allPicked ? new Set() : new Set(rows.map(r => r.id)))} className="h-4 w-4 accent-[#3F6FE8]" /> Select all {rows.length}</label>
+          </td></tr>
+        )}
+        {rows.map(r => (
+          <tr key={r.id} className={clsx('hover:bg-subtle', picked.has(r.id) && 'bg-subtle')}>
+            <td className={clsx(td, 'w-10')}><input type="checkbox" aria-label={`Select ${r.title}`} checked={picked.has(r.id)} onChange={() => setPicked(p => { const n = new Set(p); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n; })} className="h-4 w-4 accent-[#3F6FE8]" /></td>
+            <td className={td}><strong className="text-navy">{r.title}</strong><br /><span className="text-[12.5px] text-muted">{[r.tag, r.source === 'WORDPRESS' ? 'from WordPress' : null, r.status !== 'PUBLISHED' ? r.status.toLowerCase().replace('_', ' ') : null].filter(Boolean).join(' · ') || '—'}</span></td>
+            <td className={clsx(td, 'text-navy')}>
+              {r.teacher ? r.teacher.name : <span className="text-muted">CareerPath (no teacher yet)</span>}<br />
+              <span className="text-[12.5px] text-muted">{r.teacher ? `${pct(r.teacherPct)} share` : '—'}</span>
+              {r.paysTo && <><br /><span className="text-[12px] font-semibold text-azure-strong">Sales still pay {r.paysTo.name} — save to fix</span></>}
+            </td>
+            <td className={clsx(td, 'text-navy')}>{r.reviewer ? <>{r.reviewer.name}<br /><span className="text-[12.5px] text-muted">{pct(r.reviewerPct)} share</span></> : <span className="inline-flex rounded border border-dashed border-azure px-2 py-0.5 text-[12.5px] font-semibold text-azure-strong">No reviewer</span>}</td>
+            <td className={td}>
+              <span className={clsx('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-[12px] font-semibold', r.review === 'APPROVED' ? 'bg-accent-soft text-navy' : r.review === 'PENDING' && r.submittedAt ? 'border border-dashed border-azure text-azure-strong' : 'border border-line bg-subtle text-ink2')}>
+                {r.review === 'APPROVED' ? 'Approved' : r.review === 'REJECTED' ? 'Sent back' : r.submittedAt ? 'Waiting' : 'Not submitted'}
+              </span><br />
+              <span className="text-[12px] text-muted">{r.review === 'APPROVED' && r.reviewedAt ? `approved ${short(r.reviewedAt)}` : r.waitingDays != null ? `sent ${r.waitingDays ? `${r.waitingDays} day${r.waitingDays === 1 ? '' : 's'} ago` : 'today'}` : ''}</span>
+            </td>
+            <td className={clsx(td, 'whitespace-nowrap text-right')}>
+              <button onClick={() => setEditing([r])} className="font-semibold text-azure-strong hover:underline">{r.reviewer ? 'Change' : 'Assign'}</button>
+              <Link href={`/admin/courses/${r.id}`} className="ml-3 font-semibold text-muted hover:text-navy hover:underline">Open</Link>
+            </td>
+          </tr>
+        ))}
+      </RepTable>
+      <EditShares rows={editing} reviewers={d?.reviewers ?? []} usualReviewerPct={s?.usualReviewerPct ?? null} defaultTeacherPct={s?.defaultTeacherPct ?? null}
+        onClose={() => setEditing(null)} onDone={() => { setEditing(null); setPicked(new Set()); load(); }} />
+      <Defaults open={defaults} current={s?.defaultTeacherPct ?? null} onClose={() => setDefaults(false)} onDone={() => { setDefaults(false); load(); }} />
+    </>
   );
 }
 
-export default function AdminReviewsPage() {
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [userMap, setUserMap]         = useState<Record<string, string>>({});
-  const [loading, setLoading]         = useState(true);
-  const [showForm, setShowForm]       = useState(false);
-  const [saving, setSaving]           = useState(false);
-
-  // New assignment form
-  const [courseId, setCourseId]               = useState('');
-  const [teacher, setTeacher]                 = useState<UserHit | null>(null);
-  const [teacherPct, setTeacherPct]           = useState('40');
-  const [reviewer, setReviewer]               = useState<UserHit | null>(null);
-  const [reviewerPct, setReviewerPct]         = useState('10');
-
-  async function load() {
-    try {
-      const [ar, ur] = await Promise.all([
-        api.get('/admin/courses'),
-        api.get('/portals/admin/users').catch(() => ({ data: [] })),
-      ]);
-      const list: Assignment[] = ar.data ?? [];
-      setAssignments(list);
-      // Build id→email map from user list + embedded teacher/reviewer objects
-      const map: Record<string, string> = {};
-      (ur.data ?? []).forEach((u: UserHit) => { map[u.id] = u.email; });
-      list.forEach(a => {
-        if (a.teacher)  map[a.teacher.id]  = a.teacher.email;
-        if (a.reviewer) map[a.reviewer.id] = a.reviewer.email;
-      });
-      setUserMap(map);
-    } catch { setAssignments([]); }
-    finally { setLoading(false); }
-  }
-
-  useEffect(() => { load(); }, []);
-
-  async function handleAssign(e: React.FormEvent) {
-    e.preventDefault();
-    if (!courseId.trim()) return;
+function EditShares({ rows, reviewers, usualReviewerPct, defaultTeacherPct, onClose, onDone }: { rows: Row[] | null; reviewers: Reviewer[]; usualReviewerPct: number | null; defaultTeacherPct: number | null; onClose: () => void; onDone: () => void }) {
+  const one = rows?.length === 1 ? rows[0] : null;
+  const [teacherPct, setTeacherPct] = useState(''), [reviewerId, setReviewerId] = useState(''), [reviewerPct, setReviewerPct] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!rows) return;
+    const same = <T,>(f: (r: Row) => T) => (rows.every(r => f(r) === f(rows[0])) ? f(rows[0]) : undefined);
+    const tp = same(r => r.teacherPct), rid = same(r => r.reviewer?.id ?? ''), rp = same(r => r.reviewerPct);
+    setTeacherPct(tp != null ? String(tp) : tp === null && defaultTeacherPct != null ? String(defaultTeacherPct) : '');
+    setReviewerId(rid ?? ''); setReviewerPct(rp != null ? String(rp) : usualReviewerPct != null ? String(usualReviewerPct) : '');
+  }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Reviewers who cover the course's subject first
+  const subjects = new Set((rows ?? []).map(r => r.subjectId).filter(Boolean));
+  const sorted = [...reviewers].sort((a, b) => Number(b.subjects.some(x => subjects.has(x.id))) - Number(a.subjects.some(x => subjects.has(x.id))) || a.name.localeCompare(b.name));
+  async function save() {
+    if (!rows) return;
+    const num = (v: string) => (v.trim() === '' ? null : Number(v));
+    const tp = num(teacherPct), rp = num(reviewerPct);
+    if ((tp != null && (!Number.isFinite(tp) || tp < 0 || tp > 100)) || (rp != null && (!Number.isFinite(rp) || rp < 0 || rp > 100))) { notify.error('Shares are 0 to 100%'); return; }
     setSaving(true);
     try {
-      await api.post(`/admin/courses/${courseId.trim()}/assign`, {
-        ...(teacher    && { teacherId: teacher.id }),
-        ...(teacherPct && teacher && { teacherCommissionPct: parseFloat(teacherPct) }),
-        ...(reviewer   && { reviewerId: reviewer.id }),
-        ...(reviewerPct && reviewer && { reviewerCommissionPct: parseFloat(reviewerPct) }),
-      });
-      setCourseId(''); setTeacher(null); setTeacherPct('40');
-      setReviewer(null); setReviewerPct('10'); setShowForm(false);
-      await load();
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Failed to save assignment');
-    } finally { setSaving(false); }
+      await api.put('/admin/commissions', { courseIds: rows.map(r => r.id), teacherPct: tp, reviewerId: reviewerId || null, reviewerPct: reviewerId ? rp : null });
+      notify.success(rows.length === 1 ? 'Saved' : `${rows.length} courses saved`); onDone();
+    } catch (e: any) { notify.error([].concat(e?.response?.data?.message ?? 'Could not save').join(', ')); }
+    finally { setSaving(false); }
   }
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 p-6 space-y-5 max-w-6xl mx-auto w-full">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[0,1,2,3].map(i => <div key={i} className="h-20 rounded-2xl bg-cloud animate-pulse" />)}
-        </div>
-        <SkeletonTable />
-      </div>
-    </div>
-  );
-
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="Course Assignments" subtitle="Link WordPress courses to teachers and reviewers" />
-
-      <div className="flex-1 p-6 space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">COURSES</p>
-            <h2 className="text-base font-bold text-navy">{assignments.length} assigned course{assignments.length !== 1 ? 's' : ''}</h2>
-          </div>
-          <Button size="sm" onClick={() => setShowForm(v => !v)}>
-            <Icon name="add" size={14} /> Assign course
-          </Button>
+    <Dialog open={!!rows} onOpenChange={o => !o && onClose()}>
+      <DialogContent title={one ? one.title : `${rows?.length ?? 0} courses`} description={one ? `Teacher: ${one.teacher?.name ?? 'none yet'}` : 'The same teacher share and reviewer for all of them. Blank leaves a value as it is only when they already match.'}>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Teacher’s share (%)</span>
+            <input inputMode="decimal" value={teacherPct} onChange={e => setTeacherPct(e.target.value)} placeholder="blank = paid outside the portal" className="input-base" /></label>
+          <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Reviewer</span>
+            <select value={reviewerId} onChange={e => setReviewerId(e.target.value)} className="input-base">
+              <option value="">No reviewer</option>
+              {sorted.map(r => <option key={r.id} value={r.id}>{r.name}{r.subjects.length ? ` · ${r.subjects.map(x => x.name).join(', ')}` : ''}</option>)}
+            </select></label>
+          {reviewerId && <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Reviewer’s share (%)</span>
+            <input inputMode="decimal" value={reviewerPct} onChange={e => setReviewerPct(e.target.value)} placeholder="e.g. 10" className="input-base" /></label>}
+          <p className="text-[12.5px] text-muted">New sales use these shares. A new reviewer is told the course is theirs.</p>
         </div>
+        <DialogFooter><Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={save} loading={saving}>Save</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-        {/* Assignment form */}
-        {showForm && (
-          <Card padding="md">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-azure mb-4">NEW COURSE ASSIGNMENT</p>
-            <form onSubmit={handleAssign} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">WordPress Course ID</label>
-                <input value={courseId} onChange={e => setCourseId(e.target.value)}
-                  placeholder="e.g. 142 or wp-course-slug" required
-                  className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40" />
-                <p className="text-[10px] text-royal/40">Use the numeric WP post ID of the LearnDash / course post.</p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-3">
-                  <UserSearch label="Assign teacher (optional)" value={teacher} onSelect={setTeacher} role="TEACHER" />
-                  {teacher && (
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">Teacher commission %</label>
-                      <input type="number" min="0" max="100" value={teacherPct}
-                        onChange={e => setTeacherPct(e.target.value)}
-                        className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure" />
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-3">
-                  <UserSearch label="Assign reviewer (optional)" value={reviewer} onSelect={setReviewer} role="SUBJECT_REVIEWER" />
-                  {reviewer && (
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">Reviewer commission %</label>
-                      <input type="number" min="0" max="100" value={reviewerPct}
-                        onChange={e => setReviewerPct(e.target.value)}
-                        className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure" />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-1">
-                <Button type="submit" loading={saving} size="sm">Save assignment</Button>
-                <Button type="button" variant="secondary" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
-              </div>
-            </form>
-          </Card>
-        )}
-
-        {/* Assignments list */}
-        {assignments.length === 0 ? (
-          <Card padding="lg">
-            <EmptyState icon="courses" title="No course assignments yet" description="Assign a WordPress course to a teacher or reviewer to start tracking commissions" />
-          </Card>
-        ) : (
-          <Card padding="none">
-            <div className="px-5 py-3 border-b border-cloud">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-royal/40">ALL ASSIGNMENTS</p>
-            </div>
-            <ul className="divide-y divide-cloud">
-              {assignments.map((a: Assignment) => (
-                <li key={a.courseId} className="flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-4">
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-bold text-navy">Course #{a.courseId}</p>
-                      <Badge variant={STATUS_COLOR[a.reviewStatus] ?? 'default'}>{a.reviewStatus}</Badge>
-                    </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-royal/50">
-                      {a.teacherId && (
-                        <span className="flex items-center gap-1">
-                          <Icon name="mentorship" size={11} />
-                          {userMap[a.teacherId] ?? a.teacherId.slice(0,8) + '…'}
-                          {a.teacherCommissionPct != null && ` · ${a.teacherCommissionPct}%`}
-                        </span>
-                      )}
-                      {a.reviewerId && (
-                        <span className="flex items-center gap-1">
-                          <Icon name="check" size={11} />
-                          {userMap[a.reviewerId] ?? a.reviewerId.slice(0,8) + '…'}
-                          {a.reviewerCommissionPct != null && ` · ${a.reviewerCommissionPct}%`}
-                        </span>
-                      )}
-                    </div>
-                    {a.reviewNotes && (
-                      <p className="text-xs text-royal/40 italic truncate">{a.reviewNotes}</p>
-                    )}
-                  </div>
-                  {a.reviewedAt && (
-                    <p className="text-[10px] text-royal/30 flex-shrink-0">
-                      Reviewed {new Date(a.reviewedAt).toLocaleDateString()}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </Card>
-        )}
-      </div>
-    </div>
+function Defaults({ open, current, onClose, onDone }: { open: boolean; current: number | null; onClose: () => void; onDone: () => void }) {
+  const [v, setV] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (open) setV(current != null ? String(current) : ''); }, [open, current]);
+  async function save(applyToMissing: boolean) {
+    const n = v.trim() === '' ? null : Number(v);
+    if (n != null && (!Number.isFinite(n) || n < 0 || n > 100)) { notify.error('0 to 100%'); return; }
+    setSaving(true);
+    try {
+      await api.patch('/platform-courses/pricing-settings', { defaultTeacherCommissionPct: n });
+      if (applyToMissing && n != null) { const r = await api.post('/platform-courses/pricing-settings/apply-commission'); notify.success(`Default saved and given to ${r.data.updated} course${r.data.updated === 1 ? '' : 's'} without a share`); }
+      else notify.success('Default saved');
+      onDone();
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not save'); }
+    finally { setSaving(false); }
+  }
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent title="Default teacher share" description="New courses start with this share of each sale. Courses that already have a share keep it.">
+        <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Teacher’s share (%)</span><input inputMode="decimal" value={v} onChange={e => setV(e.target.value)} placeholder="e.g. 40" className="input-base" /></label>
+        <DialogFooter><Button variant="secondary" size="sm" onClick={() => save(true)} loading={saving} disabled={!v.trim()}>Save and fill courses with none</Button><Button size="sm" onClick={() => save(false)} loading={saving}>Save</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

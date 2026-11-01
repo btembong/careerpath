@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
+import { ReportsOverviewService } from './reports-overview.service';
 import { UpsertExchangeRateDto } from './dto/upsert-rate.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -13,7 +14,13 @@ import { UserRole } from '@cpa/shared';
 @Roles(UserRole.ADMIN)
 @Controller('reports')
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) {}
+  constructor(private readonly reportsService: ReportsService, private readonly overviewService: ReportsOverviewService) {}
+
+  @Get('admin/reports/overview')
+  @ApiOperation({ summary: '[Admin] One month in a chosen currency: totals, sales by day, courses, teachers, countries and purchases' })
+  overview(@Query('month') month?: string, @Query('base') base?: string) {
+    return this.overviewService.overview(month, base || 'GHS');
+  }
 
   @Get('admin/reports/courses')
   @ApiOperation({

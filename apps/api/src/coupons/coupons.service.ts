@@ -21,12 +21,13 @@ export class CouponsService {
       throw new BadRequestException('Provide only one of percentOff or amountOff, not both');
     }
 
-    const existing = await this.prisma.coupon.findUnique({ where: { code: dto.code } });
+    // Codes are stored upper-case, so check the same way (otherwise "launch50" slips past and fails on save)
+    const existing = await this.prisma.coupon.findUnique({ where: { code: dto.code.trim().toUpperCase() } });
     if (existing) throw new ConflictException('Coupon code already exists');
 
     return this.prisma.coupon.create({
       data: {
-        code: dto.code.toUpperCase(),
+        code: dto.code.trim().toUpperCase(),
         percentOff: dto.percentOff ?? null,
         amountOff: dto.amountOff ?? null,
         packageId: dto.packageId ?? null,
@@ -111,8 +112,54 @@ export class CouponsService {
   }
 
   /** List all coupons for admin. */
-  list() {
-    return this.prisma.coupon.findMany({ orderBy: { createdAt: 'desc' } });
+  /** Coupons with what each has given away, and this month's totals per currency */
+  async list() {
+    const now = new Date(), monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const [coupons, pkgBuys, pkgSales, courseSales] = await Promise.all([
+      this.prisma.coupon.findMany({ orderBy: { createdAt: 'desc' } }),
+      this.prisma.packagePurchase.findMany({ where: { couponId: { not: null } }, select: { couponId: true, purchasedAt: true, amountPaid: true, currency: true, package: { select: { priceAmount: true, currency: true } } } }),
+      this.prisma.packagePurchase.count({ where: { purchasedAt: { gte: monthStart }, amountPaid: { gt: 0 } } }),
+      this.prisma.coursePurchase.count({ where: { purchasedAt: { gte: monthStart }, amountPaid: { gt: 0 } } }),
+    ]);
+    // Coupons apply to packages. The discount is the list price minus what was paid (list prices can change later, so this is an estimate)
+    const uses = [
+      ...pkgBuys.map(p => ({ couponId: p.couponId!, at: p.purchasedAt, currency: p.currency ?? p.package.currency, off: Math.max(0, p.package.priceAmount - (p.amountPaid ?? 0)) })),
+    ];
+    const packages = await this.prisma.package.findMany({ where: { id: { in: coupons.map(c => c.packageId).filter((x): x is string => !!x) } }, select: { id: true, name: true, currency: true } });
+    const sum = (xs: typeof uses) => Object.entries(xs.reduce((m, u) => ({ ...m, [u.currency]: (m[u.currency] ?? 0) + u.off }), {} as Record<string, number>)).map(([currency, amount]) => ({ currency, amount }));
+    const thisMonth = uses.filter(u => u.at >= monthStart);
+    return {
+      rows: coupons.map(c => {
+        const mine = uses.filter(u => u.couponId === c.id);
+        const state = !c.isActive ? 'off' : c.expiresAt && c.expiresAt < now ? 'ended' : c.maxRedemptions != null && c.redeemedCount >= c.maxRedemptions ? 'used up' : 'active';
+        return { ...c, package: packages.find(p => p.id === c.packageId) ?? null, state, given: sum(mine), lastUsed: mine.sort((a, b) => +b.at - +a.at)[0]?.at ?? null };
+      }),
+      stats: {
+        active: coupons.filter(c => c.isActive && (!c.expiresAt || c.expiresAt >= now) && (c.maxRedemptions == null || c.redeemedCount < c.maxRedemptions)).length,
+        endingThisMonth: coupons.filter(c => c.isActive && c.expiresAt && c.expiresAt >= now && c.expiresAt < new Date(now.getFullYear(), now.getMonth() + 1, 1)).length,
+        usedThisMonth: thisMonth.length,
+        givenThisMonth: sum(thisMonth),
+        shareOfSales: pkgSales + courseSales ? Math.round((thisMonth.length / (pkgSales + courseSales)) * 100) : 0,
+      },
+    };
+  }
+
+  /** Turn a coupon on or off, or change when it ends and how many times it can be used */
+  async update(id: string, dto: { isActive?: boolean; expiresAt?: string | null; maxRedemptions?: number | null }) {
+    const coupon = await this.prisma.coupon.findUnique({ where: { id } });
+    if (!coupon) throw new NotFoundException('Coupon not found');
+    if (dto.maxRedemptions != null && (!Number.isInteger(dto.maxRedemptions) || dto.maxRedemptions < Math.max(1, coupon.redeemedCount))) {
+      throw new BadRequestException(`It has already been used ${coupon.redeemedCount} times`);
+    }
+    if (dto.expiresAt && Number.isNaN(+new Date(dto.expiresAt))) throw new BadRequestException('Choose an end date');
+    return this.prisma.coupon.update({
+      where: { id },
+      data: {
+        ...(dto.isActive !== undefined && { isActive: !!dto.isActive }),
+        ...(dto.expiresAt !== undefined && { expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null }),
+        ...(dto.maxRedemptions !== undefined && { maxRedemptions: dto.maxRedemptions }),
+      },
+    });
   }
 
   /**

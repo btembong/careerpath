@@ -103,7 +103,7 @@ const ADMIN: Item[] = [
     { label: 'Packages',        href: '/admin/packages' },
     { label: 'Coupons',         href: '/admin/coupons' },
     { label: 'Live Classes',    href: '/admin/live' },
-    { label: 'Website Reviews', href: '/admin/reviews' },
+    { label: 'Commissions',     href: '/admin/reviews' },
   ]},
   { label: 'People', icon: 'users', children: [
     { label: 'Users',         href: '/admin/users' },

@@ -82,7 +82,7 @@ const ADMIN_MORE: NavGroup[] = [
     { label: 'Packages',      href: '/admin/packages',      icon: 'packages'    },
     { label: 'Coupons',       href: '/admin/coupons',       icon: 'tag'         },
     { label: 'Live Classes',  href: '/admin/live',          icon: 'live'        },
-    { label: 'WP Reviews',    href: '/admin/reviews',       icon: 'assignments' },
+    { label: 'Commissions',   href: '/admin/reviews',       icon: 'assignments' },
   ]},
   { title: 'People', items: [
     { label: 'Teachers',      href: '/admin/teachers',      icon: 'graduate'    },

@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, UseGuards, Patch, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { CouponsService } from './coupons.service';
 import { CreateCouponDto } from './dto/create-coupon.dto';
@@ -26,6 +26,13 @@ export class CouponsController {
   @ApiOperation({ summary: '[Admin] List all coupons' })
   list() {
     return this.couponsService.list();
+  }
+
+  @Patch('admin/coupons/:id')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Turn a coupon on or off, change its end date or use limit' })
+  update(@Param('id') id: string, @Body() body: { isActive?: boolean; expiresAt?: string | null; maxRedemptions?: number | null }) {
+    return this.couponsService.update(id, body ?? {});
   }
 
   @Get('coupons/validate')
