@@ -2,11 +2,12 @@ import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrgService } from './org.service';
 import { CreateOrgEnrollmentDto } from './dto/create-org-enrollment.dto';
-import { ClaimSeatDto } from './dto/claim-seat.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '@cpa/shared';
+import { UserProfile } from '@prisma/client';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('org')
 @Controller('org')
@@ -42,12 +43,21 @@ export class OrgController {
     return this.orgService.getEnrollment(id);
   }
 
-  @Post('org-enrollments/:id/claim')
-  @ApiOperation({
-    summary:
-      'Claim an org seat — creates account if needed, then issues a PackagePurchase. No auth required (invite link flow).',
-  })
-  claimSeat(@Param('id') id: string, @Body() dto: ClaimSeatDto) {
-    return this.orgService.claimSeat(id, dto);
+  @Post('admin/org-enrollments/:id/seats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[Admin] Invite more people to an organisation (one seat per new email)' })
+  addSeats(@Param('id') id: string, @Body('emails') emails: string[]) {
+    return this.orgService.addSeats(id, Array.isArray(emails) ? emails.slice(0, 500) : []);
+  }
+
+  @Post('org-enrollments/claim-mine')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.STUDENT)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[Student] Claim every seat an organisation bought for my email' })
+  claimMine(@CurrentUser() user: UserProfile) {
+    return this.orgService.claimMine(user);
   }
 }

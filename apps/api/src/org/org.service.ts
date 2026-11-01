@@ -7,7 +7,6 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { WordPressService } from '../wordpress/wordpress.service';
 import { CreateOrgEnrollmentDto } from './dto/create-org-enrollment.dto';
-import { ClaimSeatDto } from './dto/claim-seat.dto';
 import { ApprovalStatus, UserRole } from '@cpa/shared';
 
 @Injectable()
@@ -77,6 +76,20 @@ export class OrgService {
     }));
   }
 
+  /** More invites for an organisation that already bought seats */
+  async addSeats(id: string, emails: string[]) {
+    const enrollment = await this.prisma.orgEnrollment.findUnique({ where: { id }, include: { seats: { select: { inviteEmail: true } } } });
+    if (!enrollment) throw new NotFoundException('Enrollment not found');
+    const have = new Set(enrollment.seats.map(s => s.inviteEmail));
+    const fresh = [...new Set(emails.map(e => String(e).trim().toLowerCase()).filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && !have.has(e)))];
+    if (!fresh.length) return { added: 0 };
+    await this.prisma.$transaction([
+      this.prisma.orgSeat.createMany({ data: fresh.map(inviteEmail => ({ orgEnrollmentId: id, inviteEmail })) }),
+      this.prisma.orgEnrollment.update({ where: { id }, data: { seatsPurchased: { increment: fresh.length } } }),
+    ]);
+    return { added: fresh.length };
+  }
+
   async getEnrollment(id: string) {
     const enrollment = await this.prisma.orgEnrollment.findUnique({
       where: { id },
@@ -86,102 +99,38 @@ export class OrgService {
     return enrollment;
   }
 
-  // ── Public: claim a seat ──────────────────────────────────
+  // ── Student: claim seats bought for them ──────────────────
 
   /**
-   * An invited person claims their seat:
-   * 1. Validate the invite email matches an unclaimed seat
-   * 2. Create or link their WordPress + UserProfile account
-   * 3. Create the PackagePurchase (making them an enrolled student)
-   * 4. Mark the OrgSeat as claimed
+   * Gives a signed-in student every unclaimed seat invited to their email: one package purchase
+   * per seat, and a place in the package's cohort. The email must match their account, so nobody
+   * can claim someone else's seat, and no WordPress account is created.
    */
-  async claimSeat(enrollmentId: string, dto: ClaimSeatDto) {
-    const seat = await this.prisma.orgSeat.findFirst({
-      where: {
-        orgEnrollmentId: enrollmentId,
-        inviteEmail: dto.inviteEmail.toLowerCase(),
-        claimedAt: null,
-      },
-      include: {
-        orgEnrollment: {
-          include: { seats: true },
-        },
-      },
+  async claimMine(student: { id: string; email: string }) {
+    const seats = await this.prisma.orgSeat.findMany({
+      where: { inviteEmail: student.email.toLowerCase(), claimedAt: null },
+      include: { orgEnrollment: { select: { id: true, organizationName: true, packageId: true } } },
     });
-
-    if (!seat) {
-      throw new NotFoundException(
-        'No unclaimed seat found for this email in this enrollment. Check the invite link.',
-      );
+    const claimed: { organisation: string; packageName: string }[] = [];
+    for (const seat of seats) {
+      // One seat per organisation purchase
+      if (await this.prisma.orgSeat.findFirst({ where: { orgEnrollmentId: seat.orgEnrollmentId, studentId: student.id } })) continue;
+      const pkg = await this.prisma.package.findUnique({ where: { id: seat.orgEnrollment.packageId } });
+      if (!pkg) continue;
+      const expiresAt = pkg.validityDays ? new Date(Date.now() + pkg.validityDays * 86_400_000) : null;
+      await this.prisma.$transaction([
+        this.prisma.packagePurchase.create({ data: { studentId: student.id, packageId: pkg.id, expiresAt } }),
+        this.prisma.orgSeat.update({ where: { id: seat.id }, data: { studentId: student.id, claimedAt: new Date() } }),
+      ]);
+      // School seats join the package's cohort like a bought package does
+      if (pkg.cohortId) {
+        await this.prisma.cohortRoster.upsert({
+          where: { studentId_cohortId: { studentId: student.id, cohortId: pkg.cohortId } },
+          update: {}, create: { studentId: student.id, cohortId: pkg.cohortId, source: 'ORG' },
+        }).catch(() => {});
+      }
+      claimed.push({ organisation: seat.orgEnrollment.organizationName, packageName: pkg.name });
     }
-
-    const pkg = await this.prisma.package.findUnique({
-      where: { id: seat.orgEnrollment.packageId },
-    });
-    if (!pkg) throw new NotFoundException('Package no longer exists');
-
-    // Create or find the student account
-    let profile = await this.prisma.userProfile.findUnique({
-      where: { email: dto.inviteEmail.toLowerCase() },
-    });
-
-    if (!profile) {
-      const wpUserId = await this.wp.createUser({
-        username: dto.inviteEmail.toLowerCase(),
-        email: dto.inviteEmail.toLowerCase(),
-        password: dto.password,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        wpRole: 'subscriber',
-      });
-
-      profile = await this.prisma.userProfile.create({
-        data: {
-          wpUserId,
-          email: dto.inviteEmail.toLowerCase(),
-          role: UserRole.STUDENT,
-          approvalStatus: ApprovalStatus.APPROVED,
-        },
-      });
-    }
-
-    // Check seat not already claimed by this student
-    const alreadyClaimed = await this.prisma.orgSeat.findFirst({
-      where: { orgEnrollmentId: enrollmentId, studentId: profile.id },
-    });
-    if (alreadyClaimed) throw new ConflictException('You have already claimed a seat in this enrollment');
-
-    const expiresAt = pkg.validityDays
-      ? new Date(Date.now() + pkg.validityDays * 86_400_000)
-      : null;
-
-    await this.prisma.$transaction([
-      this.prisma.packagePurchase.create({
-        data: {
-          studentId: profile.id,
-          packageId: pkg.id,
-          expiresAt,
-        },
-      }),
-      this.prisma.orgSeat.update({
-        where: { id: seat.id },
-        data: { studentId: profile.id, claimedAt: new Date() },
-      }),
-    ]);
-
-    // School seats join the package's cohort like a bought package does
-    if (pkg.cohortId) {
-      await this.prisma.cohortRoster.upsert({
-        where: { studentId_cohortId: { studentId: profile.id, cohortId: pkg.cohortId } },
-        update: {},
-        create: { studentId: profile.id, cohortId: pkg.cohortId, source: 'ORG' },
-      }).catch(() => {});
-    }
-
-    return {
-      message: 'Seat claimed successfully. You now have access to your package.',
-      packageName: pkg.name,
-      expiresAt,
-    };
+    return { claimed };
   }
 }
