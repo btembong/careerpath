@@ -756,6 +756,9 @@ async function main() {
 
   // ── Money: payout accounts, six months of earnings, paid and pending statements ─
   await seedMoney(teacher, reviewer, student, pkg.courseIds);
+
+  // ── Admin pages: support, referrals, a coupon, an organisation, an announcement ─
+  await seedAdminPages(student, pkg.id);
   console.log('Done.');
 }
 
@@ -856,6 +859,35 @@ async function seedMoney(teacher: Person, reviewer: Person, student: Person, pac
     await prisma.coursePurchase.create({ data: { studentId: student.id, courseId: solo.id, amountPaid: solo.priceAmount, currency: solo.priceCurrency ?? currency, purchasedAt: at, expiresAt: new Date(+at + 365 * DAY), gateway: 'paystack', gatewayRef: 'T418820937', invoiceNo: 'CPA-2026-00288' } });
   }
   log('Money: payout accounts, six months of earnings, paid and pending statements, a card purchase for the student');
+}
+
+async function seedAdminPages(student: Person, packageId: string) {
+  const admin = await prisma.userProfile.findFirst({ where: { email: 'admin@test.com' } });
+  // Classmates who joined with the demo student's link
+  const friends = await prisma.userProfile.findMany({ where: { email: { in: ['student1@test.com', 'student2@test.com', 'student3@test.com'] }, referredById: null } });
+  if (friends.length) await prisma.userProfile.updateMany({ where: { id: { in: friends.map(f => f.id) } }, data: { referredById: student.id } });
+
+  if (!(await prisma.supportTicket.count({ where: { studentId: student.id } }))) {
+    await prisma.supportTicket.createMany({
+      data: [
+        { studentId: student.id, category: 'Payment', subject: 'Charged twice for the Maths pack', message: 'I paid with MoMo and was charged GHS 150 twice, a minute apart. Receipt CPA-2026-00288.', status: 'RESOLVED', adminNote: 'Sorry about that — the second charge has been refunded to your MoMo. It shows within 2 days.', createdAt: new Date(Date.now() - 4 * DAY) },
+        { studentId: student.id, category: 'Technical problem', subject: 'Video won’t play on my phone', message: 'The Quadratics video stays black on my Tecno phone. Audio works.', status: 'OPEN', createdAt: new Date(Date.now() - 3 * 3_600_000) },
+      ],
+    });
+  }
+  const pkg = await prisma.package.findUnique({ where: { id: packageId }, select: { priceAmount: true } });
+  await prisma.coupon.upsert({ where: { code: 'WASSCE20' }, update: {}, create: { code: 'WASSCE20', percentOff: 20, packageId, maxRedemptions: 100, expiresAt: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 30) } });
+  await prisma.coupon.upsert({ where: { code: 'SCHOOLGH' }, update: {}, create: { code: 'SCHOOLGH', amountOff: Math.round((pkg?.priceAmount ?? 15000) / 10), packageId } });
+
+  if (!(await prisma.orgEnrollment.count({ where: { organizationName: 'Achimota School' } }))) {
+    const emails = ['ama.k@achimota.edu.gh', 'kojo.b@achimota.edu.gh', 'esi.d@achimota.edu.gh', 'yaw.m@achimota.edu.gh', 'adwoa.s@achimota.edu.gh'];
+    const org = await prisma.orgEnrollment.create({ data: { organizationName: 'Achimota School', contactEmail: 'head.maths@achimota.edu.gh', packageId, seatsPurchased: emails.length, purchasedAt: new Date(Date.now() - 20 * DAY) } });
+    await prisma.orgSeat.createMany({ data: emails.map(inviteEmail => ({ orgEnrollmentId: org.id, inviteEmail })) });
+  }
+  if (admin && !(await prisma.broadcast.count())) {
+    await prisma.broadcast.create({ data: { title: 'Payouts on the 1st', body: 'October earnings are paid on 1 November to verified payout accounts.', audience: 'TEACHER', channel: 'IN_APP', sentById: admin.id, recipientCount: 4, sentAt: new Date(Date.now() - 6 * DAY) } });
+  }
+  log('Admin pages: 3 referred friends, 2 support requests, 2 coupons, a school with 5 seats, an announcement');
 }
 
 main().catch(e => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());
