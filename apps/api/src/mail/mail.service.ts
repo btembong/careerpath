@@ -24,6 +24,8 @@ import {
   liveSessionReminderTemplate,
   announcementTemplate,
   newMessageTemplate,
+  orgSeatInviteTemplate,
+  orgAdminWelcomeTemplate,
 } from './mail.templates';
 
 // Sender names — same email address, different display name per context
@@ -95,6 +97,14 @@ export class MailService {
 
   async sendNewMessage(email: string, fromName: string, preview: string, where: string | null, link: string): Promise<void> {
     await this.send(email, `${fromName} sent you a message${where ? ` in ${where}` : ''}`, newMessageTemplate(fromName, preview, where, link), 'support');
+  }
+
+  async sendOrgSeatInvite(email: string, orgName: string, packageName: string, link: string): Promise<void> {
+    await this.send(email, `${orgName} has a place for you on CareerPath Africa`, orgSeatInviteTemplate(orgName, packageName, link), 'support');
+  }
+
+  async sendOrgAdminWelcome(email: string, name: string, orgName: string, link: string): Promise<void> {
+    await this.send(email, `Your ${orgName} school portal on CareerPath Africa`, orgAdminWelcomeTemplate(name, orgName, link), 'support');
   }
 
   // ── Support / Onboarding ─────────────────────────────────

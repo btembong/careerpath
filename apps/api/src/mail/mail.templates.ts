@@ -470,6 +470,43 @@ export function newMessageTemplate(fromName: string, preview: string, where: str
   return base(hero, body);
 }
 
+// ── 5b3. School seat invitation and school admin welcome ─────────────────────
+
+/** A school or company bought a seat for this email. Names are typed by admins, so they're escaped. */
+export function orgSeatInviteTemplate(orgName: string, packageName: string, link: string): string {
+  const hero = `
+    ${heroBadge('global')}
+    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
+      Invitation
+    </p>
+    <h1 style="margin:0;font-size:26px;font-weight:900;color:#ffffff;line-height:1.2;font-family:system-ui,-apple-system,Arial,sans-serif">
+      ${escapeHtml(orgName)} has a place for you
+    </h1>`;
+  const body = `
+    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+      You’ve been given <strong style="color:#072061">${escapeHtml(packageName)}</strong> on CareerPath Africa. Create your account with this email address, then open the link to start.
+    </p>
+    ${ctaButton('Accept my place', link)}`;
+  return base(hero, body);
+}
+
+export function orgAdminWelcomeTemplate(name: string, orgName: string, link: string): string {
+  const hero = `
+    ${heroBadge('global')}
+    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
+      School portal
+    </p>
+    <h1 style="margin:0;font-size:26px;font-weight:900;color:#ffffff;line-height:1.2;font-family:system-ui,-apple-system,Arial,sans-serif">
+      Welcome, ${escapeHtml(name)}
+    </h1>`;
+  const body = `
+    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+      You can now manage <strong style="color:#072061">${escapeHtml(orgName)}</strong>’s seats: invite students, share your join link and see how they’re doing. Sign in with this email — we send you a code each time, so there’s no password to remember.
+    </p>
+    ${ctaButton('Open the school portal', link)}`;
+  return base(hero, body);
+}
+
 // ── 5c. Course Approved ──────────────────────────────────────────────────────
 
 export function courseApprovedTemplate(courseTitle: string): string {
