@@ -407,6 +407,7 @@ function CourseDrawer({ id, opts, pkgs, onClose, onSaved, onAdd }: { id: string;
               {d.review.reviewer ? `${d.review.reviewer}${d.review.sharePct != null ? ` (${d.review.sharePct}% share)` : ''} · ${d.review.status === 'APPROVED' ? `approved${d.review.reviewedAt ? ` ${new Date(d.review.reviewedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}` : d.review.status === 'REJECTED' ? 'sent back' : d.review.submittedAt ? 'waiting for review' : 'not submitted'}` : 'No reviewer yet.'}
             </p>
             <Link href="/admin/reviews" className="mt-1 inline-block text-[13px] font-semibold text-azure-strong hover:underline">{d.review.reviewer ? 'Change' : 'Assign a reviewer'}</Link>
+            {d.status === 'PENDING_REVIEW' && <ReviewDecision courseId={d.id} onDone={async () => { await onSaved(); onClose(); }} />}
           </DrawerSection>
           {d.wpCategories.length > 0 && <DrawerSection title="WordPress categories"><div className="flex flex-wrap gap-1.5">{d.wpCategories.map(c => <span key={c} className="rounded border border-line bg-subtle px-2 py-1 text-xs text-ink2">{c}</span>)}</div></DrawerSection>}
         </>}
@@ -442,5 +443,50 @@ function NewCourse({ opts, onClose, onCreated, onAdd }: { opts: TaxOptions; onCl
         <DialogFooter><Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={create} loading={saving}>Create and open the builder</Button></DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** An admin decides on a course waiting for review: publish it, or send it back with what to change */
+function ReviewDecision({ courseId, onDone }: { courseId: string; onDone: () => Promise<void> }) {
+  const [missing, setMissing] = useState<{ key: string; label: string }[] | null>(null);
+  const [sendingBack, setSendingBack] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState<'publish' | 'reject' | null>(null);
+  useEffect(() => {
+    api.get(`/platform-courses/${courseId}/checklist`)
+      .then(r => setMissing(((r.data?.items ?? []) as { key: string; label: string; required: boolean; ok: boolean }[]).filter(i => i.required && !i.ok)))
+      .catch(() => setMissing([]));
+  }, [courseId]);
+  async function decide(kind: 'publish' | 'reject') {
+    setBusy(kind);
+    try {
+      if (kind === 'publish') await api.post(`/platform-courses/${courseId}/publish`);
+      else await api.post(`/platform-courses/${courseId}/reject`, { notes: notes.trim() });
+      notify.success(kind === 'publish' ? 'Published — the teacher has been told' : 'Sent back to the teacher');
+      await onDone();
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not save the decision'); }
+    finally { setBusy(null); }
+  }
+  return (
+    <div className="mt-3 flex flex-col gap-2.5 rounded-md border border-azure bg-white p-3">
+      <p className="text-[13px] font-semibold text-navy">Waiting for review — decide now</p>
+      {!missing ? <div className="h-6 animate-pulse rounded bg-subtle" /> : missing.length ? (
+        <div className="text-[12.5px] text-ink2">Still missing:<ul className="mt-1 list-disc pl-5">{missing.map(m => <li key={m.key}>{m.label}</li>)}</ul></div>
+      ) : <p className="text-[12.5px] text-ink2">Everything on the checklist is done.</p>}
+      {sendingBack ? <>
+        <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">What should the teacher change?</span>
+          <textarea rows={3} value={notes} onChange={e => setNotes(e.target.value)} maxLength={1000} autoFocus className="input-base min-h-[80px] py-2" /></label>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => decide('reject')} loading={busy === 'reject'} disabled={!notes.trim()}>Send back</Button>
+          <Button size="sm" variant="secondary" onClick={() => setSendingBack(false)}>Cancel</Button>
+        </div>
+      </> : (
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => decide('publish')} loading={busy === 'publish'}>{missing?.length ? 'Publish anyway' : 'Publish'}</Button>
+          <Button size="sm" variant="secondary" onClick={() => setSendingBack(true)}>Send back</Button>
+        </div>
+      )}
+      <p className="text-xs text-muted">The teacher is told either way. Publishing also settles the reviewer’s review.</p>
+    </div>
   );
 }

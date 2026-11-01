@@ -309,9 +309,18 @@ export class PlatformCoursesService {
   }
 
   async publishCourse(id: string) {
+    const before = await this.prisma.platformCourse.findUnique({ where: { id }, select: { status: true } });
     const course = await this.prisma.platformCourse.update({
       where: { id }, data: { status: CourseStatus.PUBLISHED },
     });
+    // An admin approving a course in review settles the review too, so it leaves the reviewer's queue
+    if (before?.status === CourseStatus.PENDING_REVIEW) {
+      await this.prisma.courseAssignment.upsert({
+        where: { courseId: id },
+        update: { reviewStatus: 'APPROVED', reviewedAt: new Date(), reviewNotes: 'Approved by CareerPath' },
+        create: { courseId: id, teacherId: course.teacherPending ? null : course.teacherId, reviewStatus: 'APPROVED', reviewedAt: new Date(), reviewNotes: 'Approved by CareerPath' },
+      });
+    }
     this.notifications.notify(course.teacherId, {
       type: 'system', title: 'Your course is live', body: `"${course.title}" is now published and visible to students.`,
       href: `/teacher/courses/${course.id}/builder`,
@@ -326,6 +335,11 @@ export class PlatformCoursesService {
     if (existing.status !== CourseStatus.PENDING_REVIEW) throw new BadRequestException('Only courses waiting for review can be sent back');
     const course = await this.prisma.platformCourse.update({ where: { id }, data: { status: CourseStatus.DRAFT } });
     const reason = typeof notes === 'string' && notes.trim() ? notes.trim().slice(0, 1000) : 'No reason was given.';
+    await this.prisma.courseAssignment.upsert({
+      where: { courseId: id },
+      update: { reviewStatus: 'REJECTED', reviewedAt: new Date(), reviewNotes: reason },
+      create: { courseId: id, teacherId: course.teacherPending ? null : course.teacherId, reviewStatus: 'REJECTED', reviewedAt: new Date(), reviewNotes: reason },
+    });
     this.notifications.notify(course.teacherId, {
       type: 'system', title: 'Changes needed before publishing', body: `"${course.title}" was sent back: ${reason}`,
       href: `/teacher/courses/${course.id}/builder`,
