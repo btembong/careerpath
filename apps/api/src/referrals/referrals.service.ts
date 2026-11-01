@@ -64,7 +64,7 @@ export class ReferralsService {
       creditsEarned: 0,
       // First name and initial only: friends see each other on the portal, not each other's details
       friends: referred.map(r => {
-        const parts = (r.name || [r.firstName, r.lastName].filter(Boolean).join(' ') || 'A friend').trim().split(/s+/);
+        const parts = (r.name || [r.firstName, r.lastName].filter(Boolean).join(' ') || 'A friend').trim().split(/\s+/);
         return { name: parts.length > 1 ? `${parts[0]} ${parts[1][0]}.` : parts[0], joinedAt: r.createdAt, learning: r._count.purchases + r._count.coursePurchases + r._count.courseEnrollments > 0 };
       }),
       currency: profile?.wallet?.currency ?? profile?.country?.currency ?? 'XAF',

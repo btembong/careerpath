@@ -28,7 +28,7 @@ function fmtAt(s: number) { return `${Math.floor(s / 60)}:${String(s % 60).padSt
 function parseAt(v: string): number | null {
   const t = v.trim();
   if (!t) return null;
-  const m = t.match(/^(?:(d+):)?(d+):(d{2})$|^(d+)$/);
+  const m = t.match(/^(?:(\d+):)?(\d+):(\d{2})$|^(\d+)$/);
   if (!m) return NaN;
   if (m[4] !== undefined) return +m[4];
   return (+(m[1] ?? 0)) * 3600 + +m[2] * 60 + +m[3];

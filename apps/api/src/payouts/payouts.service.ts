@@ -288,7 +288,7 @@ export class PayoutsService {
 
   /** Statements for everything earned in one calendar month (YYYY-MM) */
   createMonth(month: string) {
-    if (!/^d{4}-d{2}$/.test(month)) throw new BadRequestException('Choose a month');
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new BadRequestException('Choose a month');
     const [y, m] = month.split('-').map(Number);
     const start = new Date(y, m - 1, 1), end = new Date(+new Date(y, m, 1) - 1);
     if (start > new Date()) throw new BadRequestException('That month hasn’t started yet');
