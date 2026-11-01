@@ -73,7 +73,7 @@ const TEACHER_MORE: NavGroup[] = [
 const ADMIN_TABS: NavItem[] = [
   { label: 'Home',    href: '/admin/dashboard', icon: 'dashboard' },
   { label: 'Users',   href: '/admin/users',     icon: 'mentorship'},
-  { label: 'Courses', href: '/admin/courses',   icon: 'courses'   },
+  { label: 'Courses', href: '/admin/courses/manage', icon: 'courses' },
   { label: 'Reports', href: '/admin/reports',   icon: 'reports'   },
 ];
 

@@ -16,7 +16,7 @@ interface CommandItem {
 const ADMIN_COMMANDS: CommandItem[] = [
   { id: 'a-dash',     label: 'Dashboard',          group: 'Admin',    href: '/admin/dashboard',   icon: '📊' },
   { id: 'a-users',    label: 'Users',               group: 'Admin',    href: '/admin/users',        icon: '👥' },
-  { id: 'a-courses',  label: 'Course Management',   group: 'Admin',    href: '/admin/courses',      icon: '📚' },
+  { id: 'a-courses',  label: 'Course Management',   group: 'Admin',    href: '/admin/courses/manage', icon: '📚' },
   { id: 'a-packages', label: 'Packages',            group: 'Admin',    href: '/admin/packages',     icon: '📦' },
   { id: 'a-teachers', label: 'Teachers',            group: 'Admin',    href: '/admin/teachers',     icon: '🎓' },
   { id: 'a-reports',  label: 'Revenue Reports',     group: 'Admin',    href: '/admin/reports',      icon: '📈' },

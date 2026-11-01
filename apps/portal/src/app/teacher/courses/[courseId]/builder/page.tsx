@@ -601,7 +601,7 @@ export default function CourseBuilderPage() {
   const tabs: [string, string | null][] = [
     ['Content', null],
     ['Quizzes', isAdmin ? null : `/teacher/quiz-builder/${courseId}`],
-    ['Pricing', isAdmin ? '/admin/courses' : `/teacher/courses/${courseId}/pricing`],
+    ['Pricing', isAdmin ? '/admin/courses/manage' : `/teacher/courses/${courseId}/pricing`],
     ['Discussion', isAdmin ? null : `/teacher/courses/${courseId}/discussion`],
   ];
   const notesFromReviewer = review?.reviewNotes && (review.reviewStatus === 'REJECTED' || course.status === 'DRAFT');
@@ -622,7 +622,7 @@ export default function CourseBuilderPage() {
     <>
     <div className="flex flex-col min-h-full">
       <Topbar
-        backHref={isAdmin ? '/admin/courses' : '/teacher/courses'}
+        backHref={isAdmin ? '/admin/courses/manage' : '/teacher/courses'}
         backLabel={isAdmin ? 'Courses' : 'My courses'}
         title={course.title}
         subtitle={[STATUS[course.status] ?? course.status, course.programme?.shortName, course.subject?.name, `${course.modules.length} module${course.modules.length === 1 ? '' : 's'} · ${totalLessons} lesson${totalLessons === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}

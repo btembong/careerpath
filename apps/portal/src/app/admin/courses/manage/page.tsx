@@ -7,7 +7,10 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent, DrawerSection } from '@/components/ui/Dialog';
 import { QuickAdd, TagPickers, useTaxonomy, progName, type TaxOptions } from '@/components/admin/taxonomy';
+import { PricingSettings } from '@/components/admin/PricingSettings';
+import { majorToMinor, minorToMajor } from '@cpa/shared';
 import { notify } from '@/lib/notify';
+import { money } from '@/lib/money';
 import api from '@/lib/api';
 
 type Tags = { programmeId: string | null; subjectId: string | null; levelId: string | null };
@@ -17,8 +20,19 @@ interface Row {
   programme: { id: string; name: string; shortName: string | null } | null; subject: { id: string; name: string } | null; level: { id: string; name: string } | null;
   teacher: { id: string; name: string } | null; students: number;
   suggestion: (Tags & { from: string | null; label: string }) | null;
+  selling: Selling; price: Money | null; proposed: Money | null; packages: string[];
+  content: { lessons: number; quizzes: number; state: ContentState };
 }
-interface Stats { all: number; published: number; review: number; drafts: number; untagged: number; untaggedWithSuggestion: number; noTeacher: number; hidden: number; lastPull: { createdAt: string; kind: string } | null }
+type Selling = 'paid' | 'free' | 'package' | 'notsale';
+type ContentState = 'built' | 'imported' | 'website' | 'empty' | 'importing';
+type Money = { amount: number; currency: string };
+interface Stats { all: number; published: number; review: number; drafts: number; untagged: number; untaggedWithSuggestion: number; noTeacher: number; hidden: number; lastPull: { createdAt: string; kind: string } | null; onSale: number; notOnSale: number; proposed: number; websiteOnly: number }
+interface Pkg { id: string; name: string; priceAmount: number; currency: string }
+
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : w.endsWith('z') ? 'zes' : 's'}`;
+const priceText = (r: { selling: Selling; price: Money | null }) => r.selling === 'paid' && r.price ? money(r.price.amount, r.price.currency) : r.selling === 'free' ? 'Free' : r.selling === 'package' ? 'Package only' : 'Not on sale';
+const contentText = (c: Row['content']) => c.state === 'website' ? 'Website only' : c.state === 'empty' ? 'Nothing in Tutor' : c.state === 'importing' ? 'Importing…'
+  : c.lessons || c.quizzes ? [c.lessons ? plural(c.lessons, 'lesson') : null, c.quizzes ? plural(c.quizzes, 'quiz') : null].filter(Boolean).join(' · ') : 'No lessons yet';
 
 const STATUS: Record<Row['status'], string> = { DRAFT: 'Draft', PENDING_REVIEW: 'In review', PUBLISHED: 'Live', ARCHIVED: 'Archived' };
 const sel = 'h-[34px] rounded-md border border-line bg-white px-2 text-[13px] text-navy outline-none focus:border-azure';
@@ -35,7 +49,11 @@ export default function CourseManagementPage() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [f, setF] = useState({ q: '', source: '', status: '', programmeId: '', untagged: false, noTeacher: false });
+  const [f, setF] = useState({ q: '', source: '', status: '', programmeId: '', untagged: false, noTeacher: false, price: '', content: '' });
+  const [pkgs, setPkgs] = useState<Pkg[]>([]);
+  const [pricing, setPricing] = useState(false);
+  const [settings, setSettings] = useState(false);
+  useEffect(() => { api.get('/admin/packages').then(r => setPkgs(r.data ?? [])).catch(() => {}); }, []);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulkTags, setBulkTags] = useState<Tags>({ programmeId: null, subjectId: null, levelId: null });
   const [bulkTeacher, setBulkTeacher] = useState('');
@@ -46,7 +64,7 @@ export default function CourseManagementPage() {
   const PAGE = 25;
 
   const load = useCallback(async () => {
-    const params = { q: f.q || undefined, source: f.source || undefined, status: f.status || undefined, programmeId: f.programmeId || undefined, untagged: f.untagged ? '1' : undefined, noTeacher: f.noTeacher ? '1' : undefined, page, pageSize: PAGE };
+    const params = { q: f.q || undefined, source: f.source || undefined, status: f.status || undefined, programmeId: f.programmeId || undefined, untagged: f.untagged ? '1' : undefined, noTeacher: f.noTeacher ? '1' : undefined, price: f.price || undefined, content: f.content || undefined, page, pageSize: PAGE };
     const [l, s] = await Promise.all([api.get('/admin/course-manage', { params }), api.get('/admin/course-manage/stats')]);
     setRows(l.data.rows); setTotal(l.data.total); setStats(s.data);
   }, [f, page]);
@@ -58,7 +76,7 @@ export default function CourseManagementPage() {
     setBusy(true);
     try {
       const r = await api.post('/admin/course-manage/bulk', { courseIds: ids, action, ...extra });
-      notify.success(`${r.data.updated} course${r.data.updated === 1 ? '' : 's'} updated`);
+      notify.success(action === 'import' ? `${plural(r.data.updated, 'course')} queued for import` : `${plural(r.data.updated, 'course')} updated`, action === 'import' ? { description: 'Follow it in Course content from Tutor.' } : undefined);
       setPicked(new Set()); await load();
     } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not update'); } finally { setBusy(false); }
   }
@@ -69,10 +87,11 @@ export default function CourseManagementPage() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <Topbar title="Course management" subtitle="Every course, where it sits in the catalogue, and who teaches it"
+      <Topbar title="Course management" subtitle="Every course: where it sits, who teaches it, how it’s sold and what’s in it"
         actions={<Button size="sm" onClick={() => setCreating(true)} disabled={!opts}>New course</Button>} />
       <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-[22px]">
         <div className="-mb-1 flex flex-wrap justify-end gap-2">
+          <button onClick={() => setSettings(true)} className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Pricing settings</button>
           <Link href="/admin/courses/taxonomy" className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Taxonomy</Link>
           <Link href="/admin/courses/wordpress" className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Pull from WordPress</Link>
           <Link href="/admin/courses/import" className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Course content from Tutor</Link>
@@ -94,12 +113,16 @@ export default function CourseManagementPage() {
 
         <dl className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]">
           {[
-            ['All courses', stats?.all, () => setF({ q: '', source: '', status: '', programmeId: '', untagged: false, noTeacher: false })],
+            ['All courses', stats?.all, () => setF({ q: '', source: '', status: '', programmeId: '', untagged: false, noTeacher: false, price: '', content: '' })],
             ['Live', stats?.published, () => setF({ ...f, status: 'PUBLISHED' })],
             ['In review', stats?.review, () => setF({ ...f, status: 'PENDING_REVIEW' })],
             ['Drafts', stats?.drafts, () => setF({ ...f, status: 'DRAFT' })],
             ['Not tagged', stats?.untagged, () => setF({ ...f, untagged: true })],
             ['No teacher yet', stats?.noTeacher, () => setF({ ...f, noTeacher: true })],
+            ['On sale', stats?.onSale, () => setF({ ...f, price: 'paid' })],
+            ['Not on sale', stats?.notOnSale, () => setF({ ...f, price: 'notsale' })],
+            ['Price proposed', stats?.proposed, () => setF({ ...f, price: 'proposed' })],
+            ['Website only', stats?.websiteOnly, () => setF({ ...f, content: 'website' })],
           ].map(([l, v, on]) => (
             <button key={l as string} onClick={on as () => void} className="rounded-lg border border-line bg-white px-3.5 py-3 text-left hover:border-azure">
               <dt className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{l as string}</dt>
@@ -114,6 +137,8 @@ export default function CourseManagementPage() {
               className="h-[34px] min-w-[200px] flex-1 rounded-md border border-line px-2.5 text-[13px] text-navy outline-none focus:border-azure" />
             <select aria-label="Source" className={sel} value={f.source} onChange={e => setF({ ...f, source: e.target.value })}><option value="">Source: all</option><option value="NATIVE">Built on the portal</option><option value="WORDPRESS">From WordPress</option></select>
             <select aria-label="Status" className={sel} value={f.status} onChange={e => setF({ ...f, status: e.target.value })}><option value="">Status: all</option><option value="PUBLISHED">Live</option><option value="PENDING_REVIEW">In review</option><option value="DRAFT">Draft</option><option value="HIDDEN">Hidden from catalogue</option><option value="ARCHIVED">Archived</option></select>
+            <select aria-label="Price" className={sel} value={f.price} onChange={e => setF({ ...f, price: e.target.value })}><option value="">Price: all</option><option value="paid">Sold on its own</option><option value="free">Free</option><option value="package">Package only</option><option value="notsale">Not on sale</option><option value="proposed">Price proposed</option></select>
+            <select aria-label="Content" className={sel} value={f.content} onChange={e => setF({ ...f, content: e.target.value })}><option value="">Content: all</option><option value="imported">Imported from Tutor</option><option value="website">Website only</option><option value="nolessons">No lessons</option></select>
             <select aria-label="Programme" className={clsx(sel, 'max-w-[200px]')} value={f.programmeId} onChange={e => setF({ ...f, programmeId: e.target.value })}><option value="">Programme: all</option>{opts?.programmes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
             {([['untagged', 'Not tagged only'], ['noTeacher', 'No teacher yet']] as const).map(([k, l]) => (
               <button key={k} onClick={() => setF({ ...f, [k]: !f[k] })} aria-pressed={f[k]}
@@ -141,15 +166,31 @@ export default function CourseManagementPage() {
               <button onClick={() => setPicked(new Set())} className="text-ink2 hover:text-navy" aria-label="Clear selection">✕</button>
             </div>
           )}
+          {picked.size > 0 && (
+            <div className="flex flex-wrap items-center gap-3.5 border-b border-line bg-[#F6F9FF] px-4 py-2.5 text-[13px]">
+              <span className="text-ink2">Selling and content:</span>
+              <button onClick={() => setPricing(true)} className="font-semibold text-azure-strong hover:underline">Set price</button>
+              <button onClick={() => bulk('free')} className="font-semibold text-azure-strong hover:underline">Make free</button>
+              <button onClick={() => bulk('unsell')} className="font-semibold text-azure-strong hover:underline">Stop selling on its own</button>
+              {rows?.some(r => picked.has(r.id) && r.proposed) && <>
+                <button onClick={() => bulk('approvePrice')} className="font-semibold text-azure-strong hover:underline">Approve proposed prices</button>
+                <button onClick={() => bulk('declinePrice')} className="font-semibold text-muted hover:text-navy hover:underline">Decline them</button>
+              </>}
+              <select aria-label="Add to package" className={sel} value="" onChange={e => { if (e.target.value) bulk('addToPackage', { packageId: e.target.value }); }}>
+                <option value="">Add to package…</option>{pkgs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              {rows?.some(r => picked.has(r.id) && r.source === 'WORDPRESS') && <button onClick={() => bulk('import')} className="font-semibold text-azure-strong hover:underline">Import content</button>}
+            </div>
+          )}
 
           {!rows ? <div className="m-4 h-64 rounded-md bg-subtle animate-pulse" /> : !rows.length ? (
             <p className="px-4 py-10 text-center text-[13px] text-ink2">No courses match.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] border-collapse text-[13.5px]">
+              <table className="w-full min-w-[1100px] border-collapse text-[13.5px]">
                 <thead><tr>
                   <th className="w-10 border-b border-line px-3.5 py-2.5"><input type="checkbox" aria-label="Select all on this page" checked={allOnPage} onChange={toggleAll} /></th>
-                  {['Course', 'Programme · subject · level', 'Teacher', 'Students', 'Status', ''].map(h => <th key={h} className="border-b border-line px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{h}</th>)}
+                  {['Course', 'Programme · subject · level', 'Teacher', 'Price', 'Content', 'Students', 'Status', ''].map(h => <th key={h} className="border-b border-line px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {rows.map(r => {
@@ -171,6 +212,12 @@ export default function CourseManagementPage() {
                           )}
                         </td>
                         <td className="border-b border-line px-3.5 py-3 align-top text-ink2">{r.teacher?.name ?? <span className="text-muted">CareerPath (no teacher yet)</span>}</td>
+                        <td className="border-b border-line px-3.5 py-3 align-top">
+                          <span className={clsx(r.selling === 'notsale' ? 'inline-flex rounded border border-dashed border-azure px-2 py-0.5 text-[12.5px] font-semibold text-azure-strong' : r.selling === 'free' ? 'font-semibold text-[#2F57C9]' : 'font-semibold text-navy')}>{priceText(r)}</span>
+                          {r.proposed && <p className="mt-1 text-xs text-azure-strong">Proposed {money(r.proposed.amount, r.proposed.currency)} · <button onClick={() => bulk('approvePrice', {}, [r.id])} className="font-semibold underline">Approve</button></p>}
+                          {r.selling !== 'package' && r.packages.length > 0 && <p className="text-xs text-muted">also in {r.packages.length === 1 ? r.packages[0] : plural(r.packages.length, 'package')}</p>}
+                        </td>
+                        <td className="border-b border-line px-3.5 py-3 align-top text-ink2">{contentText(r.content)}</td>
                         <td className="border-b border-line px-3.5 py-3 align-top text-ink2">{r.students || '—'}</td>
                         <td className="border-b border-line px-3.5 py-3 align-top">
                           <span className={clsx('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs font-semibold', r.status === 'PUBLISHED' && !r.hidden ? 'bg-accent-soft text-navy' : 'border border-line bg-subtle text-ink2')}>{r.hidden ? 'Hidden' : STATUS[r.status]}</span>
@@ -194,7 +241,9 @@ export default function CourseManagementPage() {
         </section>
       </div>
 
-      {openId && opts && <CourseDrawer id={openId} opts={opts} onClose={() => setOpenId(null)} onSaved={load}
+      {opts && <PricingSettings open={settings} programmes={opts.programmes} packageOnly={stats?.notOnSale ?? 0} onClose={() => setSettings(false)} onApplied={load} />}
+      <SetPrice open={pricing} count={picked.size} onClose={() => setPricing(false)} onSave={async x => { setPricing(false); await bulk('price', x); }} />
+      {openId && opts && <CourseDrawer id={openId} opts={opts} pkgs={pkgs} onClose={() => setOpenId(null)} onSaved={load}
         onAdd={(kind, programmeId, then) => setAdding({ kind, programmeId, then: id => { reload(); then(id); } })} />}
       {creating && opts && <NewCourse opts={opts} onClose={() => setCreating(false)}
         onCreated={id => router.push(`/admin/courses/${id}/builder`)}
@@ -208,20 +257,52 @@ interface Detail {
   id: string; title: string; source: string; status: Row['status']; catalogueHidden: boolean; wpCourseUrl: string | null; wpCategories: string[]; wpAuthorEmail: string | null;
   programmeId: string | null; subjectId: string | null; levelId: string | null; teacher: { id: string; name: string } | null; students: number; modules: number;
   suggestion: (Tags & { from: string | null }) | null;
+  language: string | null;
+  selling: Selling; price: Money | null; accessMonths: number | null; proposed: (Money & { at: string | null }) | null;
+  packages: { id: string; name: string; priceAmount: number; currency: string }[];
+  content: { lessons: number; quizzes: number; questions: number; state: ContentState; importedAt: string | null; lastImport: { status: string; at: string | null } | null };
+  review: { reviewer: string | null; sharePct: number | null; status: string | null; reviewedAt: string | null; submittedAt: string | null };
 }
 
-function CourseDrawer({ id, opts, onClose, onSaved, onAdd }: { id: string; opts: TaxOptions; onClose: () => void; onSaved: () => Promise<void>; onAdd: (kind: 'programme' | 'subject', programmeId: string | null, then: (id: string) => void) => void }) {
+const CURRENCIES = ['GHS', 'XAF', 'XOF', 'NGN', 'KES', 'USD'];
+
+/** Price, currency and months of access for one or more courses */
+function SetPrice({ open, count, onClose, onSave }: { open: boolean; count: number; onClose: () => void; onSave: (x: { amount: number; currency: string; accessMonths: number | null }) => void }) {
+  const [amount, setAmount] = useState(''), [currency, setCurrency] = useState('GHS'), [months, setMonths] = useState('12');
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent title={`Set the price for ${plural(count, 'course')}`} description="They can then be bought on their own. Courses in packages stay in them.">
+        <div className="grid grid-cols-[1fr_110px_140px] gap-3">
+          <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Price</span><input inputMode="decimal" autoFocus value={amount} onChange={e => setAmount(e.target.value)} placeholder="e.g. 150" className="input-base" /></label>
+          <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Currency</span><select value={currency} onChange={e => setCurrency(e.target.value)} className="input-base">{CURRENCIES.map(c => <option key={c}>{c}</option>)}</select></label>
+          <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Access</span><select value={months} onChange={e => setMonths(e.target.value)} className="input-base"><option value="">No time limit</option>{[1, 3, 6, 12, 24].map(m => <option key={m} value={m}>{m} month{m === 1 ? '' : 's'}</option>)}</select></label>
+        </div>
+        <DialogFooter><Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" disabled={!(Number(amount) > 0)} onClick={() => onSave({ amount: majorToMinor(Number(amount), currency), currency, accessMonths: months ? Number(months) : null })}>Set price</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CourseDrawer({ id, opts, pkgs, onClose, onSaved, onAdd }: { id: string; opts: TaxOptions; pkgs: Pkg[]; onClose: () => void; onSaved: () => Promise<void>; onAdd: (kind: 'programme' | 'subject', programmeId: string | null, then: (id: string) => void) => void }) {
   const [d, setD] = useState<Detail | null>(null);
   const [tags, setTags] = useState<Tags>({ programmeId: null, subjectId: null, levelId: null });
   const [teacher, setTeacher] = useState('none');
   const [status, setStatus] = useState<Row['status']>('DRAFT');
   const [listed, setListed] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [mode, setMode] = useState<'own' | 'free' | 'none'>('none');
+  const [amount, setAmount] = useState(''), [currency, setCurrency] = useState('GHS'), [months, setMonths] = useState('12');
+  const [addPkg, setAddPkg] = useState('');
+  const [language, setLanguage] = useState('');
   useEffect(() => {
     api.get(`/admin/course-manage/${id}`).then(r => {
       const x: Detail = r.data; setD(x);
       setTags({ programmeId: x.programmeId, subjectId: x.subjectId, levelId: x.levelId });
       setTeacher(x.teacher?.id ?? 'none'); setStatus(x.status); setListed(!x.catalogueHidden);
+      setMode(x.selling === 'paid' ? 'own' : x.selling === 'free' ? 'free' : 'none');
+      if (x.price) { setAmount(String(minorToMajor(x.price.amount, x.price.currency))); setCurrency(x.price.currency); }
+      setMonths(x.accessMonths == null ? '' : String(x.accessMonths));
+      setLanguage(x.language ?? '');
     }).catch(() => notify.error('Could not open this course'));
   }, [id]);
 
@@ -234,6 +315,15 @@ function CourseDrawer({ id, opts, onClose, onSaved, onAdd }: { id: string; opts:
       if (teacher !== (d.teacher?.id ?? 'none')) await one('teacher', { teacherId: teacher === 'none' ? null : teacher });
       if (status !== d.status) await one(status === 'PUBLISHED' ? 'publish' : status === 'ARCHIVED' ? 'archive' : 'unpublish');
       if (listed === d.catalogueHidden) await one(listed ? 'show' : 'hide');
+      // Selling
+      const wasMode = d.selling === 'paid' ? 'own' : d.selling === 'free' ? 'free' : 'none';
+      const newAmount = mode === 'own' ? majorToMinor(Number(amount), currency) : 0;
+      if (mode === 'own' && !(Number(amount) > 0)) throw { response: { data: { message: 'Enter a price, or choose Free or Not sold on its own' } } };
+      if (mode === 'own' && (wasMode !== 'own' || newAmount !== d.price?.amount || currency !== d.price?.currency || (months ? Number(months) : null) !== d.accessMonths)) await one('price', { amount: newAmount, currency, accessMonths: months ? Number(months) : null });
+      if (mode === 'free' && wasMode !== 'free') await one('free');
+      if (mode === 'none' && wasMode !== 'none') await one('unsell');
+      if (addPkg) await one('addToPackage', { packageId: addPkg });
+      if ((language || null) !== d.language) await api.patch(`/platform-courses/${d.id}`, { language: language || null });
       notify.success('Course saved'); await onSaved(); onClose();
     } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not save'); } finally { setSaving(false); }
   }
@@ -245,7 +335,7 @@ function CourseDrawer({ id, opts, onClose, onSaved, onAdd }: { id: string; opts:
       <DrawerContent title={d?.title ?? 'Course'} description={d ? `${d.source === 'WORDPRESS' ? 'WordPress course' : 'Built on the portal'} · ${d.students} student${d.students === 1 ? '' : 's'}${d.source === 'NATIVE' ? ` · ${d.modules} module${d.modules === 1 ? '' : 's'}` : ''}` : ' '}
         footer={<>
           {d?.wpCourseUrl && <a href={d.wpCourseUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy">Open on WordPress</a>}
-          {d?.source === 'NATIVE' && <Link href={`/admin/courses/${d.id}/builder`} className="inline-flex h-9 items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy">Course builder</Link>}
+          {(d?.source === 'NATIVE' || d?.content.importedAt) && <Link href={`/admin/courses/${d!.id}/builder`} className="inline-flex h-9 items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy">Course builder</Link>}
           <span className="flex-1" />
           <Button size="sm" onClick={save} loading={saving} disabled={!d}>Save</Button>
         </>}>
@@ -268,10 +358,56 @@ function CourseDrawer({ id, opts, onClose, onSaved, onAdd }: { id: string; opts:
               <option value="DRAFT">Draft</option>{d.status === 'PENDING_REVIEW' && <option value="PENDING_REVIEW">In review</option>}<option value="PUBLISHED">Live</option><option value="ARCHIVED">Archived</option>
             </select>
           </label>
+          <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Teaching language</span>
+            <select className="input-base" value={language} onChange={e => setLanguage(e.target.value)}>
+              <option value="">Not shown</option>{['English', 'French', 'Bilingual (English and French)'].concat(language && !['English', 'French', 'Bilingual (English and French)'].includes(language) ? [language] : []).map(l => <option key={l}>{l}</option>)}
+            </select>
+          </label>
           <label className="flex items-center justify-between gap-3 rounded-md border border-line px-3.5 py-2.5 text-[13.5px] text-navy">
             <span>Show in the catalogue<span className="block text-xs text-muted">Off: students who have it keep it, but it isn’t listed</span></span>
             <input type="checkbox" checked={listed} onChange={e => setListed(e.target.checked)} />
           </label>
+          <DrawerSection title="Selling">
+            <div role="radiogroup" aria-label="How it’s sold" className="flex flex-wrap gap-1.5 text-[13px]">
+              {([['own', 'On its own'], ['free', 'Free'], ['none', d.packages.length ? 'Package only' : 'Not sold on its own']] as const).map(([k, l]) => (
+                <button key={k} type="button" role="radio" aria-checked={mode === k} onClick={() => setMode(k)} className={clsx('rounded-md px-2.5 py-1.5', mode === k ? 'bg-navy font-semibold text-white' : 'border border-line text-navy hover:bg-subtle')}>{l}</button>
+              ))}
+            </div>
+            {mode === 'own' && (
+              <div className="mt-2 grid grid-cols-[1fr_90px_130px] gap-2">
+                <input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Price" aria-label="Price" className="input-base" />
+                <select value={currency} onChange={e => setCurrency(e.target.value)} aria-label="Currency" className="input-base">{CURRENCIES.map(c => <option key={c}>{c}</option>)}</select>
+                <select value={months} onChange={e => setMonths(e.target.value)} aria-label="Access" className="input-base"><option value="">No time limit</option>{[1, 3, 6, 12, 24].map(m => <option key={m} value={m}>{m} month{m === 1 ? '' : 's'} access</option>)}</select>
+              </div>
+            )}
+            {mode === 'free' && <p className="mt-1.5 text-xs text-muted">{d.source === 'WORDPRESS' ? 'Anyone can join it.' : 'Students enrol for free.'}</p>}
+            {mode === 'none' && !d.packages.length && <p className="mt-1.5 text-xs text-azure-strong">Not on sale: add it to a package below, or sell it on its own.</p>}
+            {d.proposed && (
+              <p className="mt-2 text-[12.5px] text-azure-strong">Teacher proposed {money(d.proposed.amount, d.proposed.currency)}{d.proposed.at ? ` on ${new Date(d.proposed.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''} ·{' '}
+                <button onClick={async () => { await api.post('/admin/course-manage/bulk', { courseIds: [d.id], action: 'approvePrice' }); notify.success('Price approved'); await onSaved(); onClose(); }} className="font-semibold underline">Approve</button> ·{' '}
+                <button onClick={async () => { await api.post('/admin/course-manage/bulk', { courseIds: [d.id], action: 'declinePrice' }); notify.success('Proposal declined'); await onSaved(); onClose(); }} className="underline">Decline</button>
+              </p>
+            )}
+          </DrawerSection>
+          <DrawerSection title="In packages" count={d.packages.length}>
+            {d.packages.length ? <div className="flex flex-col gap-1">{d.packages.map(p => <p key={p.id} className="flex justify-between text-[13px] text-navy"><span>{p.name}</span><span className="text-muted">{money(p.priceAmount, p.currency)}</span></p>)}</div> : <p className="text-[13px] text-ink2">Not in any package.</p>}
+            <select value={addPkg} onChange={e => setAddPkg(e.target.value)} aria-label="Add to package" className="input-base mt-2 h-9 w-full">
+              <option value="">Add to a package…</option>{pkgs.filter(p => !d.packages.some(x => x.id === p.id)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </DrawerSection>
+          <DrawerSection title="Content">
+            <p className="text-[13px] text-ink2">
+              {d.content.state === 'website' ? 'Not imported yet — it opens on the website.' : d.content.state === 'empty' ? 'Tutor has no lessons for it yet, so it opens on the website.' : d.content.state === 'importing' ? 'Importing from Tutor now…'
+                : `${[plural(d.content.lessons, 'lesson'), plural(d.content.quizzes, 'quiz'), plural(d.content.questions, 'question')].join(' · ')}${d.content.importedAt ? ` — imported from Tutor ${new Date(d.content.importedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, built here since` : ''}`}
+            </p>
+            {d.source === 'WORDPRESS' && <Link href="/admin/courses/import" className="mt-1 inline-block text-[13px] font-semibold text-azure-strong hover:underline">{d.content.importedAt ? 'Import again' : 'Import content'}</Link>}
+          </DrawerSection>
+          <DrawerSection title="Review">
+            <p className="text-[13px] text-ink2">
+              {d.review.reviewer ? `${d.review.reviewer}${d.review.sharePct != null ? ` (${d.review.sharePct}% share)` : ''} · ${d.review.status === 'APPROVED' ? `approved${d.review.reviewedAt ? ` ${new Date(d.review.reviewedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}` : d.review.status === 'REJECTED' ? 'sent back' : d.review.submittedAt ? 'waiting for review' : 'not submitted'}` : 'No reviewer yet.'}
+            </p>
+            <Link href="/admin/reviews" className="mt-1 inline-block text-[13px] font-semibold text-azure-strong hover:underline">{d.review.reviewer ? 'Change' : 'Assign a reviewer'}</Link>
+          </DrawerSection>
           {d.wpCategories.length > 0 && <DrawerSection title="WordPress categories"><div className="flex flex-wrap gap-1.5">{d.wpCategories.map(c => <span key={c} className="rounded border border-line bg-subtle px-2 py-1 text-xs text-ink2">{c}</span>)}</div></DrawerSection>}
         </>}
       </DrawerContent>

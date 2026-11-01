@@ -182,7 +182,7 @@ export default function AdminCourseDetailPage() {
       <Topbar
         title={course.title}
         subtitle="Course detail & management"
-        backHref="/admin/courses"
+        backHref="/admin/courses/manage"
         backLabel="Courses"
       />
 
@@ -190,7 +190,7 @@ export default function AdminCourseDetailPage() {
 
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-xs text-royal/40">
-          <Link href="/admin/courses" className="hover:text-navy transition">Course Management</Link>
+          <Link href="/admin/courses/manage" className="hover:text-navy transition">Course Management</Link>
           <Icon name="chevronRight" size={10} />
           <span className="text-navy font-semibold truncate">{course.title}</span>
         </div>
@@ -573,7 +573,7 @@ export default function AdminCourseDetailPage() {
                     </Button>
                   </a>
                 )}
-                <Link href="/admin/courses" className="block">
+                <Link href="/admin/courses/manage" className="block">
                   <Button fullWidth size="sm" variant="ghost">
                     <Icon name="arrowLeft" size={13} /> Back to management
                   </Button>

@@ -197,7 +197,7 @@ export default function AdminDashboard() {
                               </td>
                               <td className={clsx(td, 'text-ink2')}>{waiting(p.since)}</td>
                               <td className={clsx(td, 'text-right')}>
-                                <Link href={p.kind === 'course' ? '/admin/courses' : '/admin/teachers'} className={btnSm}>Open</Link>
+                                <Link href={p.kind === 'course' ? '/admin/courses/manage' : '/admin/teachers'} className={btnSm}>Open</Link>
                               </td>
                             </tr>
                           ))}
