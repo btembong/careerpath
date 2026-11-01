@@ -25,15 +25,33 @@ export class CountriesService {
   // ── Admin ────────────────────────────────────────────────
 
   async findAll() {
-    const [countries, reps] = await Promise.all([
-      this.prisma.country.findMany({ orderBy: { name: 'asc' } }),
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const [countries, reps, students, packageSales, courseSales] = await Promise.all([
+      this.prisma.country.findMany({ orderBy: { name: 'asc' }, include: { educationSystem: { select: { id: true, name: true } } } }),
       this.prisma.userProfile.findMany({
         where: { role: UserRole.COUNTRY_REP },
-        select: { id: true, email: true, countryId: true },
+        select: { id: true, email: true, countryId: true, name: true, firstName: true, lastName: true },
       }),
+      this.prisma.userProfile.groupBy({ by: ['countryId'], where: { role: UserRole.STUDENT }, _count: { _all: true } }),
+      this.prisma.packagePurchase.findMany({ where: { purchasedAt: { gte: monthStart }, amountPaid: { gt: 0 } }, select: { amountPaid: true, currency: true, student: { select: { countryId: true } } } }),
+      this.prisma.coursePurchase.findMany({ where: { purchasedAt: { gte: monthStart }, amountPaid: { gt: 0 } }, select: { amountPaid: true, currency: true, student: { select: { countryId: true } } } }),
     ]);
-    const repByCountry = new Map(reps.filter(r => r.countryId).map(r => [r.countryId!, r]));
-    return countries.map(c => ({ ...c, rep: repByCountry.get(c.id) ?? null }));
+    const repByCountry = new Map(reps.filter(r => r.countryId).map(r => [r.countryId!, { id: r.id, email: r.email, name: r.name || [r.firstName, r.lastName].filter(Boolean).join(' ') || r.email }]));
+    const studentsBy = new Map(students.map(x => [x.countryId, x._count._all]));
+    // This month's sales by the buyer's country, per currency
+    const revenue = new Map<string, Record<string, number>>();
+    for (const p of [...packageSales, ...courseSales]) {
+      const id = p.student.countryId;
+      if (!id) continue;
+      const m = revenue.get(id) ?? {};
+      m[p.currency ?? 'GHS'] = (m[p.currency ?? 'GHS'] ?? 0) + (p.amountPaid ?? 0);
+      revenue.set(id, m);
+    }
+    return countries.map(c => ({
+      ...c, rep: repByCountry.get(c.id) ?? null, students: studentsBy.get(c.id) ?? 0,
+      revenueThisMonth: Object.entries(revenue.get(c.id) ?? {}).map(([currency, amount]) => ({ currency, amount })),
+    }));
   }
 
   async create(dto: CreateCountryDto) {
@@ -57,6 +75,13 @@ export class CountriesService {
       const rep = await this.prisma.userProfile.findUnique({ where: { id: dto.repId } });
       if (!rep) throw new BadRequestException('Specified user not found');
 
+      // A balance can't change currency: it would quietly become a different amount. Checked
+      // before anything changes, so a refusal leaves the person as they were
+      const existing = await this.prisma.wallet.findUnique({ where: { userId: dto.repId } });
+      if (existing && existing.currency !== country.currency && existing.balance !== 0) {
+        throw new BadRequestException(`This person is still owed money in ${existing.currency}. Pay them out before making them rep for ${country.name}.`);
+      }
+
       // Promote role if not already a rep
       await this.prisma.userProfile.update({
         where: { id: dto.repId },
@@ -68,7 +93,6 @@ export class CountriesService {
       });
 
       // Ensure they have a wallet in the country's currency
-      const existing = await this.prisma.wallet.findUnique({ where: { userId: dto.repId } });
       if (!existing) {
         await this.prisma.wallet.create({
           data: { userId: dto.repId, currency: country.currency, balance: 0 },

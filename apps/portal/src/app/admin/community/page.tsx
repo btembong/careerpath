@@ -1,248 +1,95 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { SkeletonTopbar, SkeletonTable } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-type Tab = 'pending' | 'reviewed' | 'discussions';
+type Person = { email: string; firstName?: string | null; lastName?: string | null; name?: string | null };
+interface Story { id: string; story: string; consentToPublish: boolean; status: string; submittedAt: string; student: Person }
+interface Post { id: string; body: string; createdAt: string; isPinned: boolean; upvotes: number; replies: number; course: { id: string; title: string }; author: { name: string; role: string } }
+type Tab = 'stories' | 'discussions' | 'published';
+
+const nameOf = (p: Person) => p.name || [p.firstName, p.lastName].filter(Boolean).join(' ') || p.email.split('@')[0];
+const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
 export default function AdminCommunityPage() {
-  const [tab, setTab]             = useState<Tab>('pending');
-  const [stories, setStories]     = useState<any[]>([]);
-  const [published, setPublished] = useState<any[]>([]);
-  const [discussions, setDiscussions] = useState<any[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [discLoading, setDiscLoading] = useState(false);
-  const [acting, setActing]       = useState<string | null>(null);
-  const [noteMap, setNoteMap]     = useState<Record<string, string>>({});
+  const [tab, setTab] = useState<Tab>('stories');
+  const [queue, setQueue] = useState<Story[] | null>(null);
+  const [published, setPublished] = useState<Story[] | null>(null);
+  const [posts, setPosts] = useState<{ total: number; rows: Post[] } | null>(null);
+  const [q, setQ] = useState('');
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    Promise.all([
-      api.get('/community/admin/success-stories').then(r => setStories(r.data ?? [])).catch(() => {}),
-      api.get('/community/success-stories/published').then(r => setPublished(r.data ?? [])).catch(() => {}),
-    ]).finally(() => setLoading(false));
+  const loadStories = useCallback(() => {
+    api.get('/community/admin/success-stories').then(r => setQueue(r.data ?? [])).catch(() => setQueue([]));
+    api.get('/community/success-stories/published').then(r => setPublished(r.data ?? [])).catch(() => setPublished([]));
   }, []);
-
-  async function loadDiscussions() {
-    setDiscLoading(true);
-    try {
-      const r = await api.get('/community/admin/discussions');
-      setDiscussions(r.data ?? []);
-    } catch { setDiscussions([]); }
-    finally { setDiscLoading(false); }
-  }
-
+  const loadPosts = useCallback((term: string) => api.get('/community/admin/discussions', { params: term ? { q: term } : {} }).then(r => setPosts(r.data)).catch(() => setPosts({ total: 0, rows: [] })), []);
+  useEffect(() => { loadStories(); loadPosts(''); }, [loadStories, loadPosts]);
   useEffect(() => {
-    if (tab === 'discussions' && discussions.length === 0) loadDiscussions();
-  }, [tab]);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => loadPosts(q.trim()), 300);
+  }, [q, loadPosts]);
 
-  async function review(id: string, status: 'APPROVED' | 'REJECTED') {
-    setActing(id);
-    try {
-      await api.patch(`/community/admin/success-stories/${id}`, {
-        status,
-        adminNote: noteMap[id]?.trim() || undefined,
-      });
-      setStories(prev => prev.filter(s => s.id !== id));
-      if (status === 'APPROVED') notify.success('Story approved and published');
-      else notify.success('Story rejected');
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Action failed');
-    } finally {
-      setActing(null);
-    }
+  async function review(s: Story, status: 'APPROVED' | 'REJECTED') {
+    try { await api.patch(`/community/admin/success-stories/${s.id}`, { status }); notify.success(status === 'APPROVED' ? 'Published' : 'Declined'); loadStories(); }
+    catch { notify.error('Could not save that'); }
+  }
+  async function pin(p: Post) {
+    try { const r = await api.post(`/community/posts/${p.id}/pin`); setPosts(x => x && { ...x, rows: x.rows.map(y => (y.id === p.id ? { ...y, isPinned: r.data.isPinned } : y)) }); }
+    catch { notify.error('Could not pin it'); }
+  }
+  async function remove(p: Post) {
+    if (!confirm(`Remove this question${p.replies ? ` and its ${p.replies} repl${p.replies === 1 ? 'y' : 'ies'}` : ''}? This can’t be undone.`)) return;
+    try { await api.delete(`/community/admin/discussions/${p.id}`); setPosts(x => x && { total: x.total - 1, rows: x.rows.filter(y => y.id !== p.id) }); notify.success('Removed'); }
+    catch { notify.error('Could not remove it'); }
   }
 
-  async function moderateDiscussion(id: string, action: 'hide' | 'delete') {
-    setActing(id);
-    try {
-      if (action === 'delete') {
-        await api.delete(`/community/admin/discussions/${id}`);
-        setDiscussions(prev => prev.filter(d => d.id !== id));
-        notify.success('Post deleted');
-      } else {
-        await api.patch(`/community/admin/discussions/${id}`, { hidden: true });
-        setDiscussions(prev => prev.map(d => d.id === id ? { ...d, hidden: true } : d));
-        notify.success('Post hidden');
-      }
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Action failed');
-    } finally { setActing(null); }
-  }
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 p-6 space-y-5 max-w-6xl mx-auto w-full">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[0,1,2,3].map(i => <div key={i} className="h-20 rounded-2xl bg-cloud animate-pulse" />)}
-        </div>
-        <SkeletonTable />
-      </div>
-    </div>
-  );
-
+  const tabs: [Tab, string, number | undefined][] = [['stories', 'Success stories to approve', queue?.length], ['discussions', 'Course discussions', posts?.total], ['published', 'Published stories', published?.length]];
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="Community" subtitle="Review student success stories and discussion posts" />
-
-      <div className="flex-1 p-4 md:p-6 space-y-5 max-w-4xl w-full mx-auto">
-
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: 'Pending review', value: stories.length,   icon: 'clock'     as const, color: 'text-amber-500' },
-            { label: 'Published',      value: published.length, icon: 'star'      as const, color: 'text-azure'     },
-            { label: 'Total stories',  value: stories.length + published.length, icon: 'community' as const, color: 'text-navy' },
-          ].map(s => (
-            <Card key={s.label} className="flex flex-col items-center py-4 text-center">
-              <Icon name={s.icon} size={20} className={s.color} />
-              <p className="text-2xl font-black text-navy mt-1">{s.value}</p>
-              <p className="text-[10px] font-semibold text-royal/50 mt-0.5">{s.label}</p>
-            </Card>
-          ))}
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-1 rounded-xl border border-cloud bg-surface p-1 w-fit">
-          {([
-            ['pending',     `Pending (${stories.length})`],
-            ['reviewed',    `Published (${published.length})`],
-            ['discussions', 'Discussions'],
-          ] as [Tab, string][]).map(([t, label]) => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all
-                ${tab === t ? 'bg-white text-navy shadow-sm border border-cloud' : 'text-royal/50 hover:text-navy'}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Pending queue */}
-        {tab === 'pending' && (
-          <div className="space-y-4">
-            {stories.length === 0 ? (
-              <EmptyState icon="star" title="No pending stories" description="All stories have been reviewed" />
-            ) : stories.map((s: any) => (
-              <Card key={s.id} padding="none" className="overflow-hidden">
-                <div className="flex items-center gap-3 px-5 py-3 border-b border-cloud bg-surface">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-azure text-xs font-bold text-white flex-shrink-0">
-                    {s.student?.email?.[0]?.toUpperCase() ?? 'S'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-navy truncate">{s.student?.email ?? 'Student'}</p>
-                    <p className="text-[10px] text-royal/40">
-                      Submitted {new Date(s.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </p>
-                  </div>
-                  <Badge variant="muted">Pending</Badge>
-                </div>
-                <div className="px-5 py-4">
-                  <h3 className="text-sm font-bold text-navy mb-2">{s.title}</h3>
-                  <p className="text-sm text-royal/70 leading-relaxed line-clamp-4">{s.body}</p>
-                  {s.linkedInUrl && (
-                    <a href={s.linkedInUrl} target="_blank" rel="noreferrer"
-                      className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-azure hover:text-royal transition">
-                      LinkedIn profile <Icon name="externalLink" size={11} />
-                    </a>
-                  )}
-                </div>
-                <div className="px-5 pb-4 space-y-3">
-                  <textarea
-                    value={noteMap[s.id] ?? ''}
-                    onChange={e => setNoteMap(m => ({ ...m, [s.id]: e.target.value }))}
-                    placeholder="Optional note to student (reason for rejection, feedback, etc.)"
-                    rows={2}
-                    className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-xs text-navy outline-none focus:border-azure resize-none placeholder:text-royal/30"
-                  />
-                  <div className="flex gap-2">
-                    <Button size="sm" loading={acting === s.id} onClick={() => review(s.id, 'APPROVED')} className="flex-1">
-                      <Icon name="check" size={13} /> Approve & publish
-                    </Button>
-                    <button onClick={() => review(s.id, 'REJECTED')} disabled={!!acting}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-500 hover:bg-red-100 transition disabled:opacity-50">
-                      <Icon name="close" size={13} /> Reject
-                    </button>
-                  </div>
-                </div>
-              </Card>
+    <div className="flex min-h-full flex-col">
+      <Topbar title="Community" subtitle="Success stories to approve, and course discussions" />
+      <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-[22px]">
+        <section className="rounded-lg border border-line bg-white">
+          <div className="flex flex-wrap items-center gap-1 border-b border-line px-4 text-[13.5px]">
+            {tabs.map(([k, l, n]) => (
+              <button key={k} onClick={() => setTab(k)} aria-pressed={tab === k}
+                className={clsx('-mb-px border-b-2 px-2.5 py-[13px] text-navy', tab === k ? 'border-azure-strong font-semibold' : 'border-transparent')}>{l} {n ?? ''}</button>
             ))}
+            <span className="flex-1" />
+            {tab === 'discussions' && <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search posts" aria-label="Search posts" className="my-2 h-8 w-56 rounded-md border border-line px-2.5 text-[13px] text-navy outline-none focus:border-azure max-sm:w-full" />}
           </div>
-        )}
 
-        {/* Published stories */}
-        {tab === 'reviewed' && (
-          <div className="space-y-3">
-            {published.length === 0 ? (
-              <EmptyState icon="star" title="No published stories yet" description="Approve stories from the pending queue to publish them" />
-            ) : published.map((s: any) => (
-              <Card key={s.id} className="flex items-start gap-4 p-4">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-azure text-sm font-bold text-white flex-shrink-0">
-                  {s.student?.email?.[0]?.toUpperCase() ?? 'S'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-navy">{s.title}</p>
-                  <p className="text-xs text-royal/50 mt-0.5 truncate">{s.student?.email}</p>
-                  <p className="text-xs text-royal/60 mt-1 line-clamp-2 leading-relaxed">{s.body}</p>
-                </div>
-                <Badge variant="active" className="flex-shrink-0">Published</Badge>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {/* Discussions */}
-        {tab === 'discussions' && (
-          <div className="space-y-3">
-            {discLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <div className="h-6 w-6 rounded-full border-2 border-azure border-t-transparent animate-spin" />
+          {tab === 'stories' && (!queue ? <div className="m-4 h-32 animate-pulse rounded bg-subtle" /> : queue.length ? queue.map(s => (
+            <div key={s.id} className="flex flex-wrap gap-3.5 border-b border-line px-[18px] py-3.5 last:border-b-0">
+              <div className="min-w-0 flex-1">
+                <p className="text-[12.5px] text-muted">{nameOf(s.student)} · {s.consentToPublish ? 'agreed to publishing' : 'did not agree to publishing — approving keeps it private'} · {date(s.submittedAt)}</p>
+                <p className="mt-1 text-[14px] text-navy">“{s.story}”</p>
               </div>
-            ) : discussions.length === 0 ? (
-              <EmptyState icon="community" title="No discussion posts" description="Forum posts from courses and lessons appear here" />
-            ) : discussions.map((d: any) => (
-              <Card key={d.id} padding="none" className="overflow-hidden">
-                <div className="flex items-start gap-3 px-5 py-4">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-azure/10 text-azure text-xs font-bold">
-                    {d.author?.email?.[0]?.toUpperCase() ?? 'U'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <p className="text-xs font-semibold text-navy">{d.author?.email ?? 'User'}</p>
-                      {d.course && <span className="text-[10px] text-azure font-medium">{d.course.title}</span>}
-                      <p className="text-[10px] text-royal/40 ml-auto">
-                        {new Date(d.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      </p>
-                    </div>
-                    <p className="text-sm text-royal/70 leading-relaxed line-clamp-3">{d.content ?? d.body}</p>
-                    {d.hidden && (
-                      <span className="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-600">Hidden</span>
-                    )}
-                  </div>
-                </div>
-                {!d.hidden && (
-                  <div className="flex gap-2 px-5 pb-3.5">
-                    <button onClick={() => moderateDiscussion(d.id, 'hide')} disabled={acting === d.id}
-                      className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-600 hover:bg-amber-100 transition disabled:opacity-50">
-                      Hide post
-                    </button>
-                    <button onClick={() => moderateDiscussion(d.id, 'delete')} disabled={acting === d.id}
-                      className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-100 transition disabled:opacity-50">
-                      Delete
-                    </button>
-                  </div>
-                )}
-              </Card>
-            ))}
-          </div>
-        )}
+              <div className="flex shrink-0 gap-3 text-[13px] font-semibold"><button onClick={() => review(s, 'APPROVED')} className="text-azure-strong hover:underline">Approve</button><button onClick={() => review(s, 'REJECTED')} className="text-muted hover:text-navy hover:underline">Decline</button></div>
+            </div>
+          )) : <p className="px-4 py-10 text-center text-[13px] text-ink2">No stories waiting.</p>)}
 
+          {tab === 'discussions' && (!posts ? <div className="m-4 h-32 animate-pulse rounded bg-subtle" /> : posts.rows.length ? posts.rows.map(p => (
+            <div key={p.id} className="flex flex-wrap gap-3.5 border-b border-line px-[18px] py-3.5 last:border-b-0">
+              <div className="min-w-0 flex-1">
+                <p className="text-[12.5px] text-muted">{p.isPinned && <strong className="text-azure-strong">Pinned · </strong>}{p.course.title} · {p.author.name}{p.author.role === 'TEACHER' ? ' (teacher)' : ''} · {p.replies} repl{p.replies === 1 ? 'y' : 'ies'} · {p.upvotes} upvote{p.upvotes === 1 ? '' : 's'} · {date(p.createdAt)}</p>
+                <p className="mt-1 text-[14px] text-navy">{p.body}</p>
+              </div>
+              <div className="flex shrink-0 gap-3 text-[13px] font-semibold"><button onClick={() => pin(p)} className="text-azure-strong hover:underline">{p.isPinned ? 'Unpin' : 'Pin'}</button><button onClick={() => remove(p)} className="text-muted hover:text-navy hover:underline">Remove</button></div>
+            </div>
+          )) : <p className="px-4 py-10 text-center text-[13px] text-ink2">{q ? 'Nothing matches.' : 'No questions yet.'}</p>)}
+
+          {tab === 'published' && (!published ? <div className="m-4 h-32 animate-pulse rounded bg-subtle" /> : published.length ? published.map(s => (
+            <div key={s.id} className="border-b border-line px-[18px] py-3.5 last:border-b-0">
+              <p className="text-[12.5px] text-muted">{nameOf(s.student)} · {date(s.submittedAt)}</p>
+              <p className="mt-1 text-[14px] text-navy">“{s.story}”</p>
+              <button onClick={() => review(s, 'REJECTED')} className="mt-1.5 text-[13px] font-semibold text-muted hover:text-navy hover:underline">Unpublish</button>
+            </div>
+          )) : <p className="px-4 py-10 text-center text-[13px] text-ink2">No published stories yet.</p>)}
+        </section>
+        <p className="text-[12.5px] text-muted">Approved stories appear on the website’s success stories and the student dashboard. Only stories with the student’s consent are published.</p>
       </div>
     </div>
   );

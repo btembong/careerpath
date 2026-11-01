@@ -107,11 +107,19 @@ export class NotificationsService {
     return { id: sent.id, recipientCount: recipients.length };
   }
 
+  /** How many people an announcement to this audience would reach, before sending it */
+  async reach(audience?: string, countryId?: string) {
+    const a = (audience ?? 'ALL') as (typeof AUDIENCES)[number];
+    if (!AUDIENCES.includes(a)) throw new BadRequestException('Unknown audience.');
+    const count = await this.prisma.userProfile.count({ where: { approvalStatus: 'APPROVED', ...(a !== 'ALL' && { role: a as UserRole }), ...(countryId && { countryId }) } });
+    return { count };
+  }
+
   listBroadcasts() {
     return this.prisma.broadcast.findMany({
       orderBy: { sentAt: 'desc' },
       take: 50,
-      select: { id: true, title: true, body: true, audience: true, channel: true, sentAt: true, recipientCount: true },
+      select: { id: true, title: true, body: true, audience: true, channel: true, sentAt: true, recipientCount: true, countryId: true },
     });
   }
 }

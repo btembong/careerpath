@@ -1,286 +1,158 @@
 'use client';
-import { notify } from '@/lib/notify';
-import { useEffect, useState, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { Topbar } from '@/components/layout/Topbar';
-import { Card } from '@/components/ui/Card';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { clsx } from 'clsx';
+import { majorToMinor, minorToMajor } from '@cpa/shared';
+import { RepTable, td } from '@/components/rep/RepTable';
 import { Button } from '@/components/ui/Button';
-import { SkeletonTopbar, SkeletonTable } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { spring } from '@/lib/motion';
+import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent, DrawerSection } from '@/components/ui/Dialog';
+import { notify } from '@/lib/notify';
+import { money } from '@/lib/money';
 import api from '@/lib/api';
 
-interface Rep { id: string; email: string; }
 interface Country {
-  id: string; name: string; code: string; currency: string;
-  repCommissionPercent: number | null; perStudentBonus: number | null;
-  rep: Rep | null;
+  id: string; code: string; name: string; currency: string; repCommissionPercent: number | null; perStudentBonus: number | null;
+  educationSystem: { id: string; name: string } | null; rep: { id: string; email: string; name: string } | null;
+  students: number; revenueThisMonth: { currency: string; amount: number }[];
 }
-interface EditState { repCommissionPercent: string; perStudentBonus: string; }
+
+const terms = (c: Country) => [c.repCommissionPercent != null ? `${c.repCommissionPercent}%` : null, c.perStudentBonus ? `${money(c.perStudentBonus, c.currency)} a student` : null].filter(Boolean).join(' + ') || '—';
 
 export default function AdminCountriesPage() {
-  const [countries, setCountries]       = useState<Country[]>([]);
-  const [loading, setLoading]           = useState(true);
-  const [showForm, setShowForm]         = useState(false);
-  const [saving, setSaving]             = useState(false);
-  const [editing, setEditing]           = useState<string | null>(null);
-  const [editState, setEditState]       = useState<Record<string, EditState>>({});
-  const [form, setForm]                 = useState({ name: '', code: '', currency: '', repCommissionPercent: '', perStudentBonus: '' });
+  const [rows, setRows] = useState<Country[] | null>(null);
+  const [tab, setTab] = useState('all');
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState<Country | null>(null);
+  const [adding, setAdding] = useState(false);
 
-  // Rep search state (per-country)
-  const [repSearch, setRepSearch]       = useState<Record<string, string>>({});
-  const [repResults, setRepResults]     = useState<Record<string, Rep[]>>({});
-  const [selectedRep, setSelectedRep]   = useState<Record<string, Rep | null>>({});
-  const searchTimers                    = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const load = useCallback(() => api.get('/countries/admin/countries').then(r => setRows(r.data ?? [])).catch(() => { setRows([]); notify.error('Could not load countries'); }), []);
+  useEffect(() => { load(); }, [load]);
 
-  async function loadCountries() {
-    const r = await api.get('/countries/admin/countries');
-    setCountries(r.data);
-  }
-
-  useEffect(() => {
-    loadCountries().catch(() => {}).finally(() => setLoading(false));
-  }, []);
-
-  async function createCountry(e: React.FormEvent) {
-    e.preventDefault(); setSaving(true);
-    try {
-      await api.post('/countries/admin/countries', {
-        name: form.name, code: form.code.toUpperCase(), currency: form.currency.toUpperCase(),
-        ...(form.repCommissionPercent && { repCommissionPercent: parseFloat(form.repCommissionPercent) }),
-        ...(form.perStudentBonus && { perStudentBonus: parseInt(form.perStudentBonus) }),
-      });
-      await loadCountries();
-      setShowForm(false);
-      setForm({ name: '', code: '', currency: '', repCommissionPercent: '', perStudentBonus: '' });
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-    finally { setSaving(false); }
-  }
-
-  async function updateCountry(id: string) {
-    const state = editState[id]; if (!state) return;
-    const rep = selectedRep[id];
-    setSaving(true);
-    try {
-      await api.patch(`/countries/admin/countries/${id}`, {
-        ...(state.repCommissionPercent && { repCommissionPercent: parseFloat(state.repCommissionPercent) }),
-        ...(state.perStudentBonus && { perStudentBonus: parseInt(state.perStudentBonus) }),
-        ...(rep && { repId: rep.id }),
-      });
-      await loadCountries();
-      setEditing(null);
-      setSelectedRep(r => ({ ...r, [id]: null }));
-      setRepSearch(r => ({ ...r, [id]: '' }));
-      setRepResults(r => ({ ...r, [id]: [] }));
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Failed'); }
-    finally { setSaving(false); }
-  }
-
-  function startEdit(c: Country) {
-    setEditing(c.id);
-    setEditState(s => ({ ...s, [c.id]: {
-      repCommissionPercent: c.repCommissionPercent?.toString() ?? '',
-      perStudentBonus: c.perStudentBonus?.toString() ?? '',
-    }}));
-    setSelectedRep(r => ({ ...r, [c.id]: c.rep }));
-    setRepSearch(r => ({ ...r, [c.id]: c.rep?.email ?? '' }));
-  }
-
-  function handleRepSearch(countryId: string, value: string) {
-    setRepSearch(r => ({ ...r, [countryId]: value }));
-    setSelectedRep(r => ({ ...r, [countryId]: null }));
-    if (searchTimers.current[countryId]) clearTimeout(searchTimers.current[countryId]);
-    if (value.length < 2) { setRepResults(r => ({ ...r, [countryId]: [] })); return; }
-    searchTimers.current[countryId] = setTimeout(async () => {
-      try {
-        const res = await api.get(`/portals/admin/users/search?email=${encodeURIComponent(value)}`);
-        setRepResults(r => ({ ...r, [countryId]: res.data }));
-      } catch { setRepResults(r => ({ ...r, [countryId]: [] })); }
-    }, 300);
-  }
-
-  function pickRep(countryId: string, rep: Rep) {
-    setSelectedRep(r => ({ ...r, [countryId]: rep }));
-    setRepSearch(r => ({ ...r, [countryId]: rep.email }));
-    setRepResults(r => ({ ...r, [countryId]: [] }));
-  }
-
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 p-6 space-y-5 max-w-6xl mx-auto w-full">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[0,1,2,3].map(i => <div key={i} className="h-20 rounded-2xl bg-cloud animate-pulse" />)}
-        </div>
-        <SkeletonTable />
-      </div>
-    </div>
-  );
+  const filters: Record<string, (c: Country) => boolean> = { all: () => true, rep: c => !!c.rep, norep: c => !c.rep };
+  const shown = (rows ?? []).filter(filters[tab]).filter(c => !q.trim() || `${c.name} ${c.code} ${c.currency}`.toLowerCase().includes(q.trim().toLowerCase()))
+    .sort((a, b) => b.students - a.students || a.name.localeCompare(b.name));
+  const students = (rows ?? []).reduce((n, c) => n + c.students, 0);
+  const top = [...(rows ?? [])].sort((a, b) => b.students - a.students).slice(0, 2).filter(c => c.students);
+  const revenue = Object.entries((rows ?? []).flatMap(c => c.revenueThisMonth).reduce((m, x) => ({ ...m, [x.currency]: (m[x.currency] ?? 0) + x.amount }), {} as Record<string, number>)).sort((a, b) => b[1] - a[1]);
 
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="Countries" subtitle="Manage markets, currencies and country reps" />
-      <div className="flex-1 p-6 space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">COUNTRIES</p>
-            <h2 className="text-base font-bold text-navy">{countries.length} active market{countries.length !== 1 ? 's' : ''}</h2>
-          </div>
-          <Button size="sm" onClick={() => setShowForm(v => !v)}>
-            <Icon name="add" size={14} /> Add country
-          </Button>
-        </div>
+    <>
+      <RepTable title="Countries" subtitle="Where we sell, in which currency, and who represents us"
+        actions={<Button size="sm" onClick={() => setAdding(true)}>Add country</Button>}
+        stats={[
+          { l: 'Countries', v: rows ? String(rows.length) : '—', sub: 'we sell in' },
+          { l: 'With a rep', v: rows ? String(rows.filter(c => c.rep).length) : '—', sub: rows ? `${rows.filter(c => !c.rep).length} without` : '' },
+          { l: 'Students', v: rows ? students.toLocaleString('en-GB') : '—', sub: students ? top.map(c => `${c.name} ${Math.round((c.students / students) * 100)}%`).join(', ') : '' },
+          { l: 'Revenue this month', v: revenue[0] ? money(revenue[0][1], revenue[0][0]) : '—', sub: revenue.slice(1, 3).map(([c, a]) => `+ ${money(a, c)}`).join(' · ') || 'all countries' },
+        ]}
+        tabs={[{ key: 'all', label: 'All', count: rows?.length ?? 0 }, { key: 'rep', label: 'With a rep', count: rows?.filter(filters.rep).length ?? 0 }, { key: 'norep', label: 'No rep', count: rows?.filter(filters.norep).length ?? 0 }]}
+        tab={tab} onTab={setTab} search={q} onSearch={setQ} searchLabel="Search countries"
+        cols={['Country', 'Education system', 'Rep', 'Rep terms', 'Students', 'This month', '']}
+        loading={!rows} empty={rows && !shown.length ? 'Nothing matches.' : null}
+        note="Reps earn their commission on sales to students in their country, plus the per-student bonus each month. Education systems are set in Taxonomy.">
+        {shown.map(c => (
+          <tr key={c.id} className="cursor-pointer hover:bg-subtle" onClick={() => setOpen(c)}>
+            <td className={td}><strong className="text-navy">{c.name}</strong><br /><span className="text-[12.5px] text-muted">{c.code} · {c.currency}</span></td>
+            <td className={clsx(td, 'text-ink2')}>{c.educationSystem?.name ?? '—'}</td>
+            <td className={td}>{c.rep ? <span className="text-navy">{c.rep.name}</span> : <span className="inline-flex rounded border border-dashed border-azure px-2 py-0.5 text-[12.5px] font-semibold text-azure-strong">Assign a rep</span>}</td>
+            <td className={clsx(td, 'text-ink2')}>{terms(c)}</td>
+            <td className={clsx(td, 'text-ink2')}>{c.students.toLocaleString('en-GB')}</td>
+            <td className={clsx(td, 'text-ink2')}>{c.revenueThisMonth.length ? c.revenueThisMonth.map(x => money(x.amount, x.currency)).join(' + ') : '—'}</td>
+            <td className={clsx(td, 'text-right font-semibold text-azure-strong')}>Edit</td>
+          </tr>
+        ))}
+      </RepTable>
+      <Edit country={open} onClose={() => setOpen(null)} onSaved={() => { setOpen(null); load(); }} />
+      <AddCountry open={adding} onClose={() => setAdding(false)} onDone={() => { setAdding(false); load(); }} />
+    </>
+  );
+}
 
-        {/* Create form */}
-        {showForm && (
-          <Card padding="md">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-azure mb-4">NEW COUNTRY</p>
-            <form onSubmit={createCountry} className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {[
-                { field: 'name', label: 'Country name', placeholder: 'Nigeria' },
-                { field: 'code', label: 'ISO code', placeholder: 'NG' },
-                { field: 'currency', label: 'Currency code', placeholder: 'NGN' },
-                { field: 'repCommissionPercent', label: 'Rep commission %', placeholder: '10' },
-                { field: 'perStudentBonus', label: 'Per-student bonus', placeholder: '500' },
-              ].map(({ field, label, placeholder }) => (
-                <div key={field} className="space-y-1">
-                  <label className="text-xs font-semibold text-navy">{label}</label>
-                  <input value={(form as any)[field]} onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}
-                    placeholder={placeholder} required={['name','code','currency'].includes(field)}
-                    className="w-full rounded-xl border border-cloud bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure focus:ring-2 focus:ring-azure/15 placeholder:text-royal/40" />
-                </div>
-              ))}
-              <div className="col-span-2 sm:col-span-3 flex gap-3 pt-1">
-                <Button type="submit" loading={saving} size="sm">Create</Button>
-                <Button type="button" variant="secondary" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
+function Edit({ country, onClose, onSaved }: { country: Country | null; onClose: () => void; onSaved: () => void }) {
+  const [pct, setPct] = useState(''), [bonus, setBonus] = useState('');
+  const [rep, setRep] = useState<{ id: string; email: string } | null>(null);
+  const [find, setFind] = useState(''), [hits, setHits] = useState<{ id: string; email: string; role: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!country) return;
+    setPct(country.repCommissionPercent != null ? String(country.repCommissionPercent) : '');
+    setBonus(country.perStudentBonus ? String(minorToMajor(country.perStudentBonus, country.currency)) : '');
+    setRep(null); setFind(''); setHits([]);
+  }, [country]);
+  function search(v: string) {
+    setFind(v); setRep(null);
+    if (timer.current) clearTimeout(timer.current);
+    if (v.trim().length < 2) { setHits([]); return; }
+    timer.current = setTimeout(() => api.get('/portals/admin/users/search', { params: { email: v.trim() } }).then(r => setHits(r.data ?? [])).catch(() => setHits([])), 250);
+  }
+  async function save() {
+    if (!country) return;
+    const p = pct.trim() === '' ? undefined : Number(pct), b = bonus.trim() === '' ? undefined : Number(bonus);
+    if ((p !== undefined && (!Number.isFinite(p) || p < 0 || p > 100)) || (b !== undefined && (!Number.isFinite(b) || b < 0))) { notify.error('Check the commission and bonus'); return; }
+    if (rep && country.rep && rep.id !== country.rep.id && !confirm(`${rep.email} will replace ${country.rep.name} as rep for ${country.name}.`)) return;
+    setSaving(true);
+    try {
+      await api.patch(`/countries/admin/countries/${country.id}`, {
+        ...(p !== undefined ? { repCommissionPercent: p } : {}), ...(b !== undefined ? { perStudentBonus: majorToMinor(b, country.currency) } : {}),
+        ...(rep ? { repId: rep.id } : {}),
+      });
+      notify.success(`${country.name} saved`); onSaved();
+    } catch (e: any) { notify.error([].concat(e?.response?.data?.message ?? 'Could not save').join(', ')); }
+    finally { setSaving(false); }
+  }
+  return (
+    <Drawer open={!!country} onOpenChange={o => !o && onClose()}>
+      <DrawerContent title={country?.name ?? 'Country'} description={country ? `${country.code} · ${country.currency} · ${country.students} students` : ' '}
+        footer={<><Button size="sm" onClick={save} loading={saving}>Save</Button><Button size="sm" variant="secondary" onClick={onClose}>Cancel</Button></>}>
+        {country && <>
+          <DrawerSection title="Rep">
+            <p className="mb-2 text-[13px] text-ink2">{country.rep ? <>Now: <strong className="text-navy">{country.rep.name}</strong> ({country.rep.email})</> : 'No rep yet.'}</p>
+            <input value={rep?.email ?? find} onChange={e => search(e.target.value)} placeholder={country.rep ? 'Search to replace them' : 'Search by email'} className="input-base w-full" />
+            {!rep && hits.length > 0 && (
+              <div className="mt-1 max-h-48 overflow-y-auto rounded-md border border-line">
+                {hits.map(h => <button key={h.id} onClick={() => { setRep(h); setHits([]); }} className="flex w-full justify-between gap-2 px-3 py-2 text-left text-[13px] text-navy hover:bg-subtle"><span className="truncate">{h.email}</span><span className="text-muted">{h.role.toLowerCase().replace('_', ' ')}</span></button>)}
               </div>
-            </form>
-          </Card>
-        )}
+            )}
+            <p className="mt-1.5 text-[12.5px] text-muted">They become a country rep for {country.name}, paid in {country.currency}, and get an email.</p>
+          </DrawerSection>
+          <DrawerSection title="Rep terms">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Commission on sales (%)</span><input inputMode="decimal" value={pct} onChange={e => setPct(e.target.value)} placeholder="e.g. 10" className="input-base" /></label>
+              <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Bonus a student ({country.currency})</span><input inputMode="decimal" value={bonus} onChange={e => setBonus(e.target.value)} placeholder="e.g. 20" className="input-base" /></label>
+            </div>
+            <p className="mt-1.5 text-[12.5px] text-muted">The bonus is paid each month for every student in {country.name} with an active package. Changes apply from the next sale and the next month.</p>
+          </DrawerSection>
+          <DrawerSection title="Education system">
+            <p className="text-[13px] text-ink2">{country.educationSystem?.name ?? 'Not set'} · <Link href="/admin/courses/taxonomy" className="font-semibold text-azure-strong hover:underline">Change in Taxonomy</Link></p>
+          </DrawerSection>
+        </>}
+      </DrawerContent>
+    </Drawer>
+  );
+}
 
-        {/* Countries grid */}
-        {countries.length === 0 ? (
-          <Card padding="lg">
-            <EmptyState icon="countries" title="No countries yet" description="Add your first country to start assigning reps and tracking revenue" />
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            {countries.map((c, i) => (
-              <motion.div
-                key={c.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.06, ...spring.smooth }}
-              >
-              <Card padding="none" className="overflow-hidden">
-                {/* Header */}
-                <div className="bg-navy p-5">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-azure/20">
-                      <Icon name="countries" size={18} className="text-azure" />
-                    </div>
-                    <span className="rounded-lg border border-white/10 px-2 py-0.5 text-[10px] font-bold text-azure">{c.currency}</span>
-                  </div>
-                  <h3 className="text-base font-bold text-white">{c.name}</h3>
-                  <p className="text-xs text-white/40">{c.code}</p>
-                </div>
-
-                <div className="p-4 space-y-2">
-                  {editing === c.id ? (
-                    <div className="space-y-3">
-                      {/* Commission + bonus */}
-                      {[
-                        { field: 'repCommissionPercent', label: 'Commission %', placeholder: '10' },
-                        { field: 'perStudentBonus',      label: 'Per-student bonus', placeholder: '500' },
-                      ].map(({ field, label, placeholder }) => (
-                        <div key={field} className="space-y-1">
-                          <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">{label}</label>
-                          <input
-                            value={(editState[c.id] as any)?.[field] ?? ''}
-                            onChange={e => setEditState(s => ({ ...s, [c.id]: { ...s[c.id], [field]: e.target.value } }))}
-                            placeholder={placeholder}
-                            className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40"
-                          />
-                        </div>
-                      ))}
-
-                      {/* Rep email search */}
-                      <div className="space-y-1 relative">
-                        <label className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">
-                          Assign Rep <span className="normal-case text-royal/30">(search by email)</span>
-                        </label>
-                        <div className="relative">
-                          <Icon name="search" size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-royal/40 pointer-events-none" />
-                          <input
-                            value={repSearch[c.id] ?? ''}
-                            onChange={e => handleRepSearch(c.id, e.target.value)}
-                            placeholder="Type email to search…"
-                            className="w-full rounded-xl border border-cloud bg-white pl-8 pr-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40"
-                          />
-                          {selectedRep[c.id] && (
-                            <Icon name="check" size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-azure" />
-                          )}
-                        </div>
-
-                        {/* Search dropdown */}
-                        {(repResults[c.id] ?? []).length > 0 && (
-                          <div className="absolute z-20 left-0 right-0 top-full mt-1 rounded-xl border border-cloud bg-white shadow-lg overflow-hidden">
-                            {repResults[c.id].map(u => (
-                              <button key={u.id} type="button" onClick={() => pickRep(c.id, u)}
-                                className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-cloud transition">
-                                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-cloud text-xs font-bold text-azure">
-                                  {u.email[0].toUpperCase()}
-                                </div>
-                                <span className="text-sm text-navy truncate">{u.email}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
-                        {selectedRep[c.id] && (
-                          <p className="text-[10px] text-azure">
-                            Will promote <span className="font-semibold">{selectedRep[c.id]?.email}</span> → Country Rep & set wallet to {c.currency}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex gap-2 pt-1">
-                        <Button size="sm" loading={saving} onClick={() => updateCountry(c.id)}>Save</Button>
-                        <Button size="sm" variant="secondary" onClick={() => setEditing(null)}>Cancel</Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-royal/50">Rep commission</span>
-                        <span className="font-semibold text-navy">{c.repCommissionPercent != null ? `${c.repCommissionPercent}%` : '—'}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-royal/50">Per-student bonus</span>
-                        <span className="font-semibold text-navy">{c.perStudentBonus != null ? `${c.perStudentBonus} ${c.currency}` : '—'}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-royal/50">Country rep</span>
-                        {c.rep ? (
-                          <span className="font-semibold text-azure truncate max-w-[140px]">{c.rep.email}</span>
-                        ) : (
-                          <span className="text-royal/30 italic">Not assigned</span>
-                        )}
-                      </div>
-                      <button onClick={() => startEdit(c)}
-                        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-cloud py-2 text-xs font-semibold text-navy hover:bg-cloud transition">
-                        <Icon name="edit" size={13} /> Edit settings
-                      </button>
-                    </>
-                  )}
-                </div>
-              </Card>
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+function AddCountry({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const [name, setName] = useState(''), [code, setCode] = useState(''), [currency, setCurrency] = useState('');
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    setSaving(true);
+    try {
+      await api.post('/countries/admin/countries', { name: name.trim(), code: code.trim().toUpperCase(), currency: currency.trim().toUpperCase() });
+      notify.success(`${name.trim()} added`); setName(''); setCode(''); setCurrency(''); onDone();
+    } catch (e: any) { notify.error([].concat(e?.response?.data?.message ?? 'Could not add it').join(', ')); }
+    finally { setSaving(false); }
+  }
+  return (
+    <Dialog open={open} onOpenChange={o => !o && onClose()}>
+      <DialogContent title="Add country" description="Students there see prices in its currency.">
+        <div className="grid grid-cols-[1fr_90px_100px] gap-3">
+          <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Name</span><input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Nigeria" className="input-base" /></label>
+          <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Code</span><input value={code} onChange={e => setCode(e.target.value)} maxLength={2} placeholder="NG" className="input-base uppercase" /></label>
+          <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Currency</span><input value={currency} onChange={e => setCurrency(e.target.value)} maxLength={4} placeholder="NGN" className="input-base uppercase" /></label>
+        </div>
+        <DialogFooter><Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button><Button size="sm" onClick={save} loading={saving} disabled={!name.trim() || code.trim().length !== 2 || currency.trim().length < 3}>Add country</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

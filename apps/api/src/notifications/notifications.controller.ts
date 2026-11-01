@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserProfile } from '@prisma/client';
 import { UserRole } from '@cpa/shared';
@@ -20,6 +20,11 @@ export class NotificationsController {
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[Admin] Recent broadcasts' })
   listBroadcasts() { return this.svc.listBroadcasts(); }
+
+  @Get('admin/broadcasts/reach')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] How many people an announcement would reach' })
+  reach(@Query('audience') audience?: string, @Query('countryId') countryId?: string) { return this.svc.reach(audience, countryId); }
 
   @Post('admin/broadcasts')
   @Roles(UserRole.ADMIN)

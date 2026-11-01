@@ -86,7 +86,7 @@ export class CommunityService {
   async getStoryQueue() {
     return this.prisma.successStorySubmission.findMany({
       where: { status: 'PENDING' },
-      include: { student: { select: { email: true } } },
+      include: { student: { select: { email: true, firstName: true, lastName: true, name: true } } },
       orderBy: { submittedAt: 'asc' },
     });
   }
@@ -269,5 +269,46 @@ export class CommunityService {
     if ((user.role as UserRole) !== UserRole.ADMIN && course?.teacherId !== user.id) throw new ForbiddenException('Only the course teacher can pin');
     const updated = await this.prisma.courseDiscussionPost.update({ where: { id: postId }, data: { isPinned: !post.isPinned } });
     return { isPinned: updated.isPinned };
+  }
+
+  // ── Admin: course discussions ─────────────────────────────
+
+  /** Questions across every course, newest first, for moderation */
+  async adminDiscussions(q?: string) {
+    const term = q?.trim();
+    const posts = await this.prisma.courseDiscussionPost.findMany({
+      where: { parentId: null, ...(term ? { body: { contains: term, mode: 'insensitive' } } : {}) },
+      orderBy: { createdAt: 'desc' }, take: 100,
+      select: {
+        id: true, body: true, createdAt: true, isPinned: true, upvoteCount: true, courseId: true,
+        author: { select: { name: true, firstName: true, lastName: true, email: true, role: true } },
+        _count: { select: { replies: true } },
+      },
+    });
+    const courses = await this.prisma.platformCourse.findMany({ where: { id: { in: [...new Set(posts.map(p => p.courseId))] } }, select: { id: true, title: true } });
+    const title = new Map(courses.map(c => [c.id, c.title]));
+    const total = await this.prisma.courseDiscussionPost.count({ where: { parentId: null } });
+    return {
+      total,
+      rows: posts.map(p => ({
+        id: p.id, body: p.body, createdAt: p.createdAt, isPinned: p.isPinned, upvotes: p.upvoteCount, replies: p._count.replies,
+        course: { id: p.courseId, title: title.get(p.courseId) ?? 'Course removed' },
+        author: { name: p.author.name || [p.author.firstName, p.author.lastName].filter(Boolean).join(' ') || p.author.email.split('@')[0], role: p.author.role },
+      })),
+    };
+  }
+
+  /** Remove a question or reply, with its replies and upvotes */
+  async adminRemovePost(id: string) {
+    const post = await this.prisma.courseDiscussionPost.findUnique({ where: { id }, select: { id: true } });
+    if (!post) throw new NotFoundException('Post not found');
+    const replies = await this.prisma.courseDiscussionPost.findMany({ where: { parentId: id }, select: { id: true } });
+    const ids = [id, ...replies.map(r => r.id)];
+    await this.prisma.$transaction([
+      this.prisma.discussionUpvote.deleteMany({ where: { postId: { in: ids } } }),
+      this.prisma.courseDiscussionPost.deleteMany({ where: { parentId: id } }),
+      this.prisma.courseDiscussionPost.delete({ where: { id } }),
+    ]);
+    return { removed: ids.length };
   }
 }

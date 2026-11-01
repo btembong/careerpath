@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Delete } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CommunityService } from './community.service';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -106,5 +106,23 @@ export class CommunityController {
   @ApiOperation({ summary: '[Admin] Approve or reject a success story submission' })
   reviewStory(@Param('id') id: string, @Body() dto: ReviewStoryDto) {
     return this.communityService.reviewStory(id, dto);
+  }
+
+  @Get('admin/discussions')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[Admin] Questions across every course, for moderation' })
+  adminDiscussions(@Query('q') q?: string) {
+    return this.communityService.adminDiscussions(q);
+  }
+
+  @Delete('admin/discussions/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[Admin] Remove a question or reply, with its replies' })
+  adminRemove(@Param('id') id: string) {
+    return this.communityService.adminRemovePost(id);
   }
 }

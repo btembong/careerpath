@@ -46,6 +46,9 @@ export default function AdminUsersPage() {
     timer.current = setTimeout(() => load(tab, q, page), q ? 250 : 0);
   }, [tab, q, page, load]);
 
+  // Other pages link here with ?open=<id> to show one person
+  useEffect(() => { const id = new URLSearchParams(window.location.search).get('open'); if (id) setOpen(id); }, []);
+
   async function sync() {
     setSyncing(true);
     try {
