@@ -119,6 +119,13 @@ export class MentorshipController {
 
   // ── Admin ─────────────────────────────────────────────────
 
+  @Patch('admin/bookings/:bookingId/cancel')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Cancel a booking; the student and teacher are told' })
+  adminCancel(@CurrentUser() user: UserProfile, @Param('bookingId') bookingId: string, @Body() dto: CancelBookingDto) {
+    return this.mentorshipService.cancelBooking(user, bookingId, dto);
+  }
+
   @Get('admin/bookings')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: '[Admin] All mentorship bookings' })

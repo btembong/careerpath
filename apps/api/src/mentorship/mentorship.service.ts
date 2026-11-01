@@ -354,7 +354,8 @@ export class MentorshipService {
     const isTeacher = booking.slot.teacher.id === user.id;
     const isStudent = booking.studentId === user.id;
 
-    if (!isTeacher && !isStudent) {
+    // Admins can cancel any booking (both people are told, as when either of them cancels)
+    if (!isTeacher && !isStudent && user.role !== 'ADMIN') {
       throw new ForbiddenException('You are not part of this booking');
     }
 

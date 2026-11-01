@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Delete, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PortalsService } from './portals.service';
+import { AdminPeopleService } from './admin-people.service';
 import { ApproveTeacherDto } from './dto/approve-teacher.dto';
 import { SetUserRoleDto } from './dto/set-user-role.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
@@ -15,7 +16,21 @@ import { UserProfile } from '@prisma/client';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('portals')
 export class PortalsController {
-  constructor(private readonly portalsService: PortalsService) {}
+  constructor(private readonly portalsService: PortalsService, private readonly people: AdminPeopleService) {}
+
+  @Get('admin/people')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Everyone, filtered by role, status or a search, 50 a page, with counts by role' })
+  listPeople(@Query() q: { role?: string; search?: string; status?: string; page?: string }) {
+    return this.people.list(q);
+  }
+
+  @Get('admin/people/:id')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] One person: details, access, payments, courses and payout account' })
+  person(@Param('id') id: string) {
+    return this.people.detail(id);
+  }
 
   // ── Student ──────────────────────────────────────────────
 
