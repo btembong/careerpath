@@ -888,6 +888,33 @@ async function seedAdminPages(student: Person, packageId: string) {
     await prisma.broadcast.create({ data: { title: 'Payouts on the 1st', body: 'October earnings are paid on 1 November to verified payout accounts.', audience: 'TEACHER', channel: 'IN_APP', sentById: admin.id, recipientCount: 4, sentAt: new Date(Date.now() - 6 * DAY) } });
   }
   log('Admin pages: 3 referred friends, 2 support requests, 2 coupons, a school with 5 seats, an announcement');
+
+  // School portal: Achimota's admin (signs in with an email code) and its join link
+  const school = await prisma.organisation.findFirst({ where: { name: 'Achimota School' } });
+  if (school && !(await prisma.userProfile.findUnique({ where: { email: 'school.admin@test.com' } }))) {
+    await prisma.userProfile.create({ data: { wpUserId: -(1_000_000 + Math.floor(Math.random() * 900_000_000)), email: 'school.admin@test.com', role: 'ORG_ADMIN', approvalStatus: 'APPROVED', onboardingCompleted: true, organisationId: school.id, name: 'Esi Ofori', firstName: 'Esi', lastName: 'Ofori' } });
+    await prisma.organisation.update({ where: { id: school.id }, data: { emailDomain: 'achimota.edu.gh' } });
+    await prisma.orgEnrollment.updateMany({ where: { organisationId: school.id }, data: { seatsPurchased: 30, pricePerSeat: 12000, currency: 'GHS' } });
+  }
+
+  // Staff room
+  const teacherUser = await prisma.userProfile.findUnique({ where: { email: TEACHER } });
+  const reviewerUser = await prisma.userProfile.findUnique({ where: { email: REVIEWER } });
+  if (admin && teacherUser && reviewerUser && !(await prisma.staffPost.count())) {
+    await prisma.staffPost.create({ data: { room: 'announcements', authorId: admin.id, isPinned: true, upvoteCount: 3, body: 'New: you can now link practice questions to a moment in your video. Students jump straight to the explanation when they get it wrong.', createdAt: new Date(Date.now() - 2 * DAY) } });
+    const q = await prisma.staffPost.create({ data: { room: 'tips', authorId: reviewerUser.id, upvoteCount: 2, body: 'How do you get students to watch the whole video before the quiz? Mine jump straight to the questions.', createdAt: new Date(Date.now() - DAY) } });
+    await prisma.staffPost.create({ data: { room: 'tips', authorId: teacherUser.id, parentId: q.id, body: 'I set the quiz to unlock after the lesson is done, and put one practice question at the 2-minute mark. Completion went up a lot.', createdAt: new Date(Date.now() - 20 * 3_600_000) } });
+    await prisma.staffPost.create({ data: { room: 'exams', authorId: teacherUser.id, upvoteCount: 1, body: 'WAEC has published the 2027 Core Maths syllabus. Two topics move from paper 2 to paper 1 — worth a look before you plan next term.', createdAt: new Date(Date.now() - 3 * DAY) } });
+  }
+
+  // Payments: one paid (the card purchase), one the student didn't finish
+  if (!(await prisma.paymentAttempt.count({ where: { studentId: student.id } }))) {
+    const cp = await prisma.coursePurchase.findFirst({ where: { studentId: student.id, gateway: 'paystack' }, include: { course: { select: { title: true } } } });
+    if (cp) await prisma.paymentAttempt.create({ data: { studentId: student.id, kind: 'course', courseId: cp.courseId, title: cp.course.title, amount: cp.amountPaid, currency: cp.currency, gateway: 'paystack', sessionId: cp.gatewayRef, status: 'PAID', paidAt: cp.purchasedAt, coursePurchaseId: cp.id, createdAt: cp.purchasedAt } });
+    const pkg = await prisma.package.findUnique({ where: { id: packageId } });
+    if (pkg) await prisma.paymentAttempt.create({ data: { studentId: student.id, kind: 'package', packageId, title: pkg.name, amount: pkg.priceAmount, currency: pkg.currency, gateway: 'paystack', sessionId: `demo-${Date.now()}`, status: 'ABANDONED', failureReason: 'The student didn’t finish paying', createdAt: new Date(Date.now() - 2 * DAY), checkedAt: new Date(Date.now() - 2 * DAY) } });
+  }
+  log('School admin for Achimota (school.admin@test.com, email code), staff room posts, two payment attempts');
 }
 
 main().catch(e => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());
