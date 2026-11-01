@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
+import { minorToMajor } from '@cpa/shared';
 import { RepTable, td } from '@/components/rep/RepTable';
 import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
@@ -56,7 +57,7 @@ export default function AdminReportsPage() {
     if (tab === 'courses') csv(`courses-${month}.csv`, [['Course', 'Tags', 'Teacher', `Revenue (${B})`, 'Sales', 'Students', 'Completion %'], ...d.courses.map(c => [c.title, c.tag, c.teacher ?? '', c.revenue, c.sales, c.students, c.completion])]);
     if (tab === 'teachers') csv(`teachers-${month}.csv`, [['Teacher', 'Email', 'Courses sold', `Course revenue (${B})`, `Earned (${B})`], ...d.teachers.map(t => [t.name, t.email, t.courses, t.revenue, t.earned])]);
     if (tab === 'countries') csv(`countries-${month}.csv`, [['Country', 'Currency', 'Sales', `Revenue (${B})`, 'New students'], ...d.countries.map(c => [c.name, c.currency, c.sales, c.revenue, c.newStudents])]);
-    if (tab === 'purchases') csv(`purchases-${month}.csv`, [['Date', 'Type', 'What', 'Student', 'Amount', 'Currency', `In ${B}`, 'Paid with', 'Receipt'], ...d.purchases.map(p => [p.at.slice(0, 10), p.kind, p.title, p.studentEmail, p.amount / 100, p.currency, p.inBase ?? '', p.gateway ?? '', p.invoiceNo ?? ''])]);
+    if (tab === 'purchases') csv(`purchases-${month}.csv`, [['Date', 'Type', 'What', 'Student', 'Amount', 'Currency', `In ${B}`, 'Paid with', 'Receipt'], ...d.purchases.map(p => [p.at.slice(0, 10), p.kind, p.title, p.studentEmail, minorToMajor(p.amount, p.currency), p.currency, p.inBase ?? '', p.gateway ?? '', p.invoiceNo ?? ''])]);
   }
 
   const cols: Record<Tab, string[]> = {
