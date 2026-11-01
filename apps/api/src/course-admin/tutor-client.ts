@@ -34,7 +34,10 @@ export class TutorClient {
   }
 
   /** The site can be slow: allow a long wait, and retry network errors and 5xx twice */
-  private async call<T>(path: string, init: RequestInit = {}, withUser = false): Promise<T> {
+  private async call<T>(path: string, init: RequestInit = {}, needsUser = false, emptyOn404?: T): Promise<T> {
+    // With the WordPress login available, always send the user token too: without it Tutor answers
+    // "not allowed" for some courses instead of saying what's wrong
+    const withUser = needsUser || this.canReadQuizzes;
     if (!this.configured) throw new ServiceUnavailableException('Tutor LMS is not connected (TUTOR_API_KEY and TUTOR_API_SECRET)');
     let lastErr: unknown;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -44,6 +47,7 @@ export class TutorClient {
         const res = await fetch(this.base + path, { ...init, headers, signal: AbortSignal.timeout(180_000) });
         const body: any = await res.json().catch(() => null);
         if (res.status === 401 && withUser && attempt === 0) { this.token = null; continue; }
+        if (res.status === 404 && emptyOn404 !== undefined && body?.code?.startsWith('tutor_')) return emptyOn404;
         if (res.status >= 500) { lastErr = new Error(`Tutor ${res.status} on ${path}`); continue; }
         if (!res.ok) throw new ServiceUnavailableException(`Tutor said ${res.status}${body?.message ? `: ${body.message}` : ''} (${path.split('?')[0]})`);
         return (body?.data ?? body) as T;
@@ -73,8 +77,9 @@ export class TutorClient {
     return this.token.access;
   }
 
-  courseContents(wpCourseId: number) { return this.call<TutorTopic[]>(`/course-contents/${wpCourseId}`); }
+  /** An empty list when the course has no topics in Tutor yet */
+  courseContents(wpCourseId: number) { return this.call<TutorTopic[]>(`/course-contents/${wpCourseId}`, {}, false, []); }
   course(wpCourseId: number) { return this.call<Record<string, any>>(`/courses/${wpCourseId}`); }
-  lessons(topicId: number) { return this.call<TutorLesson[]>(`/lessons?topic_id=${topicId}`); }
+  lessons(topicId: number) { return this.call<TutorLesson[]>(`/lessons?topic_id=${topicId}`, {}, false, []); }
   quiz(quizId: number) { return this.call<TutorQuiz>(`/quizzes/${quizId}`, {}, true); }
 }

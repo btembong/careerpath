@@ -8,7 +8,7 @@ import { Drawer, DrawerContent, DrawerSection } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-type State = 'website' | 'failed' | 'queued' | 'running' | 'imported' | 'changed' | 'check';
+type State = 'website' | 'empty' | 'failed' | 'queued' | 'running' | 'imported' | 'changed' | 'check';
 interface Row {
   id: string; title: string; wpCourseId: number; status: string; tag: string | null; students: number; state: State;
   importedAt: string | null; wpModifiedAt: string | null; counts: { lessons: number; quizzes: number } | null; warnings: number;
@@ -16,14 +16,14 @@ interface Row {
 }
 interface Data {
   connected: boolean; quizzes: boolean; rows: Row[];
-  stats: { website: number; imported: number; changed: number; check: number };
+  stats: { website: number; empty: number; imported: number; changed: number; check: number };
   queue: { waiting: number; running: { courseId: string; title: string; step: string | null; startedAt: string } | null; done: number };
 }
 type Tab = 'website' | 'imported' | 'changed' | 'check';
 
-const TAB_OF: Record<State, Tab> = { website: 'website', failed: 'website', queued: 'website', running: 'website', imported: 'imported', changed: 'changed', check: 'check' };
+const TAB_OF: Record<State, Tab> = { website: 'website', empty: 'website', failed: 'website', queued: 'website', running: 'website', imported: 'imported', changed: 'changed', check: 'check' };
 const short = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : w.endsWith('z') ? 'zes' : 's'}`;
 
 export default function TutorImportPage() {
   const [d, setD] = useState<Data | null>(null);
@@ -74,7 +74,7 @@ export default function TutorImportPage() {
 
   const badge = (s: State) => clsx('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-[12px] font-semibold',
     s === 'imported' || s === 'running' ? 'bg-accent-soft text-navy' : s === 'changed' || s === 'check' || s === 'failed' ? 'border border-dashed border-azure text-azure-strong' : 'border border-line bg-subtle text-ink2');
-  const label: Record<State, string> = { website: 'Website only', failed: 'Import failed', queued: 'Waiting', running: 'Importing…', imported: 'Imported', changed: 'Changed on website', check: 'To check' };
+  const label: Record<State, string> = { website: 'Website only', empty: 'Nothing in Tutor', failed: 'Import failed', queued: 'Waiting', running: 'Importing…', imported: 'Imported', changed: 'Changed on website', check: 'To check' };
   const td = 'border-b border-line px-4 py-3 align-top';
 
   return (
@@ -105,7 +105,7 @@ export default function TutorImportPage() {
 
         <dl className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
           {[
-            { l: 'On the website only', v: d?.stats.website, sub: 'play in an embedded page' },
+            { l: 'On the website only', v: d?.stats.website, sub: d?.stats.empty ? `${d.stats.empty} with nothing in Tutor yet` : 'play in an embedded page' },
             { l: 'Imported', v: d?.stats.imported, sub: 'play in the portal' },
             { l: 'Changed since import', v: d?.stats.changed, sub: 'edited on WordPress' },
             { l: 'To check', v: d?.stats.check, sub: 'questions we changed or couldn’t copy' },
@@ -150,7 +150,7 @@ export default function TutorImportPage() {
                       <td className={td}>
                         <span className={badge(r.state)}>{label[r.state]}</span><br />
                         <span className="text-[12px] text-muted">
-                          {r.state === 'running' ? r.run?.step ?? '' : r.state === 'failed' ? r.run?.error ?? '' : r.state === 'changed' && r.importedAt && r.wpModifiedAt ? `imported ${short(r.importedAt)} · edited ${short(r.wpModifiedAt)}` : r.state === 'check' ? plural(r.warnings, 'thing') + ' to check' : r.importedAt ? `imported ${short(r.importedAt)}` : ''}
+                          {r.state === 'running' ? r.run?.step ?? '' : r.state === 'failed' ? r.run?.error ?? '' : r.state === 'empty' ? 'no lessons to copy yet' : r.state === 'changed' && r.importedAt && r.wpModifiedAt ? `imported ${short(r.importedAt)} · edited ${short(r.wpModifiedAt)}` : r.state === 'check' ? plural(r.warnings, 'thing') + ' to check' : r.importedAt ? `imported ${short(r.importedAt)}` : ''}
                         </span>
                       </td>
                       <td className={clsx(td, 'text-ink2')}>{r.students ? `${r.students} enrolled` : '—'}</td>

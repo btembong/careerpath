@@ -17,11 +17,13 @@ export interface ImportSummary {
   warnings: string[];
   /** Good to know, nothing to fix (e.g. pictures load from the website) */
   notes: string[];
+  /** Tutor had nothing for this course; it was left as it was */
+  empty?: boolean;
 }
 type QuestionRow = { type: QuestionType; questionText: string; options: Prisma.InputJsonValue | typeof Prisma.DbNull; correctAnswer: string; points: number; imageUrl: string | null };
 
 const LETTERS = 'abcdefgh';
-const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : w.endsWith('z') ? 'zes' : 's'}`;
 
 /**
  * Copies a WordPress course's content (topics, lessons, quizzes) from Tutor LMS into the portal's
@@ -63,7 +65,7 @@ export class TutorImportService implements OnModuleInit {
       const s = run?.summary as unknown as ImportSummary | null | undefined;
       const changed = !!(c.contentImportedAt && c.wpModifiedAt && c.wpModifiedAt > c.contentImportedAt);
       const state = run && ['QUEUED', 'RUNNING'].includes(run.status) ? run.status.toLowerCase()
-        : !c.contentImportedAt ? (run?.status === 'FAILED' ? 'failed' : 'website')
+        : !c.contentImportedAt ? (run?.status === 'FAILED' ? 'failed' : s?.empty ? 'empty' : 'website')
         : changed ? 'changed' : s?.warnings.length ? 'check' : 'imported';
       return {
         id: c.id, title: c.title, wpCourseId: c.wpCourseId, status: c.status,
@@ -79,7 +81,8 @@ export class TutorImportService implements OnModuleInit {
       connected: this.tutor.configured, quizzes: this.tutor.canReadQuizzes,
       rows,
       stats: {
-        website: rows.filter(r => r.state === 'website' || r.state === 'failed').length,
+        website: rows.filter(r => r.state === 'website' || r.state === 'failed' || r.state === 'empty').length,
+        empty: rows.filter(r => r.state === 'empty').length,
         imported: rows.filter(r => r.importedAt).length,
         changed: rows.filter(r => r.state === 'changed').length,
         check: rows.filter(r => r.state === 'check').length,
@@ -159,6 +162,10 @@ export class TutorImportService implements OnModuleInit {
     const warnings: string[] = [];
     const topics = await this.tutor.courseContents(wpCourseId);
     if (!Array.isArray(topics)) throw new Error('Tutor did not return an outline for this course');
+    // Nothing to copy: leave the course playing on the website rather than showing an empty player
+    if (!topics.some(t => t.contents?.length)) {
+      return { modules: 0, lessons: 0, videos: 0, quizzes: 0, attachments: 0, images: 0, questions: { auto: 0, teacher: 0, skipped: 0 }, removed: 0, kept: 0, outline: [], warnings: [], notes: ['Tutor has no lessons or quizzes for this course, so it still opens on the website.'], empty: true };
+    }
 
     // Lesson details (video, attachments) come per topic
     const lessonInfo = new Map<number, TutorLesson>();
@@ -177,6 +184,7 @@ export class TutorImportService implements OnModuleInit {
     }
 
     await this.step(runId, 'Saving to the portal');
+    let emptyQuizzes = 0, assignments = 0;
     const site = this.config.get<string>('WP_BASE_URL')?.replace(/\/$/, '') ?? '';
     const s: ImportSummary = { modules: 0, lessons: 0, videos: 0, quizzes: 0, attachments: 0, images: 0, questions: { auto: 0, teacher: 0, skipped: 0 }, removed: 0, kept: 0, outline: [], warnings, notes: [] };
 
@@ -210,6 +218,8 @@ export class TutorImportService implements OnModuleInit {
           } else if (item.post_type === 'tutor_quiz') {
             const quiz = quizzes.get(id);
             if (!quiz) continue;
+            // An empty quiz in Tutor would show students a quiz with nothing in it
+            if (!quiz.quiz_questions?.length) { emptyQuizzes++; continue; }
             const settings = quiz.quiz_settings?.[0] ?? {};
             const title = cleanTitle(quiz.post_title || item.post_title);
             const timeValue = Number(settings.time_limit?.time_value) || 0;
@@ -226,7 +236,16 @@ export class TutorImportService implements OnModuleInit {
             s.quizzes++; s.questions.auto += q.auto; s.questions.teacher += q.teacher; s.questions.skipped += q.skipped;
             outline.items.push({ title, kind: 'quiz', meta: [q.auto ? `${q.auto} auto-marked` : null, q.teacher ? `${q.teacher} marked by the teacher` : null, settings.passing_grade ? `pass ${settings.passing_grade}%` : null].filter(Boolean).join(' · ') || 'no questions' });
           }
-          // Assignments and other Tutor items aren't part of the portal's lessons yet
+          // Tutor assignments belong to a course, portal assignments to a cohort: copy the task as a
+          // reading lesson so students still see it
+          else if (/assignment/.test(item.post_type)) {
+            const title = cleanTitle(item.post_title);
+            const content = cleanHtml(item.post_content) || null;
+            await this.upsertLesson(tx, lessonByItem.get(id)?.id, { moduleId, sortOrder: ii, wpItemId: id, title, type: 'TEXT', content, videoUrl: null, durationSecs: null });
+            seenItems.add(id);
+            s.lessons++; assignments++;
+            outline.items.push({ title, kind: 'text', meta: 'assignment · reading' });
+          }
           else if (!['lesson', 'tutor_quiz'].includes(item.post_type)) {
             warnings.push(`“${cleanTitle(item.post_title)}” (${item.post_type.replace(/^tutor_/, '').replace(/_/g, ' ')}) was not copied — add it on the portal if it’s needed.`);
           }
@@ -253,6 +272,8 @@ export class TutorImportService implements OnModuleInit {
       await tx.platformCourse.update({ where: { id: courseId }, data: { contentImportedAt: new Date() } });
     }, { timeout: 180_000, maxWait: 20_000 });
 
+    if (assignments) s.notes.push(`${plural(assignments, 'assignment')} copied as reading lessons — students see the task, but handing work in on the portal is done through cohorts.`);
+    if (emptyQuizzes) s.notes.push(`${plural(emptyQuizzes, 'quiz')} in Tutor ${emptyQuizzes === 1 ? 'has' : 'have'} no questions yet, so ${emptyQuizzes === 1 ? 'it wasn’t' : 'they weren’t'} copied.`);
     if (s.kept) s.notes.push(`${plural(s.kept, 'lesson')} removed on the website ${s.kept === 1 ? 'was' : 'were'} kept because students have started ${s.kept === 1 ? 'it' : 'them'}.`);
     if (s.images) s.notes.push(`${plural(s.images, 'picture')} ${s.images === 1 ? 'stays' : 'stay'} on the website (${site.replace(/^https?:\/\//, '')}) and show in the portal from there.`);
     if (!s.lessons && !s.quizzes) s.notes.push('Tutor has no lessons or quizzes for this course yet.');
