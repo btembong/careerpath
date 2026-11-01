@@ -18,7 +18,7 @@ export function RepTable({ title, subtitle, actions, top, middle, stats, tabs, t
       <Topbar title={title} subtitle={subtitle} actions={actions} />
       <div className="flex flex-col gap-[18px] p-4 lg:px-7 lg:py-6">
         {top}
-        <dl className="grid gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
+        {stats.length > 0 && <dl className="grid gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
           {stats.map(x => (
             <div key={x.l} className="rounded-lg border border-line bg-white px-4 py-3.5">
               <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{x.l}</dt>
@@ -26,7 +26,7 @@ export function RepTable({ title, subtitle, actions, top, middle, stats, tabs, t
               <dd className="mt-0.5 text-[12.5px] text-muted">{x.sub}</dd>
             </div>
           ))}
-        </dl>
+        </dl>}
         {middle}
         <section className="rounded-lg border border-line bg-white">
           <div className="flex flex-wrap items-center gap-1 border-b border-line px-4">

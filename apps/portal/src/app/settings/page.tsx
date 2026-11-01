@@ -26,7 +26,7 @@ type Tab = 'profile' | 'account' | 'notifications' | 'display' | 'data';
 const TABS: [Tab, string][] = [['profile', 'Profile'], ['account', 'Account and password'], ['notifications', 'Notifications'], ['display', 'Language and display'], ['data', 'Data saver']];
 const ROLE_HOME: Record<string, string> = {
   STUDENT: '/student/dashboard', TEACHER: '/teacher/dashboard', ADMIN: '/admin/dashboard',
-  COUNTRY_REP: '/country-rep/dashboard', SUBJECT_REVIEWER: '/reviewer/dashboard',
+  COUNTRY_REP: '/country-rep/dashboard', SUBJECT_REVIEWER: '/reviewer/dashboard', ORG_ADMIN: '/school/dashboard',
 };
 const DATA_SAVER_KEY = 'cpa:dataSaver';
 

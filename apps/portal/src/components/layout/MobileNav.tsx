@@ -93,6 +93,7 @@ const ADMIN_MORE: NavGroup[] = [
     { label: 'Org',           href: '/admin/org',           icon: 'packages'    },
   ]},
   { title: 'Platform', items: [
+    { label: 'Payments',      href: '/admin/payments',      icon: 'card'        },
     { label: 'Payouts',       href: '/admin/payouts',       icon: 'payouts'     },
     { label: 'Wallets',       href: '/admin/wallets',       icon: 'wallet'      },
     { label: 'Community',     href: '/admin/community',     icon: 'community'   },
@@ -133,6 +134,15 @@ const REVIEWER_MORE: NavGroup[] = [
   ]},
 ];
 
+/* ─── School ──────────────────────────────────────────────────────────────── */
+
+const ORG_TABS: NavItem[] = [
+  { label: 'Home',     href: '/school/dashboard', icon: 'dashboard' },
+  { label: 'Students', href: '/school/students',  icon: 'graduate'  },
+  { label: 'Invite',   href: '/school/invite',    icon: 'messages'  },
+  { label: 'Settings', href: '/school/settings',  icon: 'user'      },
+];
+
 /* ─── Map ─────────────────────────────────────────────────────────────────── */
 
 const TABS_MAP: Record<string, { tabs: NavItem[]; more: NavGroup[] }> = {
@@ -141,6 +151,7 @@ const TABS_MAP: Record<string, { tabs: NavItem[]; more: NavGroup[] }> = {
   ADMIN:            { tabs: ADMIN_TABS,         more: ADMIN_MORE        },
   COUNTRY_REP:      { tabs: COUNTRY_REP_TABS,  more: COUNTRY_REP_MORE  },
   SUBJECT_REVIEWER: { tabs: REVIEWER_TABS,     more: REVIEWER_MORE     },
+  ORG_ADMIN:        { tabs: ORG_TABS,          more: []                },
 };
 
 /* ─── Tab item with haptic feedback ───────────────────────────────────────── */
@@ -179,6 +190,7 @@ const PROFILE_HREF: Record<string, string> = {
   ADMIN:            '/admin/dashboard',
   COUNTRY_REP:      '/country-rep/profile',
   SUBJECT_REVIEWER: '/reviewer/profile',
+  ORG_ADMIN:        '/school/settings',
 };
 
 /* ─── Component ───────────────────────────────────────────────────────────── */

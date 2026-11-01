@@ -32,6 +32,14 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
       .catch(() => setChecked(true));
   }, [pathname]);
 
+  // A school join link opened before signing up: take the seat once onboarding is done
+  useEffect(() => {
+    if (!checked || pathname === '/student/onboarding' || pathname.startsWith('/student/join/')) return;
+    let code: string | null = null;
+    try { code = localStorage.getItem('cpa:pendingJoin'); } catch {}
+    if (code) router.replace(`/student/join/${encodeURIComponent(code)}`);
+  }, [checked, pathname, router]);
+
   if (!checked && pathname !== '/student/onboarding') return null;
 
   return (

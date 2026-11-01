@@ -30,6 +30,7 @@ const NOTIFICATION_ROUTES: Record<string, string> = {
   ADMIN:            '/admin/notifications',
   COUNTRY_REP:      '/country-rep/dashboard',
   SUBJECT_REVIEWER: '/reviewer/dashboard',
+  ORG_ADMIN:        '/school/dashboard',
 };
 
 const PROFILE_ROUTES: Record<string, string> = {
@@ -38,6 +39,7 @@ const PROFILE_ROUTES: Record<string, string> = {
   ADMIN:            '/admin/dashboard',
   COUNTRY_REP:      '/country-rep/profile',
   SUBJECT_REVIEWER: '/reviewer/profile',
+  ORG_ADMIN:        '/school/settings',
 };
 
 /* ─── Breadcrumb type ─────────────────────────────────────────────────────── */

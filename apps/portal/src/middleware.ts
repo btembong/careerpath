@@ -14,7 +14,7 @@ const STUDENT_REDIRECT: Record<string, string> = {
   '/courses': '/student/catalogue',
 };
 
-type Role = 'STUDENT' | 'TEACHER' | 'ADMIN' | 'COUNTRY_REP' | 'SUBJECT_REVIEWER';
+type Role = 'STUDENT' | 'TEACHER' | 'ADMIN' | 'COUNTRY_REP' | 'SUBJECT_REVIEWER' | 'ORG_ADMIN';
 
 interface JwtPayload {
   role: Role;
@@ -29,6 +29,7 @@ const ROLE_HOME: Record<Role, string> = {
   ADMIN:            '/admin/dashboard',
   COUNTRY_REP:      '/country-rep/dashboard',
   SUBJECT_REVIEWER: '/reviewer/dashboard',
+  ORG_ADMIN:        '/school/dashboard',
 };
 
 // Encode the JWT secret for jose (must be Uint8Array)
@@ -68,6 +69,11 @@ export async function middleware(request: NextRequest) {
       return res;
     }
 
+    // A signed-in student opening their school's join link takes the seat straight away
+    if (pathname.startsWith('/join/school/') && payload.role === 'STUDENT') {
+      return NextResponse.redirect(new URL(`/student/join/${pathname.split('/')[3] ?? ''}`, request.url));
+    }
+
     // Redirect logged-in users away from auth pages
     if (isPublic) {
       return NextResponse.redirect(new URL(ROLE_HOME[payload.role], request.url));
@@ -101,6 +107,9 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL(ROLE_HOME[payload.role], request.url));
     }
     if (pathname.startsWith('/admin') && payload.role !== 'ADMIN') {
+      return NextResponse.redirect(new URL(ROLE_HOME[payload.role], request.url));
+    }
+    if (pathname.startsWith('/school') && payload.role !== 'ORG_ADMIN') {
       return NextResponse.redirect(new URL(ROLE_HOME[payload.role], request.url));
     }
     if (pathname.startsWith('/country-rep') && payload.role !== 'COUNTRY_REP') {

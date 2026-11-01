@@ -119,6 +119,7 @@ const ADMIN: Item[] = [
     { label: 'Community',     href: '/admin/community' },
   ]},
   { label: 'Finance', icon: 'wallet', children: [
+    { label: 'Payments', href: '/admin/payments' },
     { label: 'Payouts', href: '/admin/payouts' },
     { label: 'Wallets', href: '/admin/wallets' },
   ]},
@@ -142,12 +143,20 @@ const COUNTRY_REP: Item[] = [
   { label: 'My Profile', icon: 'user',      href: '/country-rep/profile' },
 ];
 
+const ORG_ADMIN: Item[] = [
+  { label: 'Dashboard', icon: 'dashboard', href: '/school/dashboard' },
+  { label: 'Students',  icon: 'users',     href: '/school/students' },
+  { label: 'Invite',    icon: 'inbox',     href: '/school/invite' },
+  { label: 'Settings',  icon: 'settings',  href: '/school/settings' },
+];
+
 const MENUS: Record<string, { items: Item[]; name: string; help?: string }> = {
   STUDENT:          { items: STUDENT,     name: 'Student portal',         help: '/student/support' },
   TEACHER:          { items: TEACHER,     name: 'Teacher portal' },
   ADMIN:            { items: ADMIN,       name: 'Administration',         help: '/admin/support' },
   SUBJECT_REVIEWER: { items: REVIEWER,    name: 'Subject reviewer' },
   COUNTRY_REP:      { items: COUNTRY_REP, name: 'Country representative' },
+  ORG_ADMIN:        { items: ORG_ADMIN,   name: 'School' },
 };
 
 function matches(pathname: string, href: string, also?: string[]) {

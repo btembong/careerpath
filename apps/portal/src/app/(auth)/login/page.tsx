@@ -17,6 +17,7 @@ const ROLE_HOME: Record<string, string> = {
   ADMIN:            '/admin/dashboard',
   COUNTRY_REP:      '/country-rep/dashboard',
   SUBJECT_REVIEWER: '/reviewer/dashboard',
+  ORG_ADMIN:        '/school/dashboard',
 };
 
 const TESTIMONIALS = [
@@ -28,8 +29,12 @@ function LoginPageInner() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const nextUrl      = searchParams.get('next');
-  const [email,       setEmail]       = useState('');
+  const [email,       setEmail]       = useState(searchParams.get('email') ?? '');
   const [password,    setPassword]    = useState('');
+  // School admins and other accounts without a password sign in with an emailed code
+  const [mode,        setMode]        = useState<'password' | 'code'>(searchParams.get('with') === 'code' ? 'code' : 'password');
+  const [codeSent,    setCodeSent]    = useState(false);
+  const [code,        setCode]        = useState('');
   const [rememberMe,  setRememberMe]  = useState(true);
   const [showPw,      setShowPw]      = useState(false);
   const [loading,     setLoading]     = useState(false);
@@ -65,8 +70,16 @@ function LoginPageInner() {
     if (lockUntil > Date.now()) return; // enforce lockout
     setError('');
     setLoading(true);
+    if (mode === 'code' && !codeSent) {
+      try { await api.post('/auth/login/code', { email }); setCodeSent(true); }
+      catch (err: any) { setError(err.response?.data?.message ?? 'Could not send a code'); }
+      finally { setLoading(false); }
+      return;
+    }
     try {
-      const { data } = await api.post('/auth/login', { email, password });
+      const { data } = mode === 'code'
+        ? await api.post('/auth/login/code/verify', { email, code })
+        : await api.post('/auth/login', { email, password });
       await setAuthToken(data.accessToken, rememberMe);
       setFailCount(0);
       setLockUntil(0);
@@ -356,8 +369,18 @@ function LoginPageInner() {
                 </div>
               </motion.div>
 
+              {mode === 'code' && codeSent && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-navy/70">Code from your email</label>
+                  <input inputMode="numeric" autoComplete="one-time-code" autoFocus maxLength={6} placeholder="6 digits" value={code}
+                    onChange={e => setCode(e.target.value.replace(/\D/g, ''))} required
+                    className="w-full rounded-2xl border-2 border-cloud bg-white px-4 py-3.5 text-center text-lg font-semibold tracking-[0.4em] text-navy outline-none transition-all focus:border-azure focus:ring-4 focus:ring-azure/10" />
+                  <p className="text-[11px] text-royal/50">Sent to {email}. It works for 10 minutes. <button type="button" onClick={() => { setCodeSent(false); setCode(''); }} className="font-semibold text-azure">Send another</button></p>
+                </div>
+              )}
+
               {/* Password */}
-              <motion.div variants={staggerItem} className="space-y-1.5">
+              {mode === 'password' && <motion.div variants={staggerItem} className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-semibold text-navy/70">Password</label>
                   <Link href="/forgot-password" className="text-xs font-semibold text-azure hover:text-royal transition">
@@ -385,7 +408,7 @@ function LoginPageInner() {
                 {password.length > 0 && password.length < 8 && (
                   <p className="text-[10px] text-royal/40 mt-1">Password must be at least 8 characters</p>
                 )}
-              </motion.div>
+              </motion.div>}
 
               {/* Remember me */}
               <motion.label variants={staggerItem} className="flex items-center gap-2.5 cursor-pointer select-none group">
@@ -423,7 +446,7 @@ function LoginPageInner() {
                     className="mt-2 rounded-2xl py-4 text-sm"
                     style={{ background: 'linear-gradient(135deg, #5889FA 0%, #405FAD 100%)', boxShadow: '0 8px 24px rgba(88,137,250,0.35)' } as React.CSSProperties}
                   >
-                    {!loading && 'Sign in to your account'}
+                    {!loading && (mode === 'code' ? (codeSent ? 'Sign in' : 'Email me a code') : 'Sign in to your account')}
                     {!loading && (
                       <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -433,6 +456,12 @@ function LoginPageInner() {
                 )}
               </motion.div>
             </motion.form>
+
+            <p className="mt-4 text-center text-xs text-royal/60">
+              {mode === 'password'
+                ? <>School admin, or no password? <button type="button" onClick={() => { setMode('code'); setError(''); }} className="font-semibold text-azure hover:text-royal">Sign in with an email code</button></>
+                : <>Have a password? <button type="button" onClick={() => { setMode('password'); setCodeSent(false); setError(''); }} className="font-semibold text-azure hover:text-royal">Sign in with your password</button></>}
+            </p>
 
             {/* Footer */}
             <motion.p
