@@ -93,6 +93,7 @@ export class PaymentsService {
         .update({ where: { id: tranzakSessionId }, data: { requestId: session.sessionId } })
         .catch(err => this.logger.warn('Failed to update TranzakSession.requestId', err?.message));
     }
+    await this.recordAttempt({ studentId: student.id, kind: 'package', packageId: pkg.id, title: pkg.name, amount: finalAmount, currency: pkg.currency, gateway: session.gateway, sessionId: session.sessionId, tranzakSessionId, couponId });
 
     return {
       url: session.url,
@@ -163,6 +164,7 @@ export class PaymentsService {
         .update({ where: { id: tranzakSessionId }, data: { requestId: session.sessionId } })
         .catch(err => this.logger.warn('Failed to update TranzakSession.requestId', err?.message));
     }
+    await this.recordAttempt({ studentId: student.id, kind: 'course', courseId: course.id, title: course.title, amount: finalAmount, currency: course.priceCurrency, gateway: session.gateway, sessionId: session.sessionId, tranzakSessionId, couponId });
 
     return {
       url: session.url,
@@ -191,8 +193,17 @@ export class PaymentsService {
   }
 
   private async processWebhookEvent(event: WebhookEvent, gateway: PaymentGateway): Promise<void> {
+    await this.completeFromEvent(event, gateway);
+  }
+
+  /**
+   * Turn a confirmed payment (from a webhook, or from asking the gateway directly) into access.
+   * Safe to call twice for the same payment: the second call changes nothing.
+   * Returns false when the event isn't a completed purchase.
+   */
+  async completeFromEvent(event: WebhookEvent, gateway: PaymentGateway): Promise<boolean> {
     let purchase = gateway.extractPurchaseCompleted(event);
-    if (!purchase) return;
+    if (!purchase) return false;
 
     // ── Tranzak: resolve purchase metadata from TranzakSession ───────────────
     // Tranzak has no customData — we stored studentId/packageId/courseId/couponId
@@ -206,7 +217,7 @@ export class PaymentsService {
           'Tranzak webhook: TranzakSession not found for mchTransactionRef',
           purchase.tranzakSessionId,
         );
-        return;
+        return false;
       }
       purchase = {
         ...purchase,
@@ -231,7 +242,8 @@ export class PaymentsService {
       } catch {
         // Unique constraint violation → already processed → skip
         this.logger.warn(`Duplicate webhook ignored: ${gatewayName}/${eventId}`);
-        return;
+        await this.markAttemptPaid(purchase.sessionId, purchase.tranzakSessionId);
+        return true;
       }
     }
 
@@ -240,6 +252,35 @@ export class PaymentsService {
     } else {
       await this.fulfillPurchase(purchase);
     }
+    await this.markAttemptPaid(purchase.sessionId, purchase.tranzakSessionId);
+    return true;
+  }
+
+  // ── Payment attempts ─────────────────────────────────────
+
+  private async recordAttempt(a: { studentId: string; kind: 'package' | 'course'; packageId?: string; courseId?: string; title: string; amount: number; currency: string; gateway: string; sessionId?: string | null; tranzakSessionId?: string; couponId?: string }) {
+    await this.prisma.paymentAttempt.create({
+      data: { ...a, sessionId: a.sessionId || null, tranzakSessionId: a.tranzakSessionId ?? null, couponId: a.couponId ?? null },
+    }).catch(err => this.logger.warn('Could not record payment attempt', err?.message));
+  }
+
+  /** Link the attempt to the purchase it became */
+  private async markAttemptPaid(sessionId?: string, tranzakSessionId?: string) {
+    const ors = [sessionId ? { sessionId } : null, tranzakSessionId ? { tranzakSessionId } : null].filter(Boolean) as object[];
+    if (!ors.length) return;
+    const attempt = await this.prisma.paymentAttempt.findFirst({ where: { OR: ors } });
+    if (!attempt || attempt.status === 'PAID' || attempt.status === 'REFUNDED') return;
+    const ref = sessionId ?? '';
+    const [pp, cp] = await Promise.all([
+      this.prisma.packagePurchase.findFirst({ where: { studentId: attempt.studentId, gatewayRef: ref }, select: { id: true } }),
+      this.prisma.coursePurchase.findFirst({ where: { studentId: attempt.studentId, gatewayRef: ref }, select: { id: true } }),
+    ]);
+    await this.prisma.paymentAttempt.update({ where: { id: attempt.id }, data: { status: 'PAID', paidAt: new Date(), failureReason: null, packagePurchaseId: pp?.id ?? null, coursePurchaseId: cp?.id ?? null } });
+  }
+
+  /** The gateway client for a stored attempt */
+  gatewayByName(name: string): PaymentGateway {
+    return name === 'paystack' ? this.paystack : name === 'tranzak' ? this.tranzak : this.stripeGw;
   }
 
   // ── Invoice number generation ────────────────────────────

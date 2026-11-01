@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Post, Res, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CertificatesService } from './certificates.service';
@@ -24,7 +25,8 @@ export class CertificatesController {
   }
 
   @Get('verify/:verifyCode')
-  @ApiOperation({ summary: 'Public — verify a certificate is genuine. No auth required.' })
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({ summary: 'Public — verify a certificate is genuine (first name and initials only). No auth required.' })
   verifyCertificate(@Param('verifyCode') code: string) {
     return this.certificatesService.verifyCertificate(code);
   }

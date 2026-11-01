@@ -49,33 +49,36 @@ export class CertificatesService {
 
   // ── Public: verify a certificate ─────────────────────────
 
+  /**
+   * Public check that a certificate is genuine. Shows the first name and initials only (never the
+   * email): enough for an employer to match it to the person in front of them.
+   */
   async verifyCertificate(verifyCode: string) {
-    const cert = await this.prisma.certificate.findUnique({
-      where: { verifyCode },
+    const code = String(verifyCode ?? '').trim().toUpperCase();
+    const cert = /^[A-Z0-9-]{4,40}$/.test(code) ? await this.prisma.certificate.findUnique({
+      where: { verifyCode: code },
       include: {
-        student: { select: { email: true, firstName: true, lastName: true } },
-        course: { select: { title: true } },
+        student: { select: { email: true, name: true, firstName: true, lastName: true } },
+        course: { select: { title: true, teacherPending: true, teacher: { select: { name: true, firstName: true, lastName: true } } } },
       },
-    });
-
-    if (!cert) throw new NotFoundException('Certificate not found or invalid code');
+    }) : null;
+    if (!cert) return { valid: false as const, verifyCode: code };
 
     const s = cert.student;
-    const studentName =
-      s.firstName || s.lastName
-        ? `${s.firstName ?? ''} ${s.lastName ?? ''}`.trim()
-        : s.email;
-
+    const full = (s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email.split('@')[0]).trim();
+    const [first, ...rest] = full.split(/\s+/);
+    const shortName = [first, rest.map(w => w.split('-').map(p => `${p[0]?.toUpperCase() ?? ''}.`).join('-')).join(' ')].filter(Boolean).join(' ');
+    const t = cert.course?.teacher;
     return {
-      valid: true,
-      courseId: cert.courseId,
-      courseName: cert.course?.title ?? cert.courseId,
-      studentEmail: s.email,
-      studentName,
-      issuedAt: cert.issuedAt,
+      valid: true as const,
       verifyCode: cert.verifyCode,
+      studentName: shortName,
+      courseName: cert.course?.title ?? 'Course',
+      teacher: cert.course && !cert.course.teacherPending && t ? (t.name || [t.firstName, t.lastName].filter(Boolean).join(' ') || null) : null,
+      issuedAt: cert.issuedAt,
     };
   }
+
 
   // ── Admin: manually issue or revoke ──────────────────────
 

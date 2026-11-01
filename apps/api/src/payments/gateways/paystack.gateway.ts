@@ -8,6 +8,7 @@ import {
   CheckoutSession,
   WebhookEvent,
   PurchaseCompletedEvent,
+  GatewayLookup,
 } from './gateway.interface';
 
 /**
@@ -81,5 +82,22 @@ export class PaystackGateway implements PaymentGateway {
       currency: data.currency?.toUpperCase() ?? 'NGN',
       gateway: 'paystack',
     };
+  }
+
+  /** GET /transaction/verify/:reference — Paystack's own record of the payment */
+  async lookup(reference: string): Promise<GatewayLookup> {
+    try {
+      const res = await axios.get(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, { headers: { Authorization: `Bearer ${this.secret}` }, timeout: 20_000 });
+      const data = res.data?.data;
+      const s = String(data?.status ?? '');
+      if (s === 'success') return { status: 'paid', event: { gateway: 'paystack', type: 'charge.success', payload: { data } } };
+      if (s === 'failed') return { status: 'failed', reason: data?.gateway_response || 'Payment failed' };
+      if (s === 'abandoned') return { status: 'abandoned', reason: 'The student didn’t finish paying' };
+      return { status: 'pending', reason: data?.gateway_response || s || undefined };
+    } catch (err: any) {
+      if (err?.response?.status === 400 || err?.response?.status === 404) return { status: 'abandoned', reason: 'Paystack has no payment with this reference' };
+      this.logger.warn(`Paystack lookup failed for ${reference}: ${err?.message}`);
+      return { status: 'unknown', reason: 'Couldn’t reach Paystack' };
+    }
   }
 }

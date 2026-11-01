@@ -7,6 +7,7 @@ import {
   CheckoutSession,
   WebhookEvent,
   PurchaseCompletedEvent,
+  GatewayLookup,
 } from './gateway.interface';
 
 /**
@@ -269,6 +270,23 @@ export class TranzakGateway implements PaymentGateway {
       throw new BadRequestException(
         'Tranzak authentication failed — check TRANZAK_APP_ID / TRANZAK_APP_KEY',
       );
+    }
+  }
+
+  /** GET /xp021/v1/request/details — Tranzak's record of a payment request */
+  async lookup(requestId: string): Promise<GatewayLookup> {
+    try {
+      const token = await this.getAccessToken();
+      const res = await this.client.get('/xp021/v1/request/details', { params: { requestId }, headers: { Authorization: `Bearer ${token}` }, timeout: 20_000 });
+      const resource = res.data?.data;
+      const s = String(resource?.status ?? '').toUpperCase();
+      if (s === 'SUCCESSFUL') return { status: 'paid', event: { gateway: 'tranzak', type: 'REQUEST.COMPLETED', payload: { resourceId: requestId, resource } } };
+      if (s === 'FAILED') return { status: 'failed', reason: resource?.errorMessage || 'Payment failed' };
+      if (s === 'CANCELLED' || s === 'CANCELLED_BY_PAYER' || s === 'EXPIRED') return { status: 'abandoned', reason: 'The payer cancelled or let it expire' };
+      return { status: 'pending' };
+    } catch (err: any) {
+      this.logger.warn(`Tranzak lookup failed for ${requestId}: ${err?.message}`);
+      return { status: 'unknown', reason: 'Couldn’t reach Tranzak' };
     }
   }
 }

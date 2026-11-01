@@ -84,7 +84,21 @@ export interface PaymentGateway {
    */
   verifyWebhookSignature(rawBody: Buffer, signatureHeader?: string): WebhookEvent;
   extractPurchaseCompleted(event: WebhookEvent): PurchaseCompletedEvent | null;
+  /** Ask the gateway about one checkout */
+  lookup(sessionId: string): Promise<GatewayLookup>;
 }
+
+/**
+ * What the gateway says about one checkout when we ask it directly (a missed webhook, a student
+ * who paid but has no access). When paid, `event` is shaped like the gateway's own webhook so the
+ * usual extract-and-fulfil path handles it.
+ */
+export interface GatewayLookup {
+  status: 'paid' | 'pending' | 'failed' | 'abandoned' | 'unknown';
+  reason?: string;
+  event?: WebhookEvent;
+}
+
 
 /** Currencies routed to each gateway */
 export const PAYSTACK_CURRENCIES = new Set(['NGN', 'GHS', 'ZAR', 'KES', 'EGP']);

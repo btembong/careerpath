@@ -8,10 +8,13 @@ import { StripeGateway } from './gateways/stripe.gateway';
 import { WordPressModule } from '../wordpress/wordpress.module';
 import { CouponsModule } from '../coupons/coupons.module';
 import { MailModule } from '../mail/mail.module';
+import { AuditModule } from '../audit/audit.module';
+import { PaymentOpsService } from './payment-ops.service';
+import { PaymentOpsController } from './payment-ops.controller';
 
 @Module({
-  imports: [WordPressModule, CouponsModule, MailModule],
-  controllers: [PaymentsController],
-  providers: [PaymentsService, BillingService, PaystackGateway, TranzakGateway, StripeGateway],
+  imports: [WordPressModule, CouponsModule, MailModule, AuditModule],
+  controllers: [PaymentsController, PaymentOpsController],
+  providers: [PaymentsService, BillingService, PaymentOpsService, PaystackGateway, TranzakGateway, StripeGateway],
 })
 export class PaymentsModule {}

@@ -7,6 +7,7 @@ import {
   CheckoutSession,
   WebhookEvent,
   PurchaseCompletedEvent,
+  GatewayLookup,
 } from './gateway.interface';
 
 @Injectable()
@@ -123,5 +124,17 @@ export class StripeGateway implements PaymentGateway {
 
   private toMinorUnits(amount: number, currency: string): number {
     return Math.round(amount);
+  }
+
+  async lookup(sessionId: string): Promise<GatewayLookup> {
+    try {
+      const session = await this.stripe.checkout.sessions.retrieve(sessionId);
+      if (session.payment_status === 'paid') return { status: 'paid', event: { gateway: 'stripe', type: 'checkout.session.completed', payload: { data: { object: session } } as any } };
+      if (session.status === 'expired') return { status: 'abandoned', reason: 'The checkout expired before payment' };
+      return { status: 'pending' };
+    } catch (err: any) {
+      if (err?.statusCode === 404) return { status: 'abandoned', reason: 'Stripe has no checkout with this id' };
+      return { status: 'unknown', reason: 'Couldn’t reach Stripe' };
+    }
   }
 }
