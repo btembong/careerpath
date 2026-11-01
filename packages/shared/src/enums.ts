@@ -4,6 +4,8 @@ export enum UserRole {
   STUDENT = 'STUDENT',
   COUNTRY_REP = 'COUNTRY_REP',
   SUBJECT_REVIEWER = 'SUBJECT_REVIEWER',
+  /** Runs a school's or company's seats in its own portal */
+  ORG_ADMIN = 'ORG_ADMIN',
 }
 
 export enum ApprovalStatus {

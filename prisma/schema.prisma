@@ -47,6 +47,11 @@ model UserProfile {
   cohorts              CohortRoster[]
   discussionPosts      CourseDiscussionPost[]
   courseEnrollments    CourseEnrollment[]
+  /// For ORG_ADMIN: the organisation they run
+  organisationId       String?
+  organisation         Organisation?            @relation("OrgAdmins", fields: [organisationId], references: [id])
+  paymentAttempts      PaymentAttempt[]
+  staffPosts           StaffPost[]              @relation("StaffPosts")
   studyBlocks          StudyBlock[]             @relation("StudentStudyBlocks")
   threadReads          ThreadRead[]
   wpPulls              WpPull[]
@@ -284,6 +289,7 @@ model PackagePurchase {
   gateway      String?
   gatewayRef   String?
   invoiceNo    String?             @unique
+  refundedAt   DateTime?
   package      Package             @relation(fields: [packageId], references: [id])
   student      UserProfile         @relation(fields: [studentId], references: [id])
   transactions WalletTransaction[]
@@ -300,6 +306,7 @@ model CoursePurchase {
   gateway      String?
   gatewayRef   String?
   invoiceNo    String?             @unique
+  refundedAt   DateTime?
   course       PlatformCourse      @relation(fields: [courseId], references: [id])
   student      UserProfile         @relation(fields: [studentId], references: [id])
   transactions WalletTransaction[]
@@ -658,23 +665,130 @@ model Coupon {
   createdAt      DateTime  @default(now())
 }
 
+/// A school or company that buys seats; its admins (role ORG_ADMIN) manage them in the school portal
+model Organisation {
+  id          String          @id @default(uuid())
+  name        String
+  countryId   String?
+  contactEmail String
+  /// Code in the school's join link; anyone signing up with it takes a free seat
+  joinCode    String          @unique
+  joinEnabled Boolean         @default(true)
+  /// When set, only emails ending in this domain can use the join link, e.g. "achimota.edu.gh"
+  emailDomain String?
+  createdAt   DateTime        @default(now())
+  enrollments OrgEnrollment[]
+  admins      UserProfile[]   @relation("OrgAdmins")
+}
+
 model OrgEnrollment {
-  id               String    @id @default(uuid())
+  id               String        @id @default(uuid())
+  organisationId   String?
   organizationName String
   contactEmail     String
   packageId        String
+  /// Seats bought; invites and link joins can't go past it
   seatsPurchased   Int
-  purchasedAt      DateTime  @default(now())
+  /// Agreed price per seat (minor units), recorded for reference; seats are invoiced outside the portal
+  pricePerSeat     Int?
+  currency         String?
+  purchasedAt      DateTime      @default(now())
+  organisation     Organisation? @relation(fields: [organisationId], references: [id])
   seats            OrgSeat[]
 }
 
 model OrgSeat {
   id              String        @id @default(uuid())
   orgEnrollmentId String
-  inviteEmail     String
+  /// Null for a seat taken through the join link
+  inviteEmail     String?
   studentId       String?
   claimedAt       DateTime?
+  /// EMAIL (invited) or LINK (joined with the school's link)
+  joinedVia       String        @default("EMAIL")
+  invitedAt       DateTime      @default(now())
+  remindedAt      DateTime?
   orgEnrollment   OrgEnrollment @relation(fields: [orgEnrollmentId], references: [id])
+}
+
+/// Every checkout a student starts, so failed, abandoned and paid-but-not-delivered payments can be seen and fixed
+model PaymentAttempt {
+  id                String    @id @default(uuid())
+  studentId         String
+  /// package or course
+  kind              String
+  packageId         String?
+  courseId          String?
+  title             String
+  amount            Int
+  currency          String
+  gateway           String
+  /// The gateway's reference for this checkout (Paystack reference, Stripe session, Tranzak request)
+  sessionId         String?   @unique
+  /// Tranzak's merchant reference, when used
+  tranzakSessionId  String?
+  couponId          String?
+  /// PENDING, PAID, FAILED, ABANDONED or REFUNDED
+  status            String    @default("PENDING")
+  failureReason     String?
+  paidAt            DateTime?
+  checkedAt         DateTime?
+  packagePurchaseId String?
+  coursePurchaseId  String?
+  createdAt         DateTime  @default(now())
+  student           UserProfile @relation(fields: [studentId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([studentId])
+}
+
+/// Money sent back to a student, recorded by an admin after refunding through the gateway
+model Refund {
+  id          String   @id @default(uuid())
+  /// package or course
+  kind        String
+  purchaseId  String
+  studentId   String
+  amount      Int
+  currency    String
+  reason      String
+  /// Their access was ended with the refund
+  endedAccess Boolean  @default(false)
+  /// Commission taken back from wallets that hadn't been paid out (minor units, summed)
+  clawedBack  Int      @default(0)
+  byId        String
+  createdAt   DateTime @default(now())
+
+  @@index([purchaseId])
+}
+
+/// The teachers' staff room: posts and replies only teachers, reviewers and admins see
+model StaffPost {
+  id          String        @id @default(uuid())
+  /// announcements, tips, exams, portal
+  room        String
+  authorId    String
+  parentId    String?
+  body        String
+  isPinned    Boolean       @default(false)
+  upvoteCount Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  author      UserProfile   @relation("StaffPosts", fields: [authorId], references: [id])
+  parent      StaffPost?    @relation("StaffReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     StaffPost[]   @relation("StaffReplies")
+  upvotes     StaffUpvote[]
+
+  @@index([room, createdAt])
+}
+
+model StaffUpvote {
+  id     String    @id @default(uuid())
+  postId String
+  userId String
+  post   StaffPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
 }
 
 model PayoutStatement {
@@ -1126,6 +1240,8 @@ enum UserRole {
   STUDENT
   COUNTRY_REP
   SUBJECT_REVIEWER
+  /// Runs a school's or company's seats in its own portal
+  ORG_ADMIN
 }
 
 enum ApprovalStatus {

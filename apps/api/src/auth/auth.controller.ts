@@ -102,6 +102,22 @@ export class AuthController {
     return { sent: true, to: email };
   }
 
+  @Post('login/code')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @ApiOperation({ summary: 'Email me a sign-in code (school admins and other accounts without a WordPress password)' })
+  sendLoginCode(@Body('email') email: string) {
+    return this.authService.sendLoginCode(email);
+  }
+
+  @Post('login/code/verify')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({ summary: 'Sign in with the emailed code' })
+  loginWithCode(@Body('email') email: string, @Body('code') code: string) {
+    return this.authService.loginWithCode(email, code);
+  }
+
   @Post('otp/verify')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 10 } }) // 10 OTP attempts per minute per IP

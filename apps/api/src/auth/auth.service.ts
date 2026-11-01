@@ -21,10 +21,13 @@ import { RegisterStudentDto } from './dto/register-student.dto';
 import { RegisterTeacherDto } from './dto/register-teacher.dto';
 import { CompleteTeacherOnboardingDto, TeacherProfileInput } from './dto/complete-teacher-onboarding.dto';
 import { ApprovalStatus, JwtPayload, MeResponse, UserRole } from '@cpa/shared';
+import { portalOnlyWpId } from '../prisma/portal-only-id';
 
 const OTP_TTL = 600; // 10 minutes in seconds
 const VERIFIED_TTL = 3600; // teacher wizard has 3 more steps after verifying, so allow an hour
 const otpKey = (email: string) => `cpa:otp:${email.toLowerCase()}`;
+const loginCodeKey = (email: string) => `cpa:login-code:${email.toLowerCase()}`;
+const loginTriesKey = (email: string) => `cpa:login-code-tries:${email.toLowerCase()}`;
 export const verifiedKey = (email: string) => `cpa:otp-verified:${email.toLowerCase()}`;
 
 @Injectable()
@@ -115,7 +118,7 @@ export class AuthService {
     } else {
       // Never overwrite portal-only roles (COUNTRY_REP, SUBJECT_REVIEWER) — those
       // are managed exclusively by admins in this portal, not by WordPress.
-      const PORTAL_ONLY = [UserRole.COUNTRY_REP, UserRole.SUBJECT_REVIEWER] as string[];
+      const PORTAL_ONLY = [UserRole.COUNTRY_REP, UserRole.SUBJECT_REVIEWER, UserRole.ORG_ADMIN] as string[];
       const isPortalOnly = PORTAL_ONLY.includes(profile.role);
 
       // Sync role in BOTH directions (up and down) to match WP source of truth.
@@ -499,6 +502,42 @@ export class AuthService {
     };
   }
 
+  // ── Email-code sign-in (accounts without a WordPress user) ──
+
+  /**
+   * School admins and other portal-only accounts have no WordPress password: they sign in with a
+   * code sent to their email. The answer is the same whether or not the account exists.
+   */
+  async sendLoginCode(email: string): Promise<{ message: string }> {
+    const e = String(email ?? '').trim().toLowerCase();
+    const profile = e ? await this.prisma.userProfile.findUnique({ where: { email: e }, select: { wpUserId: true, approvalStatus: true } }) : null;
+    if (profile && profile.wpUserId < 0 && profile.approvalStatus === ApprovalStatus.APPROVED) {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      await this.redis.set(loginCodeKey(e), code, OTP_TTL);
+      await this.redis.del(loginTriesKey(e));
+      await this.mail.sendOtp(e, code);
+    }
+    return { message: 'If that email has a CareerPath account that signs in with a code, we’ve sent one.' };
+  }
+
+  async loginWithCode(email: string, code: string): Promise<{ accessToken: string }> {
+    const e = String(email ?? '').trim().toLowerCase();
+    const stored = await this.redis.get(loginCodeKey(e));
+    if (!stored) throw new UnauthorizedException('That code has expired. Ask for a new one.');
+    if (stored !== String(code ?? '').trim()) {
+      // Five wrong tries and the code is gone
+      const tries = Number((await this.redis.get(loginTriesKey(e))) ?? 0) + 1;
+      if (tries >= 5) { await this.redis.del(loginCodeKey(e)); await this.redis.del(loginTriesKey(e)); }
+      else await this.redis.set(loginTriesKey(e), String(tries), OTP_TTL);
+      throw new UnauthorizedException(tries >= 5 ? 'Too many wrong codes. Ask for a new one.' : 'That code isn’t right.');
+    }
+    await this.redis.del(loginCodeKey(e)); await this.redis.del(loginTriesKey(e));
+    const profile = await this.prisma.userProfile.findUnique({ where: { email: e } });
+    if (!profile || profile.wpUserId >= 0 || profile.approvalStatus !== ApprovalStatus.APPROVED) throw new UnauthorizedException('This account signs in with a password.');
+    await this.prisma.userProfile.update({ where: { id: profile.id }, data: { lastActiveDate: new Date() } }).catch(() => {});
+    return { accessToken: this.signToken(profile.id, profile.email, profile.role as UserRole, profile.wpUserId, profile.onboardingCompleted) };
+  }
+
   // ── Google SSO ───────────────────────────────────────────
 
   async googleLogin(dto: { googleId: string; email: string; name?: string; avatarUrl?: string }): Promise<{ accessToken: string }> {
@@ -510,7 +549,7 @@ export class AuthService {
       // Create a new student account — SSO users get wpUserId = -1 (sentinel for SSO-only accounts)
       profile = await this.prisma.userProfile.create({
         data: {
-          wpUserId: -(Date.now()), // negative sentinel, unique
+          wpUserId: await portalOnlyWpId(this.prisma), // no WordPress user: negative, unique
           email: dto.email, googleId: dto.googleId,
           name: dto.name ?? null, avatarUrl: dto.avatarUrl ?? null,
           role: UserRole.STUDENT, approvalStatus: ApprovalStatus.APPROVED,
