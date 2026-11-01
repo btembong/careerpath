@@ -118,13 +118,46 @@ export default function BillingPage() {
             </p>
             <Link href="/student/referrals" className="text-[13px] font-semibold text-azure-strong hover:underline">Get your link</Link>
           </section>
+          <PaymentCheck onFound={() => api.get('/payments/me/billing').then(r => setD(r.data)).catch(() => {})} />
           <section className="flex flex-col gap-1.5 rounded-lg border border-line bg-white p-4">
             <h3 className="text-[15px] font-semibold text-navy">A problem with a payment?</h3>
-            <p className="text-[13px] text-ink2">Paid but can’t see your course, or charged twice? Send us the receipt number and we’ll sort it within a day.</p>
+            <p className="text-[13px] text-ink2">Charged twice, or something else? Send us the receipt number and we’ll sort it within a day.</p>
             <Link href="/student/support" className="text-[13px] font-semibold text-azure-strong hover:underline">Contact billing support</Link>
           </section>
         </aside>
       </div>
     </div>
+  );
+}
+
+interface CheckResult { checked: number; delivered: number; results: { title: string; amount: number; currency: string; at: string; status: string; delivered: boolean }[] }
+
+/** "Paid but can't see your course?": ask the payment provider directly, and get access if it went through */
+function PaymentCheck({ onFound }: { onFound: () => void }) {
+  const [state, setState] = useState<'idle' | 'checking' | 'done'>('idle');
+  const [res, setRes] = useState<CheckResult | null>(null);
+  async function run() {
+    setState('checking');
+    try { const r = await api.post('/payments/me/check'); setRes(r.data); if (r.data.delivered) onFound(); }
+    catch (e: any) { notify.error(e?.response?.status === 429 ? 'Please wait a minute before checking again' : 'Could not reach the payment provider'); }
+    finally { setState('done'); }
+  }
+  const found = res?.results.filter(r => r.delivered) ?? [];
+  return (
+    <section className="flex flex-col gap-2.5 rounded-lg border border-line bg-white p-4">
+      <h3 className="text-[15px] font-semibold text-navy">{state === 'checking' ? 'Checking your payment…' : 'Paid but can’t see your course?'}</h3>
+      {state === 'checking' && <span className="block h-1.5 overflow-hidden rounded-[3px] bg-subtle"><span className="block h-1.5 w-3/5 animate-pulse rounded-[3px] bg-azure" /></span>}
+      {state !== 'done' && <p className="text-[13px] text-ink2">We ask the payment provider directly. If they say it went through, you get access right away.</p>}
+      {state === 'done' && res && (found.length ? (
+        <div className="rounded-lg bg-accent-soft px-3.5 py-3 text-[13.5px] text-navy">
+          {found.map((f, i) => <p key={i}><strong>Found it — paid {money(f.amount, f.currency)} on {new Date(f.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.</strong> {f.title} is now yours.</p>)}
+        </div>
+      ) : (
+        <p className="text-[13px] text-ink2">{res.checked ? 'The provider says your recent payments didn’t go through, so nothing was taken — or it will be returned within 3 working days.' : 'We couldn’t find a payment from you in the last 7 days.'} Still stuck? <Link href="/student/support" className="font-semibold text-azure-strong hover:underline">Tell us</Link>.</p>
+      ))}
+      {found.length > 0
+        ? <Link href="/student/courses" className="inline-flex h-9 items-center self-start rounded-md bg-azure-strong px-3.5 text-[13.5px] font-semibold text-on-accent">Go to my courses</Link>
+        : <button onClick={run} disabled={state === 'checking'} className="self-start text-[13px] font-semibold text-azure-strong hover:underline disabled:opacity-50">{state === 'done' ? 'Check again' : 'Check my payment'}</button>}
+    </section>
   );
 }
