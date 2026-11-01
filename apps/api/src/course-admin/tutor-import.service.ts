@@ -5,6 +5,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TutorClient, TutorItem, TutorLesson, TutorQuestion, TutorQuiz } from './tutor-client';
 import { cleanHtml, firstImage, htmlToText } from './html-clean';
 import { cleanTitle, norm } from './wp-text';
+import { createHash } from 'crypto';
+
+/** Stopped because teachers changed the course on the portal since the last import */
+class EditedOnPortal extends Error {
+  constructor(public readonly items: string[]) { super('Edited on the portal since the last import'); }
+}
+const hash = (v: unknown) => createHash('sha1').update(JSON.stringify(v)).digest('hex').slice(0, 16);
 
 type Kind = 'text' | 'video' | 'quiz';
 interface Outline { title: string; items: { title: string; kind: Kind; meta: string }[] }
@@ -19,6 +26,10 @@ export interface ImportSummary {
   notes: string[];
   /** Tutor had nothing for this course; it was left as it was */
   empty?: boolean;
+  /** What the import wrote, so the next one can tell what teachers changed on the portal */
+  fingerprints?: { lessons: Record<string, string>; questions: Record<string, string> };
+  /** Lessons and questions changed on the portal (when an import was stopped) */
+  editedOnPortal?: string[];
 }
 type QuestionRow = { type: QuestionType; questionText: string; options: Prisma.InputJsonValue | typeof Prisma.DbNull; correctAnswer: string; points: number; imageUrl: string | null };
 
@@ -42,6 +53,20 @@ export class TutorImportService implements OnModuleInit {
     // A restart mid-import: put it back in the queue
     await this.prisma.tutorImport.updateMany({ where: { status: 'RUNNING' }, data: { status: 'QUEUED', step: null } }).catch(() => {});
     setTimeout(() => this.work(), 5_000);
+    setTimeout(() => this.backfillFingerprints().catch(e => this.logger.warn('Fingerprint backfill failed: ' + e?.message)), 8_000);
+  }
+
+  /** Imports from before fingerprints existed: record what's there now, so later edits are noticed */
+  private async backfillFingerprints() {
+    const runs = await this.prisma.tutorImport.findMany({ where: { status: 'DONE' }, orderBy: { createdAt: 'desc' }, select: { id: true, courseId: true, summary: true } });
+    const seen = new Set<string>();
+    for (const r of runs) {
+      if (seen.has(r.courseId)) continue;
+      seen.add(r.courseId);
+      const s = r.summary as unknown as ImportSummary | null;
+      if (!s || s.empty || s.fingerprints) continue;
+      await this.prisma.tutorImport.update({ where: { id: r.id }, data: { summary: { ...s, fingerprints: await this.fingerprint(r.courseId) } as unknown as Prisma.InputJsonValue } });
+    }
   }
 
   // ── Admin page ─────────────────────────────────────────────
@@ -65,13 +90,15 @@ export class TutorImportService implements OnModuleInit {
       const s = run?.summary as unknown as ImportSummary | null | undefined;
       const changed = !!(c.contentImportedAt && c.wpModifiedAt && c.wpModifiedAt > c.contentImportedAt);
       const state = run && ['QUEUED', 'RUNNING'].includes(run.status) ? run.status.toLowerCase()
+        : run?.status === 'EDITED' ? 'edited'
         : !c.contentImportedAt ? (run?.status === 'FAILED' ? 'failed' : s?.empty ? 'empty' : 'website')
         : changed ? 'changed' : s?.warnings.length ? 'check' : 'imported';
       return {
         id: c.id, title: c.title, wpCourseId: c.wpCourseId, status: c.status,
         tag: [c.programme?.shortName ?? c.programme?.name, c.subject?.name].filter(Boolean).join(' · ') || null,
         students: c._count.enrollments, state, importedAt: c.contentImportedAt, wpModifiedAt: c.wpModifiedAt,
-        counts: s ? { lessons: s.lessons, quizzes: s.quizzes } : null, warnings: s?.warnings.length ?? 0,
+        counts: s && !s.editedOnPortal ? { lessons: s.lessons, quizzes: s.quizzes } : null, warnings: s?.warnings.length ?? 0,
+        editedOnPortal: s?.editedOnPortal?.length ?? 0,
         run: run ? { id: run.id, status: run.status, step: run.step, error: run.error, finishedAt: run.finishedAt } : null,
       };
     });
@@ -86,6 +113,7 @@ export class TutorImportService implements OnModuleInit {
         imported: rows.filter(r => r.importedAt).length,
         changed: rows.filter(r => r.state === 'changed').length,
         check: rows.filter(r => r.state === 'check').length,
+        edited: rows.filter(r => r.state === 'edited').length,
       },
       queue: {
         waiting: queue.filter(r => r.status === 'QUEUED').length,
@@ -96,13 +124,13 @@ export class TutorImportService implements OnModuleInit {
     };
   }
 
-  async queue(adminId: string | null, courseIds: string[]) {
+  async queue(adminId: string | null, courseIds: string[], force = false) {
     if (!this.tutor.configured) throw new BadRequestException('Tutor LMS is not connected');
     const ids = [...new Set(courseIds)].slice(0, 300);
     const courses = await this.prisma.platformCourse.findMany({ where: { id: { in: ids }, source: 'WORDPRESS', wpCourseId: { not: null } }, select: { id: true, wpCourseId: true } });
     const busy = new Set((await this.prisma.tutorImport.findMany({ where: { courseId: { in: ids }, status: { in: ['QUEUED', 'RUNNING'] } }, select: { courseId: true } })).map(r => r.courseId));
     const fresh = courses.filter(c => !busy.has(c.id));
-    if (fresh.length) await this.prisma.tutorImport.createMany({ data: fresh.map(c => ({ courseId: c.id, wpCourseId: c.wpCourseId!, byId: adminId })) });
+    if (fresh.length) await this.prisma.tutorImport.createMany({ data: fresh.map(c => ({ courseId: c.id, wpCourseId: c.wpCourseId!, byId: adminId, force })) });
     void this.work();
     return { queued: fresh.length, alreadyQueued: courses.length - fresh.length };
   }
@@ -139,9 +167,14 @@ export class TutorImportService implements OnModuleInit {
         const claimed = await this.prisma.tutorImport.updateMany({ where: { id: run.id, status: 'QUEUED' }, data: { status: 'RUNNING', startedAt: new Date(), step: 'Reading the course outline' } });
         if (!claimed.count) continue;
         try {
-          const summary = await this.importCourse(run.id, run.courseId, run.wpCourseId);
+          const summary = await this.importCourse(run.id, run.courseId, run.wpCourseId, run.force);
           await this.prisma.tutorImport.update({ where: { id: run.id }, data: { status: 'DONE', step: null, summary: summary as unknown as Prisma.InputJsonValue, finishedAt: new Date() } });
         } catch (e) {
+          if (e instanceof EditedOnPortal) {
+            const summary = { editedOnPortal: e.items, warnings: [], notes: [], outline: [] } as unknown as Prisma.InputJsonValue;
+            await this.prisma.tutorImport.update({ where: { id: run.id }, data: { status: 'EDITED', step: null, summary, error: `Teachers have worked on this course on the portal (${e.items.length} change${e.items.length === 1 ? '' : 's'}). Re-import anyway to replace their changes with Tutor’s version.`, finishedAt: new Date() } });
+            continue;
+          }
           const msg = (e as Error)?.message ?? String(e);
           this.logger.warn(`Tutor import of course ${run.courseId} failed: ${msg}`);
           await this.prisma.tutorImport.update({ where: { id: run.id }, data: { status: 'FAILED', step: null, error: msg.slice(0, 500), finishedAt: new Date() } });
@@ -158,8 +191,13 @@ export class TutorImportService implements OnModuleInit {
 
   // ── One course ─────────────────────────────────────────────
 
-  async importCourse(runId: string, courseId: string, wpCourseId: number): Promise<ImportSummary> {
+  async importCourse(runId: string, courseId: string, wpCourseId: number, force = false): Promise<ImportSummary> {
     const warnings: string[] = [];
+    // The course is built on the portal once imported: don't replace teachers' work unless asked
+    if (!force) {
+      const edited = await this.editedSinceImport(courseId);
+      if (edited.length) throw new EditedOnPortal(edited);
+    }
     const topics = await this.tutor.courseContents(wpCourseId);
     if (!Array.isArray(topics)) throw new Error('Tutor did not return an outline for this course');
     // Nothing to copy: leave the course playing on the website rather than showing an empty player
@@ -277,7 +315,37 @@ export class TutorImportService implements OnModuleInit {
     if (s.kept) s.notes.push(`${plural(s.kept, 'lesson')} removed on the website ${s.kept === 1 ? 'was' : 'were'} kept because students have started ${s.kept === 1 ? 'it' : 'them'}.`);
     if (s.images) s.notes.push(`${plural(s.images, 'picture')} ${s.images === 1 ? 'stays' : 'stay'} on the website (${site.replace(/^https?:\/\//, '')}) and show in the portal from there.`);
     if (!s.lessons && !s.quizzes) s.notes.push('Tutor has no lessons or quizzes for this course yet.');
+    s.fingerprints = await this.fingerprint(courseId);
     return s;
+  }
+
+  /** Hashes of every lesson and question that came from Tutor, as they are now */
+  private async fingerprint(courseId: string) {
+    const [lessons, questions] = await Promise.all([
+      this.prisma.lesson.findMany({ where: { module: { courseId }, wpItemId: { not: null } }, select: { wpItemId: true, title: true, type: true, content: true, videoUrl: true, passMark: true, maxAttempts: true, timeLimitSecs: true } }),
+      this.prisma.questionBank.findMany({ where: { courseId, wpQuestionId: { not: null } }, select: { wpQuestionId: true, questionText: true, type: true, options: true, correctAnswer: true, points: true } }),
+    ]);
+    return {
+      lessons: Object.fromEntries(lessons.map(({ wpItemId, ...l }) => [String(wpItemId), hash(l)])),
+      questions: Object.fromEntries(questions.map(({ wpQuestionId, ...q }) => [String(wpQuestionId), hash(q)])),
+    };
+  }
+
+  /** Lessons and questions from Tutor that were changed or removed on the portal since the last import */
+  private async editedSinceImport(courseId: string): Promise<string[]> {
+    const last = await this.prisma.tutorImport.findFirst({ where: { courseId, status: 'DONE' }, orderBy: { createdAt: 'desc' }, select: { summary: true } });
+    const before = (last?.summary as unknown as ImportSummary | null)?.fingerprints;
+    if (!before) return [];
+    const now = await this.fingerprint(courseId);
+    const titles = new Map((await this.prisma.lesson.findMany({ where: { module: { courseId }, wpItemId: { not: null } }, select: { wpItemId: true, title: true } })).map(l => [String(l.wpItemId), l.title]));
+    const out: string[] = [];
+    for (const [id, h] of Object.entries(before.lessons)) {
+      if (now.lessons[id] === undefined) out.push(`Lesson removed on the portal (Tutor item ${id})`);
+      else if (now.lessons[id] !== h) out.push(`Lesson “${titles.get(id) ?? id}” changed`);
+    }
+    const qChanged = Object.entries(before.questions).filter(([id, h]) => now.questions[id] !== h).length;
+    if (qChanged) out.push(`${plural(qChanged, 'quiz question')} changed or removed`);
+    return out;
   }
 
   private upsertLesson(tx: Prisma.TransactionClient, id: string | undefined, data: Prisma.LessonUncheckedCreateInput) {

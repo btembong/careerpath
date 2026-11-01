@@ -22,6 +22,8 @@ interface PackageItem { id: string; name: string; currency: string; priceAmount:
 interface CourseDetail {
   id: string; title: string; description: string | null; status: string;
   source: 'NATIVE' | 'WORDPRESS'; wpCourseUrl: string | null;
+  /** Content copied from Tutor: the course is built on the portal from then on */
+  contentImportedAt?: string | null;
   programme: { name: string; shortName: string | null; type: string } | null;
   subject:   { name: string } | null;
   level:     { name: string } | null;
@@ -91,6 +93,8 @@ export default function TeacherCourseDetailPage() {
     </div>
   );
 
+  // Built on the portal, or a WordPress course whose content has been imported
+  const editable = course.source === 'NATIVE' || !!course.contentImportedAt;
   const totalLessons = course.modules.reduce((n, m) => n + m.lessons.length, 0);
   const totalMins = course.modules
     .flatMap(m => m.lessons)
@@ -144,7 +148,7 @@ export default function TeacherCourseDetailPage() {
 
               {/* Actions */}
               <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-                {course.source === 'NATIVE' && (
+                {editable && (
                   <>
                     {course.status === 'DRAFT' && (
                       <Button size="sm" variant="secondary" loading={submitting} onClick={submitForReview}>
@@ -168,7 +172,7 @@ export default function TeacherCourseDetailPage() {
                     </Link>
                   </>
                 )}
-                {course.source === 'WORDPRESS' && course.wpCourseUrl && (
+                {course.source === 'WORDPRESS' && !course.contentImportedAt && course.wpCourseUrl && (
                   <a href={course.wpCourseUrl} target="_blank" rel="noreferrer">
                     <Button size="sm">
                       <Icon name="live" size={13} /> Open in WP
@@ -245,7 +249,7 @@ export default function TeacherCourseDetailPage() {
             <p className="text-[10px] font-bold uppercase tracking-widest text-azure">
               Curriculum — {course.modules.length} module{course.modules.length !== 1 ? 's' : ''} · {totalLessons} lesson{totalLessons !== 1 ? 's' : ''}
             </p>
-            {course.source === 'NATIVE' && (
+            {editable && (
               <Link href={`/teacher/courses/${courseId}/builder`}
                 className="text-[10px] font-semibold text-azure hover:text-royal transition">
                 Edit in builder →
@@ -258,7 +262,7 @@ export default function TeacherCourseDetailPage() {
               <div className="flex flex-col items-center py-8 text-center">
                 <Icon name="notebook" size={28} className="text-royal/20 mb-2" />
                 <p className="text-sm font-semibold text-navy">No modules yet</p>
-                {course.source === 'NATIVE' && (
+                {editable && (
                   <p className="text-xs text-royal/50 mt-1">
                     <Link href={`/teacher/courses/${courseId}/builder`} className="text-azure hover:underline">
                       Open the builder

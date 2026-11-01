@@ -1426,8 +1426,10 @@ model TutorImport {
   id         String    @id @default(uuid())
   courseId   String
   wpCourseId Int
-  /// QUEUED, RUNNING, DONE, FAILED or CANCELLED
+  /// QUEUED, RUNNING, DONE, FAILED, CANCELLED, or EDITED (stopped: teachers changed it on the portal)
   status     String    @default("QUEUED")
+  /// Replace lessons even if teachers edited them on the portal
+  force      Boolean   @default(false)
   /// What it's doing now, e.g. "Reading quizzes (2 of 3)"
   step       String?
   byId       String?

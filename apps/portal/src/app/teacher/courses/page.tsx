@@ -44,7 +44,8 @@ export default function TeacherCoursesPage() {
 
   async function load() {
     const r = await api.get('/platform-courses').catch(() => ({ data: [] }));
-    const list: Course[] = (r.data ?? []).filter((c: Course) => c.source !== 'WORDPRESS');
+    // WordPress courses appear once their content is imported: from then on they're built here
+    const list: Course[] = (r.data ?? []).filter((c: Course & { contentImportedAt?: string | null }) => c.source !== 'WORDPRESS' || !!c.contentImportedAt);
     setCourses(list);
     list.filter(c => c.status === 'DRAFT' || c.status === 'PENDING_REVIEW').forEach(c => {
       api.get(`/platform-courses/${c.id}/checklist`).then(x => setChecklists(m => ({ ...m, [c.id]: x.data }))).catch(() => {});

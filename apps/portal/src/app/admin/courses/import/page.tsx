@@ -8,7 +8,7 @@ import { Drawer, DrawerContent, DrawerSection } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-type State = 'website' | 'empty' | 'failed' | 'queued' | 'running' | 'imported' | 'changed' | 'check';
+type State = 'website' | 'empty' | 'failed' | 'queued' | 'running' | 'imported' | 'changed' | 'check' | 'edited';
 interface Row {
   id: string; title: string; wpCourseId: number; status: string; tag: string | null; students: number; state: State;
   importedAt: string | null; wpModifiedAt: string | null; counts: { lessons: number; quizzes: number } | null; warnings: number;
@@ -16,12 +16,12 @@ interface Row {
 }
 interface Data {
   connected: boolean; quizzes: boolean; rows: Row[];
-  stats: { website: number; empty: number; imported: number; changed: number; check: number };
+  stats: { website: number; empty: number; imported: number; changed: number; check: number; edited: number };
   queue: { waiting: number; running: { courseId: string; title: string; step: string | null; startedAt: string } | null; done: number };
 }
 type Tab = 'website' | 'imported' | 'changed' | 'check';
 
-const TAB_OF: Record<State, Tab> = { website: 'website', empty: 'website', failed: 'website', queued: 'website', running: 'website', imported: 'imported', changed: 'changed', check: 'check' };
+const TAB_OF: Record<State, Tab> = { website: 'website', empty: 'website', failed: 'website', queued: 'website', running: 'website', imported: 'imported', changed: 'changed', check: 'check', edited: 'imported' };
 const short = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : w.endsWith('z') ? 'zes' : 's'}`;
 
@@ -50,11 +50,12 @@ export default function TutorImportPage() {
   const selectable = rows.filter(r => r.state !== 'queued' && r.state !== 'running');
   const allPicked = selectable.length > 0 && selectable.every(r => picked.has(r.id));
 
-  async function start(ids: string[]) {
+  async function start(ids: string[], force = false) {
+    if (force && !confirm('Teachers have changed this course on the portal. Re-importing replaces their changes to lessons and questions that came from Tutor with Tutor’s version (lessons they added stay). Continue?')) return;
     if (!ids.length) return;
     setBusy(true);
     try {
-      const r = await api.post('/admin/tutor-import/queue', { courseIds: ids });
+      const r = await api.post('/admin/tutor-import/queue', { courseIds: ids, force });
       notify.success(`${plural(r.data.queued, 'course')} queued`, { description: 'They import one at a time in the background — you can leave this page.' });
       setPicked(new Set()); await load();
     } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not start the import'); }
@@ -73,8 +74,8 @@ export default function TutorImportPage() {
   const pickedRows = (d?.rows ?? []).filter(r => picked.has(r.id));
 
   const badge = (s: State) => clsx('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-[12px] font-semibold',
-    s === 'imported' || s === 'running' ? 'bg-accent-soft text-navy' : s === 'changed' || s === 'check' || s === 'failed' ? 'border border-dashed border-azure text-azure-strong' : 'border border-line bg-subtle text-ink2');
-  const label: Record<State, string> = { website: 'Website only', empty: 'Nothing in Tutor', failed: 'Import failed', queued: 'Waiting', running: 'Importing…', imported: 'Imported', changed: 'Changed on website', check: 'To check' };
+    s === 'imported' || s === 'running' ? 'bg-accent-soft text-navy' : s === 'changed' || s === 'check' || s === 'failed' || s === 'edited' ? 'border border-dashed border-azure text-azure-strong' : 'border border-line bg-subtle text-ink2');
+  const label: Record<State, string> = { website: 'Website only', empty: 'Nothing in Tutor', failed: 'Import failed', queued: 'Waiting', running: 'Importing…', imported: 'Imported', changed: 'Changed on website', check: 'To check', edited: 'Edited on the portal' };
   const td = 'border-b border-line px-4 py-3 align-top';
 
   return (
@@ -150,14 +151,14 @@ export default function TutorImportPage() {
                       <td className={td}>
                         <span className={badge(r.state)}>{label[r.state]}</span><br />
                         <span className="text-[12px] text-muted">
-                          {r.state === 'running' ? r.run?.step ?? '' : r.state === 'failed' ? r.run?.error ?? '' : r.state === 'empty' ? 'no lessons to copy yet' : r.state === 'changed' && r.importedAt && r.wpModifiedAt ? `imported ${short(r.importedAt)} · edited ${short(r.wpModifiedAt)}` : r.state === 'check' ? plural(r.warnings, 'thing') + ' to check' : r.importedAt ? `imported ${short(r.importedAt)}` : ''}
+                          {r.state === 'running' ? r.run?.step ?? '' : r.state === 'failed' ? r.run?.error ?? '' : r.state === 'empty' ? 'no lessons to copy yet' : r.state === 'edited' ? 'teachers work on it here now' : r.state === 'changed' && r.importedAt && r.wpModifiedAt ? `imported ${short(r.importedAt)} · edited ${short(r.wpModifiedAt)}` : r.state === 'check' ? plural(r.warnings, 'thing') + ' to check' : r.importedAt ? `imported ${short(r.importedAt)}` : ''}
                         </span>
                       </td>
                       <td className={clsx(td, 'text-ink2')}>{r.students ? `${r.students} enrolled` : '—'}</td>
                       <td className={clsx(td, 'whitespace-nowrap text-right')}>
                         {busyRow ? null : <>
                           {r.importedAt && <button onClick={() => setOpen(r.id)} className="mr-3 font-semibold text-azure-strong hover:underline">{r.state === 'check' ? 'See result' : 'Result'}</button>}
-                          <button onClick={() => start([r.id])} disabled={busy || !d.connected} className="font-semibold text-azure-strong hover:underline disabled:opacity-50">{r.state === 'changed' ? 'Update' : r.importedAt ? 'Re-import' : r.state === 'failed' ? 'Try again' : 'Import'}</button>
+                          <button onClick={() => start([r.id], r.state === 'edited')} disabled={busy || !d.connected} className="font-semibold text-azure-strong hover:underline disabled:opacity-50">{r.state === 'edited' ? 'Re-import anyway' : r.state === 'changed' ? 'Update' : r.importedAt ? 'Re-import' : r.state === 'failed' ? 'Try again' : 'Import'}</button>
                         </>}
                       </td>
                     </tr>
@@ -169,7 +170,8 @@ export default function TutorImportPage() {
         </section>
         <p className="text-[12.5px] text-muted">
           Importing copies topics, lessons (text, pictures, video links, attachments) and quizzes into the portal, so students learn in the portal’s player.
-          Importing again updates what came from Tutor; anything a teacher added on the portal stays. Lessons students have started are never deleted.
+          From then on the course is built here: its teacher edits it, adds lessons and proposes a price in their course builder, not in Tutor.
+          Importing again only updates courses nobody has changed on the portal (anything a teacher added always stays); otherwise it stops and asks before replacing their work. Lessons students have started are never deleted.
           {' '}New courses come from <Link href="/admin/courses/wordpress" className="font-semibold text-azure-strong hover:underline">Pull from WordPress</Link>.
         </p>
       </div>

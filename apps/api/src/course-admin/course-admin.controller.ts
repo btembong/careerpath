@@ -41,7 +41,7 @@ export class CourseAdminController {
 
   @Post('tutor-import/queue')
   @ApiOperation({ summary: 'Queue courses to have their topics, lessons and quizzes copied from Tutor (runs in the background)' })
-  tutorQueue(@CurrentUser() user: UserProfile, @Body('courseIds') ids: string[]) { return this.tutor.queue(user?.id ?? null, Array.isArray(ids) ? ids : []); }
+  tutorQueue(@CurrentUser() user: UserProfile, @Body('courseIds') ids: string[], @Body('force') force?: boolean) { return this.tutor.queue(user?.id ?? null, Array.isArray(ids) ? ids : [], force === true); }
 
   @Post('tutor-import/cancel')
   @ApiOperation({ summary: 'Stop the queue after the course being imported now' })
