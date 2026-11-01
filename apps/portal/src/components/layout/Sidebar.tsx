@@ -117,6 +117,7 @@ const ADMIN: Item[] = [
     { label: 'Welcome Video', href: '/admin/onboarding-video' },
     { label: 'Notifications', href: '/admin/notifications' },
     { label: 'Community',     href: '/admin/community' },
+    { label: 'Staff room',    href: '/admin/staff-room' },
   ]},
   { label: 'Finance', icon: 'wallet', children: [
     { label: 'Payments', href: '/admin/payments' },
@@ -129,6 +130,7 @@ const REVIEWER: Item[] = [
   { label: 'Review Queue', icon: 'inbox',  href: '/reviewer/dashboard' },
   { label: 'Courses',      icon: 'book',   href: '/reviewer/courses' },
   { label: 'Messages',     icon: 'message', href: '/reviewer/messages' },
+  { label: 'Staff room',   icon: 'users',   href: '/reviewer/staff-room' },
   { label: 'Earnings',     icon: 'wallet', href: '/reviewer/wallet' },
   { label: 'My Profile',   icon: 'user',   href: '/reviewer/profile' },
 ];
