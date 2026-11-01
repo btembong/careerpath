@@ -332,7 +332,9 @@ export class PaymentsService {
   async enrollFree(student: UserProfile, courseId: string): Promise<{ enrolled: boolean }> {
     const course = await this.prisma.platformCourse.findUnique({ where: { id: courseId } });
     if (!course || course.status !== 'PUBLISHED') throw new NotFoundException('Course not found or not available');
-    if (course.priceAmount && course.priceAmount > 0) {
+    // Free means sold on its own at no charge. A course with no price that isn't sold on its own is
+    // package-only (or not on sale yet), so it can't be taken for free here.
+    if (!course.isSoldIndividually || (course.priceAmount ?? 0) > 0) {
       throw new BadRequestException('This course is not free');
     }
 

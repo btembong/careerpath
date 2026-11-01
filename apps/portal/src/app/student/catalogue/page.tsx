@@ -15,7 +15,7 @@ import api from '@/lib/api';
 interface Programme { id: string; name: string; shortName: string | null }
 interface Course {
   id: string; title: string; description: string | null; status: string; createdAt: string;
-  priceAmount: number | null; priceCurrency: string | null; isSoldIndividually: boolean;
+  priceAmount: number | null; priceCurrency: string | null; isSoldIndividually: boolean; source?: string;
   programme: { id: string; name: string; shortName: string | null } | null;
   subject: { id: string; name: string } | null;
   level: { id: string; name: string } | null;
@@ -45,7 +45,9 @@ const term = (days: number | null) => {
   const m = Math.round(days / 30.44);
   return m >= 1 && Math.abs(m * 30.44 - days) <= 3 ? `${m} month${m === 1 ? '' : 's'}` : `${days} days`;
 };
-const isFree = (c: Course) => c.isSoldIndividually && !c.priceAmount;
+/** Free to join: sold on its own at no charge, or a WordPress course (anyone can enrol) */
+const isWebsite = (c: Course) => c.source === 'WORDPRESS' && !c.isSoldIndividually;
+const isFree = (c: Course) => (c.isSoldIndividually && !c.priceAmount) || isWebsite(c);
 /** The teacher's name — never their email */
 const teacherOf = (c: Course) => c.teacher?.name || [c.teacher?.firstName, c.teacher?.lastName].filter(Boolean).join(' ') || null;
 const accessText = (m: number | null) => m == null ? 'No time limit' : `${m} month${m === 1 ? '' : 's'}`;
@@ -146,13 +148,13 @@ function Catalogue() {
       (price === 'any'
         || (price === 'single' && c.isSoldIndividually && !!c.priceAmount)
         || (price === 'free' && isFree(c))
-        || (price === 'package' && !c.isSoldIndividually)) &&
+        || (price === 'package' && !c.isSoldIndividually && !isWebsite(c))) &&
       (!q || `${c.title} ${c.subject?.name ?? ''} ${teacherOf(c) ?? ''} ${c.description ?? ''}`.toLowerCase().includes(q)));
     const cmp: Record<Sort, (a: Course, b: Course) => number> = {
       popular: (a, b) => b._count.enrollments - a._count.enrollments,
       newest: (a, b) => +new Date(b.createdAt) - +new Date(a.createdAt),
       az: (a, b) => a.title.localeCompare(b.title),
-      price: (a, b) => (a.isSoldIndividually ? a.priceAmount ?? 0 : Infinity) - (b.isSoldIndividually ? b.priceAmount ?? 0 : Infinity),
+      price: (a, b) => (isFree(a) ? 0 : a.isSoldIndividually ? a.priceAmount ?? 0 : Infinity) - (isFree(b) ? 0 : b.isSoldIndividually ? b.priceAmount ?? 0 : Infinity),
     };
     return [...list].sort(cmp[sort]);
   }, [progCourses, search, subject, lang, price, sort]);
@@ -263,8 +265,9 @@ function Catalogue() {
                   {shown.map(c => {
                     const has = owned.has(c.id);
                     const inPkgs = pkgsFor(c.id);
-                    const priceLabel = has ? 'Yours' : isFree(c) ? 'Free' : c.isSoldIndividually && c.priceCurrency ? money(c.priceAmount!, c.priceCurrency) : 'Package only';
-                    const note = has ? 'You have access' : inPkgs.length ? `${c.isSoldIndividually ? 'Also in' : 'In'} ${inPkgs[0].name}${inPkgs.length > 1 ? ` and ${inPkgs.length - 1} more` : ''}` : 'Not in a package yet';
+                    // Package-only is only true when a package has it; otherwise it isn't on sale yet
+                    const priceLabel = has ? 'Yours' : isFree(c) ? 'Free' : c.isSoldIndividually && c.priceCurrency ? money(c.priceAmount!, c.priceCurrency) : inPkgs.length ? 'Package only' : 'Not on sale yet';
+                    const note = has ? 'You have access' : inPkgs.length ? `${c.isSoldIndividually || isFree(c) ? 'Also in' : 'In'} ${inPkgs[0].name}${inPkgs.length > 1 ? ` and ${inPkgs.length - 1} more` : ''}` : isWebsite(c) ? 'Free to join' : isFree(c) ? 'Free course' : c.isSoldIndividually ? 'Single course' : 'Coming soon';
                     return (
                       <article key={c.id} className="flex flex-col overflow-hidden rounded-lg border border-line bg-white">
                         <button type="button" onClick={() => setOpenId(c.id)} className="flex flex-col gap-2.5 p-4 text-left hover:bg-subtle/50">
@@ -334,7 +337,8 @@ function CoursePreview({ course, packages, owned, separateTotal, onEnrolled }: {
   async function enrollFree() {
     setEnrolling(true);
     try {
-      await api.post(`/payments/enroll-free/${course.id}`);
+      // Website courses are joined like any free course; their enrolment is what gives access
+      await api.post(isWebsite(course) ? `/platform-courses/${course.id}/enroll` : `/payments/enroll-free/${course.id}`);
       notify.success('You’re enrolled', { description: 'The course is in your library now.' });
       onEnrolled();
     } catch (e: any) {
