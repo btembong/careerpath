@@ -865,7 +865,9 @@ export class PlatformCoursesService {
   async enrollStudent(studentId: string, courseId: string, wpUserId?: number) {
     const target = await this.prisma.platformCourse.findUnique({ where: { id: courseId }, select: { source: true, isSoldIndividually: true, priceAmount: true } });
     if (!target) throw new NotFoundException('Course not found');
-    const free = target.source === CourseSource.WORDPRESS || (target.isSoldIndividually && !target.priceAmount);
+    // WordPress courses are free to join until an admin puts a price on them; then they are bought like any course
+    const priced = target.isSoldIndividually && (target.priceAmount ?? 0) > 0;
+    const free = (target.source === CourseSource.WORDPRESS && !priced) || (target.isSoldIndividually && !target.priceAmount);
     if (!free && !(await this.studentHasCourseAccess(studentId, courseId))) {
       throw new ForbiddenException('Buy this course or a package that includes it first');
     }
@@ -1209,7 +1211,8 @@ export class PlatformCoursesService {
       this.prisma.coursePurchase.findFirst({ where: { studentId, courseId, ...active }, select: { id: true } }),
       this.prisma.courseEnrollment.findUnique({ where: { studentId_courseId: { studentId, courseId } }, select: { id: true } }),
     ]);
-    const enrollmentCounts = !!course && (course.source === CourseSource.WORDPRESS || (course.isSoldIndividually && !course.priceAmount));
+    const priced = !!course && course.isSoldIndividually && (course.priceAmount ?? 0) > 0;
+    const enrollmentCounts = !!course && ((course.source === CourseSource.WORDPRESS && !priced) || (course.isSoldIndividually && !course.priceAmount));
     return course?.status === 'PUBLISHED' && !!(pkg || purchase || (enrollmentCounts && enrollment));
   }
 

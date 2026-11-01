@@ -30,7 +30,8 @@ export class StudentLibraryService {
     pkgBuys.forEach(p => p.package.courseIds.forEach(id => give(id, { kind: 'package', packageId: p.package.id, name: p.package.name, expiresAt: p.expiresAt })));
     courseBuys.forEach(c => give(c.courseId, c.amountPaid > 0 ? { kind: 'single', expiresAt: c.expiresAt, purchasedAt: c.purchasedAt } : { kind: 'free', expiresAt: null }));
     enrollments.forEach(e => {
-      if (e.course.source === 'WORDPRESS') give(e.courseId, { kind: 'website', expiresAt: null });
+      // Free to join while it has no price; a priced WordPress course counts only when bought
+      if (e.course.source === 'WORDPRESS' && !(e.course.isSoldIndividually && (e.course.priceAmount ?? 0) > 0)) give(e.courseId, { kind: 'website', expiresAt: null });
       else if (e.course.isSoldIndividually && !e.course.priceAmount) give(e.courseId, { kind: 'free', expiresAt: null });
     });
 
