@@ -104,6 +104,9 @@ function Catalogue() {
       // Only offer programmes that have something to buy
       const withCourses = (pr.data as Programme[] ?? []).filter(p => list.some(c => c.programme?.id === p.id));
       setProgrammes(withCourses); setCourses(list); setPackages(pkgs); setOwned(ids); setOwnedPkgs(activePkg);
+      // ?course=<id> opens that course's preview (links from onboarding and elsewhere)
+      const deep = params.get('course');
+      if (deep && list.some(c => c.id === deep)) setOpenId(deep);
       if (!params.get('tab')) {
         const interest: string[] = me?.programmeInterestIds ?? [];
         setProgState(withCourses.find(p => interest.includes(p.id))?.id ?? 'all');

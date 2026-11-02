@@ -32,7 +32,8 @@ export class CatalogueService {
         levels: { select: { id: true, name: true, tier: true, sortOrder: true }, orderBy: { sortOrder: 'asc' } },
         subjects: { select: { id: true, name: true, category: true, isPractical: true }, orderBy: { name: 'asc' } },
         educationSystem: { select: { id: true, name: true } },
-        _count: { select: { subjects: true } },
+        // Courses a student can find in the catalogue, shown on the onboarding cards
+        _count: { select: { subjects: true, platformCourses: { where: { status: 'PUBLISHED', catalogueHidden: false } } } },
       },
       orderBy: [{ type: 'asc' }, { name: 'asc' }],
     });

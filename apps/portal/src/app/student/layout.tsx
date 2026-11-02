@@ -42,6 +42,9 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
   if (!checked && pathname !== '/student/onboarding') return null;
 
+  // Onboarding is a full screen of its own, without the portal menus
+  if (pathname === '/student/onboarding') return <ErrorBoundary>{children}</ErrorBoundary>;
+
   return (
     <div className="flex h-screen overflow-hidden bg-surface">
       <OfflineIndicator />
