@@ -27,6 +27,7 @@ const OTP_TTL = 600; // 10 minutes in seconds
 const VERIFIED_TTL = 3600; // teacher wizard has 3 more steps after verifying, so allow an hour
 const otpKey = (email: string) => `cpa:otp:${email.toLowerCase()}`;
 const loginCodeKey = (email: string) => `cpa:login-code:${email.toLowerCase()}`;
+const otpTriesKey = (email: string) => `cpa:otp-tries:${email.toLowerCase()}`;
 const loginTriesKey = (email: string) => `cpa:login-code-tries:${email.toLowerCase()}`;
 export const verifiedKey = (email: string) => `cpa:otp-verified:${email.toLowerCase()}`;
 
@@ -49,6 +50,7 @@ export class AuthService {
   async sendOtp(email: string): Promise<{ message: string }> {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     await this.redis.set(otpKey(email), code, OTP_TTL);
+    await this.redis.del(otpTriesKey(email));
     await this.mail.sendOtp(email, code);
     return { message: 'Verification code sent to your email.' };
   }
@@ -69,8 +71,17 @@ export class AuthService {
   async verifyOtp(email: string, code: string): Promise<{ verified: boolean }> {
     const stored = await this.redis.get(otpKey(email));
     if (!stored) throw new BadRequestException('No OTP found for this email. Please request a new code.');
-    if (stored !== code.trim()) throw new BadRequestException('Incorrect verification code.');
+    if (stored !== code.trim()) {
+      // Five wrong tries and the code is gone
+      const tries = Number((await this.redis.get(otpTriesKey(email))) ?? 0) + 1;
+      if (tries >= 5) { await this.redis.del(otpKey(email)); await this.redis.del(otpTriesKey(email)); }
+      else await this.redis.set(otpTriesKey(email), String(tries), OTP_TTL);
+      throw new BadRequestException(tries >= 5
+        ? 'Too many wrong codes. Ask for a new one.'
+        : `That code isn’t right. ${5 - tries} ${5 - tries === 1 ? 'try' : 'tries'} left.`);
+    }
     await this.redis.del(otpKey(email)); // consume once verified
+    await this.redis.del(otpTriesKey(email));
     await this.redis.set(verifiedKey(email), '1', VERIFIED_TTL);
     return { verified: true };
   }
