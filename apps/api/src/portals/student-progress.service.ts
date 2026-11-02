@@ -32,7 +32,7 @@ export class StudentProgressService {
     const [lessons, courses, questions] = await Promise.all([
       this.prisma.lesson.findMany({ where: { id: { in: lessonIds } }, select: { id: true, title: true, passMark: true, maxAttempts: true, module: { select: { title: true, sortOrder: true, courseId: true } } } }),
       this.prisma.platformCourse.findMany({ where: { id: { in: courseIds } }, select: { id: true, title: true, modules: { select: { id: true, sortOrder: true }, orderBy: { sortOrder: 'asc' } } } }),
-      this.prisma.questionBank.findMany({ where: { OR: [{ lessonId: { in: lessonIds } }, { courseId: { in: courseIds }, lessonId: null }] } }),
+      this.prisma.questionBank.findMany({ where: { OR: [{ lessonId: { in: lessonIds } }, { courseId: { in: courseIds }, lessonId: null, bankOnly: false }] } }),
     ]);
     const lessonBy = new Map(lessons.map(l => [l.id, l]));
     const courseBy = new Map(courses.map(c => [c.id, c]));
@@ -100,7 +100,7 @@ export class StudentProgressService {
     if (!a) throw new NotFoundException('Quiz attempt not found');
     if (a.studentId !== studentId) throw new ForbiddenException('Not your attempt');
     const [questions, lesson, course] = await Promise.all([
-      this.prisma.questionBank.findMany({ where: a.lessonId ? { lessonId: a.lessonId } : { courseId: a.courseId, lessonId: null }, orderBy: { sortOrder: 'asc' } }),
+      this.prisma.questionBank.findMany({ where: a.lessonId ? { lessonId: a.lessonId } : { courseId: a.courseId, lessonId: null, bankOnly: false }, orderBy: { sortOrder: 'asc' } }),
       a.lessonId ? this.prisma.lesson.findUnique({ where: { id: a.lessonId }, select: { title: true, passMark: true } }) : null,
       this.prisma.platformCourse.findUnique({ where: { id: a.courseId }, select: { title: true } }),
     ]);

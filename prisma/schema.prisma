@@ -96,6 +96,8 @@ model UserProfile {
   referredById         String?
   referredBy           UserProfile?             @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
   referrals            UserProfile[]            @relation("Referrals")
+  testSessions         TestSession[]
+  questionProgress     QuestionProgress[]
 }
 
 /// In-app inbox item. `type` matches the portal's icons: live | assignment | grade | certificate | message | system.
@@ -494,7 +496,75 @@ model QuestionBank {
   videoAtSec     Int?
   /// Tutor question this was imported from; a re-import updates it in place
   wpQuestionId   Int?
+  /// DRAFT and IN_REVIEW never reach students; everything older stays LIVE
+  status         QuestionStatus      @default(LIVE)
+  /// Written for the Test Centre: not part of any lesson quiz or course quiz
+  bankOnly       Boolean             @default(false)
+  /// What a bank question covers, without adding it to that module or lesson's quiz
+  moduleId       String?
+  sourceLessonId String?
+  /// Structured questions: [{ label, text, marks, markScheme }]
+  parts          Json?
+  createdById    String?
+  reviewNote     String?
   attemptAnswers QuizAttemptAnswer[]
+  testAnswers    TestAnswer[]
+  progress       QuestionProgress[]
+
+  @@index([courseId, status])
+}
+
+/// One test a student took in the Test Centre. Separate from QuizAttempt, so it never touches course grades or certificates.
+model TestSession {
+  id            String      @id @default(uuid())
+  studentId     String
+  mode          TestMode
+  status        TestStatus  @default(IN_PROGRESS)
+  title         String
+  filters       Json?
+  questionIds   String[]
+  timeLimitSecs Int?
+  startedAt     DateTime    @default(now())
+  expiresAt     DateTime?
+  submittedAt   DateTime?
+  score         Float?
+  maxScore      Int         @default(0)
+  student       UserProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  answers       TestAnswer[]
+
+  @@index([studentId, startedAt])
+}
+
+model TestAnswer {
+  id         String       @id @default(uuid())
+  sessionId  String
+  questionId String
+  answer     Json?
+  /// Null until written answers are marked
+  isCorrect  Boolean?
+  score      Float?
+  flagged    Boolean      @default(false)
+  timeSecs   Int          @default(0)
+  session    TestSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question   QuestionBank @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId])
+  @@index([questionId])
+}
+
+/// Where a student stands on a question: drives the unused, wrong, learning, mastered and flagged pools
+model QuestionProgress {
+  studentId     String
+  questionId    String
+  seen          Int          @default(0)
+  correctStreak Int          @default(0)
+  lastCorrect   Boolean?
+  flagged       Boolean      @default(false)
+  updatedAt     DateTime     @updatedAt
+  student       UserProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  question      QuestionBank @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([studentId, questionId])
 }
 
 /// Practice on video/text lessons — kept apart from QuizAttempt so it never affects quiz scores or certificates
@@ -1266,6 +1336,23 @@ enum QuestionType {
   FILL_BLANK
   SHORT_ANSWER
   MATCHING
+  STRUCTURED
+}
+
+enum QuestionStatus {
+  DRAFT
+  IN_REVIEW
+  LIVE
+}
+
+enum TestMode {
+  PRACTICE
+  EXAM
+}
+
+enum TestStatus {
+  IN_PROGRESS
+  SUBMITTED
 }
 
 enum QuestionDifficulty {

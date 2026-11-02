@@ -101,7 +101,7 @@ export class GradingService {
       if (!ids.includes(attempt.courseId)) throw new ForbiddenException('Not your course');
     }
     const questions = await this.prisma.questionBank.findMany({
-      where: attempt.lessonId ? { lessonId: attempt.lessonId } : { courseId: attempt.courseId, lessonId: null },
+      where: attempt.lessonId ? { lessonId: attempt.lessonId } : { courseId: attempt.courseId, lessonId: null, bankOnly: false },
       orderBy: { sortOrder: 'asc' },
     });
     return { attempt, questions };

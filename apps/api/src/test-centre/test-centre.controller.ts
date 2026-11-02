@@ -1,0 +1,99 @@
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { UserProfile } from '@prisma/client';
+import { UserRole } from '@cpa/shared';
+import { JwtAuthGuard } from '../auth/guards/jwt.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { TestCentreService, TestFilters, StartTest } from './test-centre.service';
+import { QuestionBankService, QuestionInput } from './question-bank.service';
+
+@ApiTags('test centre')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.STUDENT)
+@Controller('test-centre')
+export class TestCentreController {
+  constructor(private readonly tests: TestCentreService) {}
+
+  @Get('overview')
+  @ApiOperation({ summary: 'Test Centre home: counts, weak topics, recent tests' })
+  overview(@CurrentUser() user: UserProfile) { return this.tests.overview(user.id); }
+
+  @Get('catalog')
+  @ApiOperation({ summary: 'Everything this student can test on: courses, modules, lessons, pools' })
+  catalog(@CurrentUser() user: UserProfile) { return this.tests.catalog(user.id); }
+
+  @Post('match')
+  @ApiOperation({ summary: 'How many questions match these filters' })
+  match(@CurrentUser() user: UserProfile, @Body() body: TestFilters) { return this.tests.countMatches(user.id, body ?? {}); }
+
+  @Get('sessions')
+  history(@CurrentUser() user: UserProfile) { return this.tests.history(user.id); }
+
+  @Post('sessions')
+  @ApiOperation({ summary: 'Start a test' })
+  start(@CurrentUser() user: UserProfile, @Body() body: StartTest) { return this.tests.start(user.id, body ?? ({} as StartTest)); }
+
+  @Get('sessions/:id')
+  session(@CurrentUser() user: UserProfile, @Param('id') id: string) { return this.tests.session(user.id, id); }
+
+  @Post('sessions/:id/answer')
+  answer(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: { questionId: string; answer?: unknown; flagged?: boolean; timeSecs?: number }) {
+    return this.tests.answer(user.id, id, body ?? ({} as { questionId: string }));
+  }
+
+  @Post('sessions/:id/self-mark')
+  @ApiOperation({ summary: 'Mark your own written answer against the marking scheme' })
+  selfMark(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: { questionId: string; score: number }) {
+    return this.tests.selfMark(user.id, id, body ?? ({} as { questionId: string; score: number }));
+  }
+
+  @Post('sessions/:id/submit')
+  submit(@CurrentUser() user: UserProfile, @Param('id') id: string) { return this.tests.submit(user.id, id); }
+
+  @Get('sessions/:id/result')
+  result(@CurrentUser() user: UserProfile, @Param('id') id: string) { return this.tests.result(user.id, id); }
+}
+
+@ApiTags('question bank')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.TEACHER, UserRole.SUBJECT_REVIEWER, UserRole.ADMIN)
+@Controller('question-bank')
+export class QuestionBankController {
+  constructor(private readonly bank: QuestionBankService) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Questions this person may see: admin all, teachers and reviewers their courses' })
+  list(@CurrentUser() user: UserProfile, @Query() query: Record<string, string>) { return this.bank.list(user, query); }
+
+  @Get('courses')
+  courses(@CurrentUser() user: UserProfile) { return this.bank.courses(user); }
+
+  @Get(':id')
+  one(@CurrentUser() user: UserProfile, @Param('id') id: string) { return this.bank.one(user, id); }
+
+  @Post()
+  create(@CurrentUser() user: UserProfile, @Body() body: QuestionInput) { return this.bank.create(user, body ?? ({} as QuestionInput)); }
+
+  @Post('import')
+  @ApiOperation({ summary: 'Add questions from a spreadsheet; each row is checked on its own' })
+  import(@CurrentUser() user: UserProfile, @Body() body: { courseId: string; rows: Record<string, string>[] }) { return this.bank.importRows(user, body ?? ({} as { courseId: string; rows: [] })); }
+
+  @Patch(':id')
+  update(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: Partial<QuestionInput>) { return this.bank.update(user, id, body ?? {}); }
+
+  @Delete(':id')
+  remove(@CurrentUser() user: UserProfile, @Param('id') id: string) { return this.bank.remove(user, id); }
+
+  @Post(':id/submit')
+  @ApiOperation({ summary: 'Send a draft for review' })
+  send(@CurrentUser() user: UserProfile, @Param('id') id: string) { return this.bank.submitForReview(user, id); }
+
+  @Post(':id/decide')
+  @Roles(UserRole.SUBJECT_REVIEWER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Approve a question, or send it back with a note' })
+  decide(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: { approve: boolean; note?: string }) { return this.bank.decide(user, id, body ?? ({} as { approve: boolean })); }
+}

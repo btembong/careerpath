@@ -34,7 +34,7 @@ export class EducationService {
   async submitQuiz(student: UserProfile, dto: SubmitQuizDto) {
     // Fetch all questions for this course — includes correctAnswer (server only)
     const questions = await this.prisma.questionBank.findMany({
-      where: { courseId: dto.courseId },
+      where: { courseId: dto.courseId, bankOnly: false },
     });
 
     if (questions.length === 0) {
@@ -451,7 +451,7 @@ export class EducationService {
 
   async getQuizQuestions(courseId: string) {
     const questions = await this.prisma.questionBank.findMany({
-      where: { courseId },
+      where: { courseId, bankOnly: false },
       select: { id: true, courseId: true, questionText: true, type: true, options: true },
       // correctAnswer intentionally excluded — never sent to client
     });

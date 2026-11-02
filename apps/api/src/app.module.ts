@@ -33,6 +33,7 @@ import { TeachersModule } from './teachers/teachers.module';
 import { SearchModule } from './search/search.module';
 import { MessagesModule } from './messages/messages.module';
 import { QuizModule } from './quiz/quiz.module';
+import { TestCentreModule } from './test-centre/test-centre.module';
 import { GamificationModule } from './gamification/gamification.module';
 import { FlashcardsModule } from './flashcards/flashcards.module';
 import { NotesModule } from './notes/notes.module';
@@ -90,6 +91,7 @@ import { RedisModule } from './redis/redis.module';
     SearchModule,
     MessagesModule,
     QuizModule,
+    TestCentreModule,
     GamificationModule,
     FlashcardsModule,
     NotesModule,
