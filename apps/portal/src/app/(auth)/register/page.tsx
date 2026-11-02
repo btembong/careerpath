@@ -289,49 +289,47 @@ function StrengthHint({ pw }: { pw: string }) {
 function LeftPanel({ c }: { c: LeftContent }) {
   return (
     <div className="relative hidden flex-col justify-between overflow-hidden p-12 lg:flex lg:w-[48%]"
-      style={{ background: 'linear-gradient(145deg, #020a1f 0%, #061a4d 40%, #0a2570 100%)' }}>
-      <div className="pointer-events-none absolute right-[5%] top-[10%] h-[420px] w-[420px] rounded-full opacity-[0.14] blur-3xl" style={{ background: 'radial-gradient(circle, #5889FA, transparent 65%)' }} />
-      <div className="pointer-events-none absolute bottom-[5%] left-0 h-[380px] w-[380px] rounded-full opacity-[0.12] blur-3xl" style={{ background: 'radial-gradient(circle, #405FAD, transparent 65%)' }} />
+      style={{ background: '#3F6FE8' }}>
       <Link href="/" className="relative flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-azure font-black text-white shadow-lg shadow-azure/40">C</span>
-        <span className="text-xl font-bold tracking-tight text-white">CareerPath<span className="text-azure">Africa</span></span>
+        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white font-black text-[#3F6FE8]">C</span>
+        <span className="text-xl font-bold tracking-tight text-white">CareerPath<span className="text-white/85">Africa</span></span>
       </Link>
       {/* Remounts per step and fades in; no exit animation, so typing during a step change can't pile up updates */}
       <motion.div key={c.eyebrow + c.head} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
         transition={{ type: 'spring', stiffness: 240, damping: 26 }} className="relative space-y-6">
         <div>
-          <span className="inline-flex items-center gap-2 rounded-md border border-azure/30 bg-azure/10 px-4 py-1.5 text-[11px] font-semibold tracking-wider text-azure">
-            <span className="h-1.5 w-1.5 rounded-full bg-azure" />{c.eyebrow}
+          <span className="inline-flex items-center gap-2 rounded-md border border-white/40 bg-white/15 px-4 py-1.5 text-[11px] font-semibold tracking-wider text-white">
+            <span className="h-1.5 w-1.5 rounded-full bg-white" />{c.eyebrow}
           </span>
           <h1 className="mt-4 whitespace-pre-line text-5xl font-black leading-[1.08] tracking-tight text-white">{c.head}</h1>
-          <p className="mt-4 max-w-sm text-base leading-relaxed text-white/45">{c.sub}</p>
+          <p className="mt-4 max-w-sm text-base leading-relaxed text-white/90">{c.sub}</p>
         </div>
         {c.points && (
           <div className="max-w-[420px] space-y-2.5">
             {c.points.map((p, i) => (
-              <div key={p} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3">
-                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-azure/20 text-[13px] font-bold text-[#8EB0FC]">{i + 1}</span>
-                <span className="text-sm text-white/80">{p}</span>
+              <div key={p} className="flex items-center gap-3 rounded-lg border border-white/25 bg-white/10 px-4 py-3">
+                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-white/25 text-[13px] font-bold text-white">{i + 1}</span>
+                <span className="text-sm text-white/90">{p}</span>
               </div>
             ))}
           </div>
         )}
         {c.preview && (
-          <div className="max-w-[400px] space-y-3 rounded-lg border border-white/10 bg-white/5 p-4">
-            <p className="text-[10px] font-bold tracking-[0.15em] text-azure">HOW STUDENTS WILL SEE YOU</p>
+          <div className="max-w-[400px] space-y-3 rounded-lg border border-white/25 bg-white/10 p-4">
+            <p className="text-[10px] font-bold tracking-[0.15em] text-white">HOW STUDENTS WILL SEE YOU</p>
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-azure font-black text-white">{(c.preview.name[0] ?? '?').toUpperCase()}</span>
-              <div><p className="text-sm font-bold text-white">{c.preview.name || 'Your name'}</p><p className="text-xs text-white/45">{c.preview.meta}</p></div>
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white font-black text-[#3F6FE8]">{(c.preview.name[0] ?? '?').toUpperCase()}</span>
+              <div><p className="text-sm font-bold text-white">{c.preview.name || 'Your name'}</p><p className="text-xs text-white/90">{c.preview.meta}</p></div>
             </div>
             {c.preview.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">{c.preview.tags.map(t => <span key={t} className="rounded-md bg-azure/20 px-2.5 py-0.5 text-[11px] font-semibold text-[#8EB0FC]">{t}</span>)}</div>
+              <div className="flex flex-wrap gap-1.5">{c.preview.tags.map(t => <span key={t} className="rounded-md bg-white/25 px-2.5 py-0.5 text-[11px] font-semibold text-white">{t}</span>)}</div>
             )}
-            <p className="line-clamp-3 text-xs leading-relaxed text-white/55">{c.preview.bio}</p>
-            <p className="text-[11px] text-white/35">Built from what you type. Nothing here is made up.</p>
+            <p className="line-clamp-3 text-xs leading-relaxed text-white/90">{c.preview.bio}</p>
+            <p className="text-[11px] text-white/90">Built from what you type. Nothing here is made up.</p>
           </div>
         )}
       </motion.div>
-      <p className="relative text-xs text-white/40">{c.foot}</p>
+      <p className="relative text-xs text-white/90">{c.foot}</p>
     </div>
   );
 }
@@ -742,14 +740,14 @@ function RegisterPageInner() {
   useEffect(() => { if (!role) setLeft(CHOOSE_LEFT); }, [role]);
 
   return (
-    <div className="flex min-h-screen bg-[#0a2570]">
+    <div className="flex min-h-screen bg-[#3F6FE8]">
       <LeftPanel c={left} />
 
       <div className="flex flex-1 flex-col bg-white lg:rounded-l-[2.5rem] lg:shadow-[-20px_0_50px_rgba(3,14,48,0.3)]">
         <div className="flex items-center justify-between px-6 pb-2 pt-6 lg:hidden">
           <Link href="/" className="flex items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-md bg-navy text-xs font-black text-white">C</span>
-            <span className="text-sm font-bold text-navy">CareerPath<span className="text-azure">Africa</span></span>
+            <span className="text-sm font-bold text-navy">CareerPath<span className="text-white/85">Africa</span></span>
           </Link>
           <Link href="/login" className="rounded-md border border-cloud px-3 py-1.5 text-xs font-semibold text-navy hover:bg-cloud">Sign in</Link>
         </div>

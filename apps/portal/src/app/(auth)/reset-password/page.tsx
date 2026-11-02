@@ -62,15 +62,9 @@ function ResetPasswordInner() {
 
       {/* ═══════════ LEFT PANEL ═══════════ */}
       <div className="hidden lg:flex lg:w-[52%] relative flex-col overflow-hidden"
-        style={{ background: 'linear-gradient(145deg, #020a1f 0%, #061a4d 40%, #0a2570 100%)' }}>
+        style={{ background: '#3F6FE8' }}>
 
         {/* Drifting gradient blobs */}
-        <div className="pointer-events-none absolute top-[10%] right-[5%] h-[420px] w-[420px] rounded-full opacity-[0.12] blur-3xl"
-          style={{ background: 'radial-gradient(circle, #5889FA, transparent 65%)', animation: 'blob-drift-1 20s ease-in-out infinite' }} />
-        <div className="pointer-events-none absolute bottom-[5%] left-[0%] h-[380px] w-[380px] rounded-full opacity-[0.10] blur-3xl"
-          style={{ background: 'radial-gradient(circle, #405FAD, transparent 65%)', animation: 'blob-drift-2 25s ease-in-out infinite' }} />
-        <div className="pointer-events-none absolute top-[40%] left-[30%] h-[300px] w-[300px] rounded-full opacity-[0.08] blur-3xl"
-          style={{ background: 'radial-gradient(circle, #3730a3, transparent 65%)', animation: 'blob-drift-3 30s ease-in-out infinite' }} />
 
         <div className="relative z-10 flex flex-col justify-between h-full p-12 xl:p-16">
 
@@ -81,11 +75,11 @@ function ResetPasswordInner() {
             transition={{ ...spring.smooth, delay: 0.1 }}
             className="flex items-center gap-3"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-azure shadow-lg shadow-azure/40">
-              <span className="text-base font-black text-white tracking-tight">C</span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white">
+              <span className="text-base font-black text-[#3F6FE8] tracking-tight">C</span>
             </div>
             <span className="text-xl font-bold text-white tracking-tight">
-              CareerPath<span className="text-azure">Africa</span>
+              CareerPath<span className="text-white/85">Africa</span>
             </span>
           </motion.div>
 
@@ -99,11 +93,11 @@ function ResetPasswordInner() {
             <h1 className="text-7xl font-black text-white leading-[1.05] tracking-tight">
               Choose a<br />
               <span className="bg-clip-text text-transparent"
-                style={{ backgroundImage: 'linear-gradient(90deg, #5889FA 0%, #93ADFC 50%, #c4d5ff 100%)' }}>
+                style={{ backgroundImage: 'linear-gradient(90deg, #FFFFFF 0%, #FFFFFF 100%)' }}>
                 strong password.
               </span>
             </h1>
-            <p className="text-lg text-white/40 leading-relaxed max-w-md">
+            <p className="text-lg text-white/90 leading-relaxed max-w-md">
               A strong password keeps your account, courses, and certificates safe.
             </p>
           </motion.div>
@@ -121,12 +115,12 @@ function ResetPasswordInner() {
               'Don\'t reuse passwords from other sites',
             ].map((tip, i) => (
               <div key={i} className="flex items-center gap-2.5">
-                <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-azure/20">
-                  <svg className="h-3 w-3 text-azure" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-white/25">
+                  <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <span className="text-sm text-white/50">{tip}</span>
+                <span className="text-sm text-white/90">{tip}</span>
               </div>
             ))}
           </motion.div>
@@ -137,24 +131,24 @@ function ResetPasswordInner() {
       <div className="flex flex-1 flex-col bg-[#0a2570] lg:bg-white lg:rounded-l-[2.5rem] lg:shadow-[-20px_0_50px_rgba(3,14,48,0.3)]">
 
         {/* Mobile branded header */}
-        <div className="lg:hidden" style={{ background: 'linear-gradient(145deg, #020a1f 0%, #061a4d 40%, #0a2570 100%)' }}>
+        <div className="lg:hidden" style={{ background: '#3F6FE8' }}>
           <div className="px-6 pt-8 pb-14">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2.5">
                 <Link href="/login" className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition">
-                  <svg className="h-4 w-4 text-white/70" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <svg className="h-4 w-4 text-white/90" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12" />
                   </svg>
                 </Link>
-                <span className="text-sm font-bold text-white">CareerPath<span className="text-azure">Africa</span></span>
+                <span className="text-sm font-bold text-white">CareerPath<span className="text-white/85">Africa</span></span>
               </div>
-              <Link href="/login" className="rounded-xl border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/60 hover:bg-white/10 transition">
+              <Link href="/login" className="rounded-xl border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/90 hover:bg-white/10 transition">
                 Sign in
               </Link>
             </div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-azure mb-1">Password reset</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/90 mb-1">Password reset</p>
             <h2 className="text-xl font-black text-white tracking-tight">Choose a strong password.</h2>
-            <p className="text-xs text-white/40 mt-1.5 max-w-[280px] leading-relaxed">A strong password keeps your account, courses, and certificates safe.</p>
+            <p className="text-xs text-white/90 mt-1.5 max-w-[280px] leading-relaxed">A strong password keeps your account, courses, and certificates safe.</p>
           </div>
         </div>
 

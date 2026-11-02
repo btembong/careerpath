@@ -117,15 +117,9 @@ function LoginPageInner() {
 
       {/* ═══════════════ LEFT PANEL ═══════════════ */}
       <div className="hidden lg:flex lg:w-[52%] relative flex-col overflow-hidden"
-        style={{ background: 'linear-gradient(145deg, #020a1f 0%, #061a4d 40%, #0a2570 100%)' }}>
+        style={{ background: '#3F6FE8' }}>
 
         {/* Drifting gradient blobs */}
-        <div className="pointer-events-none absolute top-[10%] right-[5%] h-[420px] w-[420px] rounded-full opacity-[0.12] blur-3xl"
-          style={{ background: 'radial-gradient(circle, #5889FA, transparent 65%)', animation: 'blob-drift-1 20s ease-in-out infinite' }} />
-        <div className="pointer-events-none absolute bottom-[5%] left-[0%] h-[380px] w-[380px] rounded-full opacity-[0.10] blur-3xl"
-          style={{ background: 'radial-gradient(circle, #405FAD, transparent 65%)', animation: 'blob-drift-2 25s ease-in-out infinite' }} />
-        <div className="pointer-events-none absolute top-[40%] left-[30%] h-[300px] w-[300px] rounded-full opacity-[0.08] blur-3xl"
-          style={{ background: 'radial-gradient(circle, #3730a3, transparent 65%)', animation: 'blob-drift-3 30s ease-in-out infinite' }} />
 
         <div className="relative z-10 flex flex-col justify-between h-full p-12 xl:p-16">
 
@@ -136,11 +130,11 @@ function LoginPageInner() {
             transition={{ ...spring.smooth, delay: 0.1 }}
             className="flex items-center gap-3"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-azure shadow-lg shadow-azure/40">
-              <span className="text-base font-black text-white tracking-tight">C</span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white">
+              <span className="text-base font-black text-[#3F6FE8] tracking-tight">C</span>
             </div>
             <span className="text-xl font-bold text-white tracking-tight">
-              CareerPath<span className="text-azure">Africa</span>
+              CareerPath<span className="text-white/85">Africa</span>
             </span>
           </motion.div>
 
@@ -154,11 +148,11 @@ function LoginPageInner() {
             <h1 className="text-7xl font-black text-white leading-[1.05] tracking-tight">
               Learn without<br />
               <span className="bg-clip-text text-transparent"
-                style={{ backgroundImage: 'linear-gradient(90deg, #5889FA 0%, #93ADFC 50%, #c4d5ff 100%)' }}>
+                style={{ backgroundImage: 'linear-gradient(90deg, #FFFFFF 0%, #FFFFFF 100%)' }}>
                 limits.
               </span>
             </h1>
-            <p className="text-lg text-white/40 leading-relaxed max-w-md">
+            <p className="text-lg text-white/90 leading-relaxed max-w-md">
               Africa's fastest-growing professional learning platform — courses, live classes, and mentorship built for your career.
             </p>
           </motion.div>
@@ -178,14 +172,14 @@ function LoginPageInner() {
                 exit={{ opacity: 0, y: -6 }}
                 transition={spring.smooth}
               >
-                <p className="text-[15px] text-white/55 leading-relaxed italic">
+                <p className="text-[15px] text-white/90 leading-relaxed italic">
                   &ldquo;{testimonial.quote}&rdquo;
                 </p>
                 <div className="mt-4 flex items-center gap-3">
-                  <div className="h-0.5 w-6 rounded-full bg-azure/40" />
-                  <p className="text-sm text-white/70">
+                  <div className="h-0.5 w-6 rounded-full bg-white/25" />
+                  <p className="text-sm text-white/90">
                     <span className="font-semibold text-white/85">{testimonial.name}</span>
-                    <span className="text-white/35 mx-1.5">·</span>
+                    <span className="text-white/90 mx-1.5">·</span>
                     <span>{testimonial.title}</span>
                   </p>
                 </div>
@@ -204,10 +198,10 @@ function LoginPageInner() {
             </div>
 
             {/* Trusted by — subtle social proof */}
-            <div className="flex items-center gap-4 pt-2 border-t border-white/[0.06]">
-              <span className="text-[10px] uppercase tracking-widest text-white/20 font-semibold">Trusted by</span>
+            <div className="flex items-center gap-4 pt-2 border-t border-white/25">
+              <span className="text-[10px] uppercase tracking-widest text-white/90 font-semibold">Trusted by</span>
               {['Safaricom', 'MTN', 'Andela', 'Flutterwave'].map(name => (
-                <span key={name} className="text-xs font-bold text-white/20 tracking-wide">{name}</span>
+                <span key={name} className="text-xs font-bold text-white/90 tracking-wide">{name}</span>
               ))}
             </div>
           </motion.div>
@@ -218,22 +212,22 @@ function LoginPageInner() {
       <div className="flex flex-1 flex-col bg-[#0a2570] lg:bg-white lg:rounded-l-[2.5rem] lg:shadow-[-20px_0_50px_rgba(3,14,48,0.3)]">
 
         {/* Mobile branded header */}
-        <div className="lg:hidden" style={{ background: 'linear-gradient(145deg, #020a1f 0%, #061a4d 40%, #0a2570 100%)' }}>
+        <div className="lg:hidden" style={{ background: '#3F6FE8' }}>
           <div className="px-6 pt-8 pb-14">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10">
                   <span className="text-[10px] font-black text-white">C</span>
                 </div>
-                <span className="text-sm font-bold text-white">CareerPath<span className="text-azure">Africa</span></span>
+                <span className="text-sm font-bold text-white">CareerPath<span className="text-white/85">Africa</span></span>
               </div>
-              <Link href="/register" className="rounded-xl border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/60 hover:bg-white/10 transition">
+              <Link href="/register" className="rounded-xl border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/90 hover:bg-white/10 transition">
                 Sign up
               </Link>
             </div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-azure mb-1">Welcome back</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/90 mb-1">Welcome back</p>
             <h2 className="text-xl font-black text-white tracking-tight">Sign in to your account.</h2>
-            <p className="text-xs text-white/40 mt-1.5 max-w-[280px] leading-relaxed">Africa&apos;s fastest-growing professional learning platform.</p>
+            <p className="text-xs text-white/90 mt-1.5 max-w-[280px] leading-relaxed">Africa&apos;s fastest-growing professional learning platform.</p>
           </div>
         </div>
 
