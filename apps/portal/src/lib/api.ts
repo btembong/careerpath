@@ -28,18 +28,15 @@ api.interceptors.response.use(
 );
 
 /**
- * Set the JWT as an HttpOnly cookie via our Next.js API route.
- * Also sets a non-HttpOnly copy for client-side decode (role redirect).
+ * Store the JWT in the cpa_token cookie. The page reads it to send as a Bearer token to the API
+ * (a different origin), and the middleware reads the same cookie for routing.
+ *
+ * It used to also be written as an HttpOnly cookie of the same name. That copy blocks JavaScript
+ * from writing the readable one, so replacing a token while signed in (onboarding, preferences)
+ * left the page with no token and signed the user out. Any old HttpOnly copy is cleared first.
  */
 export async function setAuthToken(token: string, rememberMe = true) {
-  // HttpOnly cookie (secure, not readable by JS/XSS)
-  await fetch('/api/auth/set-token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, rememberMe }),
-  });
-  // Non-HttpOnly copy for client-side role decode (useAuth hook)
-  // This is low-risk: the real session cookie is HttpOnly
+  await fetch('/api/auth/clear-token', { method: 'POST' }).catch(() => {});
   const isProd = typeof window !== 'undefined' && window.location.protocol === 'https:';
   Cookies.set('cpa_token', token, {
     expires: rememberMe ? 7 : undefined,
