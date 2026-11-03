@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import api from '@/lib/api';
+import { BrandLogo } from '@/components/brand/BrandLogo';
 
 /** Public page behind a school's join link: which school, then sign up or sign in to take a seat */
 export default function SchoolJoinPage() {
@@ -16,9 +17,8 @@ export default function SchoolJoinPage() {
   const next = encodeURIComponent(`/student/join/${code}`);
   return (
     <div className="flex min-h-screen flex-col items-center bg-surface">
-      <header className="flex w-full items-center gap-3 bg-navy px-7 py-4 text-white">
-        <span className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-full bg-azure font-extrabold">C</span>
-        <strong className="text-[16px]">CareerPath <span className="text-azure">Africa</span></strong>
+      <header className="flex w-full items-center gap-3 bg-[#3F6FE8] px-7 py-4">
+        <BrandLogo tone="onBlue" />
       </header>
       <main className="flex w-full max-w-[560px] flex-col gap-4 px-4 py-10">
         {!info ? <div className="h-40 animate-pulse rounded-lg bg-white" /> : !info.valid ? (

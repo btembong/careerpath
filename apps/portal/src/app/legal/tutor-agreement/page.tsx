@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { BrandLogo } from '@/components/brand/BrandLogo';
 
 export const metadata = { title: 'Tutor Offer Letter & Content Ownership Agreement — CareerPath Africa' };
 
@@ -12,10 +13,7 @@ export default function TutorAgreementPage() {
       <div className="bg-navy text-white">
         <div className="max-w-4xl mx-auto px-6 py-10">
           <div className="flex items-center gap-3 mb-6">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-azure">
-              <span className="text-sm font-black text-white">C</span>
-            </div>
-            <span className="text-base font-bold">CareerPath<span className="text-azure">Africa</span></span>
+            <BrandLogo tone="onDark" href={null} />
           </div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-azure mb-2">Legal Document</p>
           <h1 className="text-2xl font-black leading-tight mb-2">

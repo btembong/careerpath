@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 import { money } from '@/lib/money';
 import api from '@/lib/api';
+import { BrandLogo } from '@/components/brand/BrandLogo';
 
 type Kind = 'certificate' | 'receipt';
 type CertOk = { valid: true; verifyCode: string; studentName: string; courseName: string; teacher: string | null; issuedAt: string };
@@ -45,9 +46,8 @@ export function Verify({ initialKind = 'certificate', initialCode = '' }: { init
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-surface">
-      <header className="flex w-full items-center gap-3 bg-navy px-7 py-4 text-white">
-        <span className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-full bg-azure font-extrabold">C</span>
-        <strong className="text-[16px]">CareerPath <span className="text-azure">Africa</span></strong>
+      <header className="flex w-full items-center gap-3 bg-[#3F6FE8] px-7 py-4">
+        <BrandLogo tone="onBlue" />
       </header>
       <main className="flex w-full max-w-[620px] flex-col gap-4 px-4 py-10">
         <div>

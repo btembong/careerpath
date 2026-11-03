@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { clsx } from 'clsx';
 import { useAuth } from '@/hooks/useAuth';
+import { BrandLogo } from '@/components/brand/BrandLogo';
 
 /* ─── Outline icons (stroke, 24 grid) — the menu uses its own lighter set ─────── */
 
@@ -209,14 +210,7 @@ export function Sidebar() {
 
       {/* Brand */}
       <div className={clsx('pt-5 pb-1', collapsed ? 'px-[19px]' : 'px-6')}>
-        <Link href="/" className="flex items-center gap-2.5">
-          <span className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[7px] bg-navy text-[15px] font-extrabold text-white dark-invert-logo">C</span>
-          {!collapsed && (
-            <span className="text-[17px] font-extrabold tracking-[-0.01em] text-navy">
-              CareerPath<span className="text-azure">Africa</span>
-            </span>
-          )}
-        </Link>
+        <BrandLogo hideWord={collapsed} />
         {!collapsed && <p className="mt-1.5 pl-10 text-xs text-muted">{menu.name}</p>}
       </div>
 

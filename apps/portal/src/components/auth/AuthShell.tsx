@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { BrandLogo } from '@/components/brand/BrandLogo';
 
 export interface HeroCard { icon: string; title: string; body: string; pill?: string }
 export interface Hero {
@@ -25,12 +26,7 @@ function Card({ c, i }: { c: HeroCard; i: number }) {
 }
 
 export function Logo({ light }: { light?: boolean }) {
-  return (
-    <Link href="/" className="flex items-center gap-2.5" aria-label="CareerPath Africa home">
-      <span className={`flex h-[34px] w-[34px] items-center justify-center rounded-lg font-black ${light ? 'bg-white text-[#3F6FE8]' : 'bg-[#3F6FE8] text-white'}`}>C</span>
-      <strong className="text-[22px] tracking-[-0.01em] text-navy">careerpath<span className={light ? 'text-white' : 'text-[#3F6FE8]'}>.</span></strong>
-    </Link>
-  );
+  return <BrandLogo tone={light ? 'onBlue' : 'light'} size="lg" />;
 }
 
 /** Sign in, sign up and password pages: one colour and one line on the left, almost nothing on the right. */

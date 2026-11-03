@@ -199,8 +199,9 @@ export class CertificatesService {
     // Left navy stripe
     page.drawRectangle({ x: 0, y: 0, width: 28, height, color: navy });
 
-    // Top navy band
-    page.drawRectangle({ x: 28, y: height - 90, width: width - 28, height: 90, color: navy });
+    // Top blue band
+    const blue = rgb(63 / 255, 111 / 255, 232 / 255); // #3F6FE8
+    page.drawRectangle({ x: 28, y: height - 90, width: width - 28, height: 90, color: blue });
 
     // Light inner content area
     page.drawRectangle({ x: 48, y: 50, width: width - 76, height: height - 160, color: light });
@@ -210,25 +211,18 @@ export class CertificatesService {
     page.drawRectangle({ x: 48, y: 47,           width: width - 76, height: 3, color: gold });
 
     // ── Header — logo mark + title ──────────────────────────
-    // "C" circle logo
-    page.drawEllipse({ x: 85, y: height - 45, xScale: 22, yScale: 22, color: azure });
+    // "careerpath." logo: white C tile, navy word, white dot
+    page.drawRectangle({ x: 66, y: height - 62, width: 34, height: 34, color: white, borderColor: white, borderWidth: 0 });
     page.drawText('C', {
-      x: 85 - boldFont.widthOfTextAtSize('C', 22) / 2, y: height - 52,
-      size: 22, font: boldFont, color: white,
+      x: 83 - boldFont.widthOfTextAtSize('C', 20) / 2, y: height - 52,
+      size: 20, font: boldFont, color: blue,
     });
-
-    page.drawText('CareerPath', {
-      x: 115, y: height - 40,
-      size: 16, font: boldFont, color: white,
-    });
-    page.drawText('Africa', {
-      x: 115 + boldFont.widthOfTextAtSize('CareerPath ', 16), y: height - 40,
-      size: 16, font: boldFont, color: azure,
-    });
+    page.drawText('careerpath', { x: 110, y: height - 52, size: 20, font: boldFont, color: navy });
+    page.drawText('.', { x: 110 + boldFont.widthOfTextAtSize('careerpath', 20), y: height - 52, size: 20, font: boldFont, color: white });
 
     page.drawText('CERTIFICATE OF COMPLETION', {
       x: width - 48 - boldFont.widthOfTextAtSize('CERTIFICATE OF COMPLETION', 13), y: height - 55,
-      size: 13, font: boldFont, color: azure,
+      size: 13, font: boldFont, color: white,
     });
 
     // ── Body ────────────────────────────────────────────────

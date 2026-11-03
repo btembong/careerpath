@@ -70,8 +70,11 @@ export class BillingService {
     const navy = rgb(7 / 255, 32 / 255, 97 / 255), blue = rgb(63 / 255, 111 / 255, 232 / 255), grey = rgb(99 / 255, 112 / 255, 144 / 255);
     const text = (t: string, x: number, y: number, size = 11, f = font, color = navy) => page.drawText(t, { x, y, size, font: f, color });
 
-    page.drawRectangle({ x: 0, y: 772, width: 595, height: 70, color: navy });
-    text('CareerPath Africa', 48, 800, 20, bold, rgb(1, 1, 1));
+    page.drawRectangle({ x: 0, y: 772, width: 595, height: 70, color: blue });
+    page.drawRectangle({ x: 48, y: 793, width: 28, height: 28, color: rgb(1, 1, 1) });
+    text('C', 62 - bold.widthOfTextAtSize('C', 16) / 2, 801, 16, bold, blue);
+    text('careerpath', 86, 800, 20, bold, navy);
+    text('.', 86 + bold.widthOfTextAtSize('careerpath', 20), 800, 20, bold, rgb(1, 1, 1));
     text('Receipt', 470, 800, 16, bold, rgb(1, 1, 1));
     const name = student.name || [student.firstName, student.lastName].filter(Boolean).join(' ') || student.email;
     let y = 730;

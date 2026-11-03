@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Avatar } from '../ui/Avatar';
 import { Icon } from '../ui/Icon';
 import { useAuth } from '@/hooks/useAuth';
+import { BrandLogo } from '@/components/brand/BrandLogo';
 
 export function Navbar() {
   const { user } = useAuth();
@@ -10,12 +11,7 @@ export function Navbar() {
     <header className="sticky top-0 z-40 border-b border-cloud bg-white/80 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 md:px-6">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-navy">
-            <span className="text-sm font-black text-white">C</span>
-          </div>
-          <span className="hidden text-base font-bold text-navy sm:block">CareerPath<span className="text-azure">Africa</span></span>
-        </Link>
+        <BrandLogo />
 
         {/* Search — desktop */}
         <div className="hidden flex-1 max-w-sm mx-8 md:flex">

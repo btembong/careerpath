@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Icon } from '@/components/ui/Icon';
 import { spring, stagger, staggerItem } from '@/lib/motion';
+import { BrandLogo } from '@/components/brand/BrandLogo';
 
 export default function ApplySuccessPage() {
   return (
@@ -29,12 +30,7 @@ export default function ApplySuccessPage() {
             transition={{ ...spring.smooth, delay: 0.1 }}
             className="flex items-center gap-3"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-azure shadow-lg shadow-azure/40">
-              <span className="text-base font-black text-white tracking-tight">C</span>
-            </div>
-            <span className="text-xl font-bold text-white tracking-tight">
-              CareerPath<span className="text-azure">Africa</span>
-            </span>
+            <BrandLogo tone="onDark" size="lg" href={null} />
           </motion.div>
 
           {/* Hero */}
@@ -89,10 +85,7 @@ export default function ApplySuccessPage() {
           <div className="px-6 pt-8 pb-14">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10">
-                  <span className="text-[10px] font-black text-white">C</span>
-                </div>
-                <span className="text-sm font-bold text-white">CareerPath<span className="text-azure">Africa</span></span>
+                <BrandLogo tone="onDark" size="sm" href={null} />
               </div>
               <Link href="/login" className="rounded-xl border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/60 hover:bg-white/10 transition">
                 Sign in
