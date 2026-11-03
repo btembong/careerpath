@@ -10,7 +10,10 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Req,
+  RawBodyRequest,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { LiveService } from './live.service';
 import { CreateCohortDto } from './dto/create-cohort.dto';
@@ -165,6 +168,13 @@ export class LiveController {
     return this.liveService.leaveClass(user, liveClassId);
   }
 
+  @Get('classes/:liveClassId/recording')
+  @Roles(UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'A short-lived link to watch a class recording (students in the class, its teacher, admins)' })
+  getRecording(@CurrentUser() user: UserProfile, @Param('liveClassId') liveClassId: string) {
+    return this.liveService.recordingLink(user, liveClassId);
+  }
+
   @Get('classes/:liveClassId/attendance')
   @Roles(UserRole.TEACHER, UserRole.ADMIN)
   @ApiOperation({ summary: '[Teacher] Attendance list for a class' })
@@ -200,9 +210,11 @@ export class LiveController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Daily.co webhook: recording ready, participant events' })
   handleDailyWebhook(
+    @Req() req: RawBodyRequest<Request>,
     @Body() payload: any,
-    @Headers('x-daily-signature') signature: string,
+    @Headers('x-webhook-signature') signature?: string,
+    @Headers('x-webhook-timestamp') timestamp?: string,
   ) {
-    return this.liveService.handleDailyWebhook(payload, signature);
+    return this.liveService.handleDailyWebhook(payload, req.rawBody, { signature, timestamp });
   }
 }

@@ -7,10 +7,13 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Logger } from '@nestjs/common';
+import { Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import type Redis from 'ioredis';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
 interface SocketUser {
   id: string;
@@ -22,26 +25,43 @@ interface SocketUser {
 
 interface AuthenticatedSocket extends Socket {
   user?: SocketUser;
+  /** Resolves once the sign-in check is done, so early messages wait for it */
+  ready?: Promise<void>;
 }
 
+/** Board state kept in Redis, so it survives an API restart and is shared by every API server */
+interface Board {
+  elements: any[];
+  appState: Record<string, any>;
+  open: boolean;
+  /** Who leads the board: the class teacher, or the mentor in a 1-on-1 */
+  leaders: string[];
+  /** Students the leader allowed to draw */
+  drawers: string[];
+}
+
+const KEY = (room: string) => `wb:${room}`;
+const CHANNEL = 'wb:events';
+const TTL = 24 * 3600;
+
 /**
- * Real-time whiteboard gateway for live class sessions.
+ * Real-time whiteboard for live classes and 1-on-1 mentoring sessions.
  *
- * Rooms are keyed by liveClassId.
+ * Room ids: a live class id, or `mentor:<bookingId>` for a mentoring session.
  *
  * Events (client → server):
- *   whiteboard:join       { classId }                  — join a whiteboard room
- *   whiteboard:update     { classId, elements, appState } — broadcast drawing change
- *   whiteboard:toggle     { classId, open }            — teacher opens/closes board
- *   whiteboard:clear      { classId }                  — teacher clears the board
- *   whiteboard:permission { classId, studentId, canDraw } — teacher grants/revokes student draw access
+ *   whiteboard:join       { classId }                       — join a room (classId is the room id)
+ *   whiteboard:update     { classId, elements, appState }   — drawing change
+ *   whiteboard:toggle     { classId, open }                 — leader opens/closes the board
+ *   whiteboard:clear      { classId }                       — leader clears the board
+ *   whiteboard:permission { classId, studentId, canDraw }   — leader lets a student draw, or stops them
  *
  * Events (server → client):
- *   whiteboard:state      { elements, appState, open } — full state (on join / request)
- *   whiteboard:update     { elements, appState, senderId } — incremental update
- *   whiteboard:toggle     { open }                     — board visibility changed
- *   whiteboard:permission { canDraw }                  — your draw permission changed
- *   whiteboard:error      { message }                  — something went wrong
+ *   whiteboard:state      { elements, appState, open, canDraw }
+ *   whiteboard:update     { elements, appState, senderId }
+ *   whiteboard:toggle     { open }
+ *   whiteboard:permission { studentId, canDraw }
+ *   whiteboard:error      { message }
  */
 @WebSocketGateway({
   namespace: '/whiteboard',
@@ -50,26 +70,62 @@ interface AuthenticatedSocket extends Socket {
     credentials: true,
   },
 })
-export class WhiteboardGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class WhiteboardGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit, OnModuleDestroy {
   @WebSocketServer() server: Server;
   private readonly logger = new Logger(WhiteboardGateway.name);
-
-  // In-memory state per classId: { elements, appState, open, drawPermissions }
-  private rooms = new Map<string, {
-    elements: any[];
-    appState: Record<string, any>;
-    open: boolean;
-    drawPermissions: Set<string>; // studentIds allowed to draw
-  }>();
+  /** Tells this server's own messages apart on the shared channel */
+  private readonly instance = randomUUID();
+  private sub?: Redis;
 
   constructor(
     private jwt: JwtService,
     private prisma: PrismaService,
+    private redis: RedisService,
   ) {}
+
+  // ── Cross-server fan-out ─────────────────────────────────
+
+  onModuleInit() {
+    try {
+      this.sub = this.redis.client.duplicate();
+      this.sub.subscribe(CHANNEL).catch(err => this.logger.warn(`Whiteboard channel not subscribed: ${err.message}`));
+      this.sub.on('message', (_ch, raw) => {
+        try {
+          const m = JSON.parse(raw) as { from: string; room: string; event: string; payload: unknown };
+          if (m.from !== this.instance) this.server?.to(m.room).emit(m.event, m.payload);
+        } catch { /* ignore bad messages */ }
+      });
+    } catch (err: any) {
+      this.logger.warn(`Whiteboard runs on this server only: ${err?.message}`);
+    }
+  }
+
+  async onModuleDestroy() {
+    await this.sub?.quit().catch(() => {});
+  }
+
+  /** Emit to everyone in the room on every server; `except` skips the sender's socket here */
+  private broadcast(room: string, event: string, payload: unknown, except?: Socket) {
+    (except ? except.to(room) : this.server.to(room)).emit(event, payload);
+    this.redis.client.publish(CHANNEL, JSON.stringify({ from: this.instance, room, event, payload })).catch(() => {});
+  }
+
+  private async load(room: string): Promise<Board | null> {
+    const raw = await this.redis.get(KEY(room)).catch(() => null);
+    return raw ? (JSON.parse(raw) as Board) : null;
+  }
+
+  private async save(room: string, board: Board) {
+    await this.redis.set(KEY(room), JSON.stringify(board), TTL);
+  }
 
   // ── Connection / auth ────────────────────────────────────
 
-  async handleConnection(socket: AuthenticatedSocket) {
+  handleConnection(socket: AuthenticatedSocket) {
+    socket.ready = this.authenticate(socket);
+  }
+
+  private async authenticate(socket: AuthenticatedSocket) {
     try {
       const token =
         socket.handshake.auth?.token ||
@@ -93,182 +149,149 @@ export class WhiteboardGateway implements OnGatewayConnection, OnGatewayDisconne
       }
 
       socket.user = user;
-      this.logger.log(`Whiteboard connected: ${user.email} (${user.role})`);
     } catch {
       socket.emit('whiteboard:error', { message: 'Invalid token' });
       socket.disconnect();
     }
   }
 
-  handleDisconnect(socket: AuthenticatedSocket) {
-    if (socket.user) {
-      this.logger.log(`Whiteboard disconnected: ${socket.user.email}`);
+  handleDisconnect() { /* nothing to tidy: state lives in Redis */ }
+
+  /** Who may be in this room, and who leads it. Null when the user has no place there. */
+  private async access(user: SocketUser, room: string): Promise<{ leaders: string[]; isLeader: boolean } | { error: string }> {
+    const isAdmin = user.role === 'ADMIN';
+    if (room.startsWith('mentor:')) {
+      const booking = await this.prisma.mentorBooking.findUnique({ where: { id: room.slice(7) }, include: { slot: { select: { teacherId: true } } } });
+      if (!booking) return { error: 'Session not found' };
+      // In a 1-on-1 both people can draw; the mentor leads
+      const leaders = [booking.slot.teacherId, booking.studentId];
+      if (!isAdmin && !leaders.includes(user.id)) return { error: 'Not your session' };
+      return { leaders, isLeader: true };
     }
+    const liveClass = await this.prisma.liveClass.findUnique({ where: { id: room }, include: { cohort: { select: { teacherId: true } } } });
+    if (!liveClass) return { error: 'Class not found' };
+    const leaders = [liveClass.cohort.teacherId];
+    if (isAdmin || leaders.includes(user.id)) return { leaders, isLeader: true };
+    const roster = await this.prisma.cohortRoster.findUnique({ where: { studentId_cohortId: { studentId: user.id, cohortId: liveClass.cohortId } } });
+    if (!roster) return { error: 'Not enrolled in this class' };
+    return { leaders, isLeader: false };
   }
 
-  // ── Join a class whiteboard room ─────────────────────────
+  private leads(user: SocketUser, board: Board) {
+    return user.role === 'ADMIN' || board.leaders.includes(user.id);
+  }
+
+  // ── Join ─────────────────────────────────────────────────
 
   @SubscribeMessage('whiteboard:join')
   async handleJoin(
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() data: { classId: string },
   ) {
-    const { classId } = data;
-    if (!socket.user) return;
+    await socket.ready;
+    const room = data?.classId;
+    if (!socket.user || !room) return;
 
-    // Verify user has access to this class
-    const liveClass = await this.prisma.liveClass.findUnique({
-      where: { id: classId },
-      include: { cohort: { select: { teacherId: true } } },
-    });
-
-    if (!liveClass) {
-      socket.emit('whiteboard:error', { message: 'Class not found' });
+    const a = await this.access(socket.user, room);
+    if ('error' in a) {
+      socket.emit('whiteboard:error', { message: a.error });
       return;
     }
+    socket.join(room);
 
-    const isTeacher = liveClass.cohort.teacherId === socket.user.id;
-    const isAdmin   = socket.user.role === 'ADMIN';
-
-    if (!isTeacher && !isAdmin) {
-      // Verify student is in the cohort
-      const roster = await this.prisma.cohortRoster.findUnique({
-        where: {
-          studentId_cohortId: {
-            studentId: socket.user.id,
-            cohortId: liveClass.cohortId,
-          },
-        },
-      });
-      if (!roster) {
-        socket.emit('whiteboard:error', { message: 'Not enrolled in this class' });
-        return;
-      }
+    let board = await this.load(room);
+    if (!board) {
+      board = { elements: [], appState: {}, open: room.startsWith('mentor:'), leaders: a.leaders, drawers: [] };
+      await this.save(room, board);
     }
 
-    socket.join(classId);
-
-    // Ensure room state exists
-    if (!this.rooms.has(classId)) {
-      this.rooms.set(classId, {
-        elements: [],
-        appState: {},
-        open: false,
-        drawPermissions: new Set(),
-      });
-    }
-
-    const room = this.rooms.get(classId)!;
-    const canDraw = isTeacher || isAdmin || room.drawPermissions.has(socket.user.id);
-
-    // Send current state to the joining client
     socket.emit('whiteboard:state', {
-      elements: room.elements,
-      appState: room.appState,
-      open: room.open,
-      canDraw,
+      elements: board.elements,
+      appState: board.appState,
+      open: board.open,
+      canDraw: a.isLeader || board.drawers.includes(socket.user.id),
     });
-
-    this.logger.log(`${socket.user.email} joined whiteboard room: ${classId}`);
   }
 
-  // ── Teacher broadcasts drawing changes ───────────────────
+  // ── Drawing changes ──────────────────────────────────────
 
   @SubscribeMessage('whiteboard:update')
-  handleUpdate(
+  async handleUpdate(
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() data: { classId: string; elements: any[]; appState?: Record<string, any> },
   ) {
-    if (!socket.user) return;
-    const { classId, elements, appState = {} } = data;
-    const room = this.rooms.get(classId);
-    if (!room) return;
+    await socket.ready;
+    if (!socket.user || !data?.classId || !socket.rooms.has(data.classId)) return;
+    const { classId: room, elements, appState = {} } = data;
+    const board = await this.load(room);
+    if (!board) return;
+    if (!this.leads(socket.user, board) && !board.drawers.includes(socket.user.id)) return;
+    if (!Array.isArray(elements) || elements.length > 20000) return;
 
-    // Only teacher, admin, or students with draw permission can update
-    const isTeacherOrAdmin = socket.user.role === 'TEACHER' || socket.user.role === 'ADMIN';
-    if (!isTeacherOrAdmin && !room.drawPermissions.has(socket.user.id)) return;
-
-    // Persist latest state in memory
-    room.elements = elements;
-    room.appState = appState;
-
-    // Broadcast to everyone else in the room
-    socket.to(classId).emit('whiteboard:update', {
-      elements,
-      appState,
-      senderId: socket.user.id,
-    });
+    board.elements = elements;
+    board.appState = appState;
+    await this.save(room, board);
+    this.broadcast(room, 'whiteboard:update', { elements, appState, senderId: socket.user.id }, socket);
   }
 
-  // ── Teacher toggles whiteboard visibility ────────────────
+  // ── Leader opens or closes the board ─────────────────────
 
   @SubscribeMessage('whiteboard:toggle')
-  handleToggle(
+  async handleToggle(
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() data: { classId: string; open: boolean },
   ) {
-    if (!socket.user) return;
-    if (socket.user.role !== 'TEACHER' && socket.user.role !== 'ADMIN') return;
-
-    const { classId, open } = data;
-    const room = this.rooms.get(classId);
-    if (!room) return;
-
-    room.open = open;
-    // Broadcast to all (including sender's other tabs)
-    this.server.to(classId).emit('whiteboard:toggle', { open });
-    this.logger.log(`Whiteboard ${open ? 'opened' : 'closed'} for class ${classId}`);
+    await socket.ready;
+    if (!socket.user || !data?.classId || !socket.rooms.has(data.classId)) return;
+    const board = await this.load(data.classId);
+    if (!board || !this.leads(socket.user, board)) return;
+    board.open = !!data.open;
+    await this.save(data.classId, board);
+    this.broadcast(data.classId, 'whiteboard:toggle', { open: board.open });
   }
 
-  // ── Teacher clears the board ─────────────────────────────
+  // ── Leader clears the board ──────────────────────────────
 
   @SubscribeMessage('whiteboard:clear')
-  handleClear(
+  async handleClear(
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() data: { classId: string },
   ) {
-    if (!socket.user) return;
-    if (socket.user.role !== 'TEACHER' && socket.user.role !== 'ADMIN') return;
-
-    const { classId } = data;
-    const room = this.rooms.get(classId);
-    if (!room) return;
-
-    room.elements = [];
-    room.appState = {};
-    this.server.to(classId).emit('whiteboard:update', { elements: [], appState: {}, senderId: socket.user.id });
+    await socket.ready;
+    if (!socket.user || !data?.classId || !socket.rooms.has(data.classId)) return;
+    const board = await this.load(data.classId);
+    if (!board || !this.leads(socket.user, board)) return;
+    board.elements = [];
+    board.appState = {};
+    await this.save(data.classId, board);
+    this.broadcast(data.classId, 'whiteboard:update', { elements: [], appState: {}, senderId: socket.user.id });
   }
 
-  // ── Teacher grants/revokes student draw permission ───────
+  // ── Leader lets a student draw, or stops them ────────────
 
   @SubscribeMessage('whiteboard:permission')
-  handlePermission(
+  async handlePermission(
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() data: { classId: string; studentId: string; canDraw: boolean },
   ) {
-    if (!socket.user) return;
-    if (socket.user.role !== 'TEACHER' && socket.user.role !== 'ADMIN') return;
-
-    const { classId, studentId, canDraw } = data;
-    const room = this.rooms.get(classId);
-    if (!room) return;
-
-    if (canDraw) room.drawPermissions.add(studentId);
-    else room.drawPermissions.delete(studentId);
-
-    // Notify all sockets in the room — the target student listens for their userId
-    this.server.to(classId).emit('whiteboard:permission', { studentId, canDraw });
-    this.logger.log(`Draw permission ${canDraw ? 'granted' : 'revoked'} to ${studentId} in class ${classId}`);
+    await socket.ready;
+    if (!socket.user || !data?.classId || !socket.rooms.has(data.classId)) return;
+    const board = await this.load(data.classId);
+    if (!board || !this.leads(socket.user, board)) return;
+    const set = new Set(board.drawers);
+    if (data.canDraw) set.add(data.studentId); else set.delete(data.studentId);
+    board.drawers = [...set];
+    await this.save(data.classId, board);
+    this.broadcast(data.classId, 'whiteboard:permission', { studentId: data.studentId, canDraw: !!data.canDraw });
   }
 
-  // ── Save snapshot when class ends (called from LiveService) ─
+  // ── Snapshot when a class ends (called from LiveService) ─
 
-  getSnapshot(classId: string): any[] {
-    return this.rooms.get(classId)?.elements ?? [];
+  async getSnapshot(room: string): Promise<any[]> {
+    return (await this.load(room))?.elements ?? [];
   }
 
-  clearRoom(classId: string) {
-    this.rooms.delete(classId);
-    this.logger.log(`Whiteboard room cleared: ${classId}`);
+  async clearRoom(room: string) {
+    await this.redis.del(KEY(room)).catch(() => {});
   }
 }

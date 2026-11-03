@@ -121,6 +121,28 @@ export class DailyService {
     }
   }
 
+  /** One recording, straight from Daily: used to check a webhook's claim before trusting it. */
+  async getRecording(id: string): Promise<{ id: string; room_name: string; status: string; duration?: number } | null> {
+    try { return (await this.client.get(`/recordings/${encodeURIComponent(id)}`)).data; }
+    catch (err: any) { this.logger.warn(`Recording ${id} not found at Daily: ${err.response?.status ?? err.message}`); return null; }
+  }
+
+  /** Finished recordings for a room, newest first. */
+  async listRecordings(roomName: string): Promise<{ id: string; room_name: string; status: string; start_ts?: number }[]> {
+    try {
+      const res = await this.client.get('/recordings', { params: { room_name: roomName, limit: 20 } });
+      return (res.data?.data ?? []).filter((r: any) => r.room_name === roomName && r.status === 'finished');
+    } catch (err: any) { this.logger.warn(`Could not list recordings for ${roomName}: ${err.response?.status ?? err.message}`); return []; }
+  }
+
+  /** A short-lived link to watch or download a recording. */
+  async recordingLink(id: string): Promise<{ url: string; expires: number } | null> {
+    try {
+      const res = await this.client.get(`/recordings/${encodeURIComponent(id)}/access-link`, { params: { valid_for_secs: 3 * 3600 } });
+      return res.data?.download_link ? { url: res.data.download_link, expires: res.data.expires } : null;
+    } catch (err: any) { this.logger.warn(`No access link for recording ${id}: ${err.response?.status ?? err.message}`); return null; }
+  }
+
   /** Extract the room name from a Daily.co room URL. */
   roomNameFromUrl(url: string): string {
     return url.split('/').pop() ?? url;

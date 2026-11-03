@@ -16,7 +16,7 @@ import { ScheduleClassDto } from './dto/schedule-class.dto';
 import { RequestTokenDto } from './dto/request-token.dto';
 import { UserProfile } from '@prisma/client';
 import { UserRole } from '@cpa/shared';
-import { randomUUID, createHmac } from 'crypto';
+import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 
 @Injectable()
 export class LiveService {
@@ -189,8 +189,8 @@ export class LiveService {
     });
 
     // Snapshot the whiteboard state before clearing the room
-    const whiteboardSnapshot = this.whiteboard.getSnapshot(liveClassId);
-    this.whiteboard.clearRoom(liveClassId);
+    const whiteboardSnapshot = await this.whiteboard.getSnapshot(liveClassId);
+    await this.whiteboard.clearRoom(liveClassId);
 
     return this.prisma.liveClass.update({
       where: { id: liveClassId },
@@ -215,7 +215,8 @@ export class LiveService {
     if (dto.durationMins !== undefined && !(Number.isInteger(dto.durationMins) && dto.durationMins >= 15 && dto.durationMins <= 360)) {
       throw new BadRequestException('Length must be between 15 and 360 minutes');
     }
-    if (dto.recordingUrl && !/^https:\/\//i.test(dto.recordingUrl.trim())) throw new BadRequestException('The recording link must start with https://');
+    // The automatic Daily recording shows as /recordings/<id>; keeping it is fine
+    if (dto.recordingUrl && dto.recordingUrl.trim() !== `/recordings/${liveClassId}` && !/^https:\/\//i.test(dto.recordingUrl.trim())) throw new BadRequestException('The recording link must start with https://');
     const when = dto.scheduledAt ? new Date(dto.scheduledAt) : undefined;
     if (when && isNaN(when.getTime())) throw new BadRequestException('Invalid date');
     return this.prisma.liveClass.update({
@@ -349,22 +350,22 @@ export class LiveService {
   // ── Recording webhook (Daily.co → API) ───────────────────
 
   /**
-   * Receives Daily.co webhooks — recording ready, participant events, etc.
-   * No JWT auth — guarded by HMAC-SHA256 signature instead.
-   * Daily.co signs the raw body with the webhook secret from the dashboard.
-   * Header: x-daily-signature = hmac-sha256:<hex>
+   * Receives Daily.co webhooks. Daily signs "<timestamp>.<raw body>" with HMAC-SHA256 using the
+   * base64-decoded webhook secret, and sends it base64-encoded in X-Webhook-Signature.
+   * Even with a good signature nothing in the message is trusted as a link: a recording id is
+   * checked with Daily's API, and students get a fresh, short-lived watch link through the portal.
    */
-  async handleDailyWebhook(payload: any, signature?: string) {
-    // Verify signature when DAILY_WEBHOOK_SECRET is configured
+  async handleDailyWebhook(payload: any, raw: Buffer | undefined, headers: { signature?: string; timestamp?: string }) {
     if (this.webhookSecret) {
-      if (!signature) {
-        this.logger.warn('Daily webhook received without signature — rejecting');
+      if (!raw || !headers.signature || !headers.timestamp) {
+        this.logger.warn('Daily webhook without signature: ignored');
         return { ignored: true };
       }
-      const rawBody = JSON.stringify(payload);
-      const expected = `hmac-sha256:${createHmac('sha256', this.webhookSecret).update(rawBody).digest('hex')}`;
-      if (signature !== expected) {
-        this.logger.warn('Daily webhook signature mismatch — possible spoofing attempt');
+      const expected = createHmac('sha256', Buffer.from(this.webhookSecret, 'base64'))
+        .update(`${headers.timestamp}.${raw.toString('utf8')}`).digest('base64');
+      const a = Buffer.from(expected), b = Buffer.from(headers.signature);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+        this.logger.warn('Daily webhook signature mismatch: ignored');
         return { ignored: true };
       }
     }
@@ -373,35 +374,55 @@ export class LiveService {
 
     // ── Recording ready ────────────────────────────────────
     if (type === 'recording.ready-to-download') {
-      const roomName: string = payload?.properties?.room_name;
-      const recordingUrl: string = payload?.properties?.s3_url ?? payload?.properties?.recording_url;
-
-      if (!roomName || !recordingUrl) {
-        this.logger.warn('Daily webhook: missing room_name or recording_url', payload);
-        return { ignored: true };
-      }
-
-      const liveClass = await this.prisma.liveClass.findFirst({
-        where: { dailyRoomUrl: { contains: roomName } },
-      });
-
-      if (!liveClass) {
-        this.logger.warn(`Daily webhook: no LiveClass found for room ${roomName}`);
-        return { ignored: true };
-      }
-
-      await this.prisma.liveClass.update({
-        where: { id: liveClass.id },
-        data: { recordingUrl },
-      });
-
-      this.logger.log(`Recording stored for class ${liveClass.id}: ${recordingUrl}`);
-      return { ok: true };
+      const recordingId: string | undefined = payload?.payload?.recording_id ?? payload?.properties?.recording_id;
+      if (!recordingId) return { ignored: true };
+      // Ask Daily directly: the room comes from Daily, not from the message
+      const rec = await this.daily.getRecording(recordingId);
+      if (!rec) return { ignored: true };
+      const saved = await this.attachRecording(rec.room_name, rec.id);
+      return saved ? { ok: true } : { ignored: true };
     }
 
     // All other event types (participant-joined, participant-left, etc.) acknowledged
     this.logger.log(`Daily webhook event received: ${type}`);
     return { ok: true };
+  }
+
+  /** Link a Daily recording to the class that used that room. Manual links a teacher pasted are left alone. */
+  private async attachRecording(roomName: string, recordingId: string) {
+    const liveClass = await this.prisma.liveClass.findFirst({ where: { dailyRoomUrl: { endsWith: `/${roomName}` } } });
+    if (!liveClass) { this.logger.warn(`Recording ${recordingId}: no class for room ${roomName}`); return null; }
+    await this.prisma.liveClass.update({
+      where: { id: liveClass.id },
+      data: { recordingId, ...(liveClass.recordingUrl ? {} : { recordingUrl: `/recordings/${liveClass.id}` }) },
+    });
+    this.logger.log(`Recording ${recordingId} linked to class ${liveClass.id}`);
+    return liveClass.id;
+  }
+
+  /**
+   * A watch link for a class recording, for its teacher, an admin, or a student in the cohort.
+   * Works without the webhook too: if no recording is linked yet, Daily is asked for the room's recordings.
+   */
+  async recordingLink(user: UserProfile, liveClassId: string) {
+    const liveClass = await this.prisma.liveClass.findUnique({ where: { id: liveClassId }, include: { cohort: true } });
+    if (!liveClass) throw new NotFoundException('Live class not found');
+    const isStaff = user.role === UserRole.ADMIN || liveClass.cohort.teacherId === user.id;
+    if (!isStaff) {
+      const roster = await this.prisma.cohortRoster.findUnique({ where: { studentId_cohortId: { studentId: user.id, cohortId: liveClass.cohortId } } });
+      if (!roster) throw new ForbiddenException('This recording is for students in the class');
+    }
+    // A link the teacher pasted themselves wins
+    if (liveClass.recordingUrl && /^https:\/\//i.test(liveClass.recordingUrl)) return { url: liveClass.recordingUrl, expires: null };
+    let recordingId = liveClass.recordingId;
+    if (!recordingId && liveClass.dailyRoomUrl && liveClass.status === 'COMPLETED') {
+      const found = await this.daily.listRecordings(this.daily.roomNameFromUrl(liveClass.dailyRoomUrl));
+      if (found[0]) { recordingId = found[0].id; await this.attachRecording(found[0].room_name, recordingId); }
+    }
+    if (!recordingId) throw new NotFoundException('There’s no recording for this class yet. Recordings appear a few minutes after class ends.');
+    const link = await this.daily.recordingLink(recordingId);
+    if (!link) throw new NotFoundException('The recording isn’t ready yet. Try again in a few minutes.');
+    return link;
   }
 
   // ── Admin overview ───────────────────────────────────────

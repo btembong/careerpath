@@ -376,6 +376,8 @@ model LiveClass {
   description        String?
   durationMins       Int              @default(90)
   recordingUrl       String?
+  /// Daily cloud recording id; a short-lived watch link is fetched from Daily when someone opens it
+  recordingId        String?
   whiteboardSnapshot String?
   attendance         LiveAttendance[]
   cohort             Cohort           @relation(fields: [cohortId], references: [id])
