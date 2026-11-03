@@ -474,7 +474,7 @@ export class TestCentreService {
       this.catalog(studentId),
       this.history(studentId),
       this.prisma.testAnswer.findMany({
-        where: { session: { studentId }, isCorrect: { not: null } },
+        where: { session: { studentId }, isCorrect: { not: null }, answer: { not: Prisma.DbNull } }, // blanks aren't evidence of a weak topic
         orderBy: { session: { startedAt: 'desc' } }, take: 1000,
         select: { score: true, question: { select: { type: true, points: true, parts: true, moduleId: true, lessonId: true, sourceLessonId: true, courseId: true } } },
       }),

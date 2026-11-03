@@ -50,6 +50,7 @@ const STUDENT: Item[] = [
     { label: 'Flashcards',   href: '/student/flashcards' },
     { label: 'Roadmap',      href: '/student/roadmap' },
   ]},
+  { label: 'Test Centre', icon: 'clipboard', href: '/student/tests' },
   { label: 'Classes', icon: 'calendar', children: [
     { label: 'My Cohorts',     href: '/student/cohorts', also: ['/student/cohort'] },
     { label: 'Live Classes',   href: '/student/live' },
@@ -78,6 +79,7 @@ const TEACHER: Item[] = [
   { label: 'Dashboard', icon: 'dashboard', href: '/teacher/dashboard' },
   { label: 'Teaching', icon: 'book', children: [
     { label: 'My Courses',   href: '/teacher/courses', also: ['/teacher/quiz-builder'] },
+    { label: 'Question bank', href: '/teacher/questions' },
     { label: 'Live Classes', href: '/teacher/live' },
   ]},
   { label: 'Classes', icon: 'calendar', children: [
@@ -99,6 +101,7 @@ const ADMIN: Item[] = [
   { label: 'Reports',   icon: 'chart',     href: '/admin/reports' },
   { label: 'Content', icon: 'box', children: [
     { label: 'Courses',         href: '/admin/courses/manage', also: ['/admin/courses'] },
+    { label: 'Question bank',   href: '/admin/questions' },
     { label: 'Packages',        href: '/admin/packages' },
     { label: 'Coupons',         href: '/admin/coupons' },
     { label: 'Live Classes',    href: '/admin/live' },
@@ -127,6 +130,7 @@ const ADMIN: Item[] = [
 
 const REVIEWER: Item[] = [
   { label: 'Review Queue', icon: 'inbox',  href: '/reviewer/dashboard' },
+  { label: 'Question bank', icon: 'clipboard', href: '/reviewer/questions' },
   { label: 'Courses',      icon: 'book',   href: '/reviewer/courses' },
   { label: 'Messages',     icon: 'message', href: '/reviewer/messages' },
   { label: 'Staff room',   icon: 'users',   href: '/reviewer/staff-room' },

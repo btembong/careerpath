@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
+import { TestTiles, useTestOverview } from '@/components/tests/TestTiles';
 import { StudyHeatmap } from '@/components/learning/StudyHeatmap';
 import { useAuth } from '@/hooks/useAuth';
 import api from '@/lib/api';
@@ -64,6 +65,7 @@ const ONBOARD_STEPS = [
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 export default function StudentDashboard() {
+  const testCentre = useTestOverview();
   const { user } = useAuth();
   const [me, setMe] = useState<Me | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -283,6 +285,8 @@ export default function StudentDashboard() {
             </div>
           ))}
         </div>
+
+        {testCentre && testCentre.total > 0 && <TestTiles data={testCentre} compact />}
 
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
 
