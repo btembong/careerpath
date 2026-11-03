@@ -80,6 +80,7 @@ const TEACHER: Item[] = [
   { label: 'Teaching', icon: 'book', children: [
     { label: 'My Courses',   href: '/teacher/courses', also: ['/teacher/quiz-builder'] },
     { label: 'Question bank', href: '/teacher/questions' },
+    { label: 'Mock exams',    href: '/teacher/mocks' },
     { label: 'Live Classes', href: '/teacher/live' },
   ]},
   { label: 'Classes', icon: 'calendar', children: [
@@ -102,6 +103,7 @@ const ADMIN: Item[] = [
   { label: 'Content', icon: 'box', children: [
     { label: 'Courses',         href: '/admin/courses/manage', also: ['/admin/courses'] },
     { label: 'Question bank',   href: '/admin/questions' },
+    { label: 'Mock exams',      href: '/admin/mocks' },
     { label: 'Packages',        href: '/admin/packages' },
     { label: 'Coupons',         href: '/admin/coupons' },
     { label: 'Live Classes',    href: '/admin/live' },

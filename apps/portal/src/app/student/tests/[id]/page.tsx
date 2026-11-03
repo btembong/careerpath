@@ -6,7 +6,7 @@ import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 import { QuestionCard, TestQuestion } from '@/components/tests/QuestionCard';
 
-interface Session { id: string; title: string; mode: 'PRACTICE' | 'EXAM'; status: string; remainingSecs: number | null; questions: TestQuestion[] }
+interface Session { id: string; title: string; mode: 'PRACTICE' | 'EXAM'; status: string; remainingSecs: number | null; questions: TestQuestion[]; exam: { kind: 'MOCK' | 'PAST_PAPER'; passMark: number } | null; selfMarking: boolean }
 
 function clock(secs: number) {
   const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
@@ -142,7 +142,7 @@ export default function TakeTestPage() {
   return (
     <div className="flex min-h-full flex-col gap-4 bg-surface p-4 lg:px-7 lg:py-6">
       <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[10px] px-4 py-3 ${exam ? 'bg-[#3F6FE8] text-white' : 'border border-line bg-white text-navy'}`}>
-        <strong className="text-sm">{[exam ? 'Exam' : 'Practice', s.title].filter((x, n, all) => all.indexOf(x) === n).join(' · ')}</strong>
+        <strong className="text-sm">{[s.exam?.kind === 'MOCK' ? 'Mock exam' : s.exam?.kind === 'PAST_PAPER' ? 'Past paper' : exam ? 'Exam' : 'Practice', s.title].filter((x, n, all) => all.indexOf(x) === n).join(' · ')}</strong>
         <span className="flex-1 text-[13px]">Question {i + 1} of {s.questions.length}{!exam && ` · ${right} right so far`}</span>
         {left != null && <strong role="timer" className={`text-lg tabular-nums ${left < 60 ? 'animate-pulse' : ''}`}>{clock(left)}</strong>}
         {!exam && <button onClick={finish} disabled={busy} className="text-[13px] font-semibold text-[#3F6FE8]">End practice</button>}
@@ -151,7 +151,7 @@ export default function TakeTestPage() {
 
       <div className={`grid items-start gap-3.5 ${exam ? 'lg:grid-cols-[1fr_280px]' : ''}`}>
         <section className="flex min-w-0 flex-col gap-4 rounded-[10px] border border-line bg-white p-5">
-          <QuestionCard key={q.id} q={q} value={values[q.id]} onChange={change} locked={revealed && !exam} onSelfMark={selfMark} onAiMark={aiMark} />
+          <QuestionCard key={q.id} q={q} value={values[q.id]} onChange={change} locked={revealed && !exam} onSelfMark={selfMark} onAiMark={aiMark} selfMarking={s.selfMarking} />
           <div className="flex flex-wrap items-center gap-2.5 border-t border-line pt-3">
             {i > 0 && <button onClick={() => go(i - 1)} className="h-[38px] rounded-md border border-line px-3.5 text-[13.5px] font-semibold text-navy">Back</button>}
             <button onClick={flag} aria-pressed={q.flagged} className={`h-[38px] rounded-md border px-3.5 text-[13.5px] font-semibold ${q.flagged ? 'border-[#5889FA] bg-[#EAF0FF] text-navy' : 'border-line text-navy'}`}>{q.flagged ? '⚑ Flagged' : '⚑ Flag for review'}</button>

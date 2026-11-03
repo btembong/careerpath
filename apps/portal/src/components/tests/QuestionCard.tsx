@@ -7,16 +7,17 @@ export interface Reveal {
   isCorrect: boolean | null; score: number | null; correctAnswer: string | null; modelAnswer: string | null;
   explanation: string | null; needsSelfMark: boolean;
   lesson: { id: string; courseId: string; title: string } | null; percentRight: number | null;
-  markedBy?: string | null; aiFeedback?: string | null;
+  markedBy?: string | null; aiFeedback?: string | null; correctPairs?: Record<string, string> | null;
 }
 export interface TestQuestion {
   id: string; type: string; text: string; imageUrl: string | null; difficulty: string;
   options: { id: string; text: string }[] | null;
+  choices?: string[];
   parts: { label: string; text: string; marks: number; markScheme?: string }[];
   marks: number; answer: unknown; flagged: boolean; reveal: Reveal | null;
 }
 
-export const TYPE_LABEL: Record<string, string> = { MCQ: 'Single answer', TRUE_FALSE: 'True / false', FILL_BLANK: 'Fill the blank', SHORT_ANSWER: 'Short answer', WRITTEN: 'Essay', STRUCTURED: 'Structured' };
+export const TYPE_LABEL: Record<string, string> = { MCQ: 'Single answer', TRUE_FALSE: 'True / false', FILL_BLANK: 'Fill the blank', SHORT_ANSWER: 'Short answer', WRITTEN: 'Essay', STRUCTURED: 'Structured', MATCHING: 'Matching' };
 export const isWritten = (t: string) => t === 'SHORT_ANSWER' || t === 'WRITTEN' || t === 'STRUCTURED';
 const field = 'w-full rounded-lg border border-line bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-[#5889FA] disabled:bg-subtle';
 
@@ -26,8 +27,10 @@ function optionsOf(q: TestQuestion) {
 }
 
 /** One question. `value` is what's been chosen or typed; locked questions can't be changed. */
-export function QuestionCard({ q, value, onChange, locked, onSelfMark, onAiMark }: {
+export function QuestionCard({ q, value, onChange, locked, onSelfMark, onAiMark, selfMarking = true }: {
   q: TestQuestion; value: unknown; onChange: (v: unknown) => void; locked: boolean; onSelfMark?: (score: number) => void; onAiMark?: () => Promise<void>;
+  /** false in a teacher's mock exam: the teacher marks written answers */
+  selfMarking?: boolean;
 }) {
   const aiOn = useAiEnabled();
   const [aiBusy, setAiBusy] = useState(false);
@@ -57,6 +60,27 @@ export function QuestionCard({ q, value, onChange, locked, onSelfMark, onAiMark 
         );
       })}
 
+      {q.type === 'MATCHING' && (
+        <div className="flex flex-col gap-2">
+          {(q.options ?? []).map(o => {
+            const picked = partValues[o.id] ?? '';
+            const right = r?.correctPairs?.[o.id];
+            const good = r && right != null && same(picked, right);
+            return (
+              <div key={o.id} className={`grid items-center gap-2 rounded-lg border px-3 py-2 sm:grid-cols-[1fr_minmax(0,240px)] ${r ? (good ? 'border-[#5889FA] bg-[#F3F6FF]' : right != null ? 'border-[#EFC4C0] bg-[#FDF1F0]' : 'border-line') : 'border-line'}`}>
+                <span className="text-[14.5px] text-navy">{o.text}</span>
+                <select aria-label={`Match for ${o.text}`} disabled={locked} value={picked} onChange={e => onChange({ ...partValues, [o.id]: e.target.value })}
+                  className="h-9 rounded-lg border border-line bg-white px-2 text-sm text-navy outline-none focus:border-[#5889FA] disabled:bg-subtle">
+                  <option value="">Choose…</option>
+                  {(q.choices ?? []).map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                {r && right != null && !good && <span className="text-[12.5px] font-semibold text-navy sm:col-span-2">Answer: {right}</span>}
+              </div>
+            );
+          })}
+          {r?.score != null && <p className="text-sm font-semibold text-[#2F57C9]">{r.score} of {q.marks} pairs right</p>}
+        </div>
+      )}
       {q.type === 'FILL_BLANK' && <input aria-label="Your answer" className={field} disabled={locked} value={String(value ?? '')} onChange={e => onChange(e.target.value)} placeholder="Type your answer" />}
       {(q.type === 'SHORT_ANSWER' || q.type === 'WRITTEN') && <textarea aria-label="Your answer" className={field} rows={q.type === 'WRITTEN' ? 9 : 4} disabled={locked} value={String(value ?? '')} onChange={e => onChange(e.target.value)} placeholder="Type your answer" />}
       {q.type === 'STRUCTURED' && q.parts.map(p => (
@@ -81,7 +105,8 @@ export function QuestionCard({ q, value, onChange, locked, onSelfMark, onAiMark 
           )}
         </div>
       )}
-      {r?.needsSelfMark && onSelfMark && (
+      {r && isWritten(q.type) && !selfMarking && r.score == null && <p className="rounded-lg bg-subtle px-3 py-2 text-[13px] text-ink2">Your teacher will mark this answer. Your result updates when they do.</p>}
+      {r?.needsSelfMark && onSelfMark && selfMarking && (
         <form onSubmit={e => { e.preventDefault(); if (mark !== '') onSelfMark(Number(mark)); }} className="flex flex-wrap items-center gap-2 rounded-lg border border-[#5889FA] p-3 text-sm text-navy">
           <span className="font-semibold">Mark yourself against the answer:</span>
           <input aria-label="Your mark" type="number" min={0} max={q.marks} step={0.5} value={mark} onChange={e => setMark(e.target.value)} className="h-9 w-16 rounded-lg border border-line text-center outline-none focus:border-[#5889FA]" />
@@ -90,8 +115,8 @@ export function QuestionCard({ q, value, onChange, locked, onSelfMark, onAiMark 
           {aiOn && onAiMark && <button type="button" disabled={aiBusy} onClick={async () => { setAiBusy(true); try { await onAiMark(); } finally { setAiBusy(false); } }} className="h-9 rounded-md border border-[#5889FA] px-3 font-semibold text-[#3F6FE8] disabled:opacity-50">{aiBusy ? 'Marking…' : 'Mark with AI'}</button>}
         </form>
       )}
-      {r && isWritten(q.type) && r.score != null && <p className="text-sm font-semibold text-[#2F57C9]">{r.markedBy === 'AI' ? 'AI mark' : 'Your mark'}: {r.score} of {q.marks}</p>}
-      {r?.aiFeedback && <p className="rounded-lg border border-line px-3 py-2 text-[13px] text-navy"><strong>AI feedback:</strong> {r.aiFeedback} <span className="text-muted">You can still change the mark.</span></p>}
+      {r && isWritten(q.type) && r.score != null && <p className="text-sm font-semibold text-[#2F57C9]">{r.markedBy === 'AI' ? 'AI mark' : r.markedBy === 'TEACHER' ? 'Teacher’s mark' : 'Your mark'}: {r.score} of {q.marks}</p>}
+      {r?.aiFeedback && <p className="rounded-lg border border-line px-3 py-2 text-[13px] text-navy"><strong>{r.markedBy === 'TEACHER' ? 'Teacher’s feedback' : 'AI feedback'}:</strong> {r.aiFeedback} {r.markedBy !== 'TEACHER' && <span className="text-muted">You can still change the mark.</span>}</p>}
     </div>
   );
 }

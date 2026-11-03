@@ -18,10 +18,10 @@ interface CourseOpt { id: string; title: string; programmeId: string | null; pro
 type Part = { label: string; text: string; marks: number; markScheme: string };
 interface Draft {
   id?: string; courseId: string; moduleId: string; sourceLessonId: string; questionText: string; type: string; difficulty: string;
-  options: { id: string; text: string }[]; correctAnswer: string; parts: Part[]; explanation: string; tags: string; status?: string; bankOnly?: boolean; reviewNote?: string | null; aiDraft?: AiDraft | null; aiGenerated?: boolean;
+  options: { id: string; text: string; match?: string }[]; correctAnswer: string; parts: Part[]; explanation: string; tags: string; status?: string; bankOnly?: boolean; reviewNote?: string | null; aiDraft?: AiDraft | null; aiGenerated?: boolean;
 }
 
-const TYPES: [string, string][] = [['MCQ', 'Single answer (MCQ)'], ['STRUCTURED', 'Structured'], ['TRUE_FALSE', 'True / false'], ['FILL_BLANK', 'Fill the blank'], ['SHORT_ANSWER', 'Short answer'], ['WRITTEN', 'Essay']];
+const TYPES: [string, string][] = [['MCQ', 'Single answer (MCQ)'], ['STRUCTURED', 'Structured'], ['MATCHING', 'Matching'], ['TRUE_FALSE', 'True / false'], ['FILL_BLANK', 'Fill the blank'], ['SHORT_ANSWER', 'Short answer'], ['WRITTEN', 'Essay']];
 const typeName = (t: string) => TYPES.find(x => x[0] === t)?.[1] ?? t;
 const title = (s: string) => s[0] + s.slice(1).toLowerCase();
 const STATUS: Record<string, string> = { LIVE: 'Live', DRAFT: 'Draft', IN_REVIEW: 'In review' };
@@ -94,7 +94,7 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
 
   const payload = (d: Draft) => ({
     courseId: d.courseId, moduleId: d.moduleId || null, sourceLessonId: d.sourceLessonId || null, questionText: d.questionText, type: d.type, difficulty: d.difficulty,
-    options: d.type === 'MCQ' ? d.options : null, correctAnswer: d.correctAnswer, parts: d.type === 'STRUCTURED' ? d.parts : null,
+    options: d.type === 'MCQ' ? d.options : d.type === 'MATCHING' ? d.options.map((o, i) => ({ id: String(i + 1), text: o.text, match: o.match ?? '' })) : null, correctAnswer: d.correctAnswer, parts: d.type === 'STRUCTURED' ? d.parts : null,
     explanation: d.explanation, tags: d.tags.split(',').map(t => t.trim()).filter(Boolean),
   });
 
@@ -373,6 +373,18 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
                     </div>
                   ))}
                   {draft.options.length < 6 && <button type="button" onClick={() => put({ options: [...draft.options, { id: String.fromCharCode(97 + draft.options.length), text: '' }] })} className="self-start text-[13px] font-semibold text-[#3F6FE8]">+ Add answer</button>}
+                </div>
+              )}
+              {draft.type === 'MATCHING' && (
+                <div className="flex flex-col gap-2"><span className="text-[13px] font-semibold text-navy">Pairs <span className="font-normal text-muted">· students match each item to its answer, chosen from all the answers shuffled. One mark per pair.</span></span>
+                  {draft.options.map((o, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+                      <input aria-label={`Item ${i + 1}`} placeholder="Item" className={field} value={o.text} onChange={e => put({ options: draft.options.map((x, n) => (n === i ? { ...x, text: e.target.value } : x)) })} />
+                      <input aria-label={`Its answer ${i + 1}`} placeholder="Its answer" className={field} value={o.match ?? ''} onChange={e => put({ options: draft.options.map((x, n) => (n === i ? { ...x, match: e.target.value } : x)) })} />
+                      {draft.options.length > 2 ? <button type="button" aria-label="Remove pair" onClick={() => put({ options: draft.options.filter((_, n) => n !== i) })} className="text-[#C1352B]">✕</button> : <span />}
+                    </div>
+                  ))}
+                  {draft.options.length < 10 && <button type="button" onClick={() => put({ options: [...draft.options, { id: String(draft.options.length + 1), text: '', match: '' }] })} className="self-start text-[13px] font-semibold text-[#3F6FE8]">+ Add pair</button>}
                 </div>
               )}
               {draft.type === 'TRUE_FALSE' && (

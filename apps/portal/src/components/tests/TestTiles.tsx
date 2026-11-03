@@ -20,6 +20,7 @@ const ICONS = {
   random: 'M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5',
   cat: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
   papers: 'M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9ZM14 3v6h6M8 13h8M8 17h6',
+  mock: 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
   warm: 'M12 3v2M12 19v2M5 5l1.4 1.4M17.6 17.6 19 19M3 12h2M19 12h2M5 19l1.4-1.4M17.6 6.4 19 5M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z',
   history: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2',
 };
@@ -87,9 +88,9 @@ export function TestTiles({ data, compact }: { data: TestOverview | null; compac
       <Tile icon="create" title="Create a test" sub="Your filters, up to 150 questions" stat={unused} href="/student/tests/new" />
       <Tile icon="random" title="Surprise me" sub="A random mix from everything you study" stat={scope} onClick={() => quick('surprise')} busy={busy === 'surprise'} />
       <Tile icon="cat" title="CAT readiness exams" sub="Adapts to you. Are you ready for NCLEX?" solid soon />
-      <Tile icon="papers" title="Past papers" sub="Real exam years, paper by paper" soon />
+      <Tile icon="mock" title="Mock exams" sub="Full papers set by your teachers, timed" stat="See what’s on" href="/student/tests/mocks" />
+      <Tile icon="papers" title="Past papers" sub="Real exam years, paper by paper" stat="Browse papers" href="/student/tests/papers" />
       <Tile icon="warm" title="Daily warm-up" sub="Ten questions on your weak topics" stat={weak} onClick={() => quick('warmup')} busy={busy === 'warmup'} />
-      <Tile icon="history" title="Previous tests" sub="Review or retake past attempts" stat={data ? plural(data.testsTaken, 'test') + ' taken' : ''} href="/student/tests/history" />
     </div>
   );
 }

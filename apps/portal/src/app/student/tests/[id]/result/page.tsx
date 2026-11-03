@@ -10,6 +10,8 @@ interface Result {
   title: string; mode: string; submittedAt: string; usedSecs: number; timeLimitSecs: number | null;
   score: number; maxScore: number; percent: number; total: number; right: number; wrong: number; pending: number; flagged: number;
   topics: { topic: string; moduleId: string | null; score: number; max: number; percent: number; avgSecs: number; count: number; pending: number }[];
+  exam: { id: string; kind: 'MOCK' | 'PAST_PAPER'; title: string; passMark: number; showAnswers: boolean } | null;
+  passed: boolean | null; rank: { better: number; takers: number } | null; waitingForTeacher: number;
 }
 
 const mins = (s: number) => (s < 60 ? `${s} sec` : `${Math.round(s / 60)} min`);
@@ -66,9 +68,17 @@ export default function TestResultPage() {
       <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-6">
         <div>
           <h1 className="text-2xl font-extrabold tracking-[-0.01em] text-navy">You scored {r.percent}%</h1>
-          <p className="mt-1 text-sm text-ink2">{[r.title, r.mode === 'EXAM' ? 'Exam' : 'Practice'].filter((x, n, all) => all.indexOf(x) === n).join(' · ')}</p>
+          <p className="mt-1 text-sm text-ink2">{[r.title, r.exam?.kind === 'MOCK' ? 'Mock exam' : r.exam?.kind === 'PAST_PAPER' ? (r.mode === 'EXAM' ? 'Past paper' : 'Past paper practice') : r.mode === 'EXAM' ? 'Exam' : 'Practice'].filter((x, n, all) => all.indexOf(x) === n).join(' · ')}</p>
         </div>
-        {r.pending > 0 && (
+        {r.exam && (
+          <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg px-4 py-3 text-sm ${r.waitingForTeacher ? 'border border-line bg-white text-navy' : r.passed ? 'bg-[#3F6FE8] text-white' : 'border border-[#EFC4C0] bg-[#FDF1F0] text-navy'}`}>
+            <strong>{r.waitingForTeacher ? `Your teacher is marking ${r.waitingForTeacher} written ${r.waitingForTeacher === 1 ? 'answer' : 'answers'}` : r.passed ? `Passed. The pass mark is ${r.exam.passMark}%` : `Not a pass yet. The pass mark is ${r.exam.passMark}%`}</strong>
+            {r.waitingForTeacher > 0 && <span>Your score will update when they’re done.</span>}
+            {r.rank && <span>{r.rank.better === 0 ? 'Top score so far' : `${r.rank.better} of ${r.rank.takers} students did better`}</span>}
+            {!r.exam.showAnswers && <span>Your teacher keeps the right answers back for this exam.</span>}
+          </div>
+        )}
+        {r.pending > 0 && !r.waitingForTeacher && (
           <button onClick={() => { setReview(true); setOnly('mark'); }} className="rounded-lg border border-[#5889FA] bg-[#EAF0FF] px-4 py-3 text-left text-sm text-navy">
             <strong>{r.pending} written {r.pending === 1 ? 'answer needs' : 'answers need'} marking.</strong> Compare with the model answer and mark yourself; your score updates. →
           </button>
@@ -93,7 +103,7 @@ export default function TestResultPage() {
                   <td className="px-4 py-2.5">{t.topic}</td>
                   <td>{t.score} / {t.max} · {t.percent}%</td>
                   <td>{t.avgSecs} sec</td>
-                  <td className={`pr-4 font-semibold ${t.percent < 60 ? 'text-[#C1352B]' : ''}`}>{t.pending ? 'To mark' : t.percent < 60 ? 'Weak' : t.percent < 75 ? 'Fair' : 'Strong'}</td>
+                  <td className={`pr-4 font-semibold ${t.pending ? 'text-ink2' : t.percent < 60 ? 'text-[#C1352B]' : ''}`}>{t.pending ? 'To mark' : t.percent < 60 ? 'Weak' : t.percent < 75 ? 'Fair' : 'Strong'}</td>
                 </tr>
               ))}
             </tbody>
