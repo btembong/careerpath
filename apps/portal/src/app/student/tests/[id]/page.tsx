@@ -31,6 +31,7 @@ export default function TakeTestPage() {
   const load = useCallback(async () => {
     const { data } = await api.get<Session>(`/test-centre/sessions/${id}`);
     if (data.status === 'SUBMITTED') { router.replace(`/student/tests/${id}/result`); return; }
+    if ((data as { mode: string }).mode === 'CAT') { router.replace(`/student/tests/cat/${id}`); return; }
     setS(data);
     setLeft(data.remainingSecs);
     setValues(Object.fromEntries(data.questions.map(q => [q.id, q.answer])));

@@ -87,7 +87,7 @@ export function TestTiles({ data, compact }: { data: TestOverview | null; compac
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       <Tile icon="create" title="Create a test" sub="Your filters, up to 150 questions" stat={unused} href="/student/tests/new" />
       <Tile icon="random" title="Surprise me" sub="A random mix from everything you study" stat={scope} onClick={() => quick('surprise')} busy={busy === 'surprise'} />
-      <Tile icon="cat" title="CAT readiness exams" sub="Adapts to you. Are you ready for NCLEX?" solid soon />
+      <Tile icon="cat" title="CAT readiness exams" sub="Adapts to you. Are you ready for NCLEX?" stat="See the exams" href="/student/tests/cat" solid />
       <Tile icon="mock" title="Mock exams" sub="Full papers set by your teachers, timed" stat="See what’s on" href="/student/tests/mocks" />
       <Tile icon="papers" title="Past papers" sub="Real exam years, paper by paper" stat="Browse papers" href="/student/tests/papers" />
       <Tile icon="warm" title="Daily warm-up" sub="Ten questions on your weak topics" stat={weak} onClick={() => quick('warmup')} busy={busy === 'warmup'} />

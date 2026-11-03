@@ -184,7 +184,8 @@ export class CatService implements OnModuleInit {
 
     const n = st.served.length;
     const clear = Math.abs(st.theta - st.standard) > Z95 * st.se;
-    if ((n >= st.min && clear) || n >= st.max) return this.finish(id, n >= st.max && !clear ? 'MAX' : 'CONFIDENCE', st);
+    // Reaching the maximum is reported as such, even if it became sure on the last answer
+    if ((n >= st.min && clear) || n >= st.max) return this.finish(id, n >= st.max ? 'MAX' : 'CONFIDENCE', st);
     st.current = this.pick(st);
     if (!st.current) return this.finish(id, 'MAX', st);
     await this.save(id, st, { questionIds: { push: st.current } });

@@ -5,7 +5,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-type Kind = 'MOCK' | 'PAST_PAPER';
+type Kind = 'MOCK' | 'PAST_PAPER' | 'CAT';
 interface Row {
   id: string; kind: Kind; title: string; status: 'DRAFT' | 'PUBLISHED'; timeLimitSecs: number; passMark: number; attemptsAllowed: number;
   randomised: boolean; questionCount: number; examBody: string | null; year: number | null; session: string | null; paperNumber: string | null;
@@ -18,6 +18,7 @@ interface Form {
   id?: string; status?: string; kind: Kind; title: string; description: string; courseIds: string[]; packageIds: string[];
   timeMinutes: number; passMark: number; attemptsAllowed: number; showAnswers: boolean; randomised: boolean;
   sections: Section[]; questions: Q[]; examBody: string; year: string; session: string; paperNumber: string;
+  catMin: number; catMax: number; catStandard: number;
 }
 interface Mark { sessionId: string; examTitle: string; student: string; submittedAt: string; toMark: number }
 
@@ -29,7 +30,8 @@ const TYPE: Record<string, string> = { MCQ: 'MCQ', TRUE_FALSE: 'True/false', FIL
 
 export function MockExams({ role }: { role: 'ADMIN' | 'TEACHER' }) {
   const base = role === 'ADMIN' ? '/admin/mocks' : '/teacher/mocks';
-  const [tab, setTab] = useState<'MOCK' | 'PAST_PAPER' | 'MARK'>('MOCK');
+  const [tab, setTab] = useState<'MOCK' | 'PAST_PAPER' | 'CAT' | 'MARK'>('MOCK');
+  const [calibrating, setCalibrating] = useState(false);
   const [rows, setRows] = useState<Row[] | null>(null);
   const [toMark, setToMark] = useState(0);
   const [queue, setQueue] = useState<Mark[] | null>(null);
@@ -70,7 +72,7 @@ export function MockExams({ role }: { role: 'ADMIN' | 'TEACHER' }) {
 
   function newExam(kind: Kind) {
     const mine = courses.length === 1 ? [courses[0].id] : [];
-    setForm({ kind, title: '', description: '', courseIds: mine, packageIds: [], timeMinutes: kind === 'PAST_PAPER' ? 90 : 60, passMark: 50, attemptsAllowed: kind === 'MOCK' ? 3 : 0, showAnswers: true, randomised: kind === 'MOCK', sections: [blankSection(mine)], questions: [], examBody: '', year: '', session: '', paperNumber: '' });
+    setForm({ kind, title: '', description: '', courseIds: mine, packageIds: [], timeMinutes: kind === 'PAST_PAPER' ? 90 : kind === 'CAT' ? 300 : 60, passMark: 50, attemptsAllowed: kind === 'PAST_PAPER' ? 0 : 3, showAnswers: true, randomised: kind !== 'PAST_PAPER', sections: [{ ...blankSection(mine), count: kind === 'CAT' ? 100 : 10 }], questions: [], examBody: '', year: '', session: '', paperNumber: '', catMin: 85, catMax: 150, catStandard: 0 });
   }
 
   async function open(id: string) {
@@ -81,6 +83,7 @@ export function MockExams({ role }: { role: 'ADMIN' | 'TEACHER' }) {
         timeMinutes: e.timeMinutes, passMark: e.passMark, attemptsAllowed: e.attemptsAllowed, showAnswers: e.showAnswers, randomised: e.randomised,
         sections: (e.sections ?? []).map((s: Section) => ({ ...blankSection(), ...s, moduleIds: s.moduleIds ?? [] })), questions: e.questions ?? [],
         examBody: e.examBody ?? '', year: e.year ? String(e.year) : '', session: e.session ?? '', paperNumber: e.paperNumber ?? '',
+        catMin: e.catMin ?? 85, catMax: e.catMax ?? 150, catStandard: e.catStandard ?? 0,
       });
     } catch (x) { notify.error(err(x, 'Could not open it')); }
   }
@@ -90,6 +93,7 @@ export function MockExams({ role }: { role: 'ADMIN' | 'TEACHER' }) {
     timeMinutes: f.timeMinutes, passMark: f.passMark, attemptsAllowed: f.attemptsAllowed, showAnswers: f.showAnswers, randomised: f.randomised,
     sections: f.randomised ? f.sections : undefined, questionIds: f.randomised ? undefined : f.questions.map(q => q.id),
     examBody: f.examBody, year: f.year ? Number(f.year) : null, session: f.session, paperNumber: f.paperNumber,
+    ...(f.kind === 'CAT' ? { catMin: f.catMin, catMax: f.catMax, catStandard: f.catStandard } : {}),
   });
 
   async function save(publish?: boolean) {
@@ -110,7 +114,13 @@ export function MockExams({ role }: { role: 'ADMIN' | 'TEACHER' }) {
   }
 
   const total = form ? (form.randomised ? form.sections.reduce((n, s) => n + (Number(s.count) || 0), 0) : form.questions.length) : 0;
-  const kindName = (k: Kind) => (k === 'MOCK' ? 'mock exam' : 'past paper');
+  const kindName = (k: Kind) => (k === 'MOCK' ? 'mock exam' : k === 'CAT' ? 'CAT readiness exam' : 'past paper');
+
+  async function calibrate() {
+    setCalibrating(true);
+    try { const { data } = await api.post('/mock-exams/calibrate'); notify.success(`Difficulty updated for ${data.updated} questions. ${data.waiting} more need ${data.minAnswers} answers first.`); }
+    catch (x) { notify.error(err(x, 'Could not calibrate')); } finally { setCalibrating(false); }
+  }
 
   return (
     <div className="flex min-h-full flex-col">
@@ -121,12 +131,14 @@ export function MockExams({ role }: { role: 'ADMIN' | 'TEACHER' }) {
             <h1 className="text-2xl font-extrabold tracking-[-0.01em] text-navy">Mock exams and past papers</h1>
             <p className="mt-1 text-sm text-ink2">Set a paper once. Students who bought the courses or packages you choose can sit it in the Test Centre.</p>
           </div>
+          {role === 'ADMIN' && <button onClick={calibrate} disabled={calibrating} title="Sets each question’s difficulty for adaptive tests from how often students get it right" className="h-[38px] rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy disabled:opacity-50">{calibrating ? 'Calibrating…' : 'Calibrate difficulty'}</button>}
+          <button onClick={() => newExam('CAT')} className="h-[38px] rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy">New CAT exam</button>
           <button onClick={() => newExam('PAST_PAPER')} className="h-[38px] rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy">Add past paper</button>
           <button onClick={() => newExam('MOCK')} className="h-[38px] rounded-md bg-[#3F6FE8] px-3.5 text-[13.5px] font-semibold text-white hover:bg-[#2F57C9]">New mock exam</button>
         </div>
 
         <div role="tablist" className="flex gap-1 self-start rounded-lg border border-line bg-white p-[3px] text-[13px]">
-          {([['MOCK', 'Mock exams'], ['PAST_PAPER', 'Past papers'], ['MARK', `To mark${toMark ? ` (${toMark})` : ''}`]] as const).map(([k, l]) => (
+          {([['MOCK', 'Mock exams'], ['PAST_PAPER', 'Past papers'], ['CAT', 'CAT readiness'], ['MARK', `To mark${toMark ? ` (${toMark})` : ''}`]] as const).map(([k, l]) => (
             <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`rounded-md px-2.5 py-1 ${tab === k ? 'bg-[#EAF0FF] font-semibold text-navy' : 'text-ink2'}`}>{l}</button>
           ))}
         </div>
@@ -152,7 +164,7 @@ export function MockExams({ role }: { role: 'ADMIN' | 'TEACHER' }) {
                 {rows?.map(r => (
                   <tr key={r.id} onClick={() => open(r.id)} className="cursor-pointer border-t border-line hover:bg-subtle">
                     <td className="px-4 py-2.5"><strong>{r.title}</strong>{r.kind === 'PAST_PAPER' && <span className="block text-xs text-muted">{[r.examBody, r.year, r.session, r.paperNumber && `Paper ${r.paperNumber}`].filter(Boolean).join(' · ')}</span>}</td>
-                    <td>{r.questionCount}{r.randomised ? ' · random mix' : ''}</td>
+                    <td>{r.kind === 'CAT' ? `up to ${r.questionCount} · adaptive` : <>{r.questionCount}{r.randomised ? ' · random mix' : ''}</>}</td>
                     <td>{Math.round(r.timeLimitSecs / 60)} min</td>
                     <td>{r.passMark}%</td>
                     <td>{r.attempts}{r.toMark ? <span className="ml-1 text-[#3F6FE8]">· {r.toMark} to mark</span> : ''}</td>
@@ -169,7 +181,7 @@ export function MockExams({ role }: { role: 'ADMIN' | 'TEACHER' }) {
         <div role="dialog" aria-modal="true" aria-label={form.id ? 'Edit exam' : 'New exam'} className="fixed inset-0 z-50 flex justify-end bg-navy/40">
           <div className="flex h-full w-full max-w-[860px] flex-col bg-white">
             <div className="flex items-center gap-3 border-b border-line px-5 py-3.5">
-              <strong className="flex-1 text-lg text-navy">{form.id ? `Edit ${kindName(form.kind)}` : form.kind === 'MOCK' ? 'New mock exam' : 'Add a past paper'}</strong>
+              <strong className="flex-1 text-lg text-navy">{form.id ? `Edit ${kindName(form.kind)}` : form.kind === 'MOCK' ? 'New mock exam' : form.kind === 'CAT' ? 'New CAT readiness exam' : 'Add a past paper'}</strong>
               {form.status && <span className="rounded-md bg-subtle px-2 py-0.5 text-xs font-semibold text-ink2">{form.status === 'PUBLISHED' ? 'Live' : 'Draft'}</span>}
               <button aria-label="Close" onClick={() => setForm(null)} className="text-lg text-muted">✕</button>
             </div>
@@ -199,6 +211,18 @@ export function MockExams({ role }: { role: 'ADMIN' | 'TEACHER' }) {
                 </div>
               </div>
 
+              {form.kind === 'CAT' && (
+                <div className="flex flex-col gap-2.5 rounded-lg border border-[#5889FA] p-3">
+                  <p className="text-[13px] text-navy">Each answer sets the next question. The test stops once it’s 95% sure the student is above or below the passing standard (after the fewest questions), or at the most questions, or when time runs out. Only automatically marked questions are used.</p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className={label}>Fewest questions<input type="number" min={5} className={field} value={form.catMin} onChange={e => put({ catMin: Number(e.target.value) })} /></label>
+                    <label className={label}>Most questions<input type="number" min={5} max={300} className={field} value={form.catMax} onChange={e => put({ catMax: Number(e.target.value) })} /></label>
+                    <label className={label}>Passing standard <span className="font-normal text-muted">0 = average question</span><input type="number" step={0.1} min={-3} max={3} className={field} value={form.catStandard} onChange={e => put({ catStandard: Number(e.target.value) })} /></label>
+                  </div>
+                  <p className="text-xs text-muted">NCLEX uses 85 to 150 questions in up to 5 hours. Below, each section is a content area and its number is its share of the test (for example 13 for “Management of care”). The bank needs several times more questions than the most questions.</p>
+                </div>
+              )}
+
               {form.kind === 'MOCK' && (
                 <div role="tablist" className="flex gap-1 self-start rounded-lg border border-line p-[3px] text-[13px]">
                   {([[true, 'Random mix for each student'], [false, 'Fixed paper']] as const).map(([v, l]) => (
@@ -209,20 +233,22 @@ export function MockExams({ role }: { role: 'ADMIN' | 'TEACHER' }) {
 
               {form.randomised ? (
                 <div className="flex flex-col gap-2.5">
-                  <p className="rounded-lg bg-[#EAF0FF] px-3 py-2 text-[13px] text-navy">Every student gets a different mix that follows this plan, so answers can’t simply be shared. Leave easy, medium and hard at 0 for any mix.</p>
+                  {form.kind !== 'CAT' && <p className="rounded-lg bg-[#EAF0FF] px-3 py-2 text-[13px] text-navy">Every student gets a different mix that follows this plan, so answers can’t simply be shared. Leave easy, medium and hard at 0 for any mix.</p>}
                   {form.sections.map((s, i) => {
                     const up = (patch: Partial<Section>) => put({ sections: form.sections.map((x, n) => (n === i ? { ...x, ...patch } : x)) });
                     const a = avail[i];
-                    const short = a && (a.total < s.count || a.easy < s.easy || a.medium < s.medium || a.hard < s.hard);
+                    const short = form.kind !== 'CAT' && a && (a.total < s.count || a.easy < s.easy || a.medium < s.medium || a.hard < s.hard);
                     const mods = courses.filter(c => s.courseIds.includes(c.id)).flatMap(c => c.modules.map(m => ({ ...m, course: c.title })));
                     return (
                       <div key={i} className="flex flex-col gap-2 rounded-lg border border-line p-3">
-                        <div className="grid gap-2 sm:grid-cols-[1fr_repeat(4,90px)_auto]">
-                          <label className={label}>Section<input className={field} value={s.title} onChange={e => up({ title: e.target.value })} /></label>
-                          <label className={label}>Questions<input type="number" min={1} className={field} value={s.count} onChange={e => up({ count: Number(e.target.value) })} /></label>
-                          <label className={label}>Easy<input type="number" min={0} className={field} value={s.easy} onChange={e => up({ easy: Number(e.target.value) })} /></label>
-                          <label className={label}>Medium<input type="number" min={0} className={field} value={s.medium} onChange={e => up({ medium: Number(e.target.value) })} /></label>
-                          <label className={label}>Hard<input type="number" min={0} className={field} value={s.hard} onChange={e => up({ hard: Number(e.target.value) })} /></label>
+                        <div className={`grid gap-2 ${form.kind === 'CAT' ? 'sm:grid-cols-[1fr_110px_auto]' : 'sm:grid-cols-[1fr_repeat(4,90px)_auto]'}`}>
+                          <label className={label}>{form.kind === 'CAT' ? 'Content area' : 'Section'}<input className={field} value={s.title} onChange={e => up({ title: e.target.value })} /></label>
+                          <label className={label}>{form.kind === 'CAT' ? 'Share' : 'Questions'}<input type="number" min={1} className={field} value={s.count} onChange={e => up({ count: Number(e.target.value) })} /></label>
+                          {form.kind !== 'CAT' && <>
+                            <label className={label}>Easy<input type="number" min={0} className={field} value={s.easy} onChange={e => up({ easy: Number(e.target.value) })} /></label>
+                            <label className={label}>Medium<input type="number" min={0} className={field} value={s.medium} onChange={e => up({ medium: Number(e.target.value) })} /></label>
+                            <label className={label}>Hard<input type="number" min={0} className={field} value={s.hard} onChange={e => up({ hard: Number(e.target.value) })} /></label>
+                          </>}
                           {form.sections.length > 1 && <button type="button" onClick={() => put({ sections: form.sections.filter((_, n) => n !== i) })} className="self-end pb-2 text-[13px] font-semibold text-[#C1352B]">Remove</button>}
                         </div>
                         <span className="text-xs font-semibold text-navy">Pull from</span>
@@ -270,7 +296,7 @@ export function MockExams({ role }: { role: 'ADMIN' | 'TEACHER' }) {
               )}
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-5 py-3">
-              <span className="mr-auto text-[13px] text-ink2">{total} questions · {form.timeMinutes} min{form.id ? '' : ' · saved as a draft until you publish'}</span>
+              <span className="mr-auto text-[13px] text-ink2">{form.kind === 'CAT' ? `${form.catMin} to ${form.catMax} questions, adaptive` : `${total} questions`} · {form.timeMinutes} min{form.id ? '' : ' · saved as a draft until you publish'}</span>
               {form.id && <button disabled={saving} onClick={() => { if (window.confirm('Delete this? If students have taken it, it’s archived instead so their results stay.')) act(() => api.delete(`/mock-exams/${form.id}`), 'Removed'); }} className="text-[13px] font-semibold text-[#C1352B]">Delete</button>}
               {form.status === 'PUBLISHED' && <button disabled={saving} onClick={() => act(() => api.post(`/mock-exams/${form.id}/status`, { status: 'DRAFT' }), 'Taken down. Students can’t start it now.')} className="h-9 rounded-md border border-line px-3.5 text-[13.5px] font-semibold text-navy">Take down</button>}
               <button disabled={saving} onClick={() => save()} className="h-9 rounded-md border border-line px-3.5 text-[13.5px] font-semibold text-navy disabled:opacity-50">{form.status === 'PUBLISHED' ? 'Save changes' : 'Save draft'}</button>

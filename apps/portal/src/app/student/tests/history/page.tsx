@@ -20,9 +20,9 @@ export default function TestHistoryPage() {
           {rows?.map(r => {
             const open = r.status === 'IN_PROGRESS';
             return (
-              <Link key={r.id} href={open ? `/student/tests/${r.id}` : `/student/tests/${r.id}/result`} className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 text-sm last:border-0 hover:bg-subtle">
+              <Link key={r.id} href={open ? (r.mode === 'CAT' ? `/student/tests/cat/${r.id}` : `/student/tests/${r.id}`) : `/student/tests/${r.id}/result`} className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 text-sm last:border-0 hover:bg-subtle">
                 <span className="min-w-0"><strong className="block truncate text-navy">{r.title}</strong>
-                  <span className="text-xs text-muted">{r.mode === 'EXAM' ? 'Exam' : 'Practice'} · {r.questionCount} questions · {new Date(r.startedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span></span>
+                  <span className="text-xs text-muted">{r.mode === 'CAT' ? 'CAT readiness' : r.mode === 'EXAM' ? 'Exam' : 'Practice'} · {r.questionCount} questions · {new Date(r.startedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span></span>
                 <strong className={open ? 'text-[#3F6FE8]' : 'text-navy'}>{open ? 'Continue' : r.percent != null ? `${r.percent}%` : '—'}</strong>
               </Link>
             );

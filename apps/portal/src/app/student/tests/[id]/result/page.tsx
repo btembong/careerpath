@@ -5,6 +5,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 import { QuestionCard, TestQuestion } from '@/components/tests/QuestionCard';
+import { BAND_LABEL, BANDS, REASON } from '@/components/tests/cat';
 
 interface Result {
   title: string; mode: string; submittedAt: string; usedSecs: number; timeLimitSecs: number | null;
@@ -12,6 +13,7 @@ interface Result {
   topics: { topic: string; moduleId: string | null; score: number; max: number; percent: number; avgSecs: number; count: number; pending: number }[];
   exam: { id: string; kind: 'MOCK' | 'PAST_PAPER'; title: string; passMark: number; showAnswers: boolean } | null;
   passed: boolean | null; rank: { better: number; takers: number } | null; waitingForTeacher: number;
+  cat: { decision: 'ABOVE' | 'BELOW' | 'UNDECIDED'; reason: string; probability: number; band: string; items: number; byArea: { area: string; items: number; right: number; standing: 'ABOVE' | 'NEAR' | 'BELOW' }[] } | null;
 }
 
 const mins = (s: number) => (s < 60 ? `${s} sec` : `${Math.round(s / 60)} min`);
@@ -53,6 +55,54 @@ export default function TestResultPage() {
   }
 
   if (!r) return <div className="flex min-h-full flex-col"><Topbar backHref="/student/tests" backLabel="Test Centre" /><p className="p-7 text-sm text-muted">Loading your result…</p></div>;
+
+  if (r.cat) {
+    const c = r.cat;
+    const heading = c.decision === 'UNDECIDED' ? 'Not enough answers for a result' : c.decision === 'ABOVE' ? 'Likely ready, keep it up' : 'Not ready yet. Here’s where to focus';
+    return (
+      <div className="flex min-h-full flex-col">
+        <Topbar backHref="/student/tests/cat" backLabel="CAT readiness" />
+        <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-6">
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-[-0.01em] text-navy">{heading}</h1>
+            <p className="mt-1 text-sm text-ink2">CAT readiness · {r.title} · {c.items} questions · {REASON[c.reason] ?? ''}</p>
+          </div>
+          <section className="flex flex-col gap-2.5 rounded-[10px] border border-line bg-white p-[18px]">
+            <h2 className="text-[15px] font-bold text-navy">Your readiness</h2>
+            <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
+              {BANDS.map(b => <span key={b} className={`rounded-md px-2 py-2.5 text-center text-[13px] ${c.decision !== 'UNDECIDED' && c.band === b ? 'bg-[#3F6FE8] font-bold text-white' : 'bg-subtle text-muted'}`}>{BAND_LABEL[b]}</span>)}
+            </div>
+            {c.decision !== 'UNDECIDED' && <p className="text-[13px] text-ink2">From your answers, there’s about a {Math.round(c.probability * 100)}% chance you’re above the passing standard.</p>}
+            {c.decision === 'UNDECIDED' && <p className="text-[13px] text-ink2">The test needs a minimum number of answers before it can judge. Try again when you have time to finish.</p>}
+            <p className="text-xs text-muted">A practice estimate from your answers on CareerPath Africa. It isn’t an official score and doesn’t guarantee a result.</p>
+          </section>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[{ l: 'Questions', v: String(c.items), d: REASON[c.reason] ?? '' }, { l: 'Right', v: `${r.right} of ${c.items}`, d: 'Harder questions follow right answers' }, { l: 'Time', v: mins(r.usedSecs), d: r.timeLimitSecs ? `of ${mins(r.timeLimitSecs)}` : '' }].map(t => (
+              <div key={t.l} className="rounded-[10px] border border-line bg-white px-4 py-3.5"><span className="text-[12.5px] text-muted">{t.l}</span><p className="mt-0.5 text-2xl font-extrabold text-navy">{t.v}</p><span className="text-xs text-ink2">{t.d}</span></div>
+            ))}
+          </div>
+          {c.byArea.length > 0 && (
+            <section className="overflow-x-auto rounded-[10px] border border-line bg-white">
+              <table className="w-full min-w-[480px] border-collapse text-[13.5px] text-navy">
+                <thead><tr className="bg-subtle text-left text-ink2"><th className="px-4 py-2.5 font-semibold">Area</th><th className="font-semibold">Questions</th><th className="font-semibold">Right</th><th className="pr-4 font-semibold">Compared with the standard</th></tr></thead>
+                <tbody>{c.byArea.map(a => (
+                  <tr key={a.area} className="border-t border-line"><td className="px-4 py-2.5">{a.area}</td><td>{a.items}</td><td>{a.right}</td>
+                    <td className={`pr-4 font-semibold ${a.standing === 'BELOW' ? 'text-[#C1352B]' : ''}`}>{a.standing === 'ABOVE' ? 'Above' : a.standing === 'BELOW' ? 'Below' : 'Near'}</td></tr>
+                ))}</tbody>
+              </table>
+            </section>
+          )}
+          <div className="flex flex-wrap gap-2.5">
+            <button onClick={() => setReview(v => !v)} className="h-10 rounded-md bg-[#3F6FE8] px-4 text-[13.5px] font-semibold text-white">{review ? 'Hide answers' : 'Review my answers'}</button>
+            {r.wrong > 0 && <button onClick={retake} disabled={busy} className="h-10 rounded-md border border-line bg-white px-4 text-[13.5px] font-semibold text-navy disabled:opacity-50">Practise what I got wrong ({r.wrong})</button>}
+          </div>
+          {review && (questions ?? []).map(q => (
+            <section key={q.id} className="rounded-[10px] border border-line bg-white p-5"><QuestionCard q={q} value={q.answer} onChange={() => {}} locked /></section>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   const shown = (questions ?? []).filter(q => only === 'all' || (only === 'wrong' && q.reveal?.isCorrect === false) || (only === 'flagged' && q.flagged) || (only === 'mark' && q.reveal?.needsSelfMark));
   const tiles = [

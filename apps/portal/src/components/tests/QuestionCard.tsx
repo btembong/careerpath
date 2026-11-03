@@ -41,7 +41,7 @@ export function QuestionCard({ q, value, onChange, locked, onSelfMark, onAiMark,
 
   return (
     <div className="flex flex-col gap-3.5">
-      <p className="text-[12.5px] text-muted">{TYPE_LABEL[q.type] ?? q.type} · {q.marks} {q.marks === 1 ? 'mark' : 'marks'} · {q.difficulty[0] + q.difficulty.slice(1).toLowerCase()}</p>
+      <p className="text-[12.5px] text-muted">{[TYPE_LABEL[q.type] ?? q.type, `${q.marks} ${q.marks === 1 ? 'mark' : 'marks'}`, q.difficulty && q.difficulty[0] + q.difficulty.slice(1).toLowerCase()].filter(Boolean).join(' · ')}</p>
       <p className="whitespace-pre-line text-[17px] font-semibold leading-snug text-navy">{q.text}</p>
       {q.imageUrl && (/* eslint-disable-next-line @next/next/no-img-element */ <img src={q.imageUrl} alt="" className="max-h-72 max-w-full self-start rounded-lg border border-line" />)}
 
