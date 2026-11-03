@@ -1,11 +1,13 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import { useAiEnabled } from '@/lib/ai';
 
 export interface Reveal {
   isCorrect: boolean | null; score: number | null; correctAnswer: string | null; modelAnswer: string | null;
   explanation: string | null; needsSelfMark: boolean;
   lesson: { id: string; courseId: string; title: string } | null; percentRight: number | null;
+  markedBy?: string | null; aiFeedback?: string | null;
 }
 export interface TestQuestion {
   id: string; type: string; text: string; imageUrl: string | null; difficulty: string;
@@ -24,9 +26,11 @@ function optionsOf(q: TestQuestion) {
 }
 
 /** One question. `value` is what's been chosen or typed; locked questions can't be changed. */
-export function QuestionCard({ q, value, onChange, locked, onSelfMark }: {
-  q: TestQuestion; value: unknown; onChange: (v: unknown) => void; locked: boolean; onSelfMark?: (score: number) => void;
+export function QuestionCard({ q, value, onChange, locked, onSelfMark, onAiMark }: {
+  q: TestQuestion; value: unknown; onChange: (v: unknown) => void; locked: boolean; onSelfMark?: (score: number) => void; onAiMark?: () => Promise<void>;
 }) {
+  const aiOn = useAiEnabled();
+  const [aiBusy, setAiBusy] = useState(false);
   const r = q.reveal;
   const same = (a: unknown, b: string | null) => b != null && String(a ?? '').trim().toLowerCase() === b.trim().toLowerCase();
   const partValues = (value && typeof value === 'object' ? value : {}) as Record<string, string>;
@@ -83,9 +87,11 @@ export function QuestionCard({ q, value, onChange, locked, onSelfMark }: {
           <input aria-label="Your mark" type="number" min={0} max={q.marks} step={0.5} value={mark} onChange={e => setMark(e.target.value)} className="h-9 w-16 rounded-lg border border-line text-center outline-none focus:border-[#5889FA]" />
           <span>out of {q.marks}</span>
           <button className="h-9 rounded-md bg-[#3F6FE8] px-3 font-semibold text-white disabled:opacity-50" disabled={mark === ''}>Save mark</button>
+          {aiOn && onAiMark && <button type="button" disabled={aiBusy} onClick={async () => { setAiBusy(true); try { await onAiMark(); } finally { setAiBusy(false); } }} className="h-9 rounded-md border border-[#5889FA] px-3 font-semibold text-[#3F6FE8] disabled:opacity-50">{aiBusy ? 'Marking…' : 'Mark with AI'}</button>}
         </form>
       )}
-      {r && isWritten(q.type) && r.score != null && <p className="text-sm font-semibold text-[#2F57C9]">Marked: {r.score} of {q.marks}</p>}
+      {r && isWritten(q.type) && r.score != null && <p className="text-sm font-semibold text-[#2F57C9]">{r.markedBy === 'AI' ? 'AI mark' : 'Your mark'}: {r.score} of {q.marks}</p>}
+      {r?.aiFeedback && <p className="rounded-lg border border-line px-3 py-2 text-[13px] text-navy"><strong>AI feedback:</strong> {r.aiFeedback} <span className="text-muted">You can still change the mark.</span></p>}
     </div>
   );
 }

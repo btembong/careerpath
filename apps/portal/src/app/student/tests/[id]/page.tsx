@@ -123,6 +123,13 @@ export default function TakeTestPage() {
     } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not save your mark'); }
   }
 
+  async function aiMark() {
+    try {
+      const { data } = await api.post(`/test-centre/sessions/${id}/ai-mark`, { questionId: q.id });
+      setQuestion({ ...q, reveal: q.reveal ? { ...q.reveal, score: data.score, isCorrect: data.isCorrect, needsSelfMark: false, markedBy: 'AI', aiFeedback: data.feedback } : null });
+    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'AI marking didn’t work. Mark yourself instead.'); }
+  }
+
   async function finish() {
     setBusy(true);
     await flush();
@@ -144,7 +151,7 @@ export default function TakeTestPage() {
 
       <div className={`grid items-start gap-3.5 ${exam ? 'lg:grid-cols-[1fr_280px]' : ''}`}>
         <section className="flex min-w-0 flex-col gap-4 rounded-[10px] border border-line bg-white p-5">
-          <QuestionCard key={q.id} q={q} value={values[q.id]} onChange={change} locked={revealed && !exam} onSelfMark={selfMark} />
+          <QuestionCard key={q.id} q={q} value={values[q.id]} onChange={change} locked={revealed && !exam} onSelfMark={selfMark} onAiMark={aiMark} />
           <div className="flex flex-wrap items-center gap-2.5 border-t border-line pt-3">
             {i > 0 && <button onClick={() => go(i - 1)} className="h-[38px] rounded-md border border-line px-3.5 text-[13.5px] font-semibold text-navy">Back</button>}
             <button onClick={flag} aria-pressed={q.flagged} className={`h-[38px] rounded-md border px-3.5 text-[13.5px] font-semibold ${q.flagged ? 'border-[#5889FA] bg-[#EAF0FF] text-navy' : 'border-line text-navy'}`}>{q.flagged ? '⚑ Flagged' : '⚑ Flag for review'}</button>

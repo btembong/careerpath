@@ -1673,6 +1673,8 @@ const AI_PROMPTS: { icon: IconName; label: string; q: string }[] = [
 
 function AIAssistantPanel({ courseId, lessonId, lessonTitle }: { courseId: string; lessonId: string; lessonTitle: string }) {
   const [messages, setMessages] = useState<AIMessage[]>([]);
+  const [aiOn, setAiOn] = useState(true);
+  useEffect(() => { api.get('/ai/status').then(r => setAiOn(!!r.data?.enabled)).catch(() => {}); }, []);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
@@ -1753,7 +1755,8 @@ function AIAssistantPanel({ courseId, lessonId, lessonTitle }: { courseId: strin
             </div>
             <div className="space-y-2">
               <p className="text-[10px] font-bold uppercase tracking-widest text-white/35 px-1">Try asking</p>
-              {AI_PROMPTS.map(p => (
+              {!aiOn && <p className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-xs leading-relaxed text-white/70">The AI tutor is being switched on. It will answer questions about this lesson soon.</p>}
+              {aiOn && AI_PROMPTS.map(p => (
                 <button key={p.label} onClick={() => send(p.q)}
                   className="flex w-full items-center gap-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/5 hover:border-azure/20 px-3 py-2.5 text-left transition group">
                   <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-azure/10 text-azure/60 group-hover:bg-azure/20 group-hover:text-azure transition">

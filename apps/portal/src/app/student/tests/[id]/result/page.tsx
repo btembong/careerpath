@@ -45,6 +45,11 @@ export default function TestResultPage() {
     catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not save your mark'); }
   }
 
+  async function aiMark(questionId: string) {
+    try { await api.post(`/test-centre/sessions/${id}/ai-mark`, { questionId }); load(); }
+    catch (err: any) { notify.error(err?.response?.data?.message ?? 'AI marking didn’t work. Mark yourself instead.'); }
+  }
+
   if (!r) return <div className="flex min-h-full flex-col"><Topbar backHref="/student/tests" backLabel="Test Centre" /><p className="p-7 text-sm text-muted">Loading your result…</p></div>;
 
   const shown = (questions ?? []).filter(q => only === 'all' || (only === 'wrong' && q.reveal?.isCorrect === false) || (only === 'flagged' && q.flagged) || (only === 'mark' && q.reveal?.needsSelfMark));
@@ -110,7 +115,7 @@ export default function TestResultPage() {
             {!shown.length && <p className="text-sm text-muted">Nothing here.</p>}
             {shown.map(q => (
               <section key={q.id} className="rounded-[10px] border border-line bg-white p-5">
-                <QuestionCard q={q} value={q.answer} onChange={() => {}} locked onSelfMark={score => selfMark(q.id, score)} />
+                <QuestionCard q={q} value={q.answer} onChange={() => {}} locked onSelfMark={score => selfMark(q.id, score)} onAiMark={() => aiMark(q.id)} />
               </section>
             ))}
           </>

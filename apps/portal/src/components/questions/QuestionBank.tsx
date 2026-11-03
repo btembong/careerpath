@@ -3,18 +3,22 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Topbar } from '@/components/layout/Topbar';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { useAiEnabled } from '@/lib/ai';
 
 interface Row {
   id: string; text: string; type: string; difficulty: string; status: string; bankOnly: boolean; reviewNote: string | null;
   courseId: string; courseTitle: string; programme: string | null; moduleTitle: string | null; lessonTitle: string | null;
   hasExplanation: boolean; answered: number; percentRight: number | null;
+  hasAiDraft: boolean; aiGenerated: boolean; aiFlag: boolean;
 }
-interface Stats { all: number; noWhy: number; mediumOnly: number; inReview: number; drafts: number }
+interface AiDraft { explanation: string; modelAnswer?: string | null; markSchemes?: string[] | null; answerLooksWrong: boolean; note: string }
+interface Job { id: string; total: number; done: number; failed: number; errors: string[]; status: 'running' | 'finished' }
+interface Stats { all: number; noWhy: number; mediumOnly: number; inReview: number; drafts: number; aiDrafts: number; aiCheck: number }
 interface CourseOpt { id: string; title: string; programmeId: string | null; programme: { id: string; name: string; shortName: string | null } | null; modules: { id: string; title: string; lessons: { id: string; title: string }[] }[] }
 type Part = { label: string; text: string; marks: number; markScheme: string };
 interface Draft {
   id?: string; courseId: string; moduleId: string; sourceLessonId: string; questionText: string; type: string; difficulty: string;
-  options: { id: string; text: string }[]; correctAnswer: string; parts: Part[]; explanation: string; tags: string; status?: string; bankOnly?: boolean; reviewNote?: string | null;
+  options: { id: string; text: string }[]; correctAnswer: string; parts: Part[]; explanation: string; tags: string; status?: string; bankOnly?: boolean; reviewNote?: string | null; aiDraft?: AiDraft | null; aiGenerated?: boolean;
 }
 
 const TYPES: [string, string][] = [['MCQ', 'Single answer (MCQ)'], ['STRUCTURED', 'Structured'], ['TRUE_FALSE', 'True / false'], ['FILL_BLANK', 'Fill the blank'], ['SHORT_ANSWER', 'Short answer'], ['WRITTEN', 'Essay']];
@@ -55,7 +59,11 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [courses, setCourses] = useState<CourseOpt[]>([]);
-  const [f, setF] = useState({ search: '', courseId: '', difficulty: '', type: '', status: '', missing: '' });
+  const [f, setF] = useState({ search: '', courseId: '', difficulty: '', type: '', status: '', missing: '', ai: '' });
+  const aiOn = useAiEnabled();
+  const [job, setJob] = useState<Job | null>(null);
+  const [gen, setGen] = useState<{ courseId: string; moduleId: string; lessonId: string; count: number; types: string[]; difficulty: string } | null>(null);
+  const [aiText, setAiText] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -78,8 +86,9 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
         id: q.id, courseId: q.courseId, moduleId: q.moduleId ?? '', sourceLessonId: q.sourceLessonId ?? '', questionText: q.questionText, type: q.type, difficulty: q.difficulty,
         options: Array.isArray(q.options) && q.options.length ? q.options : blankOptions(), correctAnswer: q.correctAnswer ?? '',
         parts: Array.isArray(q.parts) && q.parts.length ? q.parts : blank().parts, explanation: q.explanation ?? '', tags: (q.tags ?? []).join(', '),
-        status: q.status, bankOnly: q.bankOnly, reviewNote: q.reviewNote,
+        status: q.status, bankOnly: q.bankOnly, reviewNote: q.reviewNote, aiDraft: q.aiDraft, aiGenerated: q.aiGenerated,
       });
+      setAiText(q.aiDraft?.explanation ?? '');
     } catch (e) { notify.error(err(e, 'Could not open this question')); }
   }
 
@@ -89,7 +98,7 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
     explanation: d.explanation, tags: d.tags.split(',').map(t => t.trim()).filter(Boolean),
   });
 
-  async function save(then?: 'submit' | 'approve') {
+  async function save(then?: 'submit' | 'approve' | 'next') {
     if (!draft) return;
     setSaving(true);
     try {
@@ -97,7 +106,10 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
       if (then === 'submit') await api.post(`/question-bank/${data.id}/submit`);
       if (then === 'approve') await api.post(`/question-bank/${data.id}/decide`, { approve: true });
       notify.success(then === 'submit' ? 'Sent for review' : then === 'approve' ? 'Question is live' : 'Saved');
+      // Save and next: straight on to the following question in the list
+      const next = then === 'next' && rows ? rows[rows.findIndex(x => x.id === draft.id) + 1] : undefined;
       setDraft(null); load();
+      if (next) await open(next.id);
     } catch (e) { notify.error(err(e, 'Could not save')); }
     finally { setSaving(false); }
   }
@@ -115,6 +127,53 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
     if (note === null) return;
     const id = draft.id;
     await act(() => api.post(`/question-bank/${id}/decide`, { approve: false, note }), 'Sent back to the teacher');
+  }
+
+  // ── AI ──
+  useEffect(() => {
+    if (job?.status !== 'running') return;
+    const t = setTimeout(() => api.get(`/question-bank/ai/jobs/${job.id}`).then(r => {
+      setJob(r.data);
+      if (r.data.status === 'finished') { load(); notify.success(`AI drafted ${r.data.done} explanations. Check them before they go to students.`); }
+    }).catch(() => setJob(null)), 1500);
+    return () => clearTimeout(t);
+  }, [job, load]);
+
+  async function draftExplanations() {
+    const target = f.courseId ? 'the questions in this course' : 'every question you can edit';
+    if (!window.confirm(`Draft explanations with AI for ${target} that don’t have one? You’ll check each draft before students see it.`)) return;
+    try { const { data } = await api.post('/question-bank/ai/explanations', f.courseId ? { courseId: f.courseId } : {}); setJob(data); }
+    catch (e) { notify.error(err(e, 'Could not start the AI')); }
+  }
+
+  async function generate() {
+    if (!gen) return;
+    setSaving(true);
+    try {
+      const { data } = await api.post('/question-bank/ai/generate', { courseId: gen.courseId, moduleId: gen.moduleId || undefined, lessonId: gen.lessonId || undefined, count: gen.count, types: gen.types, difficulty: gen.difficulty });
+      notify.success(`${data.created} questions drafted. Check them, then send them for review.`);
+      setGen(null); setPage(1); setF(c => ({ ...c, courseId: gen.courseId, ai: 'written', status: 'DRAFT' }));
+    } catch (e) { notify.error(err(e, 'The AI couldn’t write questions')); }
+    finally { setSaving(false); }
+  }
+
+  async function acceptAi() {
+    if (!draft?.id) return;
+    const id = draft.id;
+    setSaving(true);
+    try {
+      await api.post(`/question-bank/${id}/ai-draft/accept`, { explanation: aiText });
+      notify.success('Explanation added');
+      load(); await open(id);
+    } catch (e) { notify.error(err(e, 'Could not add it')); }
+    finally { setSaving(false); }
+  }
+
+  async function discardAi() {
+    if (!draft?.id) return;
+    const id = draft.id;
+    try { await api.post(`/question-bank/${id}/ai-draft/discard`); load(); await open(id); }
+    catch (e) { notify.error(err(e, 'Could not discard it')); }
   }
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -140,7 +199,9 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
     { l: 'All questions', v: stats.all, d: `${stats.drafts} drafts`, on: () => set('status', '') },
     { l: 'Waiting for review', v: stats.inReview, d: canDecide ? 'Approve or send back' : 'With the reviewer', on: () => set('status', 'IN_REVIEW') },
     { l: 'No why-explanation', v: stats.noWhy, d: 'Practice shows only the answer', on: () => set('missing', 'explanation') },
-    { l: 'Marked Medium', v: stats.mediumOnly, d: 'CAT needs easy and hard too', on: () => set('difficulty', 'MEDIUM') },
+    stats.aiDrafts > 0
+      ? { l: 'AI drafts to check', v: stats.aiDrafts, d: stats.aiCheck ? `${stats.aiCheck} where the answer may be wrong` : 'Accept, edit or discard', on: () => set('ai', 'drafts') }
+      : { l: 'Marked Medium', v: stats.mediumOnly, d: 'CAT needs easy and hard too', on: () => set('difficulty', 'MEDIUM') },
   ] : [];
 
   return (
@@ -152,10 +213,21 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
             <h1 className="text-2xl font-extrabold tracking-[-0.01em] text-navy">Question bank</h1>
             <p className="mt-1 text-sm text-ink2">Every question from {role === 'ADMIN' ? 'every course' : 'your courses'} in one place. Lesson quizzes and the Test Centre both draw from it.</p>
           </div>
+          <button onClick={draftExplanations} disabled={!aiOn || job?.status === 'running'} title={aiOn ? '' : 'Add the AI key to switch this on'} className="h-[38px] rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy disabled:opacity-50">Draft explanations with AI</button>
+          <button onClick={() => setGen({ courseId: f.courseId || (courses.length === 1 ? courses[0].id : ''), moduleId: '', lessonId: '', count: 5, types: ['MCQ'], difficulty: 'MIXED' })} disabled={!aiOn} title={aiOn ? '' : 'Add the AI key to switch this on'} className="h-[38px] rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy disabled:opacity-50">Write questions with AI</button>
           <button onClick={() => { setImporting(true); setReport(null); }} className="h-[38px] rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy">Import spreadsheet</button>
           <button onClick={() => setDraft(blank(f.courseId || (courses.length === 1 ? courses[0].id : '')))} className="h-[38px] rounded-md bg-[#3F6FE8] px-3.5 text-[13.5px] font-semibold text-white hover:bg-[#2F57C9]">New question</button>
         </div>
 
+        {!aiOn && <p className="rounded-lg border border-line bg-white px-4 py-2.5 text-[13px] text-ink2">AI drafting switches on once the AI key is added. Until then, write explanations by hand: click “No why-explanation” below, then use Save and next.</p>}
+        {job && (
+          <div className="flex flex-col gap-2 rounded-lg border border-[#5889FA] bg-[#EAF0FF] px-4 py-3 text-[13px] text-navy">
+            <div className="flex justify-between"><strong>{job.status === 'running' ? 'AI is drafting explanations…' : 'AI drafts are ready to check'}</strong><span>{job.done} of {job.total}{job.failed ? ` · ${job.failed} failed` : ''}</span></div>
+            <span className="h-1.5 rounded bg-white"><span className="block h-1.5 rounded bg-[#3F6FE8] transition-all" style={{ width: `${job.total ? Math.round(((job.done + job.failed) / job.total) * 100) : 0}%` }} /></span>
+            {job.errors.length > 0 && <span className="text-xs text-ink2">{job.errors[0]}</span>}
+            {job.status === 'finished' && <span><button onClick={() => { set('ai', 'drafts'); setJob(null); }} className="font-semibold text-[#3F6FE8]">Check the drafts →</button></span>}
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {tiles.map(t => (
             <button key={t.l} onClick={t.on} className="rounded-[10px] border border-line bg-white px-4 py-3.5 text-left transition hover:border-[#5889FA]">
@@ -172,6 +244,7 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
           <select aria-label="Type" className={select} value={f.type} onChange={e => set('type', e.target.value)}><option value="">All types</option>{TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
           <select aria-label="Difficulty" className={select} value={f.difficulty} onChange={e => set('difficulty', e.target.value)}><option value="">All difficulty</option>{['EASY', 'MEDIUM', 'HARD'].map(k => <option key={k} value={k}>{title(k)}</option>)}</select>
           <select aria-label="Status" className={select} value={f.status} onChange={e => set('status', e.target.value)}><option value="">All statuses</option>{Object.entries(STATUS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+          {f.ai && <button onClick={() => set('ai', '')} className="h-[38px] rounded-md border border-[#5889FA] bg-[#EAF0FF] px-3 text-[13px] font-semibold text-navy">{f.ai === 'drafts' ? 'AI drafts' : f.ai === 'check' ? 'Answer may be wrong' : 'Written by AI'} ✕</button>}
           {f.missing && <button onClick={() => set('missing', '')} className="h-[38px] rounded-md border border-[#5889FA] bg-[#EAF0FF] px-3 text-[13px] font-semibold text-navy">No explanation ✕</button>}
         </div>
 
@@ -187,9 +260,9 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
                   <td className="max-w-[260px] truncate text-ink2" title={r.courseTitle}>{[r.programme, r.courseTitle, r.moduleTitle].filter(Boolean).join(' · ')}</td>
                   <td>{typeName(r.type).replace(' (MCQ)', '')}</td>
                   <td>{title(r.difficulty)}</td>
-                  <td className={r.hasExplanation ? '' : 'text-muted'}>{r.hasExplanation ? '✓' : 'Missing'}</td>
+                  <td className={r.hasExplanation ? '' : 'text-muted'}>{r.hasExplanation ? '✓' : r.aiFlag ? <span className="font-semibold text-[#C1352B]">Check answer</span> : r.hasAiDraft ? <span className="font-semibold text-[#3F6FE8]">AI draft</span> : 'Missing'}</td>
                   <td>{r.percentRight != null ? `${r.percentRight}%` : '—'}</td>
-                  <td className="pr-4 font-semibold">{STATUS[r.status]}{r.reviewNote ? ' · sent back' : ''}</td>
+                  <td className="pr-4 font-semibold">{STATUS[r.status]}{r.reviewNote ? ' · sent back' : ''}{r.aiGenerated ? <span className="ml-1.5 rounded bg-[#EAF0FF] px-1.5 py-px text-[10.5px] text-[#2F57C9]">AI</span> : null}</td>
                 </tr>
               ))}
             </tbody>
@@ -203,6 +276,37 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
           </div>
         )}
       </div>
+
+      {gen && (() => {
+        const c = courses.find(x => x.id === gen.courseId);
+        const m = c?.modules.find(x => x.id === gen.moduleId);
+        const up = (patch: Partial<typeof gen>) => setGen(g => (g ? { ...g, ...patch } : g));
+        return (
+          <div role="dialog" aria-modal="true" aria-label="Write questions with AI" className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4">
+            <div className="flex max-h-[90vh] w-full max-w-lg flex-col gap-3 overflow-y-auto rounded-[10px] bg-white p-5">
+              <strong className="text-lg text-navy">Write questions with AI</strong>
+              <p className="text-sm text-ink2">The AI writes from the lesson text and video transcripts you pick. Questions arrive as drafts; nothing reaches students until it’s been reviewed.</p>
+              <label className="flex flex-col gap-1 text-[13px] font-semibold text-navy">Course<select className={select} value={gen.courseId} onChange={e => up({ courseId: e.target.value, moduleId: '', lessonId: '' })}><option value="">Select</option>{courses.map(x => <option key={x.id} value={x.id}>{x.title}</option>)}</select></label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-[13px] font-semibold text-navy">Module<select className={select} value={gen.moduleId} disabled={!c} onChange={e => up({ moduleId: e.target.value, lessonId: '' })}><option value="">Whole course</option>{c?.modules.map(x => <option key={x.id} value={x.id}>{x.title}</option>)}</select></label>
+                <label className="flex flex-col gap-1 text-[13px] font-semibold text-navy">Lesson<select className={select} value={gen.lessonId} disabled={!m} onChange={e => up({ lessonId: e.target.value })}><option value="">Whole module</option>{m?.lessons.map(x => <option key={x.id} value={x.id}>{x.title}</option>)}</select></label>
+                <label className="flex flex-col gap-1 text-[13px] font-semibold text-navy">How many<input type="number" min={1} max={20} className={select} value={gen.count} onChange={e => up({ count: Math.min(20, Math.max(1, Number(e.target.value) || 1)) })} /></label>
+                <label className="flex flex-col gap-1 text-[13px] font-semibold text-navy">Difficulty<select className={select} value={gen.difficulty} onChange={e => up({ difficulty: e.target.value })}><option value="MIXED">Mixed</option>{['EASY', 'MEDIUM', 'HARD'].map(k => <option key={k} value={k}>{title(k)}</option>)}</select></label>
+              </div>
+              <div className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Question types</span>
+                <div className="flex flex-wrap gap-1.5">{TYPES.filter(([k]) => k !== 'WRITTEN').map(([k, l]) => {
+                  const on = gen.types.includes(k);
+                  return <button key={k} type="button" aria-pressed={on} onClick={() => up({ types: on ? gen.types.filter(x => x !== k) : [...gen.types, k] })} className={`h-7 rounded-md px-2.5 text-[12.5px] ${on ? 'border border-[#5889FA] bg-[#EAF0FF] font-semibold text-navy' : 'border border-line text-ink2'}`}>{l}</button>;
+                })}</div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setGen(null)} className="h-9 rounded-md border border-line px-3.5 text-[13.5px] font-semibold text-navy">Cancel</button>
+                <button onClick={generate} disabled={saving || !gen.courseId || !gen.types.length} className="h-9 rounded-md bg-[#3F6FE8] px-3.5 text-[13.5px] font-semibold text-white disabled:opacity-50">{saving ? 'Writing… this can take a minute' : 'Write questions'}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {importing && (
         <div role="dialog" aria-modal="true" aria-label="Import spreadsheet" className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4">
@@ -234,6 +338,20 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
               <button aria-label="Close" onClick={() => setDraft(null)} className="text-lg text-muted">✕</button>
             </div>
             <div className="flex flex-1 flex-col gap-3.5 overflow-y-auto p-5">
+              {draft.aiGenerated && draft.status !== 'LIVE' && <p className="rounded-lg bg-[#EAF0FF] px-3 py-2 text-[13px] text-navy">Written by AI. Check the question, the answer and the explanation before sending it for review.</p>}
+              {draft.aiDraft && (
+                <div className="flex flex-col gap-2 rounded-lg border border-[#5889FA] p-3 text-[13px] text-navy">
+                  <strong>AI-drafted explanation</strong>
+                  {draft.aiDraft.answerLooksWrong && <p className="rounded-md bg-[#FDF1F0] px-2.5 py-1.5 text-[#C1352B]"><strong>The AI thinks the marked answer may be wrong.</strong> {draft.aiDraft.note}</p>}
+                  <textarea aria-label="AI-drafted explanation" rows={3} className={field} value={aiText} onChange={e => setAiText(e.target.value)} />
+                  {draft.aiDraft.modelAnswer && <p><strong>Suggested model answer:</strong> {draft.aiDraft.modelAnswer}</p>}
+                  {!!draft.aiDraft.markSchemes?.length && <p><strong>Suggested marking schemes:</strong> {draft.aiDraft.markSchemes.join(' · ')}</p>}
+                  <div className="flex gap-2">
+                    <button disabled={saving || !aiText.trim()} onClick={acceptAi} className="h-8 rounded-md bg-[#3F6FE8] px-3 text-[13px] font-semibold text-white disabled:opacity-50">Use this explanation</button>
+                    <button disabled={saving} onClick={discardAi} className="h-8 rounded-md border border-line px-3 text-[13px] font-semibold text-navy">Discard</button>
+                  </div>
+                </div>
+              )}
               {draft.reviewNote && <p className="rounded-lg border border-[#5889FA] bg-[#EAF0FF] px-3 py-2 text-[13px] text-navy"><strong>Reviewer’s note:</strong> {draft.reviewNote}</p>}
               {draft.id && !draft.bankOnly && <p className="rounded-lg bg-subtle px-3 py-2 text-[13px] text-ink2">This question is part of a lesson quiz. Edits here change the quiz too.</p>}
               <div className="grid gap-3 sm:grid-cols-2">
@@ -287,6 +405,7 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
               {draft.id && draft.bankOnly && <button disabled={saving} onClick={() => { if (window.confirm('Delete this question?')) act(() => api.delete(`/question-bank/${draft.id}`), 'Deleted'); }} className="mr-auto text-[13px] font-semibold text-[#C1352B]">Delete</button>}
               {canDecide && draft.status === 'IN_REVIEW' && <button disabled={saving} onClick={sendBack} className="h-9 rounded-md border border-line px-3.5 text-[13.5px] font-semibold text-navy">Send back</button>}
               <button disabled={saving} onClick={() => save()} className="h-9 rounded-md border border-line px-3.5 text-[13.5px] font-semibold text-navy disabled:opacity-50">{draft.id ? 'Save' : 'Save draft'}</button>
+              {draft.id && rows && rows.findIndex(x => x.id === draft.id) < rows.length - 1 && <button disabled={saving} onClick={() => save('next')} className="h-9 rounded-md bg-[#3F6FE8] px-3.5 text-[13.5px] font-semibold text-white disabled:opacity-50">Save and next</button>}
               {(!draft.status || draft.status === 'DRAFT') && !canDecide && <button disabled={saving} onClick={() => save('submit')} className="h-9 rounded-md bg-[#3F6FE8] px-3.5 text-[13.5px] font-semibold text-white disabled:opacity-50">Send for review</button>}
               {canDecide && draft.status !== 'LIVE' && (role === 'ADMIN' || draft.status === 'IN_REVIEW') && <button disabled={saving} onClick={() => save('approve')} className="h-9 rounded-md bg-[#3F6FE8] px-3.5 text-[13.5px] font-semibold text-white disabled:opacity-50">Approve and go live</button>}
             </div>
