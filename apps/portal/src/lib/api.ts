@@ -18,7 +18,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
-    if (err.response?.status === 401 && typeof window !== 'undefined') {
+    // A wrong password or code is a 401 too: show it on the sign-in page instead of reloading it
+    const signingIn = /\/auth\/(login|google|otp)/.test(err.config?.url ?? '');
+    if (err.response?.status === 401 && typeof window !== 'undefined' && !signingIn) {
       await fetch('/api/auth/clear-token', { method: 'POST' }).catch(() => {});
       Cookies.remove('cpa_token');
       window.location.href = '/login';
