@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Topbar } from '@/components/layout/Topbar';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { Celebrate, ShareDialog } from '@/components/celebrate/Celebrate';
 
 interface Certificate { id: string; courseId: string; courseName: string; issuedAt: string; verifyCode: string; pdfUrl: string }
 interface LibraryCourse { id: string; title: string; lessons: number; done: number; pct: number; state: 'new' | 'going' | 'done'; certificate: unknown }
@@ -11,17 +12,13 @@ interface LibraryCourse { id: string; title: string; lessons: number; done: numb
 const fmt = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 const verifyUrl = (code: string) => `${typeof window !== 'undefined' ? window.location.origin : ''}/verify/${code}`;
 
-async function share(c: Certificate) {
-  const url = verifyUrl(c.verifyCode);
-  try {
-    if (navigator.share) await navigator.share({ title: `Certificate · ${c.courseName}`, url });
-    else { await navigator.clipboard.writeText(url); notify.success('Link copied', { description: 'Anyone with it can check your certificate is real.' }); }
-  } catch { /* share sheet closed */ }
-}
+const certShare = (c: Certificate) => ({ c1: 'Certified in', c2: `${c.courseName}.`, c3: `Check it: ${c.verifyCode}`, label: '✓ Verifiable', link: verifyUrl(c.verifyCode) });
+const WEEK = 7 * 24 * 3600 * 1000;
 
 export default function CertificatesPage() {
   const [certs, setCerts] = useState<Certificate[] | null>(null);
   const [onTheWay, setOnTheWay] = useState<LibraryCourse[]>([]);
+  const [sharing, setSharing] = useState<Certificate | null>(null);
 
   useEffect(() => {
     api.get('/certificates').then(r => setCerts(r.data ?? [])).catch(() => { setCerts([]); notify.error('Could not load your certificates'); });
@@ -34,6 +31,13 @@ export default function CertificatesPage() {
     <div className="flex min-h-full flex-col">
       <Topbar title="Certificates" subtitle="Proof of what you’ve finished — download, share or verify" />
       <div className="flex flex-col gap-[18px] p-4 lg:px-7 lg:py-6">
+        {certs?.[0] && Date.now() - +new Date(certs[0].issuedAt) < WEEK && (
+          <Celebrate emoji="🎓" l1="Certified." l2="It’s official."
+            sub={`${certs[0].courseName}. Anyone can check it with the code ${certs[0].verifyCode} at careerpathafrica.com/verify.`}
+            next={{ label: 'Download PDF', href: certs[0].pdfUrl }}
+            share={certShare(certs[0])} />
+        )}
+        {sharing && <ShareDialog share={certShare(sharing)} onClose={() => setSharing(null)} />}
         {!certs ? <div className="h-56 rounded-lg bg-subtle animate-pulse" /> : !certs.length ? (
           <p className="rounded-lg border border-line bg-white px-4 py-10 text-center text-[13.5px] text-ink2">
             No certificates yet. Finish every lesson and quiz in a course to earn one.
@@ -51,7 +55,7 @@ export default function CertificatesPage() {
                 <p className="text-[12.5px] text-muted">Issued {fmt(c.issuedAt)} · code <span className="font-mono">{c.verifyCode}</span></p>
                 <div className="flex gap-2">
                   <a href={c.pdfUrl} target="_blank" rel="noreferrer" className="grid h-[34px] flex-1 place-items-center rounded-md bg-azure-strong text-[13px] font-semibold text-on-accent hover:opacity-90">Download PDF</a>
-                  <button onClick={() => share(c)} className="grid h-[34px] place-items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Share link</button>
+                  <button onClick={() => setSharing(c)} className="grid h-[34px] place-items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Share</button>
                 </div>
               </article>
             ))}

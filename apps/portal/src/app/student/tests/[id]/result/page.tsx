@@ -6,6 +6,7 @@ import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 import { QuestionCard, TestQuestion } from '@/components/tests/QuestionCard';
 import { BAND_LABEL, BANDS, REASON } from '@/components/tests/cat';
+import { Celebrate } from '@/components/celebrate/Celebrate';
 
 interface Result {
   title: string; mode: string; submittedAt: string; usedSecs: number; timeLimitSecs: number | null;
@@ -63,6 +64,12 @@ export default function TestResultPage() {
       <div className="flex min-h-full flex-col">
         <Topbar backHref="/student/tests/cat" backLabel="CAT readiness" />
         <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-6">
+          {c.decision === 'ABOVE' && (
+            <Celebrate emoji="🎯" l1="Ready, by our" l2="readiness test."
+              sub={`${r.title} stopped after ${c.items} questions: about a ${Math.round(c.probability * 100)}% chance you’re above the standard.`}
+              next={{ label: 'What to practise next', href: '/student/tests' }}
+              share={{ c1: r.title.split(/\s+/)[0] || 'Exam', c2: 'ready.', c3: `Readiness: ${BAND_LABEL[c.band] ?? 'Ready'} · CareerPath Africa practice test`, label: 'Practice estimate' }} />
+          )}
           <div>
             <h1 className="text-2xl font-extrabold tracking-[-0.01em] text-navy">{heading}</h1>
             <p className="mt-1 text-sm text-ink2">CAT readiness · {r.title} · {c.items} questions · {REASON[c.reason] ?? ''}</p>
@@ -116,6 +123,16 @@ export default function TestResultPage() {
     <div className="flex min-h-full flex-col">
       <Topbar backHref="/student/tests" backLabel="Test Centre" />
       <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-6">
+        {r.exam && r.passed && !r.waitingForTeacher && (() => {
+          const best = [...r.topics].filter(t => t.max > 0).sort((a, b) => b.percent - a.percent)[0];
+          const what = r.exam.kind === 'PAST_PAPER' ? 'past paper' : 'mock';
+          return (
+            <Celebrate emoji="🎉" l1="You passed." l2={`${r.percent}% on ${r.exam.title}.`}
+              sub={`The pass mark was ${r.exam.passMark}%.${best ? ` Your strongest area was ${best.topic}.` : ''}`}
+              next={{ label: 'See my answers', onClick: () => { setReview(true); setTimeout(() => document.getElementById('answers')?.scrollIntoView({ behavior: 'smooth' }), 50); } }}
+              share={{ c1: 'Passed my', c2: `${r.exam.title} ${what}.`.replace(/ (mock|past paper) (mock|past paper)\.$/i, ' $1.'), c3: `Scored ${r.percent}% · practising on CareerPath Africa`, label: 'Mock result' }} />
+          );
+        })()}
         <div>
           <h1 className="text-2xl font-extrabold tracking-[-0.01em] text-navy">You scored {r.percent}%</h1>
           <p className="mt-1 text-sm text-ink2">{[r.title, r.exam?.kind === 'MOCK' ? 'Mock exam' : r.exam?.kind === 'PAST_PAPER' ? (r.mode === 'EXAM' ? 'Past paper' : 'Past paper practice') : r.mode === 'EXAM' ? 'Exam' : 'Practice'].filter((x, n, all) => all.indexOf(x) === n).join(' · ')}</p>
@@ -167,7 +184,7 @@ export default function TestResultPage() {
 
         {review && (
           <>
-            <div role="tablist" className="flex flex-wrap gap-1 self-start rounded-lg border border-line bg-white p-[3px] text-[13px]">
+            <div id="answers" role="tablist" className="flex flex-wrap gap-1 self-start rounded-lg border border-line bg-white p-[3px] text-[13px]">
               {([['all', 'All'], ['wrong', 'Wrong'], ['flagged', 'Flagged'], ['mark', 'To mark']] as const).map(([k, l]) => (
                 <button key={k} role="tab" aria-selected={only === k} onClick={() => setOnly(k)} className={`rounded-md px-2.5 py-1 ${only === k ? 'bg-[#EAF0FF] font-semibold text-navy' : 'text-ink2'}`}>{l}</button>
               ))}

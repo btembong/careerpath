@@ -8,6 +8,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/Button';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { Celebrate } from '@/components/celebrate/Celebrate';
 
 interface Lesson { id: string; title: string; type: 'VIDEO' | 'TEXT' | 'QUIZ' | 'LIVE'; durationSecs: number | null; isFree: boolean }
 interface Course {
@@ -104,6 +105,12 @@ export default function CourseDetailPage() {
 
       <div className="flex flex-wrap items-start gap-6 p-4 lg:px-7 lg:py-6">
         <div className="flex min-w-0 flex-[999_1_540px] flex-col gap-5">
+          {mine && mine.lessons > 0 && mine.done >= mine.lessons && (
+            <Celebrate emoji="🏁" l1="Course done." l2="Every lesson."
+              sub={`${c.title} · ${mine.lessons} lesson${mine.lessons === 1 ? '' : 's'}${quizzes ? `, ${quizzes} quiz${quizzes === 1 ? '' : 'zes'}` : ''}. Your certificate is in Certificates.`}
+              next={{ label: 'Get my certificate', href: '/student/certificates' }}
+              share={{ c1: 'Finished', c2: `${[c.programme?.shortName ?? c.programme?.name, c.subject?.name].filter(Boolean).join(' ') || c.title}.`, c3: `${c.title} · ${mine.lessons} lessons`, label: 'Course complete' }} />
+          )}
           <section className="flex flex-col gap-2">
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
