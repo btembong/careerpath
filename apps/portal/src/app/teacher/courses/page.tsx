@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { CourseCover } from '@/components/courses/CourseCover';
 
 type Status = 'DRAFT' | 'PENDING_REVIEW' | 'PUBLISHED' | 'ARCHIVED';
 interface Course {
@@ -128,7 +129,7 @@ export default function TeacherCoursesPage() {
               return (
                 <article key={c.id} className="flex flex-col gap-3.5 rounded-lg border border-line bg-white p-[18px]">
                   <div className="flex items-center gap-3">
-                    <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-sm font-extrabold text-azure-strong">{abbr(c.title)}</span>
+                    <CourseCover variant="tile" size="md" course={{ title: c.title }} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[15px] font-bold text-navy">{c.title}</p>
                       <p className="mt-0.5 text-[12.5px] text-muted">

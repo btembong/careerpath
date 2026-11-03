@@ -6,6 +6,7 @@ import { clsx } from 'clsx';
 import { minorToMajor } from '@cpa/shared';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
+import { CourseCover } from '@/components/courses/CourseCover';
 
 interface Details {
   id: string; name: string; description: string | null; priceAmount: number; currency: string;
@@ -121,7 +122,7 @@ export default function PackageDetailPage() {
             </h2>
             {d.courses.map(c => (
               <div key={c.id} className="flex flex-wrap items-center gap-3 rounded-md border border-line p-3">
-                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-[13px] font-extrabold text-azure-strong">{abbr(c.title)}</span>
+                <CourseCover variant="tile" size="sm" course={{ title: c.title }} />
                 <div className="min-w-0 flex-1">
                   <p className="text-[14.5px] font-semibold text-navy">{c.title}</p>
                   <p className="mt-0.5 text-[12.5px] text-muted">

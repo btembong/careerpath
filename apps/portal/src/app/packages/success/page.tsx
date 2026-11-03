@@ -5,6 +5,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Card } from '@/components/ui/Card';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import api from '@/lib/api';
+import { CourseCover } from '@/components/courses/CourseCover';
 
 interface Recommendation {
   courseId: string;
@@ -175,7 +176,7 @@ export default function PaymentSuccessPage() {
                   <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-cloud overflow-hidden">
                     {rec.coverUrl
                       ? <img src={rec.coverUrl} alt={rec.title} className="h-full w-full object-cover" />
-                      : <Icon name="courses" size={18} className="text-royal" />
+                      : <CourseCover variant="tile" size="sm" course={{ title: rec.title }} />
                     }
                   </div>
                   <div className="flex-1 min-w-0">

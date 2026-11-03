@@ -11,11 +11,12 @@ import { Button } from '@/components/ui/Button';
 import { Drawer, DrawerContent, DrawerSection, InfoGrid } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { CourseCover } from '@/components/courses/CourseCover';
 
 interface Programme { id: string; name: string; shortName: string | null }
 interface Course {
   id: string; title: string; description: string | null; status: string; createdAt: string;
-  priceAmount: number | null; priceCurrency: string | null; isSoldIndividually: boolean; source?: string;
+  priceAmount: number | null; priceCurrency: string | null; isSoldIndividually: boolean; source?: string; coverUrl?: string | null;
   programme: { id: string; name: string; shortName: string | null } | null;
   subject: { id: string; name: string } | null;
   level: { id: string; name: string } | null;
@@ -273,9 +274,10 @@ function Catalogue() {
                     const note = has ? 'You have access' : inPkgs.length ? `${c.isSoldIndividually || isFree(c) ? 'Also in' : 'In'} ${inPkgs[0].name}${inPkgs.length > 1 ? ` and ${inPkgs.length - 1} more` : ''}` : isWebsite(c) ? 'Free to join' : isFree(c) ? 'Free course' : c.isSoldIndividually ? 'Single course' : 'Coming soon';
                     return (
                       <article key={c.id} className="flex flex-col overflow-hidden rounded-lg border border-line bg-white">
-                        <button type="button" onClick={() => setOpenId(c.id)} className="flex flex-col gap-2.5 p-4 text-left hover:bg-subtle/50">
+                        <button type="button" onClick={() => setOpenId(c.id)} className="flex flex-col text-left hover:bg-subtle/50">
+                          <CourseCover course={c} />
+                          <div className="flex flex-col gap-2.5 p-4">
                           <div className="flex items-center gap-3">
-                            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-[13px] font-extrabold text-azure-strong">{abbr(c.title)}</span>
                             <div className="min-w-0">
                               <p className="line-clamp-2 text-[14.5px] font-semibold leading-snug text-navy">{c.title}</p>
                               <p className="mt-0.5 truncate text-[12.5px] text-muted">{[teacherOf(c), c.subject?.name, c.language].filter(Boolean).join(' · ')}</p>
@@ -289,6 +291,7 @@ function Catalogue() {
                               </div>
                             ))}
                           </dl>
+                          </div>
                         </button>
                         <div className="mt-auto flex items-center gap-2.5 border-t border-line px-4 py-3">
                           <div className="min-w-0 flex-1">

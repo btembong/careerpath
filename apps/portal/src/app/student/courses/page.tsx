@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
+import { CourseCover } from '@/components/courses/CourseCover';
 
 type State = 'going' | 'new' | 'done';
 type Access =
@@ -86,7 +87,7 @@ export default function MyCoursesPage() {
         ) : <>
           {lib.resume && (
             <section className="flex flex-wrap items-center gap-5 rounded-lg border border-azure bg-white p-5">
-              <span className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-lg font-extrabold text-azure-strong">{abbr(lib.resume.title)}</span>
+              <CourseCover variant="tile" size="lg" course={{ title: lib.resume.title }} />
               <div className="min-w-0 flex-[999_1_320px]">
                 <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">Pick up where you left off</p>
                 <p className="mt-1 text-[19px] font-extrabold text-navy">{lib.resume.title}</p>
@@ -152,7 +153,7 @@ export default function MyCoursesPage() {
                 return (
                   <article key={c.id} className="flex flex-col gap-3 rounded-lg border border-line bg-white p-4">
                     <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-[13px] font-extrabold text-azure-strong">{abbr(c.title)}</span>
+                      <CourseCover variant="tile" size="sm" course={{ title: c.title }} />
                       <div className="min-w-0 flex-1">
                         <p className="line-clamp-2 text-[14.5px] font-semibold leading-snug text-navy">{c.title}</p>
                         <p className="mt-0.5 truncate text-[12.5px] text-muted">{[c.teacher, c.programme].filter(Boolean).join(' · ') || 'CareerPath Africa'}</p>

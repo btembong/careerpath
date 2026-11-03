@@ -8,6 +8,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Card } from '@/components/ui/Card';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import api from '@/lib/api';
+import { CourseCover } from '@/components/courses/CourseCover';
 
 interface Recommendation {
   courseId: string;
@@ -89,7 +90,7 @@ function CoursePurchaseSuccessPageInner() {
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-azure/10 flex-shrink-0 overflow-hidden">
                 {course.coverUrl
                   ? <img src={course.coverUrl} alt={course.title} className="h-full w-full object-cover" />
-                  : <Icon name="courses" size={22} className="text-azure" />
+                  : <CourseCover variant="tile" size="md" course={{ title: course.title }} />
                 }
               </div>
               <div className="flex-1 min-w-0">
@@ -136,7 +137,7 @@ function CoursePurchaseSuccessPageInner() {
                   <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-cloud overflow-hidden">
                     {rec.coverUrl
                       ? <img src={rec.coverUrl} alt={rec.title} className="h-full w-full object-cover" />
-                      : <Icon name="courses" size={18} className="text-royal" />
+                      : <CourseCover variant="tile" size="sm" course={{ title: rec.title }} />
                     }
                   </div>
                   <div className="flex-1 min-w-0">

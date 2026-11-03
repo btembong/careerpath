@@ -5,6 +5,7 @@ import { clsx } from 'clsx';
 import { minorToMajor } from '@cpa/shared';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
+import { CourseCover } from '@/components/courses/CourseCover';
 
 /**
  * One checkout for single courses and packages. The server picks the payment gateway from the
@@ -205,7 +206,7 @@ export function CheckoutView({ item, backHref, backLabel }: { item: CheckoutItem
         <aside className="flex min-w-0 flex-[1_1_320px] flex-col gap-3.5 rounded-lg border border-line bg-white p-5">
           <h2 className="text-[15px] font-semibold text-navy">Your order</h2>
           <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-sm font-extrabold text-azure-strong">{abbr(item.title)}</span>
+            <CourseCover variant="tile" size="md" course={{ title: item.title }} />
             <div className="min-w-0">
               <p className="text-[14.5px] font-semibold text-navy">{item.title}</p>
               <p className="mt-0.5 text-[12.5px] text-muted">{item.meta}</p>

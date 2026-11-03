@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import api from '@/lib/api';
+import { CourseCover } from '@/components/courses/CourseCover';
 
 interface Course {
   id: string;
@@ -187,15 +188,7 @@ export default function PublicCoursesPage() {
             {visible.map(course => (
               <Card key={course.id} padding="none" className="overflow-hidden flex flex-col">
                 {/* Cover / colour band */}
-                {course.coverUrl ? (
-                  <img src={course.coverUrl} alt={course.title} className="h-36 w-full object-cover" />
-                ) : (
-                  <div className={`h-36 flex items-center justify-center ${
-                    course.source === 'WORDPRESS' ? 'bg-orange-100' : 'bg-azure/10'
-                  }`}>
-                    <Icon name="courses" size={36} className={course.source === 'WORDPRESS' ? 'text-orange-400' : 'text-azure/40'} />
-                  </div>
-                )}
+                <CourseCover course={course} />
 
                 <div className="flex flex-col flex-1 p-4">
                   {/* Tags */}

@@ -6,6 +6,7 @@ import { clsx } from 'clsx';
 import { minorToMajor } from '@cpa/shared';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
+import { CourseCover } from '@/components/courses/CourseCover';
 
 interface Item {
   courseId: string; title: string; courseStatus: string; programme: string | null; teacher: string;
@@ -67,7 +68,7 @@ export default function ReviewerDashboard() {
             <p className="px-4 py-10 text-center text-[13px] text-ink2">{tab === 'queue' ? 'Nothing to review right now. New courses appear here when teachers submit them.' : 'You haven’t reviewed a course yet.'}</p>
           ) : list.map(q => (
             <div key={q.courseId} className="flex flex-wrap items-center gap-3.5 border-t border-line px-[18px] py-3.5 first:border-t-0">
-              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-[13px] font-extrabold text-azure-strong">{abbr(q.title)}</span>
+              <CourseCover variant="tile" size="sm" course={{ title: q.title }} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-navy">{q.title}</p>
                 <p className="mt-0.5 truncate text-[12.5px] text-muted">
