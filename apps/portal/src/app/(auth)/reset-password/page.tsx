@@ -9,28 +9,30 @@ import { AuthShell, AuthTitle, AuthError, AuthSwitch, authButton, authInput } fr
 
 function ResetPasswordInner() {
   const searchParams = useSearchParams();
+  // Our own emails carry ?token=…; links WordPress sent before the switch carry ?login=…&key=…
+  const token = searchParams.get('token') ?? '';
   const login = searchParams.get('login') ?? '';
-  const key = searchParams.get('key') ?? searchParams.get('token') ?? '';
+  const key = searchParams.get('key') ?? '';
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
-  const hasParams = !!(login && key);
+  const hasParams = !!(token || (login && key));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (password.length < 8) { setError('Use at least 8 characters.'); return; }
     if (password !== confirm) { setError('The two passwords don’t match.'); return; }
     setError(''); setLoading(true);
-    try { await api.post('/auth/reset-password', { login, key, newPassword: password }); setDone(true); }
+    try { await api.post('/auth/reset-password', token ? { token, newPassword: password } : { login, key, newPassword: password }); setDone(true); }
     catch (err: any) { setError(err?.response?.data?.message ?? 'That didn’t work. The link may have run out; ask for a new one.'); }
     finally { setLoading(false); }
   }
 
   return (
-    <AuthShell back={{ href: '/login', label: 'Back to sign in' }} hero={{ lines: ['A fresh start', 'in one step.'], sub: 'Choose a new password. Use at least 8 characters; a short sentence is easy to remember and hard to guess.', cards: [{ icon: '🔒', title: 'New password', body: 'Saved. Your courses and progress are just as you left them.', pill: 'Done' }] }}>
+    <AuthShell back={{ href: '/login', label: 'Back to sign in' }} hero={{ lines: ['A fresh start', 'in one step.'], sub: 'Choose a new password. Use at least 8 characters; a short sentence is easy to remember and hard to guess.', cards: [{ icon: 'lock', title: 'New password', body: 'Saved. Your courses and progress are just as you left them.', pill: 'Done' }] }}>
       {done ? (
         <>
           <AuthTitle>All set.</AuthTitle>

@@ -26,6 +26,8 @@ import {
   newMessageTemplate,
   orgSeatInviteTemplate,
   mockMarkedTemplate,
+  passwordResetTemplate,
+  adminCodeTemplate,
   orgAdminWelcomeTemplate,
 } from './mail.templates';
 
@@ -102,6 +104,14 @@ export class MailService {
 
   async sendOrgSeatInvite(email: string, orgName: string, packageName: string, link: string, joinCode?: string | null): Promise<void> {
     await this.send(email, `${orgName} has a place for you on CareerPath Africa`, orgSeatInviteTemplate(orgName, packageName, link, joinCode), 'support');
+  }
+
+  async sendPasswordReset(email: string, firstName: string, link: string): Promise<void> {
+    await this.send(email, 'Reset your CareerPath Africa password', passwordResetTemplate(firstName, link), 'support');
+  }
+
+  async sendAdminCode(email: string, code: string): Promise<void> {
+    await this.send(email, `${code} is your CareerPath admin sign-in code`, adminCodeTemplate(code), 'system');
   }
 
   async sendMockMarked(email: string, opts: { firstName: string; teacherName: string; examTitle: string; percent: number; passMark: number; link: string }): Promise<void> {

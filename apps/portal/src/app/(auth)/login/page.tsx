@@ -38,6 +38,9 @@ function LoginPageInner() {
   const [lockUntil, setLockUntil] = useState(0);
   const [lockLeft,  setLockLeft]  = useState(0);
   const [resendIn,  setResendIn]  = useState(0);
+  // Admins: after the password, a code we email them
+  const [twoStep,   setTwoStep]   = useState<{ challenge: string; email: string } | null>(null);
+  const [remember,  setRemember]  = useState(false);
 
   useEffect(() => {
     if (!lockUntil) return;
@@ -53,6 +56,34 @@ function LoginPageInner() {
     const t = setTimeout(() => setResendIn(s => s - 1), 1000);
     return () => clearTimeout(t);
   }, [resendIn]);
+
+  /** The sign-in reply is either a token, or (admins) a request for the emailed code */
+  async function handle(data: { accessToken?: string; twoStep?: boolean; challenge?: string; email?: string }) {
+    if (data.twoStep && data.challenge) { setTwoStep({ challenge: data.challenge, email: data.email ?? '' }); setCode(''); setResendIn(60); return; }
+    if (data.accessToken) await signedIn(data.accessToken);
+  }
+
+  async function verifyTwoStep(e: React.FormEvent) {
+    e.preventDefault();
+    if (!twoStep) return;
+    setError(''); setLoading(true);
+    try {
+      const { data } = await api.post('/auth/2step/verify', { challenge: twoStep.challenge, code, remember });
+      try { if (data.trustToken) localStorage.setItem('cpa_admin_trust', data.trustToken); } catch { /* private window */ }
+      await signedIn(data.accessToken);
+    } catch (err: any) {
+      const msg: string = err?.response?.data?.message ?? 'That code isn’t right.';
+      setError(msg); setCode('');
+      if (/start again/i.test(msg)) { setTwoStep(null); setPassword(''); }
+    } finally { setLoading(false); }
+  }
+
+  async function resendTwoStep() {
+    if (!twoStep) return;
+    setError('');
+    try { await api.post('/auth/2step/resend', { challenge: twoStep.challenge }); setResendIn(60); }
+    catch (err: any) { setError(err?.response?.data?.message ?? 'Couldn’t send a new code.'); }
+  }
 
   async function signedIn(token: string) {
     await setAuthToken(token, true);
@@ -88,17 +119,19 @@ function LoginPageInner() {
     if (mode === 'code' && !codeSent) { await sendCode(); return; }
     setError(''); setLoading(true);
     try {
+      let trustToken: string | undefined;
+      try { trustToken = localStorage.getItem('cpa_admin_trust') ?? undefined; } catch { /* private window */ }
       const { data } = mode === 'code'
         ? await api.post('/auth/login/code/verify', { email: email.trim(), code })
-        : await api.post('/auth/login', { email: email.trim(), password });
-      await signedIn(data.accessToken);
+        : await api.post('/auth/login', { email: email.trim(), password, ...(trustToken ? { trustToken } : {}) });
+      await handle(data);
     } catch (err) { failed(err); }
     finally { setLoading(false); }
   }
 
   async function withGoogle(credential: string) {
     setError(''); setLoading(true);
-    try { const { data } = await api.post('/auth/google', { credential }); await signedIn(data.accessToken); }
+    try { const { data } = await api.post('/auth/google', { credential }); await handle(data); }
     catch (err) { failed(err); }
     finally { setLoading(false); }
   }
@@ -107,6 +140,26 @@ function LoginPageInner() {
   const registerHref = `/register${nextUrl ? `?next=${encodeURIComponent(nextUrl)}` : ''}`;
   const codeStep = mode === 'code' && codeSent;
   const toMode = (m: 'password' | 'code') => { setMode(m); setCodeSent(false); setCode(''); setError(''); };
+
+  if (twoStep) return (
+    <AuthShell back={null} hero={{ lines: ['One more step,', 'just for admins.'], white: 3, sub: 'Admin accounts can move money, so after your password we email you a six-digit code.', cards: [{ icon: 'mail', title: 'CareerPath Africa', body: 'Your admin sign-in code is in your inbox.' }] }}>
+      <p className="text-[13px] font-semibold text-[#3F6FE8]">Admin sign-in · step 2 of 2</p>
+      <AuthTitle>Check your email.</AuthTitle>
+      <p className="-mt-2 text-sm text-ink2">Code sent to <strong className="text-navy">{twoStep.email}</strong></p>
+      <form onSubmit={verifyTwoStep} className="flex flex-col gap-3.5">
+        <CodeBoxes value={code} onChange={setCode} />
+        <label className="flex items-center gap-2 text-[13.5px] text-ink2">
+          <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="h-[18px] w-[18px] accent-[#3F6FE8]" />
+          Don’t ask again on this computer for 30 days
+        </label>
+        <AuthError error={error} />
+        <button type="submit" disabled={loading || code.length < 6} className={authButton}>{loading ? 'One moment…' : 'Sign in'}</button>
+      </form>
+      <p className="text-center text-[13px] text-muted">Didn’t get it? {resendIn > 0 ? `Send again in ${resendIn}s` : <button type="button" onClick={resendTwoStep} className="font-bold text-[#3F6FE8]">Send again</button>}</p>
+      <p className="text-center text-xs text-muted">The code works for 10 minutes. Five wrong tries and you start again from your password.</p>
+      <p className="text-center text-[13px]"><button type="button" onClick={() => { setTwoStep(null); setError(''); setPassword(''); }} className="font-semibold text-[#3F6FE8]">‹ Back to sign in</button></p>
+    </AuthShell>
+  );
 
   return (
     <AuthShell hero={mode === 'code'

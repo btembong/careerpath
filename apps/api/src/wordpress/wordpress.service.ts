@@ -329,6 +329,13 @@ export class WordPressService {
     }
   }
 
+  /** Best effort: set a user's WordPress password so signing in on the website still works. */
+  async setPassword(wpUserId: number, password: string): Promise<void> {
+    if (this.devBypass || wpUserId < 0) return;
+    try { await this.client.post(`/wp/v2/users/${wpUserId}`, { password }, { timeout: 20_000 }); }
+    catch (err: any) { this.logger.warn(`Could not update WordPress password for user ${wpUserId}: ${err.response?.status ?? err.message}`); }
+  }
+
   /**
    * Trigger WordPress's built-in password reset email via the CPA mu-plugin.
    */

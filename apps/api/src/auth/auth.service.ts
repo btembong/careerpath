@@ -11,6 +11,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcryptjs';
+import { createHash, randomBytes, randomInt } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { WordPressService, portalRoleFromWp } from '../wordpress/wordpress.service';
 import { MailService } from '../mail/mail.service';
@@ -29,6 +31,12 @@ const VERIFIED_TTL = 3600; // teacher wizard has 3 more steps after verifying, s
 const otpKey = (email: string) => `cpa:otp:${email.toLowerCase()}`;
 const loginCodeKey = (email: string) => `cpa:login-code:${email.toLowerCase()}`;
 const otpTriesKey = (email: string) => `cpa:otp-tries:${email.toLowerCase()}`;
+const twoStepKey = (challenge: string) => `cpa:2step:${challenge}`;
+/** Stored by a hash, so a leaked Redis dump can't be used to reset passwords */
+const resetKey = (token: string) => `cpa:pwreset:${createHash('sha256').update(token).digest('hex')}`;
+const sixDigits = () => String(randomInt(100000, 1000000));
+const maskEmail = (e: string) => e.replace(/^(.{2})[^@]*(@.*)$/, '$1•••$2');
+export type SignInResult = { accessToken: string } | { twoStep: true; challenge: string; email: string };
 const loginTriesKey = (email: string) => `cpa:login-code-tries:${email.toLowerCase()}`;
 export const verifiedKey = (email: string) => `cpa:otp-verified:${email.toLowerCase()}`;
 
@@ -99,7 +107,24 @@ export class AuthService {
 
   // ── Login ────────────────────────────────────────────────
 
-  async login(dto: LoginDto): Promise<{ accessToken: string }> {
+  /**
+   * Password sign-in. The portal checks its own copy of the password first; WordPress is only asked
+   * when there is no copy yet (or it doesn't match, in case the password was changed on the website),
+   * and a good answer from WordPress saves the copy. So after one sign-in, WordPress can be down.
+   */
+  async login(dto: LoginDto): Promise<SignInResult> {
+    const existing = await this.prisma.userProfile.findUnique({ where: { email: dto.email } });
+    if (existing?.passwordHash && await bcrypt.compare(dto.password, existing.passwordHash)) {
+      this.assertCanSignIn(existing);
+      await this.prisma.userProfile.update({ where: { id: existing.id }, data: { lastActiveDate: new Date() } }).catch(() => {});
+      return this.finishSignIn(existing, dto.trustToken);
+    }
+    const profile = await this.loginViaWordPress(dto);
+    if (!profile.passwordHash || !(await bcrypt.compare(dto.password, profile.passwordHash))) await this.savePasswordCopy(profile.id, dto.password);
+    return this.finishSignIn(profile, dto.trustToken);
+  }
+
+  private async loginViaWordPress(dto: LoginDto) {
     // 1. Verify password against WordPress (server-to-server)
     const wpUser = await this.wp.verifyPassword(dto.email, dto.password);
 
@@ -171,6 +196,12 @@ export class AuthService {
       }
     }
 
+    this.assertCanSignIn(profile);
+    return profile;
+  }
+
+  /** Pending, paused or rejected accounts get a clear message instead of a sign-in */
+  private assertCanSignIn(profile: { approvalStatus: string }) {
     // 3. Block PENDING teachers with a clear message
     if (profile.approvalStatus === ApprovalStatus.PENDING) {
       throw new ForbiddenException(
@@ -188,8 +219,88 @@ export class AuthService {
       );
     }
 
-    // 4. Issue JWT
-    return { accessToken: this.signToken(profile.id, profile.email, profile.role as UserRole, wpUser.id, profile.onboardingCompleted) };
+  }
+
+  private async savePasswordCopy(userId: string, password: string) {
+    const passwordHash = await bcrypt.hash(password, 12);
+    await this.prisma.userProfile.update({ where: { id: userId }, data: { passwordHash, passwordUpdatedAt: new Date() } });
+  }
+
+  // ── Admin two-step sign-in ───────────────────────────────
+
+  /**
+   * Everyone but admins gets their token now. Admins get a code by email first, unless this computer
+   * was trusted in the last 30 days.
+   */
+  private async finishSignIn(profile: { id: string; email: string; role: string; wpUserId: number; onboardingCompleted: boolean; firstName?: string | null }, trustToken?: string): Promise<SignInResult> {
+    if (profile.role !== UserRole.ADMIN || this.trusted(profile.id, trustToken)) {
+      return { accessToken: this.signToken(profile.id, profile.email, profile.role as UserRole, profile.wpUserId, profile.onboardingCompleted) };
+    }
+    const challenge = randomBytes(24).toString('hex');
+    await this.redis.set(twoStepKey(challenge), JSON.stringify({ userId: profile.id, code: sixDigits(), tries: 0, sentAt: Date.now() }), OTP_TTL);
+    await this.sendTwoStepCode(challenge);
+    return { twoStep: true, challenge, email: maskEmail(profile.email) };
+  }
+
+  private trusted(userId: string, token?: string) {
+    if (!token) return false;
+    try {
+      const p = this.jwt.verify<{ sub: string; purpose: string }>(token);
+      return p.purpose === 'admin-trust' && p.sub === userId;
+    } catch { return false; }
+  }
+
+  private async sendTwoStepCode(challenge: string) {
+    const raw = await this.redis.get(twoStepKey(challenge));
+    if (!raw) return;
+    const st = JSON.parse(raw) as { userId: string; code: string };
+    const user = await this.prisma.userProfile.findUnique({ where: { id: st.userId }, select: { email: true } });
+    if (user) await this.mail.sendAdminCode(user.email, st.code);
+  }
+
+  async resendTwoStep(challenge: string) {
+    const raw = await this.redis.get(twoStepKey(String(challenge ?? '')));
+    if (!raw) throw new UnauthorizedException('That sign-in has expired. Start again with your password.');
+    const st = JSON.parse(raw);
+    if (Date.now() - st.sentAt < 60_000) throw new BadRequestException('Wait a minute before asking for another code.');
+    st.code = sixDigits(); st.tries = 0; st.sentAt = Date.now();
+    await this.redis.set(twoStepKey(challenge), JSON.stringify(st), OTP_TTL);
+    await this.sendTwoStepCode(challenge);
+    return { sent: true };
+  }
+
+  async verifyTwoStep(challenge: string, code: string, remember?: boolean) {
+    const key = twoStepKey(String(challenge ?? ''));
+    const raw = await this.redis.get(key);
+    if (!raw) throw new UnauthorizedException('That sign-in has expired. Start again with your password.');
+    const st = JSON.parse(raw) as { userId: string; code: string; tries: number; sentAt: number };
+    if (String(code ?? '').trim() !== st.code) {
+      st.tries++;
+      if (st.tries >= 5) { await this.redis.del(key); throw new UnauthorizedException('Too many wrong codes. Start again with your password.'); }
+      await this.redis.set(key, JSON.stringify(st), OTP_TTL);
+      throw new UnauthorizedException('That code isn’t right.');
+    }
+    await this.redis.del(key);
+    const p = await this.prisma.userProfile.findUnique({ where: { id: st.userId } });
+    if (!p || p.role !== UserRole.ADMIN) throw new UnauthorizedException('Start again with your password.');
+    const accessToken = this.signToken(p.id, p.email, p.role as UserRole, p.wpUserId, p.onboardingCompleted);
+    const trustToken = remember ? this.jwt.sign({ sub: p.id, purpose: 'admin-trust' }, { expiresIn: '30d' }) : undefined;
+    return { accessToken, trustToken };
+  }
+
+  // ── Change password (signed in) ──────────────────────────
+
+  async changePassword(userId: string, current: string, next: string) {
+    if (typeof next !== 'string' || next.length < 8) throw new BadRequestException('Use at least 8 characters.');
+    const p = await this.prisma.userProfile.findUnique({ where: { id: userId } });
+    if (!p) throw new NotFoundException('Account not found');
+    let ok = false;
+    if (p.passwordHash) ok = await bcrypt.compare(String(current ?? ''), p.passwordHash);
+    if (!ok && p.wpUserId >= 0) ok = await this.wp.verifyPassword(p.email, String(current ?? '')).then(() => true).catch(() => false);
+    if (!ok) throw new UnauthorizedException('Your current password isn’t right.');
+    await this.savePasswordCopy(p.id, next);
+    await this.wp.setPassword(p.wpUserId, next);
+    return { changed: true };
   }
 
   // ── Student registration ─────────────────────────────────
@@ -224,6 +335,8 @@ export class AuthService {
       },
     });
 
+    await this.savePasswordCopy(profile.id, dto.password);
+
     // Welcome email with student ID (non-critical)
     const studentNo = `SN-${profile.id.replace(/-/g, '').slice(-8).toUpperCase()}`;
     this.mail.sendWelcomeStudent(dto.email, dto.firstName ?? '', studentNo).catch(() => {});
@@ -250,7 +363,7 @@ export class AuthService {
 
     await this.prisma.$transaction(async (tx) => {
       const profile = await tx.userProfile.create({
-        data: { wpUserId, email: dto.email, role: UserRole.TEACHER, approvalStatus: ApprovalStatus.PENDING },
+        data: { wpUserId, email: dto.email, role: UserRole.TEACHER, approvalStatus: ApprovalStatus.PENDING, passwordHash: await bcrypt.hash(dto.password, 12), passwordUpdatedAt: new Date() },
       });
       await this.writeTeacherProfile(tx, profile.id, dto, ip);
     });
@@ -348,14 +461,35 @@ export class AuthService {
 
   // ── Password reset ───────────────────────────────────────
 
+  /** Our own reset email with a 30-minute, single-use link. Never says whether the email exists. */
   async forgotPassword(email: string): Promise<{ message: string }> {
-    // Delegate to WordPress; never confirm or deny whether the email exists
-    await this.wp.triggerPasswordReset(email);
+    const e = String(email ?? '').trim().toLowerCase();
+    const p = e ? await this.prisma.userProfile.findUnique({ where: { email: e }, select: { id: true, firstName: true, approvalStatus: true } }) : null;
+    if (p && p.approvalStatus !== ApprovalStatus.REJECTED) {
+      const token = randomBytes(32).toString('base64url');
+      await this.redis.set(resetKey(token), p.id, 30 * 60);
+      const portal = (process.env.PORTAL_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+      this.mail.sendPasswordReset(e, p.firstName ?? '', `${portal}/reset-password?token=${token}`).catch(() => {});
+    }
     return { message: 'If that email is registered, a password reset link has been sent.' };
   }
 
-  async resetPassword(login: string, key: string, newPassword: string): Promise<{ message: string }> {
-    await this.wp.resetPassword(login, key, newPassword);
+  async resetPassword(dto: { token?: string; login?: string; key?: string; newPassword: string }): Promise<{ message: string }> {
+    if (dto.token) {
+      const key = resetKey(dto.token);
+      const userId = await this.redis.get(key);
+      if (!userId) throw new BadRequestException('This link has expired or was already used. Ask for a new one.');
+      await this.redis.del(key);
+      await this.savePasswordCopy(userId, dto.newPassword);
+      const p = await this.prisma.userProfile.findUnique({ where: { id: userId }, select: { wpUserId: true } });
+      if (p) await this.wp.setPassword(p.wpUserId, dto.newPassword);
+      return { message: 'Password reset successfully. You can now log in.' };
+    }
+    // Links WordPress sent before the switch still work
+    if (!dto.login || !dto.key) throw new BadRequestException('This reset link is incomplete. Ask for a new one.');
+    await this.wp.resetPassword(dto.login, dto.key, dto.newPassword);
+    const p = await this.prisma.userProfile.findFirst({ where: { email: dto.login.toLowerCase() } });
+    if (p) await this.savePasswordCopy(p.id, dto.newPassword);
     return { message: 'Password reset successfully. You can now log in.' };
   }
 
@@ -532,7 +666,7 @@ export class AuthService {
     return { message: 'If that email has a CareerPath account that signs in with a code, we’ve sent one.' };
   }
 
-  async loginWithCode(email: string, code: string): Promise<{ accessToken: string }> {
+  async loginWithCode(email: string, code: string): Promise<SignInResult> {
     const e = String(email ?? '').trim().toLowerCase();
     const stored = await this.redis.get(loginCodeKey(e));
     if (!stored) throw new UnauthorizedException('That code has expired. Ask for a new one.');
@@ -547,7 +681,7 @@ export class AuthService {
     const profile = await this.prisma.userProfile.findUnique({ where: { email: e } });
     if (!profile || profile.wpUserId >= 0 || profile.approvalStatus !== ApprovalStatus.APPROVED) throw new UnauthorizedException('This account signs in with a password.');
     await this.prisma.userProfile.update({ where: { id: profile.id }, data: { lastActiveDate: new Date() } }).catch(() => {});
-    return { accessToken: this.signToken(profile.id, profile.email, profile.role as UserRole, profile.wpUserId, profile.onboardingCompleted) };
+    return this.finishSignIn(profile);
   }
 
   // ── Google SSO ───────────────────────────────────────────
@@ -577,7 +711,7 @@ export class AuthService {
     return { googleId: info.sub, email: info.email.toLowerCase(), name: info.name, avatarUrl: info.picture };
   }
 
-  async googleLogin(body: { credential: string }): Promise<{ accessToken: string }> {
+  async googleLogin(body: { credential: string }): Promise<SignInResult> {
     const dto = await this.verifyGoogle(body?.credential);
     let profile = await this.prisma.userProfile.findFirst({
       where: { OR: [{ googleId: dto.googleId }, { email: dto.email }] },
@@ -608,7 +742,7 @@ export class AuthService {
       throw new ForbiddenException('Your application is still under review.');
     }
 
-    return { accessToken: this.signToken(profile.id, profile.email, profile.role as UserRole, profile.wpUserId, profile.onboardingCompleted) };
+    return this.finishSignIn(profile);
   }
 
   // ── Helpers ──────────────────────────────────────────────

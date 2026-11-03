@@ -990,6 +990,28 @@ export function liveSessionReminderTemplate(
   return base(hero, body);
 }
 
+// ── Password reset (our own, no longer WordPress) ───────────────────────────
+
+export function passwordResetTemplate(firstName: string, link: string): string {
+  const hero = headline('A new password,', 'in one step.');
+  const body = `
+    <p style="margin:0;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
+      Hi ${escapeHtml(firstName || 'there')}, someone asked to reset the password for this email. If it was you, choose a new one below. The link works for 30 minutes, once.
+    </p>
+    ${ctaButton('Choose a new password', link)}
+    <p style="margin:10px 0 0;font-size:13px;color:#637090;font-family:${FONT}">Didn’t ask for this? Ignore it; your password stays the same.</p>`;
+  return base(hero, body);
+}
+
+export function adminCodeTemplate(code: string): string {
+  const hero = headline('Your admin', 'sign-in code.');
+  const body = `
+    <p style="margin:0 0 6px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">Type this code to finish signing in to the admin portal. It works for 10 minutes.</p>
+    ${codeBox(code)}
+    <p style="margin:0;font-size:13px;color:#637090;font-family:${FONT}">Didn’t just sign in? Someone has your password: change it now in Settings.</p>`;
+  return base(hero, body);
+}
+
 // ── Mock exam marked by a teacher ────────────────────────────────────────────
 
 export function mockMarkedTemplate(opts: {

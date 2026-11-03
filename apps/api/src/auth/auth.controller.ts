@@ -128,7 +128,7 @@ export class AuthController {
 
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Trigger WordPress's password reset email" })
+  @ApiOperation({ summary: 'Email a 30-minute password reset link' })
   @ApiOkResponse({ description: 'Always returns success (email existence not confirmed)' })
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto.email);
@@ -136,9 +136,34 @@ export class AuthController {
 
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Complete WordPress's password reset with the key from the email" })
+  @ApiOperation({ summary: 'Set a new password with the token from our email (or an older WordPress link)' })
   resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto.login, dto.key, dto.newPassword);
+    return this.authService.resetPassword(dto);
+  }
+
+  @Post('2step/verify')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({ summary: 'Admins: finish signing in with the code we emailed' })
+  verifyTwoStep(@Body() body: { challenge: string; code: string; remember?: boolean }) {
+    return this.authService.verifyTwoStep(body?.challenge, body?.code, !!body?.remember);
+  }
+
+  @Post('2step/resend')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  @ApiOperation({ summary: 'Admins: email the sign-in code again (once a minute)' })
+  resendTwoStep(@Body() body: { challenge: string }) {
+    return this.authService.resendTwoStep(body?.challenge);
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @ApiOperation({ summary: 'Change your password (needs the current one)' })
+  changePassword(@CurrentUser() user: UserProfile, @Body() body: { currentPassword: string; newPassword: string }) {
+    return this.authService.changePassword(user.id, body?.currentPassword, body?.newPassword);
   }
 
   @Post('google')

@@ -26,6 +26,9 @@ model UserProfile {
   websiteUrl           String?
   timezone             String?
   videoIntroUrl        String?
+  /// bcrypt hash; copied from WordPress the first time someone signs in after the switch, then the portal checks it itself
+  passwordHash         String?
+  passwordUpdatedAt    DateTime?
   googleId             String?                  @unique
   lastActiveDate       DateTime?
   /// When the account was created (backfilled for older accounts from their first activity)
