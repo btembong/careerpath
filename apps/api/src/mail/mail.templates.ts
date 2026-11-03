@@ -23,57 +23,66 @@ function icon(key: keyof typeof SVG_PATHS, size: number, color: string): string 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" style="display:block;color:${color}">${SVG_PATHS[key]}</svg>`;
 }
 
-/** Circular icon badge for hero areas (white circle, coloured icon). */
-function heroBadge(key: keyof typeof SVG_PATHS): string {
-  return `
-    <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px">
-      <tr>
-        <td width="56" height="56"
-            style="width:56px;height:56px;background:rgba(255,255,255,0.2);border-radius:28px;text-align:center;vertical-align:middle;padding:14px">
-          ${icon(key, 28, '#ffffff')}
-        </td>
-      </tr>
-    </table>`;
-}
-
 // ── Shared primitives ────────────────────────────────────────────────────────
 
+const FONT = "'Bricolage Grotesque',system-ui,-apple-system,'Segoe UI',Arial,sans-serif";
+const BLUE = '#3F6FE8';
+
+/** "careerpath." with the white C tile, for the blue header. */
 function logo(): string {
   return `
     <table cellpadding="0" cellspacing="0" border="0">
       <tr>
-        <td style="background:#5889FA;border-radius:10px;padding:7px 11px;line-height:1">
-          <span style="color:#ffffff;font-size:17px;font-weight:900;font-family:system-ui,-apple-system,Arial,sans-serif;letter-spacing:-0.5px">C</span>
+        <td width="26" height="26" style="width:26px;height:26px;background:#ffffff;border-radius:6px;text-align:center;vertical-align:middle;line-height:26px">
+          <span style="color:${BLUE};font-size:13px;font-weight:900;font-family:${FONT}">C</span>
         </td>
-        <td style="padding-left:10px;vertical-align:middle">
-          <span style="color:#072061;font-size:17px;font-weight:700;font-family:system-ui,-apple-system,Arial,sans-serif">CareerPath</span><span style="color:#5889FA;font-size:17px;font-weight:700;font-family:system-ui,-apple-system,Arial,sans-serif">Africa</span>
+        <td style="padding-left:8px;vertical-align:middle">
+          <span style="color:#072061;font-size:16px;font-weight:800;font-family:${FONT};letter-spacing:-0.3px">careerpath</span><span style="color:#ffffff;font-size:16px;font-weight:800;font-family:${FONT}">.</span>
         </td>
       </tr>
     </table>`;
 }
 
-function ctaButton(label: string, href: string, color = '#5889FA'): string {
+/** Two-line headline: first line navy, second line white. */
+function headline(first: string, second = ''): string {
+  return `<h1 style="margin:22px 0 0;font-size:30px;line-height:1.08;font-weight:800;letter-spacing:-0.8px;color:#072061;font-family:${FONT}">${first}${second ? `<br/><span style="color:#ffffff">${second}</span>` : ''}</h1>`;
+}
+
+function ctaButton(label: string, href: string, _color?: string): string {
   return `
-    <table cellpadding="0" cellspacing="0" border="0" style="margin:28px 0 8px">
+    <table cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 6px">
       <tr>
-        <td style="background:${color};border-radius:12px">
+        <td style="background:${BLUE};border-radius:6px">
           <a href="${href}"
-             style="display:inline-block;padding:14px 30px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;font-family:system-ui,-apple-system,Arial,sans-serif;letter-spacing:-0.1px">
-            ${label} &rarr;
+             style="display:inline-block;padding:13px 22px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;font-family:${FONT}">
+            ${label}
           </a>
         </td>
       </tr>
     </table>`;
 }
 
+/** Big code in a pale blue box (sign-in codes, school codes). */
+function codeBox(code: string, size = 30): string {
+  return `
+    <table cellpadding="0" cellspacing="0" border="0" style="margin:6px 0 18px">
+      <tr>
+        <td style="background:#EAF0FF;border-radius:8px;padding:12px 20px">
+          <span style="font-size:${size}px;font-weight:800;letter-spacing:0.25em;color:#072061;font-family:${FONT}">${code}</span>
+        </td>
+      </tr>
+    </table>`;
+}
+
 function divider(): string {
-  return `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0">
-    <tr><td style="border-top:1px solid #E6ECFD;font-size:0;line-height:0">&nbsp;</td></tr>
+  return `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:22px 0">
+    <tr><td style="border-top:1px solid #E4E9F3;font-size:0;line-height:0">&nbsp;</td></tr>
   </table>`;
 }
 
 // ── Base shell ───────────────────────────────────────────────────────────────
 
+/** One template for every email: blue header with logo and headline, white body, one quiet footer line. */
 function base(heroHtml: string, bodyHtml: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -81,49 +90,32 @@ function base(heroHtml: string, bodyHtml: string): string {
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <meta name="x-apple-disable-message-reformatting"/>
+  <meta name="color-scheme" content="light only"/>
   <title>CareerPath Africa</title>
 </head>
-<body style="margin:0;padding:0;background:#EEF2FF;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0"
-         style="background:#EEF2FF;padding:40px 16px">
+<body style="margin:0;padding:0;background:#E9EDF5;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#E9EDF5;padding:32px 12px">
     <tr>
       <td align="center">
-        <table cellpadding="0" cellspacing="0" border="0"
-               style="width:100%;max-width:600px">
-
-          <!-- HEADER -->
+        <table cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px;background:#ffffff;border-radius:8px;overflow:hidden">
           <tr>
-            <td style="background:#ffffff;padding:20px 36px;border-radius:16px 16px 0 0;border:1px solid #E6ECFD;border-bottom:none">
+            <td style="background:${BLUE};padding:24px 30px 28px;border-radius:8px 10px 0 0">
               ${logo()}
-            </td>
-          </tr>
-
-          <!-- HERO BAND -->
-          <tr>
-            <td style="background:#5889FA;padding:36px 36px 32px;border-left:1px solid #E6ECFD;border-right:1px solid #E6ECFD">
               ${heroHtml}
             </td>
           </tr>
-
-          <!-- BODY -->
           <tr>
-            <td style="background:#ffffff;padding:36px 36px 28px;border-left:1px solid #E6ECFD;border-right:1px solid #E6ECFD">
+            <td class="cpa-body" style="background:#ffffff;padding:26px 30px 24px;font-family:${FONT};font-size:15px;line-height:1.55;color:#3A4A70">
               ${bodyHtml}
             </td>
           </tr>
-
-          <!-- FOOTER -->
           <tr>
-            <td style="background:#F8FAFF;border:1px solid #E6ECFD;border-top:none;border-radius:0 0 16px 16px;padding:20px 36px;text-align:center">
-              <p style="margin:0 0 4px;font-size:11px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif;opacity:0.7">
-                You received this email because you have an account on CareerPath Africa.
-              </p>
-              <p style="margin:0;font-size:11px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif;opacity:0.5">
-                &copy; ${new Date().getFullYear()} CareerPath Africa. All rights reserved.
+            <td style="background:#ffffff;border-top:1px solid #E4E9F3;padding:14px 30px;border-radius:0 0 10px 10px">
+              <p style="margin:0;font-size:12px;color:#97A2BD;font-family:${FONT}">
+                CareerPath Africa &middot; <a href="${PORTAL_URL}/settings" style="color:#97A2BD;text-decoration:underline">Email settings</a> &middot; &copy; ${new Date().getFullYear()}
               </p>
             </td>
           </tr>
-
         </table>
       </td>
     </tr>
@@ -135,17 +127,10 @@ function base(heroHtml: string, bodyHtml: string): string {
 // ── 1. OTP Verification ──────────────────────────────────────────────────────
 
 export function otpTemplate(code: string): string {
-  const hero = `
-    ${heroBadge('shieldCheck')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Email verification
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Verify your email address
-    </h1>`;
+  const hero = headline('Your code', 'is here.');
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Use the code below to verify your email. It expires in <strong style="color:#072061">10 minutes</strong>.
     </p>
 
@@ -155,7 +140,7 @@ export function otpTemplate(code: string): string {
         <td align="center">
           <table cellpadding="0" cellspacing="0" border="0">
             <tr>
-              <td style="background:#F0F4FF;border:2px solid #E6ECFD;border-radius:16px;padding:20px 36px;text-align:center">
+              <td style="background:#F0F4FF;border:2px solid #E6ECFD;border-radius:8px;padding:20px 36px;text-align:center">
                 <span style="font-size:38px;font-weight:900;letter-spacing:12px;color:#072061;font-family:'Courier New',Courier,monospace">
                   ${code}
                 </span>
@@ -170,8 +155,8 @@ export function otpTemplate(code: string): string {
 
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
       <tr>
-        <td style="background:#F8FAFF;border:1px solid #E6ECFD;border-radius:10px;padding:14px 18px">
-          <p style="margin:0;font-size:12px;color:#405FAD;line-height:1.5;font-family:system-ui,-apple-system,Arial,sans-serif">
+        <td style="background:#F8FAFF;border:1px solid #E6ECFD;border-radius:8px;padding:14px 18px">
+          <p style="margin:0;font-size:12px;color:#3A4A70;line-height:1.5;font-family:${FONT}">
             <strong style="color:#072061">Didn't request this?</strong>
             You can safely ignore this email. Your account is secure.
           </p>
@@ -185,28 +170,21 @@ export function otpTemplate(code: string): string {
 // ── 2. Teacher Approved ──────────────────────────────────────────────────────
 
 export function teacherApprovedTemplate(teacherNo?: string): string {
-  const hero = `
-    ${heroBadge('medal')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Application approved
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Welcome to the teaching team!
-    </h1>`;
+  const hero = headline('You’re in.', 'Welcome to the team.');
 
   const idBox = teacherNo ? `
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px">
       <tr>
-        <td style="background:#F0F4FF;border:1.5px dashed #5889FA;border-radius:12px;padding:14px 18px">
-          <p style="margin:0 0 3px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#5889FA;font-family:system-ui,-apple-system,Arial,sans-serif">Your Teacher ID</p>
+        <td style="background:#F0F4FF;border:1.5px dashed #5889FA;border-radius:8px;padding:14px 18px">
+          <p style="margin:0 0 3px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#5889FA;font-family:${FONT}">Your Teacher ID</p>
           <p style="margin:0;font-size:20px;font-weight:900;color:#072061;font-family:'Courier New',Courier,monospace;letter-spacing:2px">${teacherNo}</p>
-          <p style="margin:4px 0 0;font-size:11px;color:#405FAD;opacity:0.7;font-family:system-ui,-apple-system,Arial,sans-serif">Quote this ID in all support and billing queries.</p>
+          <p style="margin:4px 0 0;font-size:11px;color:#3A4A70;opacity:0.7;font-family:${FONT}">Quote this ID in all support and billing queries.</p>
         </td>
       </tr>
     </table>` : '';
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Great news — your teacher application on <strong style="color:#072061">CareerPath Africa</strong> has been <strong style="color:#072061">approved</strong>. You can now log in and start making an impact.
     </p>
     ${idBox}
@@ -229,8 +207,8 @@ export function teacherApprovedTemplate(teacherNo?: string): string {
           </table>
         </td>
         <td style="padding:10px 0 10px 14px;border-bottom:1px solid #E6ECFD;vertical-align:middle">
-          <p style="margin:0 0 2px;font-size:13px;font-weight:700;color:#072061;font-family:system-ui,-apple-system,Arial,sans-serif">${title}</p>
-          <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.8;font-family:system-ui,-apple-system,Arial,sans-serif">${desc}</p>
+          <p style="margin:0 0 2px;font-size:13px;font-weight:700;color:#072061;font-family:${FONT}">${title}</p>
+          <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.8;font-family:${FONT}">${desc}</p>
         </td>
       </tr>`).join('')}
     </table>
@@ -238,7 +216,7 @@ export function teacherApprovedTemplate(teacherNo?: string): string {
     ${ctaButton('Go to teacher dashboard', `${PORTAL_URL}/teacher/dashboard`)}
 
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       If you have any questions, reply to this email or visit our support centre.
     </p>`;
 
@@ -248,40 +226,33 @@ export function teacherApprovedTemplate(teacherNo?: string): string {
 // ── 3. Teacher Rejected ──────────────────────────────────────────────────────
 
 export function teacherRejectedTemplate(rejectionReason?: string): string {
-  const hero = `
-    ${heroBadge('docText')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Application update
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Thank you for applying
-    </h1>`;
+  const hero = headline('Thank you', 'for applying.');
 
   const reasonBlock = rejectionReason ? `
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0">
       <tr>
         <td style="background:#F0F4FF;border-left:3px solid #5889FA;border-radius:0 10px 10px 0;padding:14px 18px">
-          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#5889FA;font-family:system-ui,-apple-system,Arial,sans-serif">Feedback from our team</p>
-          <p style="margin:0;font-size:13px;color:#072061;line-height:1.5;font-family:system-ui,-apple-system,Arial,sans-serif">${rejectionReason}</p>
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#5889FA;font-family:${FONT}">Feedback from our team</p>
+          <p style="margin:0;font-size:13px;color:#072061;line-height:1.5;font-family:${FONT}">${rejectionReason}</p>
         </td>
       </tr>
     </table>` : '';
 
   const body = `
-    <p style="margin:0 0 16px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 16px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Thank you for applying to teach on <strong style="color:#072061">CareerPath Africa</strong>. After careful review, we are unable to approve your application at this time.
     </p>
 
     ${reasonBlock}
 
-    <p style="margin:0 0 8px;font-size:14px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 8px;font-size:14px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       We encourage you to strengthen your profile and reapply. Our team is happy to guide you on what to improve.
     </p>
 
     ${ctaButton('Contact support', 'mailto:support@careerpathafrica.com', '#405FAD')}
 
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       You can reapply at any time from <a href="${PORTAL_URL}/register" style="color:#5889FA;text-decoration:none">careerpathafrica.com</a>.
     </p>`;
 
@@ -291,17 +262,10 @@ export function teacherRejectedTemplate(rejectionReason?: string): string {
 // ── 4. Country Rep Assigned ──────────────────────────────────────────────────
 
 export function repAssignedTemplate(countryName: string, currency: string): string {
-  const hero = `
-    ${heroBadge('global')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      New role assigned
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Country Representative<br/>${countryName}
-    </h1>`;
+  const hero = headline('Welcome to', `the team, ${escapeHtml(countryName)}.`);
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       You have been appointed as the <strong style="color:#072061">Country Representative</strong> for <strong style="color:#072061">${countryName}</strong> on CareerPath Africa.
     </p>
 
@@ -311,9 +275,9 @@ export function repAssignedTemplate(countryName: string, currency: string): stri
         <td style="width:50%;padding-right:8px">
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
-              <td style="background:#F0F4FF;border:1px solid #E6ECFD;border-radius:12px;padding:16px 18px;text-align:center">
-                <p style="margin:0 0 4px;font-size:22px;font-weight:900;color:#072061;font-family:system-ui,-apple-system,Arial,sans-serif">${countryName}</p>
-                <p style="margin:0;font-size:11px;color:#405FAD;opacity:0.7;font-family:system-ui,-apple-system,Arial,sans-serif;text-transform:uppercase;letter-spacing:0.08em">Your territory</p>
+              <td style="background:#F0F4FF;border:1px solid #E6ECFD;border-radius:8px;padding:16px 18px;text-align:center">
+                <p style="margin:0 0 4px;font-size:22px;font-weight:900;color:#072061;font-family:${FONT}">${countryName}</p>
+                <p style="margin:0;font-size:11px;color:#3A4A70;opacity:0.7;font-family:${FONT};text-transform:uppercase;letter-spacing:0.08em">Your territory</p>
               </td>
             </tr>
           </table>
@@ -321,9 +285,9 @@ export function repAssignedTemplate(countryName: string, currency: string): stri
         <td style="width:50%;padding-left:8px">
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
-              <td style="background:#F0F4FF;border:1px solid #E6ECFD;border-radius:12px;padding:16px 18px;text-align:center">
-                <p style="margin:0 0 4px;font-size:22px;font-weight:900;color:#5889FA;font-family:system-ui,-apple-system,Arial,sans-serif">${currency}</p>
-                <p style="margin:0;font-size:11px;color:#405FAD;opacity:0.7;font-family:system-ui,-apple-system,Arial,sans-serif;text-transform:uppercase;letter-spacing:0.08em">Wallet currency</p>
+              <td style="background:#F0F4FF;border:1px solid #E6ECFD;border-radius:8px;padding:16px 18px;text-align:center">
+                <p style="margin:0 0 4px;font-size:22px;font-weight:900;color:#5889FA;font-family:${FONT}">${currency}</p>
+                <p style="margin:0;font-size:11px;color:#3A4A70;opacity:0.7;font-family:${FONT};text-transform:uppercase;letter-spacing:0.08em">Wallet currency</p>
               </td>
             </tr>
           </table>
@@ -331,14 +295,14 @@ export function repAssignedTemplate(countryName: string, currency: string): stri
       </tr>
     </table>
 
-    <p style="margin:0 0 8px;font-size:14px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 8px;font-size:14px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       You will earn a <strong style="color:#072061">commission</strong> for every student purchase from ${countryName}. Your earnings wallet is ready in <strong style="color:#072061">${currency}</strong>.
     </p>
 
     ${ctaButton('View your dashboard', `${PORTAL_URL}/country-rep/dashboard`)}
 
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Questions about your role? Contact our partnership team at <a href="mailto:partnerships@careerpathafrica.com" style="color:#5889FA;text-decoration:none">partnerships@careerpathafrica.com</a>.
     </p>`;
 
@@ -349,34 +313,27 @@ export function repAssignedTemplate(countryName: string, currency: string): stri
 
 export function welcomeStudentTemplate(firstName: string, studentNo?: string): string {
   const name = firstName || 'there';
-  const hero = `
-    ${heroBadge('checkCircle')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Welcome
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Hi ${name}, you're in!
-    </h1>`;
+  const hero = headline('Welcome,', `${escapeHtml(name)}.`);
 
   const idBox = studentNo ? `
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px">
       <tr>
-        <td style="background:#F0F4FF;border:1.5px dashed #5889FA;border-radius:12px;padding:14px 18px">
-          <p style="margin:0 0 3px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#5889FA;font-family:system-ui,-apple-system,Arial,sans-serif">Your Student ID</p>
+        <td style="background:#F0F4FF;border:1.5px dashed #5889FA;border-radius:8px;padding:14px 18px">
+          <p style="margin:0 0 3px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#5889FA;font-family:${FONT}">Your Student ID</p>
           <p style="margin:0;font-size:20px;font-weight:900;color:#072061;font-family:'Courier New',Courier,monospace;letter-spacing:2px">${studentNo}</p>
-          <p style="margin:4px 0 0;font-size:11px;color:#405FAD;opacity:0.7;font-family:system-ui,-apple-system,Arial,sans-serif">Keep this for reference in all support queries.</p>
+          <p style="margin:4px 0 0;font-size:11px;color:#3A4A70;opacity:0.7;font-family:${FONT}">Keep this for reference in all support queries.</p>
         </td>
       </tr>
     </table>` : '';
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Your <strong style="color:#072061">CareerPath Africa</strong> account is ready. Browse available packages and start learning at your own pace.
     </p>
     ${idBox}
     ${ctaButton('Explore packages', `${PORTAL_URL}/packages`)}
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Need help getting started? Email us at <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
     </p>`;
 
@@ -387,24 +344,17 @@ export function welcomeStudentTemplate(firstName: string, studentNo?: string): s
 
 export function welcomeTeacherTemplate(firstName: string): string {
   const name = firstName || 'there';
-  const hero = `
-    ${heroBadge('diploma')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Application received
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Thanks, ${name}!<br/>We'll be in touch soon.
-    </h1>`;
+  const hero = headline(`Thanks, ${escapeHtml(name)}.`, 'We’ve got it.');
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       We've received your teacher application on <strong style="color:#072061">CareerPath Africa</strong>.
       Our team will review it and notify you by email — typically within 2–3 business days.
     </p>
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
       <tr>
-        <td style="background:#F8FAFF;border:1px solid #E6ECFD;border-radius:10px;padding:14px 18px">
-          <p style="margin:0;font-size:12px;color:#405FAD;line-height:1.5;font-family:system-ui,-apple-system,Arial,sans-serif">
+        <td style="background:#F8FAFF;border:1px solid #E6ECFD;border-radius:8px;padding:14px 18px">
+          <p style="margin:0;font-size:12px;color:#3A4A70;line-height:1.5;font-family:${FONT}">
             <strong style="color:#072061">What happens next?</strong>
             Once approved, you'll receive a second email with a link to your teacher dashboard where you can create cohorts, schedule live classes, and upload course materials.
           </p>
@@ -412,7 +362,7 @@ export function welcomeTeacherTemplate(firstName: string): string {
       </tr>
     </table>
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Questions? Contact us at <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
     </p>`;
 
@@ -427,17 +377,10 @@ function escapeHtml(s: string): string {
 
 /** Title/body are typed by an admin, so they're escaped; line breaks are kept. */
 export function announcementTemplate(title: string, message: string): string {
-  const hero = `
-    ${heroBadge('global')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Announcement
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      ${escapeHtml(title)}
-    </h1>`;
+  const hero = headline(escapeHtml(title));
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       ${escapeHtml(message).replace(/\n/g, '<br>')}
     </p>
     ${ctaButton('Open CareerPath Africa', PORTAL_URL)}`;
@@ -449,21 +392,14 @@ export function announcementTemplate(title: string, message: string): string {
 
 /** Sender name and message text are typed by users, so they're escaped. */
 export function newMessageTemplate(fromName: string, preview: string, where: string | null, link: string): string {
-  const hero = `
-    ${heroBadge('global')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      New message${where ? ' · ' + escapeHtml(where) : ''}
-    </p>
-    <h1 style="margin:0;font-size:26px;font-weight:900;color:#ffffff;line-height:1.2;font-family:system-ui,-apple-system,Arial,sans-serif">
-      ${escapeHtml(fromName)} wrote to you
-    </h1>`;
+  const hero = headline('New message', `from ${escapeHtml(fromName)}.`);
 
   const body = `
-    <p style="margin:0 0 20px;padding:14px 16px;border-radius:8px;background:#F4F6FB;font-size:15px;color:#072061;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;padding:14px 16px;border-radius:8px;background:#F4F6FB;font-size:15px;color:#072061;line-height:1.6;font-family:${FONT}">
       ${escapeHtml(preview).replace(/\n/g, '<br>')}
     </p>
     ${ctaButton('Reply on CareerPath', link)}
-    <p style="margin:16px 0 0;font-size:12px;color:#405FAD;opacity:0.7;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:16px 0 0;font-size:12px;color:#3A4A70;opacity:0.7;font-family:${FONT}">
       You get this email because you weren’t online. Turn message emails off in Settings → Notifications.
     </p>`;
 
@@ -473,34 +409,23 @@ export function newMessageTemplate(fromName: string, preview: string, where: str
 // ── 5b3. School seat invitation and school admin welcome ─────────────────────
 
 /** A school or company bought a seat for this email. Names are typed by admins, so they're escaped. */
-export function orgSeatInviteTemplate(orgName: string, packageName: string, link: string): string {
-  const hero = `
-    ${heroBadge('global')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Invitation
-    </p>
-    <h1 style="margin:0;font-size:26px;font-weight:900;color:#ffffff;line-height:1.2;font-family:system-ui,-apple-system,Arial,sans-serif">
-      ${escapeHtml(orgName)} has a place for you
-    </h1>`;
+export function orgSeatInviteTemplate(orgName: string, packageName: string, link: string, joinCode?: string | null): string {
+  const hero = headline('A place is', 'waiting for you.');
+  const codePart = joinCode ? `
+    <p style="margin:18px 0 6px;font-size:13px;color:#637090;font-family:${FONT}">Or sign up on CareerPath Africa with the school code:</p>
+    ${codeBox(escapeHtml(joinCode), 22)}` : '';
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
-      You’ve been given <strong style="color:#072061">${escapeHtml(packageName)}</strong> on CareerPath Africa. Create your account with this email address, then open the link to start.
+    <p style="margin:0 0 4px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
+      <strong style="color:#072061">${escapeHtml(orgName)}</strong> paid for your place on <strong style="color:#072061">${escapeHtml(packageName)}</strong>. Create your account with this email address, then take your place.
     </p>
-    ${ctaButton('Accept my place', link)}`;
+    ${ctaButton('Take my place', link)}${codePart}`;
   return base(hero, body);
 }
 
 export function orgAdminWelcomeTemplate(name: string, orgName: string, link: string): string {
-  const hero = `
-    ${heroBadge('global')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      School portal
-    </p>
-    <h1 style="margin:0;font-size:26px;font-weight:900;color:#ffffff;line-height:1.2;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Welcome, ${escapeHtml(name)}
-    </h1>`;
+  const hero = headline(escapeHtml(orgName), 'is set up.');
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       You can now manage <strong style="color:#072061">${escapeHtml(orgName)}</strong>’s seats: invite students, share your join link and see how they’re doing. Sign in with this email — we send you a code each time, so there’s no password to remember.
     </p>
     ${ctaButton('Open the school portal', link)}`;
@@ -510,22 +435,15 @@ export function orgAdminWelcomeTemplate(name: string, orgName: string, link: str
 // ── 5c. Course Approved ──────────────────────────────────────────────────────
 
 export function courseApprovedTemplate(courseTitle: string): string {
-  const hero = `
-    ${heroBadge('medal')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Course approved
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Your course is live!
-    </h1>`;
+  const hero = headline('Your course', 'is live.');
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Great news — <strong style="color:#072061">${courseTitle}</strong> has been reviewed and approved. It is now published and visible to students.
     </p>
     ${ctaButton('View your courses', `${PORTAL_URL}/teacher/courses`)}
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Commissions are credited to your wallet as students enrol. Check your earnings at any time from the <a href="${PORTAL_URL}/teacher/wallet" style="color:#5889FA;text-decoration:none">wallet page</a>.
     </p>`;
 
@@ -535,23 +453,16 @@ export function courseApprovedTemplate(courseTitle: string): string {
 // ── 5d. Reviewer Assigned ────────────────────────────────────────────────────
 
 export function reviewerAssignedTemplate(courseTitle: string): string {
-  const hero = `
-    ${heroBadge('docText')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      New review assignment
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      A course is waiting for your review
-    </h1>`;
+  const hero = headline('A course is', 'waiting for you.');
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       You've been assigned to review <strong style="color:#072061">${courseTitle}</strong> on CareerPath Africa.
       Please complete your review as soon as possible so the course can be published.
     </p>
     ${ctaButton('Go to review queue', `${PORTAL_URL}/reviewer/dashboard`)}
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Your commission is credited once you submit your decision. Questions? Contact <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
     </p>`;
 
@@ -561,23 +472,16 @@ export function reviewerAssignedTemplate(courseTitle: string): string {
 // ── 5e. Payout Initiated ─────────────────────────────────────────────────────
 
 export function payoutInitiatedTemplate(formattedAmount: string, currency: string, periodLabel: string): string {
-  const hero = `
-    ${heroBadge('card')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Payout initiated
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Your payout is being processed
-    </h1>`;
+  const hero = headline(`${formattedAmount} ${currency}`, 'is on its way.');
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       A payout of <strong style="color:#072061">${formattedAmount} ${currency}</strong> for the period <strong style="color:#072061">${periodLabel}</strong> has been initiated and is being processed to your registered bank account.
     </p>
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
       <tr>
-        <td style="background:#F8FAFF;border:1px solid #E6ECFD;border-radius:10px;padding:14px 18px">
-          <p style="margin:0;font-size:12px;color:#405FAD;line-height:1.5;font-family:system-ui,-apple-system,Arial,sans-serif">
+        <td style="background:#F8FAFF;border:1px solid #E6ECFD;border-radius:8px;padding:14px 18px">
+          <p style="margin:0;font-size:12px;color:#3A4A70;line-height:1.5;font-family:${FONT}">
             Bank transfers typically arrive within 1–3 business days. You'll receive another email once the payment is confirmed as received.
           </p>
         </td>
@@ -585,7 +489,7 @@ export function payoutInitiatedTemplate(formattedAmount: string, currency: strin
     </table>
     ${ctaButton('View payout history', `${PORTAL_URL}/teacher/wallet`)}
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Issues? Contact <a href="mailto:billing@careerpathafrica.com" style="color:#5889FA;text-decoration:none">billing@careerpathafrica.com</a>.
     </p>`;
 
@@ -595,22 +499,15 @@ export function payoutInitiatedTemplate(formattedAmount: string, currency: strin
 // ── 5f. Payout Completed ─────────────────────────────────────────────────────
 
 export function payoutCompletedTemplate(formattedAmount: string, currency: string): string {
-  const hero = `
-    ${heroBadge('checkCircle')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Payout completed
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      ${formattedAmount} ${currency} has been sent!
-    </h1>`;
+  const hero = headline('Paid.', `${formattedAmount} ${currency}.`);
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Your payout of <strong style="color:#072061">${formattedAmount} ${currency}</strong> has been confirmed as paid to your registered bank account.
     </p>
     ${ctaButton('View wallet', `${PORTAL_URL}/teacher/wallet`)}
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Questions about this payment? Email <a href="mailto:billing@careerpathafrica.com" style="color:#5889FA;text-decoration:none">billing@careerpathafrica.com</a>.
     </p>`;
 
@@ -620,23 +517,16 @@ export function payoutCompletedTemplate(formattedAmount: string, currency: strin
 // ── 5g. Package Expiry Warning ───────────────────────────────────────────────
 
 export function expiryWarningTemplate(packageName: string, daysLeft: number, expiresOn: string): string {
-  const hero = `
-    ${heroBadge('shieldCheck')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Access expiring soon
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left on your package
-    </h1>`;
+  const hero = headline(daysLeft === 1 ? 'One day' : `${daysLeft} days`, 'left.');
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Your access to <strong style="color:#072061">${packageName}</strong> expires on <strong style="color:#072061">${expiresOn}</strong>.
       Renew now to keep uninterrupted access to all course materials and live sessions.
     </p>
     ${ctaButton('Renew access', `${PORTAL_URL}/packages`)}
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Need help? Contact <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
     </p>`;
 
@@ -659,17 +549,10 @@ export function weeklyEarningsDigestTemplate(opts: {
   const itemLabel = opts.role === 'teacher' ? 'course sale' : 'new student';
   const plural = opts.newItems !== 1 ? 's' : '';
 
-  const hero = `
-    ${heroBadge('medal')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Weekly summary · ${opts.weekLabel}
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      ${opts.firstName}, here's your week
-    </h1>`;
+  const hero = headline('This week', `you earned ${opts.totalEarned} ${opts.currency}.`);
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Here's a snapshot of your ${roleLabel} activity for the week of <strong style="color:#072061">${opts.weekLabel}</strong>.
     </p>
 
@@ -684,9 +567,9 @@ export function weeklyEarningsDigestTemplate(opts: {
         <td style="width:33%;padding-right:8px">
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
-              <td style="background:#F0F4FF;border:1px solid #E6ECFD;border-radius:12px;padding:14px 16px;text-align:center">
-                <p style="margin:0 0 4px;font-size:18px;font-weight:900;color:#072061;font-family:system-ui,-apple-system,Arial,sans-serif">${s.value}</p>
-                <p style="margin:0;font-size:10px;color:#405FAD;opacity:0.7;font-family:system-ui,-apple-system,Arial,sans-serif;text-transform:uppercase;letter-spacing:0.08em">${s.label}</p>
+              <td style="background:#F0F4FF;border:1px solid #E6ECFD;border-radius:8px;padding:14px 16px;text-align:center">
+                <p style="margin:0 0 4px;font-size:18px;font-weight:900;color:#072061;font-family:${FONT}">${s.value}</p>
+                <p style="margin:0;font-size:10px;color:#3A4A70;opacity:0.7;font-family:${FONT};text-transform:uppercase;letter-spacing:0.08em">${s.label}</p>
               </td>
             </tr>
           </table>
@@ -696,7 +579,7 @@ export function weeklyEarningsDigestTemplate(opts: {
 
     ${ctaButton('View full dashboard', `${PORTAL_URL}${opts.dashboardPath}`)}
     ${divider()}
-    <p style="margin:0;font-size:11px;color:#405FAD;opacity:0.5;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:11px;color:#3A4A70;opacity:0.5;font-family:${FONT}">
       This digest is sent every Monday. Contact <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a> to unsubscribe.
     </p>`;
 
@@ -713,14 +596,7 @@ export function dailyAdminDigestTemplate(opts: {
   pendingPayouts: number;
   failedWebhooks: number;
 }): string {
-  const hero = `
-    ${heroBadge('global')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Daily ops summary · ${opts.date}
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Platform overview
-    </h1>`;
+  const hero = headline('Today', 'on CareerPath.');
 
   const stats = [
     { label: 'New signups',        value: opts.newSignups },
@@ -732,8 +608,8 @@ export function dailyAdminDigestTemplate(opts: {
 
   const rows = stats.map(s => `
     <tr>
-      <td style="padding:10px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">${s.label}</td>
-      <td style="padding:10px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:${s.value > 0 && (s.label.includes('fail') || s.label.includes('Pending')) ? '#d63638' : '#072061'};text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${s.value}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#3A4A70;font-family:${FONT}">${s.label}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:${s.value > 0 && (s.label.includes('fail') || s.label.includes('Pending')) ? '#d63638' : '#072061'};text-align:right;font-family:${FONT}">${s.value}</td>
     </tr>`).join('');
 
   const body = `
@@ -742,7 +618,7 @@ export function dailyAdminDigestTemplate(opts: {
     </table>
     ${ctaButton('Open admin dashboard', `${PORTAL_URL}/admin/dashboard`)}
     ${divider()}
-    <p style="margin:0;font-size:11px;color:#405FAD;opacity:0.5;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:11px;color:#3A4A70;opacity:0.5;font-family:${FONT}">
       Automated daily digest. Sent at 07:00 UTC.
     </p>`;
 
@@ -761,50 +637,43 @@ export function purchaseReceiptTemplate(
   itemType: 'package' | 'course' = 'package',
 ): string {
   const dateStr = purchaseDate ?? new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-  const hero = `
-    ${heroBadge('checkCircle')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Payment confirmed
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Your receipt is ready
-    </h1>`;
+  const hero = headline('Paid.', 'Thank you.');
 
   const rows = [
     studentName ? `
       <tr>
-        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">Billed to</td>
-        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${studentName}</td>
+        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#3A4A70;font-family:${FONT}">Billed to</td>
+        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:${FONT}">${studentName}</td>
       </tr>` : '',
     `<tr>
-        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">Date</td>
-        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${dateStr}</td>
+        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#3A4A70;font-family:${FONT}">Date</td>
+        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:${FONT}">${dateStr}</td>
       </tr>`,
     `<tr>
-        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">${itemType === 'course' ? 'Course' : 'Package'}</td>
-        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${itemName}</td>
+        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#3A4A70;font-family:${FONT}">${itemType === 'course' ? 'Course' : 'Package'}</td>
+        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:${FONT}">${itemName}</td>
       </tr>`,
     `<tr>
-        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">Currency</td>
-        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${currency}</td>
+        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#3A4A70;font-family:${FONT}">Currency</td>
+        <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:${FONT}">${currency}</td>
       </tr>`,
     `<tr>
-        <td style="padding:16px 0;font-size:14px;font-weight:700;color:#072061;font-family:system-ui,-apple-system,Arial,sans-serif">Total paid</td>
-        <td style="padding:16px 0;font-size:20px;font-weight:900;color:#5889FA;text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${formattedAmount}</td>
+        <td style="padding:16px 0;font-size:14px;font-weight:700;color:#072061;font-family:${FONT}">Total paid</td>
+        <td style="padding:16px 0;font-size:20px;font-weight:900;color:#5889FA;text-align:right;font-family:${FONT}">${formattedAmount}</td>
       </tr>`,
   ].join('');
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Thank you for your purchase! Here's a summary of your transaction.
     </p>
 
     <!-- Receipt card -->
     <table cellpadding="0" cellspacing="0" border="0" width="100%"
-           style="border:2px solid #E6ECFD;border-radius:14px;overflow:hidden;margin-bottom:8px">
+           style="border:2px solid #E6ECFD;border-radius:8px;overflow:hidden;margin-bottom:8px">
       <tr>
         <td style="background:#072061;padding:12px 20px">
-          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.6);font-family:system-ui,-apple-system,Arial,sans-serif">
+          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.6);font-family:${FONT}">
             Receipt · CareerPath Africa${invoiceNo ? ` · ${invoiceNo}` : ''}
           </p>
         </td>
@@ -821,7 +690,7 @@ export function purchaseReceiptTemplate(
     ${ctaButton('Access your courses', `${PORTAL_URL}/student/courses`)}
 
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Receipts are also available in your <a href="${PORTAL_URL}/student/billing" style="color:#5889FA;text-decoration:none">billing history</a>. Need help? Contact <a href="mailto:billing@careerpathafrica.com" style="color:#5889FA;text-decoration:none">billing@careerpathafrica.com</a>.
     </p>`;
 
@@ -839,26 +708,19 @@ export function mentorshipBookingStudentTemplate(opts: {
   meetingUrl: string;
   bookingId: string;
 }): string {
-  const hero = `
-    ${heroBadge('video')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Session confirmed
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Your mentorship session is booked!
-    </h1>`;
+  const hero = headline('Booked with', `${escapeHtml(opts.teacherName)}.`);
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Hi <strong style="color:#072061">${opts.studentName}</strong>, your session with <strong style="color:#072061">${opts.teacherName}</strong> is confirmed.
     </p>
 
     <!-- Session details card -->
     <table cellpadding="0" cellspacing="0" border="0" width="100%"
-           style="border:2px solid #E6ECFD;border-radius:14px;overflow:hidden;margin-bottom:24px">
+           style="border:2px solid #E6ECFD;border-radius:8px;overflow:hidden;margin-bottom:24px">
       <tr>
         <td style="background:#072061;padding:12px 20px">
-          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.6);font-family:system-ui,-apple-system,Arial,sans-serif">
+          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.6);font-family:${FONT}">
             Session Details
           </p>
         </td>
@@ -867,20 +729,20 @@ export function mentorshipBookingStudentTemplate(opts: {
         <td style="padding:0 20px">
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
-              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">Mentor</td>
-              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${opts.teacherName}</td>
+              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#3A4A70;font-family:${FONT}">Mentor</td>
+              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:${FONT}">${opts.teacherName}</td>
             </tr>
             <tr>
-              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">Date</td>
-              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${opts.dateStr}</td>
+              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#3A4A70;font-family:${FONT}">Date</td>
+              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:${FONT}">${opts.dateStr}</td>
             </tr>
             <tr>
-              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">Time</td>
-              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${opts.timeStr} UTC</td>
+              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#3A4A70;font-family:${FONT}">Time</td>
+              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:${FONT}">${opts.timeStr} UTC</td>
             </tr>
             <tr>
-              <td style="padding:14px 0;font-size:13px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">Duration</td>
-              <td style="padding:14px 0;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${opts.durationMins} minutes</td>
+              <td style="padding:14px 0;font-size:13px;color:#3A4A70;font-family:${FONT}">Duration</td>
+              <td style="padding:14px 0;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:${FONT}">${opts.durationMins} minutes</td>
             </tr>
           </table>
         </td>
@@ -890,7 +752,7 @@ export function mentorshipBookingStudentTemplate(opts: {
     ${ctaButton('Join session', opts.meetingUrl)}
 
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       You can also access this from your <a href="${PORTAL_URL}/student/mentorship" style="color:#5889FA;text-decoration:none">mentorship page</a>. If you need to cancel, please do so at least 24 hours in advance.
     </p>`;
 
@@ -908,35 +770,28 @@ export function mentorshipBookingTeacherTemplate(opts: {
   meetingUrl: string;
   notes?: string;
 }): string {
-  const hero = `
-    ${heroBadge('video')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      New booking
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      A student has booked you!
-    </h1>`;
+  const hero = headline(`${escapeHtml(opts.studentName)} booked`, 'a session.');
 
   const notesBlock = opts.notes ? `
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px">
       <tr>
         <td style="background:#F0F4FF;border-left:3px solid #5889FA;border-radius:0 10px 10px 0;padding:14px 18px">
-          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#5889FA;font-family:system-ui,-apple-system,Arial,sans-serif">Student notes</p>
-          <p style="margin:0;font-size:13px;color:#072061;line-height:1.5;font-family:system-ui,-apple-system,Arial,sans-serif">${opts.notes}</p>
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#5889FA;font-family:${FONT}">Student notes</p>
+          <p style="margin:0;font-size:13px;color:#072061;line-height:1.5;font-family:${FONT}">${opts.notes}</p>
         </td>
       </tr>
     </table>` : '';
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Hi <strong style="color:#072061">${opts.teacherName}</strong>, <strong style="color:#072061">${opts.studentName}</strong> has booked a session with you.
     </p>
 
     <table cellpadding="0" cellspacing="0" border="0" width="100%"
-           style="border:2px solid #E6ECFD;border-radius:14px;overflow:hidden;margin-bottom:20px">
+           style="border:2px solid #E6ECFD;border-radius:8px;overflow:hidden;margin-bottom:20px">
       <tr>
         <td style="background:#072061;padding:12px 20px">
-          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.6);font-family:system-ui,-apple-system,Arial,sans-serif">
+          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.6);font-family:${FONT}">
             Session Details
           </p>
         </td>
@@ -945,20 +800,20 @@ export function mentorshipBookingTeacherTemplate(opts: {
         <td style="padding:0 20px">
           <table cellpadding="0" cellspacing="0" border="0" width="100%">
             <tr>
-              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">Student</td>
-              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${opts.studentName}</td>
+              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#3A4A70;font-family:${FONT}">Student</td>
+              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:${FONT}">${opts.studentName}</td>
             </tr>
             <tr>
-              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">Date</td>
-              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${opts.dateStr}</td>
+              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#3A4A70;font-family:${FONT}">Date</td>
+              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:${FONT}">${opts.dateStr}</td>
             </tr>
             <tr>
-              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">Time</td>
-              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${opts.timeStr} UTC</td>
+              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;color:#3A4A70;font-family:${FONT}">Time</td>
+              <td style="padding:14px 0;border-bottom:1px solid #E6ECFD;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:${FONT}">${opts.timeStr} UTC</td>
             </tr>
             <tr>
-              <td style="padding:14px 0;font-size:13px;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">Duration</td>
-              <td style="padding:14px 0;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:system-ui,-apple-system,Arial,sans-serif">${opts.durationMins} minutes</td>
+              <td style="padding:14px 0;font-size:13px;color:#3A4A70;font-family:${FONT}">Duration</td>
+              <td style="padding:14px 0;font-size:13px;font-weight:700;color:#072061;text-align:right;font-family:${FONT}">${opts.durationMins} minutes</td>
             </tr>
           </table>
         </td>
@@ -968,7 +823,7 @@ export function mentorshipBookingTeacherTemplate(opts: {
     ${notesBlock}
     ${ctaButton('View in dashboard', `${PORTAL_URL}/teacher/mentorship`)}
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Your meeting room will open automatically at session time. Manage all bookings from your <a href="${PORTAL_URL}/teacher/mentorship" style="color:#5889FA;text-decoration:none">mentorship page</a>.
     </p>`;
 
@@ -985,23 +840,16 @@ export function mentorshipCancellationTemplate(
   cancelledByRole: 'student' | 'teacher',
 ): string {
   const cancelledBy = cancelledByRole === 'student' ? 'the student' : 'the teacher';
-  const hero = `
-    ${heroBadge('shieldCheck')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Session cancelled
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      A mentorship session has been cancelled
-    </h1>`;
+  const hero = headline('Session', 'cancelled.');
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Hi <strong style="color:#072061">${name}</strong>, your session with <strong style="color:#072061">${otherPartyName}</strong> scheduled for <strong style="color:#072061">${dateStr} at ${timeStr} UTC</strong> has been cancelled by ${cancelledBy}.
     </p>
     <table cellpadding="0" cellspacing="0" border="0" width="100%">
       <tr>
-        <td style="background:#FFF8F0;border:1px solid #FDDCB5;border-radius:10px;padding:14px 18px">
-          <p style="margin:0;font-size:12px;color:#92400E;line-height:1.5;font-family:system-ui,-apple-system,Arial,sans-serif">
+        <td style="background:#FFF8F0;border:1px solid #FDDCB5;border-radius:8px;padding:14px 18px">
+          <p style="margin:0;font-size:12px;color:#92400E;line-height:1.5;font-family:${FONT}">
             <strong>What now?</strong> Browse available slots and book a new session at your convenience.
           </p>
         </td>
@@ -1009,7 +857,7 @@ export function mentorshipCancellationTemplate(
     </table>
     ${ctaButton('Find available sessions', `${PORTAL_URL}/student/mentorship`, '#405FAD')}
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Questions? Contact <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
     </p>`;
 
@@ -1030,27 +878,20 @@ export function assignmentGradedTemplate(opts: {
   const passed = pct >= 50;
   const gradeColor = pct >= 70 ? '#059669' : pct >= 50 ? '#D97706' : '#DC2626';
 
-  const hero = `
-    ${heroBadge('diploma')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Assignment graded
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Your assignment has been reviewed
-    </h1>`;
+  const hero = headline('Marked:', `${opts.grade} out of ${opts.maxPoints}.`);
 
   const feedbackBlock = opts.feedback ? `
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0">
       <tr>
         <td style="background:#F0F4FF;border-left:3px solid #5889FA;border-radius:0 10px 10px 0;padding:14px 18px">
-          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#5889FA;font-family:system-ui,-apple-system,Arial,sans-serif">Teacher feedback</p>
-          <p style="margin:0;font-size:13px;color:#072061;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">${opts.feedback}</p>
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#5889FA;font-family:${FONT}">Teacher feedback</p>
+          <p style="margin:0;font-size:13px;color:#072061;line-height:1.6;font-family:${FONT}">${opts.feedback}</p>
         </td>
       </tr>
     </table>` : '';
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Hi <strong style="color:#072061">${opts.studentName}</strong>, your teacher has graded your submission for <strong style="color:#072061">${opts.assignmentTitle}</strong> in <strong style="color:#072061">${opts.courseTitle}</strong>.
     </p>
 
@@ -1060,10 +901,10 @@ export function assignmentGradedTemplate(opts: {
         <td align="center">
           <table cellpadding="0" cellspacing="0" border="0">
             <tr>
-              <td style="background:#F0F4FF;border:2px solid #E6ECFD;border-radius:16px;padding:20px 36px;text-align:center">
-                <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#405FAD;font-family:system-ui,-apple-system,Arial,sans-serif">Your score</p>
-                <p style="margin:0;font-size:42px;font-weight:900;color:${gradeColor};font-family:system-ui,-apple-system,Arial,sans-serif;line-height:1">${opts.grade}<span style="font-size:22px;color:#405FAD">/${opts.maxPoints}</span></p>
-                <p style="margin:4px 0 0;font-size:14px;font-weight:700;color:${gradeColor};font-family:system-ui,-apple-system,Arial,sans-serif">${pct}% — ${passed ? 'Passed' : 'Needs improvement'}</p>
+              <td style="background:#F0F4FF;border:2px solid #E6ECFD;border-radius:8px;padding:20px 36px;text-align:center">
+                <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#3A4A70;font-family:${FONT}">Your score</p>
+                <p style="margin:0;font-size:42px;font-weight:900;color:${gradeColor};font-family:${FONT};line-height:1">${opts.grade}<span style="font-size:22px;color:#3A4A70">/${opts.maxPoints}</span></p>
+                <p style="margin:4px 0 0;font-size:14px;font-weight:700;color:${gradeColor};font-family:${FONT}">${pct}% — ${passed ? 'Passed' : 'Needs improvement'}</p>
               </td>
             </tr>
           </table>
@@ -1074,7 +915,7 @@ export function assignmentGradedTemplate(opts: {
     ${feedbackBlock}
     ${ctaButton('View your assignments', `${PORTAL_URL}/student/assignments`)}
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Keep it up — consistent effort is how you improve. Visit your <a href="${PORTAL_URL}/student/dashboard" style="color:#5889FA;text-decoration:none">dashboard</a> for more resources.
     </p>`;
 
@@ -1088,26 +929,19 @@ export function certificateEarnedTemplate(
   courseTitle: string,
   verifyUrl: string,
 ): string {
-  const hero = `
-    ${heroBadge('medal')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Certificate earned
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      Congratulations, ${studentName}!
-    </h1>`;
+  const hero = headline('Certified.', `Well done, ${escapeHtml(studentName)}.`);
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       You've successfully completed <strong style="color:#072061">${courseTitle}</strong> and earned your CareerPath Africa certificate. This is a significant achievement — well done!
     </p>
 
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:8px">
       <tr>
-        <td style="background:#F0F4FF;border:1.5px dashed #5889FA;border-radius:12px;padding:18px 20px;text-align:center">
-          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#5889FA;font-family:system-ui,-apple-system,Arial,sans-serif">Verification URL</p>
+        <td style="background:#F0F4FF;border:1.5px dashed #5889FA;border-radius:8px;padding:18px 20px;text-align:center">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#5889FA;font-family:${FONT}">Verification URL</p>
           <a href="${verifyUrl}" style="font-size:13px;color:#072061;font-family:'Courier New',Courier,monospace;word-break:break-all;text-decoration:none">${verifyUrl}</a>
-          <p style="margin:6px 0 0;font-size:11px;color:#405FAD;opacity:0.7;font-family:system-ui,-apple-system,Arial,sans-serif">Share this link with employers to verify your certificate.</p>
+          <p style="margin:6px 0 0;font-size:11px;color:#3A4A70;opacity:0.7;font-family:${FONT}">Share this link with employers to verify your certificate.</p>
         </td>
       </tr>
     </table>
@@ -1115,7 +949,7 @@ export function certificateEarnedTemplate(
     ${ctaButton('View your certificate', `${PORTAL_URL}/student/certificates`)}
 
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Share this achievement on LinkedIn and let your network know. You've earned it!
     </p>`;
 
@@ -1132,23 +966,16 @@ export function liveSessionReminderTemplate(
   minutesBefore: number,
 ): string {
   const urgency = minutesBefore <= 15 ? 'Starting now!' : `Starting in ${minutesBefore} minutes`;
-  const hero = `
-    ${heroBadge('video')}
-    <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.7);font-family:system-ui,-apple-system,Arial,sans-serif">
-      Live class reminder
-    </p>
-    <h1 style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1.15;font-family:system-ui,-apple-system,Arial,sans-serif">
-      ${urgency}
-    </h1>`;
+  const hero = headline('Class starts', minutesBefore <= 15 ? 'now.' : `in ${minutesBefore} minutes.`);
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#405FAD;line-height:1.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Hi <strong style="color:#072061">${name}</strong>, your live class for <strong style="color:#072061">${courseTitle}</strong> starts at <strong style="color:#072061">${startTimeStr} UTC</strong>.
     </p>
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:8px">
       <tr>
-        <td style="background:#F8FAFF;border:1px solid #E6ECFD;border-radius:10px;padding:14px 18px">
-          <p style="margin:0;font-size:12px;color:#405FAD;line-height:1.5;font-family:system-ui,-apple-system,Arial,sans-serif">
+        <td style="background:#F8FAFF;border:1px solid #E6ECFD;border-radius:8px;padding:14px 18px">
+          <p style="margin:0;font-size:12px;color:#3A4A70;line-height:1.5;font-family:${FONT}">
             Make sure your camera and microphone are working before you join. Join a few minutes early if you can.
           </p>
         </td>
@@ -1156,9 +983,31 @@ export function liveSessionReminderTemplate(
     </table>
     ${ctaButton('Join live class', roomUrl)}
     ${divider()}
-    <p style="margin:0;font-size:12px;color:#405FAD;opacity:0.6;font-family:system-ui,-apple-system,Arial,sans-serif">
+    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       View all your upcoming sessions from your <a href="${PORTAL_URL}/student/live" style="color:#5889FA;text-decoration:none">live sessions page</a>.
     </p>`;
 
+  return base(hero, body);
+}
+
+// ── Mock exam marked by a teacher ────────────────────────────────────────────
+
+export function mockMarkedTemplate(opts: {
+  firstName: string;
+  teacherName: string;
+  examTitle: string;
+  percent: number;
+  passMark: number;
+  link: string;
+}): string {
+  const passed = opts.percent >= opts.passMark;
+  const hero = headline('Your result', 'is ready.');
+  const body = `
+    <p style="margin:0;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
+      Hi ${escapeHtml(opts.firstName || 'there')}, ${escapeHtml(opts.teacherName)} marked the written answers in <strong style="color:#072061">${escapeHtml(opts.examTitle)}</strong>.
+      You scored <strong style="color:#072061">${opts.percent}%</strong>, ${passed ? 'above' : 'below'} the ${opts.passMark}% pass mark.
+    </p>
+    ${ctaButton('See my result', opts.link)}
+    <p style="margin:10px 0 0;font-size:13px;color:#637090;font-family:${FONT}">Review every answer and practise what you got wrong.</p>`;
   return base(hero, body);
 }

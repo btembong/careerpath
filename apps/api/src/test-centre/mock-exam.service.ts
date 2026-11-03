@@ -1,6 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ExamKind, ExamStatus, Prisma, QuestionDifficulty, QuestionStatus, QuestionType, TestMode, TestStatus, UserProfile } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import { QuestionBankService } from './question-bank.service';
 import { TestCentreService } from './test-centre.service';
 
@@ -25,7 +27,7 @@ function shuffled<T>(list: T[]): T[] {
 
 @Injectable()
 export class MockExamService {
-  constructor(private prisma: PrismaService, private bank: QuestionBankService, private tests: TestCentreService) {}
+  constructor(private prisma: PrismaService, private bank: QuestionBankService, private tests: TestCentreService, private mail: MailService, private config: ConfigService) {}
 
   // ── Staff ────────────────────────────────────────────────
   private async mine(u: UserProfile, id: string) {
@@ -292,7 +294,25 @@ export class MockExamService {
     const { _sum } = await this.prisma.testAnswer.aggregate({ where: { sessionId }, _sum: { score: true } });
     await this.prisma.testSession.update({ where: { id: sessionId }, data: { score: _sum.score ?? 0 } });
     const left = await this.prisma.testAnswer.count({ where: { sessionId, score: null } });
+    if (left === 0) this.tellMarked(u, sessionId).catch(() => {});
     return { score, left };
+  }
+
+  /** Once the last written answer is marked, email the student their result (once per attempt). */
+  private async tellMarked(teacher: UserProfile, sessionId: string) {
+    const s = await this.prisma.testSession.findUnique({ where: { id: sessionId }, include: { student: true, mockExam: true } });
+    if (!s || !s.mockExam || !s.student?.email) return;
+    const filters = (s.filters && typeof s.filters === 'object' ? s.filters : {}) as Record<string, unknown>;
+    if (filters.markedEmailSent) return;
+    await this.prisma.testSession.update({ where: { id: sessionId }, data: { filters: { ...filters, markedEmailSent: true } as Prisma.InputJsonValue } });
+    const percent = s.maxScore ? Math.round(((s.score ?? 0) / s.maxScore) * 100) : 0;
+    const portal = this.config.get<string>('PORTAL_URL', 'http://localhost:3000').replace(/\/$/, '');
+    const teacherName = [teacher.firstName, teacher.lastName].filter(Boolean).join(' ') || teacher.name || 'Your teacher';
+    await this.mail.sendMockMarked(s.student.email, {
+      firstName: s.student.firstName || (s.student.name ?? '').split(' ')[0] || '',
+      teacherName, examTitle: s.mockExam.title, percent, passMark: s.mockExam.passMark,
+      link: `${portal}/student/tests/${s.id}/result`,
+    });
   }
 
   // ── Students ─────────────────────────────────────────────

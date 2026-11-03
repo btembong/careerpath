@@ -190,7 +190,7 @@ export class SchoolService {
     }
     await this.prisma.orgSeat.createMany({ data: list.map(inviteEmail => ({ orgEnrollmentId: e.id, inviteEmail, joinedVia: 'EMAIL' })) });
     const pkg = await this.prisma.package.findUnique({ where: { id: e.packageId }, select: { name: true } });
-    for (const to of list) this.mail.sendOrgSeatInvite(to, org.name, pkg?.name ?? 'a package', `${this.portal}/student/org-invite`).catch(() => {});
+    for (const to of list) this.mail.sendOrgSeatInvite(to, org.name, pkg?.name ?? 'a package', `${this.portal}/student/org-invite`, org.joinEnabled ? org.joinCode : null).catch(() => {});
     return { invited: list.length, skipped: (Array.isArray(emails) ? emails.length : 0) - list.length };
   }
 
@@ -208,7 +208,7 @@ export class SchoolService {
     const e = org.enrollments.find(x => x.id === seat.orgEnrollmentId)!;
     const pkg = await this.prisma.package.findUnique({ where: { id: e.packageId }, select: { name: true } });
     await this.prisma.orgSeat.update({ where: { id: seat.id }, data: { remindedAt: new Date() } });
-    this.mail.sendOrgSeatInvite(seat.inviteEmail, org.name, pkg?.name ?? 'a package', `${this.portal}/student/org-invite`).catch(() => {});
+    this.mail.sendOrgSeatInvite(seat.inviteEmail, org.name, pkg?.name ?? 'a package', `${this.portal}/student/org-invite`, org.joinEnabled ? org.joinCode : null).catch(() => {});
     return { reminded: true };
   }
 

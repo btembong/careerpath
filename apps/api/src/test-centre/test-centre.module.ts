@@ -1,3 +1,4 @@
+import { MailModule } from '../mail/mail.module';
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AiModule } from '../ai/ai.module';
@@ -9,7 +10,7 @@ import { QuestionBankService } from './question-bank.service';
 import { TestCentreController, QuestionBankController, MockExamController } from './test-centre.controller';
 
 @Module({
-  imports: [PrismaModule, AiModule],
+  imports: [PrismaModule, AiModule, MailModule],
   providers: [TestCentreService, QuestionBankService, QuestionAiService, MockExamService, CatService],
   controllers: [TestCentreController, QuestionBankController, MockExamController],
 })

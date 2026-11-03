@@ -25,6 +25,7 @@ import {
   announcementTemplate,
   newMessageTemplate,
   orgSeatInviteTemplate,
+  mockMarkedTemplate,
   orgAdminWelcomeTemplate,
 } from './mail.templates';
 
@@ -99,8 +100,12 @@ export class MailService {
     await this.send(email, `${fromName} sent you a message${where ? ` in ${where}` : ''}`, newMessageTemplate(fromName, preview, where, link), 'support');
   }
 
-  async sendOrgSeatInvite(email: string, orgName: string, packageName: string, link: string): Promise<void> {
-    await this.send(email, `${orgName} has a place for you on CareerPath Africa`, orgSeatInviteTemplate(orgName, packageName, link), 'support');
+  async sendOrgSeatInvite(email: string, orgName: string, packageName: string, link: string, joinCode?: string | null): Promise<void> {
+    await this.send(email, `${orgName} has a place for you on CareerPath Africa`, orgSeatInviteTemplate(orgName, packageName, link, joinCode), 'support');
+  }
+
+  async sendMockMarked(email: string, opts: { firstName: string; teacherName: string; examTitle: string; percent: number; passMark: number; link: string }): Promise<void> {
+    await this.send(email, 'Your teacher marked your mock exam', mockMarkedTemplate(opts), 'support');
   }
 
   async sendOrgAdminWelcome(email: string, name: string, orgName: string, link: string): Promise<void> {
