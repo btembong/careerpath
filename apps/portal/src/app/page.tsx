@@ -34,7 +34,7 @@ export default async function HomePage() {
   const data = await counts();
   const nav = 'hidden text-sm text-[#072061]/85 hover:text-[#072061] md:inline';
   return (
-    <div className="flex min-h-screen flex-col bg-[#F8F9FC] text-navy">
+    <div className="keep-light flex min-h-screen flex-col bg-[#F8F9FC] text-navy">
       <div className="bg-[#3F6FE8]">
         <header className="mx-auto flex max-w-[1240px] items-center gap-5 px-4 py-4 sm:px-8 lg:px-14">
           <BrandLogo tone="onBlue" size="lg" href="/" />

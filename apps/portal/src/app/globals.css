@@ -333,6 +333,13 @@ html.dark .dark-invert-logo { background-color: #5889FA; }
 html.dark .bg-navy { background-color: #13224D; }
 html.dark .bg-navy.dark-invert-logo { background-color: #5889FA; }
 
+/* Blue brand pieces (dashboard hero, celebrations, logo tile, public home) keep their light-mode colours in dark mode */
+html.dark .keep-light {
+  --color-surface: #F4F6FD; --color-white: #ffffff; --color-cloud: #E6ECFD; --color-navy: #072061; --color-royal: #405FAD;
+  --color-line: #E4E9F3; --color-subtle: #F4F6FB; --color-accent-soft: #EAF0FF; --color-ink2: #3A4A70; --color-muted: #637090;
+  --color-azure-strong: #3F6FE8; --color-on-accent: #FFFFFF;
+  color-scheme: light;
+}
 html.dark .dark-invert-bg {
   background-color: rgba(255, 255, 255, 0.06) !important;
   color: #dce8ff !important;

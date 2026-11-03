@@ -19,7 +19,7 @@ export function BrandLogo({ tone = 'light', size = 'md', wordOnly, hideWord, hre
   const word = size === 'sm' ? 'text-[15px]' : size === 'lg' ? 'text-[22px]' : 'text-[18px]';
   const inner = (
     <>
-      {!wordOnly && <span className={clsx('brand-tile flex flex-shrink-0 items-center justify-center font-black', tile, TILE[tone])}>C</span>}
+      {!wordOnly && <span className={clsx('brand-tile keep-light flex flex-shrink-0 items-center justify-center font-black', tile, TILE[tone])}>C</span>}
       {!hideWord && <strong className={clsx('brand-word font-extrabold tracking-[-0.02em]', word, WORD[tone])}>careerpath<span className={DOT[tone]}>.</span></strong>}
     </>
   );

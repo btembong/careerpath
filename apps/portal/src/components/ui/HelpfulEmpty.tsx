@@ -15,7 +15,7 @@ export function HelpfulEmpty({ title, body, cta, preview }: {
         <p className="text-sm leading-[1.45] text-ink2">{body}</p>
         {cta && (cta.href ? <Link href={cta.href} className={btn}>{cta.label}</Link> : <button type="button" onClick={cta.onClick} className={btn}>{cta.label}</button>)}
       </div>
-      <div aria-hidden className="hidden h-[140px] items-center justify-center rounded-[10px] bg-[#EAF0FF] sm:flex dark:bg-[#1A2A5C]">
+      <div aria-hidden className="hidden h-[140px] items-center justify-center rounded-[10px] bg-[#EAF0FF] sm:flex">
         <div className="flex w-[170px] -rotate-3 gap-2 rounded-lg bg-[#FFFDF8] p-2.5 shadow-[0_8px_18px_rgba(7,32,97,0.15)]">
           <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-[#3F6FE8] text-xs font-extrabold text-white">{preview.icon}</span>
           <span className="min-w-0 text-[11.5px] leading-snug text-[#3A4A70]"><strong className="block truncate text-[#072061]">{preview.title}</strong>{preview.line}</span>
