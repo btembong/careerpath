@@ -1,21 +1,29 @@
 'use client';
 import Link from 'next/link';
 import { BrandLogo } from '@/components/brand/BrandLogo';
+import { Icon, type IconName } from '@/components/ui/Icon';
+import { Icons } from '@/lib/icons';
 
+/** icon: an icon name (mail, user, lock…) or one of the old letters, which map to icons */
 export interface HeroCard { icon: string; title: string; body: string; pill?: string }
 export interface Hero {
-  /** Two lines; the last word of the second line is picked out in white */
+  /** Two lines; the last word of the second line (or the last `white` words) is picked out in white */
   lines: [string, string];
+  white?: number;
   sub: string;
   cards?: HeroCard[];
   /** Anything else for the left side, such as the teacher's profile preview */
   extra?: React.ReactNode;
 }
 
+const GLYPH: Record<string, IconName> = { '✉': 'mail', Y: 'user', T: 'teacher', Q: 'question', '₵': 'income', '🔒': 'lock' };
+const iconOf = (k: string): IconName | null => (k in Icons ? (k as IconName) : GLYPH[k] ?? null);
+
 function Card({ c, i }: { c: HeroCard; i: number }) {
+  const name = iconOf(c.icon);
   return (
     <div className={`relative flex w-[min(430px,90%)] gap-3 rounded-[10px] bg-[#FFFDF8] px-[18px] py-4 shadow-[0_10px_24px_rgba(7,32,97,0.18)] ${i ? 'ml-8 -mt-2 rotate-[1.5deg]' : '-rotate-[2.5deg]'}`}>
-      <span className={`flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-lg font-extrabold ${i ? 'bg-[#E9F1FF] text-[#2F57C9]' : 'bg-[#EAF0FF] text-[#3F6FE8]'}`}>{c.icon}</span>
+      <span className={`flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-lg font-extrabold ${i ? 'bg-[#E9F1FF] text-[#2F57C9]' : 'bg-[#EAF0FF] text-[#3F6FE8]'}`}>{name ? <Icon name={name} size={20} /> : c.icon}</span>
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="text-sm text-navy"><strong>{c.title}</strong> <span className="text-[11px] text-[#97A2BD]">just now</span></span>
         <span className="text-sm text-ink2">{c.body}</span>
@@ -32,7 +40,7 @@ export function Logo({ light }: { light?: boolean }) {
 /** Sign in, sign up and password pages: one colour and one line on the left, almost nothing on the right. */
 export function AuthShell({ hero, children, back = { href: '/', label: 'Back to home' }, wide }: { hero: Hero; children: React.ReactNode; back?: { href: string; label: string } | null; wide?: boolean }) {
   const words = hero.lines[1].split(' ');
-  const last = words.pop();
+  const last = words.splice(Math.max(0, words.length - (hero.white ?? 1))).join(' ');
   return (
     <div className="flex min-h-screen">
       <div className="relative hidden w-[57%] flex-col overflow-hidden bg-[#3F6FE8] px-[72px] py-11 lg:flex">

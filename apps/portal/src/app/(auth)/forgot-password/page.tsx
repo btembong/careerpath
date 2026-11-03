@@ -21,7 +21,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <AuthShell back={{ href: '/login', label: 'Back to sign in' }} hero={{ lines: ['It happens', 'to the best of us.'], sub: 'Tell us your email and we’ll send a link to set a new password.', cards: [{ icon: '✉', title: 'CareerPath Africa', body: 'Here’s your link to set a new password.' }, { icon: 'Y', title: 'You', body: 'Sorted. Back to revision.', pill: '30 min link' }] }}>
+    <AuthShell back={{ href: '/login', label: 'Back to sign in' }} hero={{ lines: ['It happens', 'to the best of us.'], white: 3, sub: 'Tell us your email and we’ll send a link to set a new password.', cards: [{ icon: '✉', title: 'CareerPath Africa', body: 'Here’s your link to set a new password.' }, { icon: 'Y', title: 'You', body: 'Sorted. Back to revision.', pill: '30 min link' }] }}>
       {sent ? (
         <>
           <AuthTitle>Check your email.</AuthTitle>

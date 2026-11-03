@@ -11,6 +11,7 @@ import { scaleFade } from '@/lib/motion';
 import api, { setAuthToken } from '@/lib/api';
 import { AuthShell, AuthTitle, Divider, authButton, authInput, type Hero } from '@/components/auth/AuthShell';
 import { GoogleButton } from '@/components/auth/GoogleButton';
+import { Icon } from '@/components/ui/Icon';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type Role = 'student' | 'teacher';
@@ -30,9 +31,9 @@ const QUALIFICATIONS = [
   { value: 'PROFESSIONAL', label: 'Professional qualification' },
 ];
 const MODALITIES = [
-  { value: 'ONLINE', label: 'Online', icon: '💻', desc: 'Live and recorded' },
-  { value: 'IN_PERSON', label: 'In person', icon: '🏫', desc: 'At a centre' },
-  { value: 'HYBRID', label: 'Hybrid', icon: '🔄', desc: 'Both' },
+  { value: 'ONLINE', label: 'Online', icon: 'monitor' as const, desc: 'Live and recorded' },
+  { value: 'IN_PERSON', label: 'In person', icon: 'school' as const, desc: 'At a centre' },
+  { value: 'HYBRID', label: 'Hybrid', icon: 'refresh' as const, desc: 'Both' },
 ];
 
 const inputCls = authInput;
@@ -193,7 +194,7 @@ function CodeStep({ email, cta, busy, error, setError, onVerified, onChangeEmail
   return (
     <form onSubmit={submit} className="flex flex-col gap-5">
       <div className="flex flex-col items-center gap-4 pt-1">
-        <span className="flex h-14 w-14 items-center justify-center rounded-lg bg-azure/10 text-2xl">✉️</span>
+        <span className="flex h-14 w-14 items-center justify-center rounded-lg bg-azure/10 text-[#3F6FE8]"><Icon name="mail" size={28} /></span>
         {!verified && <OtpBoxes value={code} onChange={setCode} bad={bad} />}
         {verified && <p className="rounded-md bg-azure/10 px-3 py-1.5 text-xs font-semibold text-royal">✓ Email checked</p>}
         {!verified && (
@@ -357,7 +358,7 @@ function StudentFlow({ countries, nextUrl, school, onBack, setLeft }: { countrie
 
   const banners = (
     <>
-      {school && <div className="flex items-center gap-2.5 rounded-lg bg-[#EAF0FF] px-3.5 py-3 text-[13.5px] text-navy"><span className="text-lg">🏫</span><span><strong>Joining {school}.</strong> Your place is saved; it’s yours once your account is ready.</span></div>}
+      {school && <div className="flex items-center gap-2.5 rounded-lg bg-[#EAF0FF] px-3.5 py-3 text-[13.5px] text-navy"><Icon name="school" size={20} className="flex-shrink-0 text-[#3F6FE8]" /><span><strong>Joining {school}.</strong> Your place is saved; it’s yours once your account is ready.</span></div>}
       {referralCode && <div className="rounded-lg bg-[#EAF0FF] px-3.5 py-2.5 text-[13px] text-navy">🎁 Invited by a friend. Code <strong>{referralCode}</strong> is applied.</div>}
     </>
   );
@@ -593,7 +594,7 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
             return (
               <button key={m.value} type="button" onClick={() => setF('teachingModality', m.value)} aria-pressed={on}
                 className={`flex flex-col items-center gap-0.5 rounded-lg border-2 px-2 py-3 text-center transition ${on ? 'border-azure bg-azure/[0.06]' : 'border-cloud hover:border-azure/40'}`}>
-                <span className="text-xl">{m.icon}</span><strong className="text-[13px] text-navy">{m.label}</strong><span className="text-[11px] text-royal/55">{m.desc}</span>
+                <Icon name={m.icon} size={22} className="text-[#3F6FE8]" /><strong className="text-[13px] text-navy">{m.label}</strong><span className="text-[11px] text-royal/55">{m.desc}</span>
               </button>
             );
           })}
@@ -701,7 +702,7 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
 // ── Page ───────────────────────────────────────────────────────────────────
 const CHOOSE_LEFT: LeftContent = {
   lines: ['Every pass', 'starts with one question.'], sub: 'Exam prep, live classes and real teachers for students across Africa.',
-  cards: [{ icon: 'T', title: 'Your teacher', body: 'New mock exam: WASSCE Maths, Paper 1.' }, { icon: 'Y', title: 'You', body: 'Starting it after school. Wish me luck.', pill: '🎓 Free to join' }],
+  cards: [{ icon: 'T', title: 'Your teacher', body: 'New mock exam: WASSCE Maths, Paper 1.' }, { icon: 'Y', title: 'You', body: 'Starting it after school. Wish me luck.', pill: 'Free to join' }],
 };
 
 function RegisterPageInner() {
@@ -766,18 +767,18 @@ function RegisterPageInner() {
         <>
           <AuthTitle>Good to have you.</AuthTitle>
           {([
-            { r: 'student' as Role, icon: '🎓', t: 'I’m a student', d: 'Prepare for exams and build skills' },
-            { r: 'teacher' as Role, icon: '🧑‍🏫', t: 'I want to teach', d: 'Apply in five short steps' },
+            { r: 'student' as Role, icon: 'student' as const, t: 'I’m a student', d: 'Prepare for exams and build skills' },
+            { r: 'teacher' as Role, icon: 'teacher' as const, t: 'I want to teach', d: 'Apply in five short steps' },
           ]).map(c => (
             <button key={c.r} type="button" onClick={() => setRole(c.r)}
               className="flex items-center gap-3.5 rounded-lg border border-line bg-white px-[18px] py-4 text-left transition hover:border-[#5889FA]">
-              <span className="text-[22px]">{c.icon}</span>
+              <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-[#EAF0FF] text-[#3F6FE8]"><Icon name={c.icon} size={24} /></span>
               <span className="flex-1"><strong className="text-[15px] text-navy">{c.t}</strong><br /><span className="text-[13px] text-muted">{c.d}</span></span>
               <span className="text-muted">›</span>
             </button>
           ))}
           <form onSubmit={joinSchool} className="flex flex-col gap-2 rounded-lg border border-dashed border-[#5889FA] bg-white px-4 py-3.5">
-            <label htmlFor="school-code" className="text-sm font-semibold text-navy">🏫 Have a school code?</label>
+            <label htmlFor="school-code" className="flex items-center gap-2 text-sm font-semibold text-navy"><Icon name="school" size={18} className="text-[#3F6FE8]" />Have a school code?</label>
             <div className="flex gap-2">
               <input id="school-code" value={schoolCode} onChange={e => setSchoolCode(e.target.value.toUpperCase())} placeholder="e.g. ACCRA-7K2Q" autoComplete="off"
                 className="h-11 min-w-0 flex-1 rounded-lg border border-line px-3 font-mono text-[15px] tracking-[0.1em] text-navy outline-none focus:border-[#5889FA]" />
