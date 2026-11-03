@@ -4,6 +4,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 import { useAiEnabled } from '@/lib/ai';
+import { HelpfulEmpty } from '@/components/ui/HelpfulEmpty';
 
 interface Row {
   id: string; text: string; type: string; difficulty: string; status: string; bankOnly: boolean; reviewNote: string | null;
@@ -253,7 +254,8 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
             <thead><tr className="bg-subtle text-left text-ink2"><th className="px-4 py-2.5 font-semibold">Question</th><th className="font-semibold">Where it belongs</th><th className="font-semibold">Type</th><th className="font-semibold">Difficulty</th><th className="font-semibold">Why</th><th className="font-semibold">% right</th><th className="pr-4 font-semibold">Status</th></tr></thead>
             <tbody>
               {rows === null && <tr><td colSpan={7} className="p-4 text-muted">Loading…</td></tr>}
-              {rows?.length === 0 && <tr><td colSpan={7} className="p-4 text-muted">No questions match.</td></tr>}
+              {rows?.length === 0 && Object.values(f).some(Boolean) && <tr><td colSpan={7} className="p-4 text-muted">No questions match.</td></tr>}
+              {rows?.length === 0 && !Object.values(f).some(Boolean) && <tr><td colSpan={7} className="p-0"><HelpfulEmpty title="Start your question bank." body="Write a few questions, import a spreadsheet, or let AI draft some from your lessons." cta={{ label: 'Write a question', onClick: () => setDraft(blank(courses.length === 1 ? courses[0].id : '')) }} preview={{ icon: '?', title: 'Question 1', line: 'Draft · MCQ' }} /></td></tr>}
               {rows?.map(r => (
                 <tr key={r.id} onClick={() => open(r.id)} className="cursor-pointer border-t border-line hover:bg-subtle">
                   <td className="max-w-[340px] truncate px-4 py-2.5" title={r.text}>{r.text}</td>

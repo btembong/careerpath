@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Topbar } from '@/components/layout/Topbar';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { HelpfulEmpty } from '@/components/ui/HelpfulEmpty';
 
 interface Exam {
   id: string; kind: 'MOCK' | 'PAST_PAPER'; title: string; description: string | null; programme: string | null;
@@ -52,7 +53,9 @@ export function ExamList({ kind }: { kind: 'MOCK' | 'PAST_PAPER' }) {
           </div>
         )}
         {rows === null && <p className="text-sm text-muted">Loading…</p>}
-        {rows?.length === 0 && <div className="rounded-lg border border-line bg-white p-5 text-sm text-ink2"><strong className="block text-navy">Nothing here yet</strong>{papers ? 'Past papers will appear as your teachers add them.' : 'Your teachers haven’t set any mock exams for your courses yet.'}</div>}
+        {rows?.length === 0 && (papers
+          ? <HelpfulEmpty title="No past papers for your courses yet." body="Past papers appear here as your teachers add them. Until then, a quick test keeps you sharp." cta={{ label: 'Try 10 questions now', href: '/student/tests/new' }} preview={{ icon: '◎', title: 'Past paper', line: '2024 · Paper 1' }} />
+          : <HelpfulEmpty title="No mock exams for your courses yet." body="Your teachers add them over time. Until then, a quick test keeps you sharp." cta={{ label: 'Try 10 questions now', href: '/student/tests/new' }} preview={{ icon: '◎', title: 'Quick 10', line: '7 of 10 right' }} />)}
         {groups.map(([label, list]) => (
           <section key={label || 'all'} className="flex flex-col gap-2">
             {label && <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-royal/45">{label}</p>}

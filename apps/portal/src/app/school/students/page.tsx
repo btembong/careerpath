@@ -5,6 +5,7 @@ import { RepTable, td } from '@/components/rep/RepTable';
 import { notify } from '@/lib/notify';
 import type { SchoolStudent } from '@/lib/school';
 import api from '@/lib/api';
+import { HelpfulEmpty } from '@/components/ui/HelpfulEmpty';
 
 const DAY = 86_400_000;
 const ago = (iso: string | null) => {
@@ -48,6 +49,7 @@ export default function SchoolStudentsPage() {
       tabs={[{ key: 'all', label: 'All', count: rows?.length ?? 0 }, { key: 'joined', label: 'Joined', count: rows?.filter(filters.joined).length ?? 0 }, { key: 'invited', label: 'Invited', count: rows?.filter(filters.invited).length ?? 0 }, { key: 'notStarted', label: 'Not started', count: rows?.filter(filters.notStarted).length ?? 0 }]}
       tab={tab} onTab={setTab} search={q} onSearch={setQ} searchLabel="Search students"
       cols={['Student', 'Package', 'Progress', 'Last active', 'Status', '']}
+      top={rows && rows.length === 0 ? <HelpfulEmpty title="No students yet." body="Invite them by email, or share your join link in the class group chat." cta={{ label: 'Invite students', href: '/school/invite' }} preview={{ icon: '✉', title: 'Invite sent', line: 'Kwame joined' }} /> : undefined}
       loading={!rows} empty={rows && !shown.length ? (rows.length ? 'Nobody matches.' : 'Nobody yet. Invite students from the Invite page.') : null}
       note="Removing someone who hasn’t joined frees their seat for another student. Students who have joined keep access until the package ends.">
       {shown.map(s => {

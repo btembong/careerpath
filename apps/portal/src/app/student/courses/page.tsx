@@ -5,6 +5,7 @@ import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
 import { CourseCover } from '@/components/courses/CourseCover';
+import { HelpfulEmpty } from '@/components/ui/HelpfulEmpty';
 
 type State = 'going' | 'new' | 'done';
 type Access =
@@ -76,14 +77,8 @@ export default function MyCoursesPage() {
             <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">{[0, 1, 2].map(i => <div key={i} className="h-56 rounded-lg border border-line bg-white animate-pulse" />)}</div>
           </>
         ) : !lib.courses.length ? (
-          <div className="rounded-lg border border-line bg-white p-10 text-center">
-            <p className="text-sm font-semibold text-navy">You don’t have any courses yet</p>
-            <p className="mx-auto mt-1 max-w-md text-[13px] text-ink2">Buy a single course, get a package, or start one of the free courses in the catalogue.</p>
-            <div className="mt-4 flex justify-center gap-2">
-              <Link href="/student/catalogue" className="inline-flex h-9 items-center rounded-md bg-azure-strong px-4 text-[13.5px] font-semibold text-on-accent">Browse catalogue</Link>
-              <Link href="/packages" className="inline-flex h-9 items-center rounded-md border border-line px-4 text-[13.5px] font-semibold text-navy hover:bg-subtle">See packages</Link>
-            </div>
-          </div>
+          <HelpfulEmpty title="Your courses will live here." body="Join a free course or buy one, and it appears here with your progress."
+            cta={{ label: 'Browse the catalogue', href: '/student/catalogue' }} preview={{ icon: '▶', title: 'Lesson 3 of 11', line: 'Gaseous Exchange' }} />
         ) : <>
           {lib.resume && (
             <section className="flex flex-wrap items-center gap-5 rounded-lg border border-azure bg-white p-5">

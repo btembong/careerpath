@@ -5,6 +5,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 import { Celebrate, ShareDialog } from '@/components/celebrate/Celebrate';
+import { HelpfulEmpty } from '@/components/ui/HelpfulEmpty';
 
 interface Certificate { id: string; courseId: string; courseName: string; issuedAt: string; verifyCode: string; pdfUrl: string }
 interface LibraryCourse { id: string; title: string; lessons: number; done: number; pct: number; state: 'new' | 'going' | 'done'; certificate: unknown }
@@ -39,9 +40,9 @@ export default function CertificatesPage() {
         )}
         {sharing && <ShareDialog share={certShare(sharing)} onClose={() => setSharing(null)} />}
         {!certs ? <div className="h-56 rounded-lg bg-subtle animate-pulse" /> : !certs.length ? (
-          <p className="rounded-lg border border-line bg-white px-4 py-10 text-center text-[13.5px] text-ink2">
-            No certificates yet. Finish every lesson and quiz in a course to earn one.
-          </p>
+          <HelpfulEmpty title="Your first certificate is a course away." body="Finish every lesson and quiz in a course and your certificate is made here."
+            cta={onTheWay[0] ? { label: 'Continue my course', href: `/student/courses/${onTheWay[0].id}` } : { label: 'Browse the catalogue', href: '/student/catalogue' }}
+            preview={{ icon: '🎓', title: 'Certificate', line: onTheWay[0]?.title ?? 'Core Maths' }} />
         ) : (
           <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
             {certs.map(c => (

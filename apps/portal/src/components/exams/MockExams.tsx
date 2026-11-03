@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Topbar } from '@/components/layout/Topbar';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { HelpfulEmpty } from '@/components/ui/HelpfulEmpty';
 
 type Kind = 'MOCK' | 'PAST_PAPER' | 'CAT';
 interface Row {
@@ -146,7 +147,7 @@ export function MockExams({ role }: { role: 'ADMIN' | 'TEACHER' }) {
         {tab === 'MARK' ? (
           <section className="overflow-hidden rounded-[10px] border border-line bg-white">
             {queue === null && <p className="p-4 text-sm text-muted">Loading…</p>}
-            {queue?.length === 0 && <p className="p-4 text-sm text-muted">Nothing to mark. Written answers from mock exams land here.</p>}
+            {queue?.length === 0 && <div className="-m-px"><HelpfulEmpty title="Nothing to mark. Enjoy the quiet." body="Written answers from your mock exams land here as students finish." cta={{ label: 'Set a mock exam', onClick: () => { setTab('MOCK'); newExam('MOCK'); } }} preview={{ icon: '✎', title: 'Ama O.', line: '2 answers to mark' }} /></div>}
             {queue?.map(m => (
               <Link key={m.sessionId} href={`${base}/mark/${m.sessionId}`} className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 text-sm last:border-0 hover:bg-subtle">
                 <span><strong className="text-navy">{m.student}</strong><br /><span className="text-xs text-muted">{m.examTitle} · finished {new Date(m.submittedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></span>
