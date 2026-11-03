@@ -509,6 +509,10 @@ model QuestionBank {
   reviewNote     String?
   /// Written by AI, not yet checked by a teacher
   aiGenerated    Boolean             @default(false)
+  /// Difficulty on the ability scale for adaptive tests; null until calibrated from answers (the label is used until then)
+  irtB           Float?
+  /// How many answers the calibration was based on
+  irtN           Int                 @default(0)
   /// AI suggestion waiting for the teacher: { explanation, modelAnswer?, markSchemes?, answerLooksWrong, note, at }. Never shown to students.
   aiDraft        Json?
   attemptAnswers QuizAttemptAnswer[]
@@ -545,6 +549,10 @@ model MockExam {
   year            Int?
   session         String?
   paperNumber     String?
+  /// CAT: stop between these many questions; the passing standard is on the ability scale (logits)
+  catMin          Int?
+  catMax          Int?
+  catStandard     Float?
   createdById     String
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
@@ -571,6 +579,8 @@ model TestSession {
   submittedAt   DateTime?
   score         Float?
   maxScore      Int         @default(0)
+  /// Adaptive test state: ability estimate, served questions, the item pool and the final decision
+  cat           Json?
   student       UserProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
   answers       TestAnswer[]
 
@@ -1393,11 +1403,14 @@ enum QuestionStatus {
 enum TestMode {
   PRACTICE
   EXAM
+  /// Computer-adaptive: each answer sets the next question; no going back
+  CAT
 }
 
 enum ExamKind {
   MOCK
   PAST_PAPER
+  CAT
 }
 
 enum ExamStatus {

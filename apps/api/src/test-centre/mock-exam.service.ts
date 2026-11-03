@@ -11,6 +11,7 @@ export interface ExamInput {
   timeMinutes?: number; passMark?: number; attemptsAllowed?: number; showAnswers?: boolean;
   randomised?: boolean; sections?: Section[]; questionIds?: string[];
   examBody?: string | null; year?: number | null; session?: string | null; paperNumber?: string | null;
+  catMin?: number | null; catMax?: number | null; catStandard?: number | null;
 }
 
 const WRITTEN: QuestionType[] = [QuestionType.SHORT_ANSWER, QuestionType.WRITTEN, QuestionType.STRUCTURED];
@@ -50,6 +51,9 @@ export class MockExamService {
     return ids.filter(q => (q.moduleId && sec.moduleIds!.includes(q.moduleId)) || (q.sourceLessonId && lessons.has(q.sourceLessonId)) || (q.lessonId && lessons.has(q.lessonId)));
   }
 
+  /** Live questions a section can draw from (adaptive tests use this as their item pool) */
+  sectionPool(sec: Section) { return this.pool(sec); }
+
   private async pool(sec: Section) {
     const where = this.sectionWhere(sec);
     const rows = await this.prisma.questionBank.findMany({ where, select: { id: true, difficulty: true, moduleId: true, lessonId: true, sourceLessonId: true } });
@@ -84,7 +88,15 @@ export class MockExamService {
     if (packageIds.length && (await this.prisma.package.count({ where: { id: { in: packageIds } } })) !== packageIds.length) throw new BadRequestException('One of the packages doesn’t exist.');
     if (!courseIds.length && !packageIds.length) throw new BadRequestException('Say who can take it: pick at least one course or package.');
 
-    const randomised = kind === ExamKind.PAST_PAPER ? false : dto.randomised ?? current?.randomised ?? true;
+    // An adaptive test always draws from sections; there, each section is a content area and its count is its share
+    const randomised = kind === ExamKind.PAST_PAPER ? false : kind === ExamKind.CAT ? true : dto.randomised ?? current?.randomised ?? true;
+    let cat: { catMin: number | null; catMax: number | null; catStandard: number | null } = { catMin: null, catMax: null, catStandard: null };
+    if (kind === ExamKind.CAT) {
+      const min = Math.round(Number(dto.catMin ?? 30)), max = Math.round(Number(dto.catMax ?? 60)), std = Number(dto.catStandard ?? 0);
+      if (!(min >= 5 && max >= min && max <= 300)) throw new BadRequestException('Set the fewest and most questions: at least 5, and no more than 300.');
+      if (!(std >= -3 && std <= 3)) throw new BadRequestException('The passing standard must be between -3 and 3.');
+      cat = { catMin: min, catMax: max, catStandard: std };
+    }
     let sections: Section[] | null = null;
     let questionIds: string[] = [];
     if (randomised) {
@@ -99,7 +111,7 @@ export class MockExamService {
         if (s.count < 1) throw new BadRequestException(`“${s.title}” needs at least one question.`);
         if ((s.easy ?? 0) + (s.medium ?? 0) + (s.hard ?? 0) > s.count) throw new BadRequestException(`“${s.title}”: easy, medium and hard add up to more than its questions.`);
       }
-      if (sections.reduce((n, s) => n + s.count, 0) > MAX_PAPER) throw new BadRequestException(`A paper can have up to ${MAX_PAPER} questions.`);
+      if (kind !== ExamKind.CAT && sections.reduce((n, s) => n + s.count, 0) > MAX_PAPER) throw new BadRequestException(`A paper can have up to ${MAX_PAPER} questions.`);
     } else {
       questionIds = [...new Set(dto.questionIds ?? [])];
       if (questionIds.length > MAX_PAPER) throw new BadRequestException(`A paper can have up to ${MAX_PAPER} questions.`);
@@ -119,11 +131,20 @@ export class MockExamService {
       year: kind === ExamKind.PAST_PAPER ? year : null,
       session: kind === ExamKind.PAST_PAPER ? (dto.session ?? '').trim() || null : null,
       paperNumber: kind === ExamKind.PAST_PAPER ? (dto.paperNumber ?? '').trim() || null : null,
+      ...cat,
     };
   }
 
   /** Before publishing: every section must be able to fill its places, and a fixed paper needs live questions */
-  private async assertReady(e: { randomised: boolean; sections: Prisma.JsonValue; questionIds: string[] }) {
+  private async assertReady(e: { kind?: ExamKind; randomised: boolean; sections: Prisma.JsonValue; questionIds: string[]; catMax?: number | null }) {
+    if (e.kind === ExamKind.CAT) {
+      // An adaptive test needs more questions than its longest run, or every student sees the same ones
+      const sections = (e.sections ?? []) as unknown as Section[];
+      const ids = new Set<string>();
+      for (const sec of sections) for (const r of await this.pool({ ...sec, types: [QuestionType.MCQ, QuestionType.TRUE_FALSE, QuestionType.FILL_BLANK, QuestionType.MATCHING] })) ids.add(r.id);
+      if (ids.size < (e.catMax ?? 60)) throw new BadRequestException(`An adaptive test needs at least as many automatically marked questions as its maximum (${e.catMax}); these areas have ${ids.size}. Aim for several times more.`);
+      return;
+    }
     if (e.randomised) {
       const sections = (e.sections ?? []) as unknown as Section[];
       const avail = await this.availability(sections);
@@ -156,7 +177,8 @@ export class MockExamService {
       toMark: toMark.length,
       exams: exams.map(e => ({
         id: e.id, kind: e.kind, title: e.title, status: e.status, timeLimitSecs: e.timeLimitSecs, passMark: e.passMark, attemptsAllowed: e.attemptsAllowed,
-        randomised: e.randomised, questionCount: e.randomised ? ((e.sections ?? []) as unknown as Section[]).reduce((n, s) => n + s.count, 0) : e.questionIds.length,
+        randomised: e.randomised, questionCount: e.kind === ExamKind.CAT ? e.catMax ?? 0 : e.randomised ? ((e.sections ?? []) as unknown as Section[]).reduce((n, s) => n + s.count, 0) : e.questionIds.length,
+        catMin: e.catMin, catMax: e.catMax,
         examBody: e.examBody, year: e.year, session: e.session, paperNumber: e.paperNumber,
         attempts: attempts.find(a => a.mockExamId === e.id)?._count ?? 0, toMark: toMark.filter(t => t.examId === e.id).length, updatedAt: e.updatedAt,
       })),
@@ -184,7 +206,7 @@ export class MockExamService {
   async update(u: UserProfile, id: string, dto: ExamInput) {
     const e = await this.mine(u, id);
     const data = await this.clean(u, dto, e);
-    if (e.status === ExamStatus.PUBLISHED) await this.assertReady({ randomised: data.randomised, sections: data.sections as Prisma.JsonValue, questionIds: data.questionIds });
+    if (e.status === ExamStatus.PUBLISHED) await this.assertReady({ kind: data.kind, randomised: data.randomised, sections: data.sections as Prisma.JsonValue, questionIds: data.questionIds, catMax: data.catMax });
     return this.prisma.mockExam.update({ where: { id }, data });
   }
 
@@ -274,7 +296,7 @@ export class MockExamService {
   }
 
   // ── Students ─────────────────────────────────────────────
-  private async canTake(studentId: string, e: { courseIds: string[]; packageIds: string[] }, courses?: string[], packages?: string[]) {
+  async canTake(studentId: string, e: { courseIds: string[]; packageIds: string[] }, courses?: string[], packages?: string[]) {
     courses ??= await this.tests.accessibleCourseIds(studentId);
     packages ??= (await this.prisma.packagePurchase.findMany({ where: { studentId, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, select: { packageId: true } })).map(p => p.packageId);
     return e.courseIds.some(c => courses!.includes(c)) || e.packageIds.some(p => packages!.includes(p));
@@ -289,20 +311,22 @@ export class MockExamService {
     const programmes = await this.prisma.programme.findMany({ where: { id: { in: exams.map(e => e.programmeId).filter((x): x is string => !!x) } }, select: { id: true, name: true, shortName: true } });
     const mine = await this.prisma.testSession.findMany({
       where: { studentId, mockExamId: { in: exams.map(e => e.id) } }, orderBy: { startedAt: 'desc' },
-      select: { id: true, mockExamId: true, mode: true, status: true, score: true, maxScore: true, expiresAt: true },
+      select: { id: true, mockExamId: true, mode: true, status: true, score: true, maxScore: true, expiresAt: true, cat: true },
     });
     return Promise.all(exams.map(async e => {
       const open = await this.canTake(studentId, e, courses, packages);
       const tries = mine.filter(m => m.mockExamId === e.id);
-      const exams = tries.filter(t => t.mode === TestMode.EXAM && t.status === TestStatus.SUBMITTED);
+      const exams = tries.filter(t => (t.mode === TestMode.EXAM || t.mode === TestMode.CAT) && t.status === TestStatus.SUBMITTED);
       const best = exams.reduce<number | null>((b, t) => { const p = t.maxScore ? Math.round(((t.score ?? 0) / t.maxScore) * 100) : 0; return b == null || p > b ? p : b; }, null);
       const running = tries.find(t => t.status === TestStatus.IN_PROGRESS && (!t.expiresAt || t.expiresAt.getTime() > Date.now()));
-      const used = tries.filter(t => t.mode === TestMode.EXAM).length;
+      const used = tries.filter(t => t.mode === TestMode.EXAM || t.mode === TestMode.CAT).length;
+      const lastCat = e.kind === ExamKind.CAT ? ((exams[0]?.cat as { result?: { band: string; decision: string } } | null)?.result ?? null) : null;
       const pr = programmes.find(p => p.id === e.programmeId);
       return {
         id: e.id, kind: e.kind, title: e.title, description: e.description, programme: pr ? pr.shortName ?? pr.name : null,
         minutes: Math.round(e.timeLimitSecs / 60), passMark: e.passMark,
-        questions: e.randomised ? ((e.sections ?? []) as unknown as Section[]).reduce((n, s) => n + s.count, 0) : e.questionIds.length,
+        questions: e.kind === ExamKind.CAT ? e.catMax ?? 0 : e.randomised ? ((e.sections ?? []) as unknown as Section[]).reduce((n, s) => n + s.count, 0) : e.questionIds.length,
+        catMin: e.catMin, lastBand: lastCat?.band ?? null, lastDecision: lastCat?.decision ?? null,
         examBody: e.examBody, year: e.year, session: e.session, paperNumber: e.paperNumber,
         open, attemptsAllowed: e.attemptsAllowed, attemptsUsed: used, attemptsLeft: e.attemptsAllowed ? Math.max(e.attemptsAllowed - used, 0) : null,
         best, passed: best != null ? best >= e.passMark : null, inProgress: running?.id ?? null, lastResult: exams[0]?.id ?? null,
@@ -313,6 +337,7 @@ export class MockExamService {
   async start(studentId: string, examId: string, dto: { practice?: boolean }) {
     const e = await this.prisma.mockExam.findUnique({ where: { id: examId } });
     if (!e || e.status !== ExamStatus.PUBLISHED) throw new NotFoundException('This exam isn’t available.');
+    if (e.kind === ExamKind.CAT) throw new BadRequestException('Adaptive tests start from the CAT readiness page.');
     if (!(await this.canTake(studentId, e))) throw new ForbiddenException('Buy one of the courses or packages this exam belongs to first.');
     // Practice is for past papers; a mock exam is always sat as an exam
     const mode = dto.practice && e.kind === ExamKind.PAST_PAPER ? TestMode.PRACTICE : TestMode.EXAM;

@@ -10,6 +10,7 @@ import { TestCentreService, TestFilters, StartTest } from './test-centre.service
 import { QuestionBankService, QuestionInput } from './question-bank.service';
 import { QuestionAiService } from './question-ai.service';
 import { MockExamService, ExamInput, Section } from './mock-exam.service';
+import { CatService } from './cat.service';
 import { ExamKind, ExamStatus } from '@prisma/client';
 import { QuestionDifficulty, QuestionType } from '@prisma/client';
 
@@ -19,17 +20,29 @@ import { QuestionDifficulty, QuestionType } from '@prisma/client';
 @Roles(UserRole.STUDENT)
 @Controller('test-centre')
 export class TestCentreController {
-  constructor(private readonly tests: TestCentreService, private readonly qai: QuestionAiService, private readonly exams: MockExamService) {}
+  constructor(private readonly tests: TestCentreService, private readonly qai: QuestionAiService, private readonly exams: MockExamService, private readonly cat: CatService) {}
 
   @Get('exams')
   @ApiOperation({ summary: 'Mock exams or past papers, with which ones this student can take' })
   examList(@CurrentUser() user: UserProfile, @Query('kind') kind?: string) {
-    return this.exams.forStudent(user.id, kind === 'PAST_PAPER' ? ExamKind.PAST_PAPER : ExamKind.MOCK);
+    return this.exams.forStudent(user.id, kind === 'PAST_PAPER' ? ExamKind.PAST_PAPER : kind === 'CAT' ? ExamKind.CAT : ExamKind.MOCK);
   }
 
   @Post('exams/:id/start')
   @ApiOperation({ summary: 'Start (or resume) an attempt; past papers can also be practised untimed' })
-  examStart(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: { practice?: boolean }) { return this.exams.start(user.id, id, body ?? {}); }
+  async examStart(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: { practice?: boolean }) {
+    return (await this.cat.isCat(id)) ? this.cat.start(user.id, id) : this.exams.start(user.id, id, body ?? {});
+  }
+
+  @Get('cat/:id')
+  @ApiOperation({ summary: 'The adaptive test as it stands: only the current question' })
+  catView(@CurrentUser() user: UserProfile, @Param('id') id: string) { return this.cat.view(user.id, id); }
+
+  @Post('cat/:id/answer')
+  @ApiOperation({ summary: 'Answer the current question; the next one depends on it. No going back.' })
+  catAnswer(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: { questionId: string; answer: unknown; timeSecs?: number }) {
+    return this.cat.answer(user.id, id, body ?? ({} as { questionId: string; answer: unknown }));
+  }
 
   @Get('overview')
   @ApiOperation({ summary: 'Test Centre home: counts, weak topics, recent tests' })
@@ -141,11 +154,15 @@ export class QuestionBankController {
 @Roles(UserRole.TEACHER, UserRole.ADMIN)
 @Controller('mock-exams')
 export class MockExamController {
-  constructor(private readonly exams: MockExamService) {}
+  constructor(private readonly exams: MockExamService, private readonly cat: CatService) {}
+
+  @Post('calibrate')
+  @ApiOperation({ summary: '[Admin] Set question difficulty for adaptive tests from how often students got each right' })
+  calibrate(@CurrentUser() user: UserProfile) { return this.cat.calibrate(user); }
 
   @Get()
   list(@CurrentUser() user: UserProfile, @Query('kind') kind?: string) {
-    return this.exams.list(user, kind === 'PAST_PAPER' ? ExamKind.PAST_PAPER : kind === 'MOCK' ? ExamKind.MOCK : undefined);
+    return this.exams.list(user, kind === 'PAST_PAPER' ? ExamKind.PAST_PAPER : kind === 'MOCK' ? ExamKind.MOCK : kind === 'CAT' ? ExamKind.CAT : undefined);
   }
 
   @Post('availability')

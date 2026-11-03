@@ -56,7 +56,14 @@ function shuffled<T>(list: T[]): T[] {
 
 @Injectable()
 export class TestCentreService {
+  /** Set by CatService: decides and closes an adaptive test that's ended here (submitted or out of time) */
+  catFinish?: (sessionId: string, reason: 'TIME' | 'ENDED') => Promise<unknown>;
+
   constructor(private prisma: PrismaService) {}
+
+  /** Marking rule shared with adaptive tests */
+  mark(q: { type: QuestionType; correctAnswer: string; points: number; options: Prisma.JsonValue }, answer: unknown) { return this.autoMark(q, answer); }
+  recordProgressFor(studentId: string, questionId: string, correct: boolean) { return this.recordProgress(studentId, questionId, correct); }
 
   /** Buying a course or package unlocks its questions. Same rules as PlatformCoursesService.studentHasCourseAccess, for many courses at once. */
   async accessibleCourseIds(studentId: string): Promise<string[]> {
@@ -359,6 +366,7 @@ export class TestCentreService {
 
   async answer(studentId: string, id: string, dto: { questionId: string; answer?: unknown; flagged?: boolean; timeSecs?: number }) {
     const s = await this.owned(studentId, id);
+    if (s.mode === TestMode.CAT) throw new BadRequestException('Adaptive tests are answered one question at a time on their own screen.');
     if (await this.finishIfExpired(s)) throw new BadRequestException('Time is up. Your test has been submitted.');
     if (s.status !== TestStatus.IN_PROGRESS) throw new BadRequestException('This test is already finished.');
     if (!s.questionIds.includes(dto.questionId)) throw new NotFoundException('That question isn’t in this test');
@@ -426,6 +434,10 @@ export class TestCentreService {
   async submit(studentId: string, id: string) {
     const s = await this.owned(studentId, id);
     if (s.status === TestStatus.SUBMITTED) return { id, status: s.status };
+    if (s.mode === TestMode.CAT && this.catFinish) {
+      await this.catFinish(id, s.expiresAt && s.expiresAt.getTime() <= Date.now() ? 'TIME' : 'ENDED');
+      return { id, status: TestStatus.SUBMITTED };
+    }
     const [questions, answers] = await Promise.all([
       this.prisma.questionBank.findMany({ where: { id: { in: s.questionIds } } }),
       this.prisma.testAnswer.findMany({ where: { sessionId: id } }),
@@ -483,6 +495,7 @@ export class TestCentreService {
       if (best.size >= 5) rank = { better: [...best.entries()].filter(([id, p]) => id !== studentId && p > percent / 100).length, takers: best.size };
     }
     return {
+      cat: s.mode === TestMode.CAT ? ((s.cat as { result?: unknown } | null)?.result ?? null) : null,
       exam: exam ? { id: exam.id, kind: exam.kind, title: exam.title, passMark: exam.passMark, showAnswers: exam.showAnswers } : null,
       passed: exam ? percent >= exam.passMark : null,
       rank, waitingForTeacher: exam?.kind === 'MOCK' ? answers.filter(a => a.score == null).length : 0,
