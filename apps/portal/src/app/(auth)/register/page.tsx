@@ -9,6 +9,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { scaleFade } from '@/lib/motion';
 import api, { setAuthToken } from '@/lib/api';
+import { AuthShell, AuthTitle, Divider, authButton, authInput, type Hero } from '@/components/auth/AuthShell';
+import { GoogleButton } from '@/components/auth/GoogleButton';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type Role = 'student' | 'teacher';
@@ -16,11 +18,9 @@ interface Country { id: string; name: string; code: string; currency: string; }
 interface TaxSubject { id: string; name: string; }
 interface TaxProgramme { id: string; name: string; shortName: string | null; subjects: TaxSubject[]; countries: { id: string }[]; }
 interface Preview { name: string; country: string; meta: string; tags: string[]; bio: string; }
-interface LeftContent { eyebrow: string; head: string; sub: string; points?: string[]; preview?: Preview; foot: string; }
+type LeftContent = Hero;
 
-const STUDENT_FOOT = 'Prices show in your own currency. Pay by mobile money or card.';
-const TEACHER_FOOT = 'Every application is read by a person on our team.';
-const CODE_POINTS = ['Look in spam or promotions if it’s not there', 'You can ask for a new code after a minute', 'Typo in your email? Go back and fix it'];
+
 
 const QUALIFICATIONS = [
   { value: 'HIGH_SCHOOL', label: 'High school' },
@@ -35,7 +35,7 @@ const MODALITIES = [
   { value: 'HYBRID', label: 'Hybrid', icon: '🔄', desc: 'Both' },
 ];
 
-const inputCls = 'w-full rounded-lg border-2 border-cloud bg-white px-4 py-3 text-sm text-navy outline-none transition-all placeholder:text-royal/35 focus:border-azure focus:ring-4 focus:ring-azure/10';
+const inputCls = authInput;
 
 function apiError(err: any, fallback: string) {
   const m = err?.response?.data?.message;
@@ -69,8 +69,7 @@ function Field({ label, optional, hint, good, wide, children }: { label: string;
 function PrimaryButton({ children, loading, disabled, onClick, type = 'submit' }: { children: React.ReactNode; loading?: boolean; disabled?: boolean; onClick?: () => void; type?: 'submit' | 'button' }) {
   return (
     <button type={type} onClick={onClick} disabled={loading || disabled}
-      className="flex w-full items-center justify-center gap-2 rounded-md py-4 text-sm font-bold text-white transition-all active:scale-[0.99] disabled:opacity-60"
-      style={{ background: 'linear-gradient(135deg, #5889FA 0%, #405FAD 100%)', boxShadow: '0 8px 24px rgba(88,137,250,0.35)' }}>
+      className={authButton}>
       {loading
         ? <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
         : <>{children} <span aria-hidden>→</span></>}
@@ -104,16 +103,11 @@ function StepBar({ labels, idx }: { labels: string[]; idx: number }) {
 
 function Heading({ eyebrow, title, sub, onBack }: { eyebrow: string; title: string; sub?: React.ReactNode; onBack?: () => void }) {
   return (
-    <div className="flex items-center gap-3">
-      {onBack && (
-        <button type="button" onClick={onBack} aria-label="Back"
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-cloud text-royal/50 transition hover:bg-cloud">←</button>
-      )}
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-azure">{eyebrow}</p>
-        <h2 className="mt-1 text-[28px] font-black leading-tight tracking-tight text-navy">{title}</h2>
-        {sub && <p className="mt-1 text-[13.5px] text-royal/60">{sub}</p>}
-      </div>
+    <div className="flex flex-col gap-1">
+      {onBack && <button type="button" onClick={onBack} className="self-start text-[13px] text-muted hover:text-navy">‹ Back</button>}
+      <p className="text-xs font-semibold text-[#3F6FE8]">{eyebrow}</p>
+      <AuthTitle>{title}</AuthTitle>
+      {sub && <p className="-mt-1 text-[14px] text-ink2">{sub}</p>}
     </div>
   );
 }
@@ -285,61 +279,28 @@ function StrengthHint({ pw }: { pw: string }) {
   );
 }
 
-// ── Left panel ─────────────────────────────────────────────────────────────
-function LeftPanel({ c }: { c: LeftContent }) {
+// ── Teacher's profile preview (on the blue side) ──────────────────────────
+function PreviewCard({ p }: { p: Preview }) {
   return (
-    <div className="relative hidden flex-col justify-between overflow-hidden p-12 lg:flex lg:w-[48%]"
-      style={{ background: '#3F6FE8' }}>
-      <Link href="/" className="relative flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white font-black text-[#3F6FE8]">C</span>
-        <span className="text-xl font-bold tracking-tight text-white">CareerPath<span className="text-white/85">Africa</span></span>
-      </Link>
-      {/* Remounts per step and fades in; no exit animation, so typing during a step change can't pile up updates */}
-      <motion.div key={c.eyebrow + c.head} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 240, damping: 26 }} className="relative space-y-6">
-        <div>
-          <span className="inline-flex items-center gap-2 rounded-md border border-white/40 bg-white/15 px-4 py-1.5 text-[11px] font-semibold tracking-wider text-white">
-            <span className="h-1.5 w-1.5 rounded-full bg-white" />{c.eyebrow}
-          </span>
-          <h1 className="mt-4 whitespace-pre-line text-5xl font-black leading-[1.08] tracking-tight text-white">{c.head}</h1>
-          <p className="mt-4 max-w-sm text-base leading-relaxed text-white/90">{c.sub}</p>
-        </div>
-        {c.points && (
-          <div className="max-w-[420px] space-y-2.5">
-            {c.points.map((p, i) => (
-              <div key={p} className="flex items-center gap-3 rounded-lg border border-white/25 bg-white/10 px-4 py-3">
-                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-white/25 text-[13px] font-bold text-white">{i + 1}</span>
-                <span className="text-sm text-white/90">{p}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {c.preview && (
-          <div className="max-w-[400px] space-y-3 rounded-lg border border-white/25 bg-white/10 p-4">
-            <p className="text-[10px] font-bold tracking-[0.15em] text-white">HOW STUDENTS WILL SEE YOU</p>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white font-black text-[#3F6FE8]">{(c.preview.name[0] ?? '?').toUpperCase()}</span>
-              <div><p className="text-sm font-bold text-white">{c.preview.name || 'Your name'}</p><p className="text-xs text-white/90">{c.preview.meta}</p></div>
-            </div>
-            {c.preview.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">{c.preview.tags.map(t => <span key={t} className="rounded-md bg-white/25 px-2.5 py-0.5 text-[11px] font-semibold text-white">{t}</span>)}</div>
-            )}
-            <p className="line-clamp-3 text-xs leading-relaxed text-white/90">{c.preview.bio}</p>
-            <p className="text-[11px] text-white/90">Built from what you type. Nothing here is made up.</p>
-          </div>
-        )}
-      </motion.div>
-      <p className="relative text-xs text-white/90">{c.foot}</p>
+    <div className="mt-2 flex w-[min(430px,92%)] -rotate-[1.5deg] flex-col gap-3 rounded-[10px] bg-[#FFFDF8] p-[18px] shadow-[0_10px_24px_rgba(7,32,97,0.18)]">
+      <p className="text-[10px] font-bold tracking-[0.15em] text-[#3F6FE8]">HOW STUDENTS WILL SEE YOU</p>
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#3F6FE8] font-black text-white">{(p.name[0] ?? '?').toUpperCase()}</span>
+        <div><p className="text-sm font-bold text-navy">{p.name || 'Your name'}</p><p className="text-xs text-muted">{p.meta}</p></div>
+      </div>
+      {p.tags.length > 0 && <div className="flex flex-wrap gap-1.5">{p.tags.map(t => <span key={t} className="rounded-md bg-[#EAF0FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#2F57C9]">{t}</span>)}</div>}
+      <p className="line-clamp-3 text-xs leading-relaxed text-ink2">{p.bio}</p>
     </div>
   );
 }
 
 // ── Student sign-up ────────────────────────────────────────────────────────
-function StudentFlow({ countries, nextUrl, onBack, setLeft }: { countries: Country[]; nextUrl: string | null; onBack: () => void; setLeft: (c: LeftContent) => void }) {
+function StudentFlow({ countries, nextUrl, school, onBack, setLeft }: { countries: Country[]; nextUrl: string | null; school: string | null; onBack: () => void; setLeft: (c: LeftContent) => void }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '', phone: '', countryId: '' });
-  const [step, setStep] = useState<'form' | 'code'>('form');
+  const [name, setName] = useState('');
+  const [form, setForm] = useState({ email: '', password: '', phone: '', countryId: '' });
+  const [step, setStep] = useState<'details' | 'code' | 'finish'>('details');
   const [sending, setSending] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
@@ -355,29 +316,36 @@ function StudentFlow({ countries, nextUrl, onBack, setLeft }: { countries: Count
   }, [searchParams]);
 
   useEffect(() => {
-    setLeft(step === 'form'
-      ? { eyebrow: 'STUDENT ACCOUNT', head: 'Create your\nfree account.', sub: 'We check your email with a code before your account is made.', points: ['Your details', 'A 6-digit code from your email', 'Pick what you’re preparing for'], foot: STUDENT_FOOT }
-      : { eyebrow: 'EMAIL CHECK', head: 'One quick\ncheck.', sub: 'We sent a 6-digit code to your inbox. It works for 10 minutes.', points: CODE_POINTS, foot: STUDENT_FOOT });
+    setLeft(step === 'details'
+      ? { lines: ['Every pass', 'starts with one question.'], sub: 'Free to join. Pay only for the courses you take, by mobile money or card.', cards: [{ icon: 'Q', title: 'Question 1', body: 'Which measure is most affected by outliers?' }, { icon: 'Y', title: 'You', body: 'The mean. Got it first time.', pill: '+1 right' }] }
+      : step === 'code'
+        ? { lines: ['One quick', 'check.'], sub: 'We sent a six-digit code to your inbox. It works for ten minutes.', cards: [{ icon: '✉', title: 'CareerPath Africa', body: 'Your code is in your inbox. Look in spam if it isn’t.' }] }
+        : { lines: ['Nearly', 'there.'], sub: 'A password to sign in with, and your country so prices show in your own currency.', cards: [{ icon: 'Y', title: 'You', body: 'Account ready. Picking my exams next.', pill: 'Last step' }] });
   }, [step, setLeft]);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
   const country = countries.find(c => c.id === form.countryId);
+  const [firstName, ...rest] = name.trim().split(/\s+/);
+  const lastName = rest.join(' ');
 
   async function sendCode(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    if (form.password.length < 8) { setError('Your password needs at least 8 characters.'); return; }
-    if (!form.countryId) { setError('Please pick your country.'); return; }
+    if (!firstName || !lastName) { setError('Write your first and last name.'); return; }
     setSending(true);
     try { await api.post('/auth/otp/send', { email: form.email.trim() }); setStep('code'); }
     catch (err) { setError(apiError(err, 'Could not send the code. Try again.')); }
     finally { setSending(false); }
   }
 
-  async function createAccount() {
-    setCreating(true); setError('');
+  async function createAccount(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    if (form.password.length < 8) { setError('Your password needs at least 8 characters.'); return; }
+    if (!form.countryId) { setError('Please pick your country.'); return; }
+    setCreating(true);
     try {
-      const { data } = await api.post('/auth/register/student', { ...form, email: form.email.trim(), ...(referralCode && { referralCode }) });
+      const { data } = await api.post('/auth/register/student', { firstName, lastName, ...form, email: form.email.trim(), ...(referralCode && { referralCode }) });
       try { sessionStorage.removeItem('cpa_ref'); } catch { /* storage unavailable */ }
       await setAuthToken(data.accessToken, true);
       router.push(`/student/onboarding${nextUrl ? `?next=${encodeURIComponent(nextUrl)}` : ''}`);
@@ -387,33 +355,42 @@ function StudentFlow({ countries, nextUrl, onBack, setLeft }: { countries: Count
     }
   }
 
+  const banners = (
+    <>
+      {school && <div className="flex items-center gap-2.5 rounded-lg bg-[#EAF0FF] px-3.5 py-3 text-[13.5px] text-navy"><span className="text-lg">🏫</span><span><strong>Joining {school}.</strong> Your place is saved; it’s yours once your account is ready.</span></div>}
+      {referralCode && <div className="rounded-lg bg-[#EAF0FF] px-3.5 py-2.5 text-[13px] text-navy">🎁 Invited by a friend. Code <strong>{referralCode}</strong> is applied.</div>}
+    </>
+  );
+
   if (step === 'code') return (
-    <div className="flex flex-col gap-5">
-      <StepBar labels={['Your details', 'Email code', 'Your interests']} idx={1} />
-      <Heading eyebrow="Step 2 of 3" title="Check your email" sub={<>Code sent to <strong className="text-navy">{form.email}</strong></>} onBack={() => { setError(''); setStep('form'); }} />
-      <CodeStep email={form.email.trim()} cta="Verify & create account" busy={creating} error={error} setError={setError}
-        onVerified={createAccount} onChangeEmail={() => { setError(''); setStep('form'); }} />
+    <div className="flex flex-col gap-4">
+      <Heading eyebrow="Student account · 2 of 3" title="Check your email." sub={<>Code sent to <strong className="text-navy">{form.email}</strong></>} onBack={() => { setError(''); setStep('details'); }} />
+      <CodeStep email={form.email.trim()} cta="Continue" error={error} setError={setError}
+        onVerified={() => { setError(''); setStep('finish'); }} onChangeEmail={() => { setError(''); setStep('details'); }} />
     </div>
   );
 
-  return (
-    <form onSubmit={sendCode} className="flex flex-col gap-5">
-      <StepBar labels={['Your details', 'Email code', 'Your interests']} idx={0} />
-      <Heading eyebrow="Step 1 of 3" title="Student account" sub="Free to join. Pay only for courses you take." onBack={onBack} />
-      {referralCode && (
-        <div className="rounded-lg border border-azure/20 bg-azure/[0.06] px-3.5 py-2.5 text-[13px] text-navy">🎁 Invited by a friend. Code <strong>{referralCode}</strong> is applied.</div>
-      )}
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-        <Field label="First name"><input value={form.firstName} onChange={set('firstName')} required autoComplete="given-name" className={inputCls} /></Field>
-        <Field label="Last name"><input value={form.lastName} onChange={set('lastName')} required autoComplete="family-name" className={inputCls} /></Field>
-        <Field label="Email address" wide><input type="email" value={form.email} onChange={set('email')} required autoComplete="email" placeholder="you@example.com" className={inputCls} /></Field>
-        <Field label="Password" wide hint={<StrengthHint pw={form.password} />}><PasswordInput value={form.password} onChange={v => setForm(f => ({ ...f, password: v }))} /></Field>
-        <Field label="Country" hint={country ? `Prices in ${country.currency}` : 'Sets your currency'}><CountrySelect value={form.countryId} onChange={id => setForm(f => ({ ...f, countryId: id }))} countries={countries} /></Field>
-        <Field label="Phone" optional hint="For mobile money"><input type="tel" value={form.phone} onChange={set('phone')} autoComplete="tel" placeholder="+237 6 77 12 34 56" className={inputCls} /></Field>
-      </div>
+  if (step === 'finish') return (
+    <form onSubmit={createAccount} className="flex flex-col gap-4">
+      <Heading eyebrow="Student account · 3 of 3" title="Nearly there." sub={<>Signed up as <strong className="text-navy">{form.email}</strong> ✓</>} />
+      {banners}
+      <Field label="Password" hint={<StrengthHint pw={form.password} />}><PasswordInput value={form.password} onChange={v => setForm(f => ({ ...f, password: v }))} /></Field>
+      <Field label="Country" hint={country ? `Prices in ${country.currency}` : 'Sets your currency'}><CountrySelect value={form.countryId} onChange={id => setForm(f => ({ ...f, countryId: id }))} countries={countries} /></Field>
+      <Field label="Phone" optional hint="For mobile money and class reminders"><input type="tel" value={form.phone} onChange={set('phone')} autoComplete="tel" placeholder="+237 6 77 12 34 56" className={inputCls} /></Field>
       <ErrorBox error={error} />
-      <PrimaryButton loading={sending}>Send my code</PrimaryButton>
-      <p className="text-center text-xs text-royal/45">By continuing you agree to our Terms and Privacy Policy</p>
+      <PrimaryButton loading={creating}>Create my account</PrimaryButton>
+    </form>
+  );
+
+  return (
+    <form onSubmit={sendCode} className="flex flex-col gap-4">
+      <Heading eyebrow="Student account" title="Good to have you." onBack={onBack} />
+      {banners}
+      <Field label="Your name"><input value={name} onChange={e => setName(e.target.value)} required autoComplete="name" placeholder="First and last name" className={inputCls} /></Field>
+      <Field label="Email address" hint="We’ll send a code to check it’s yours."><input type="email" value={form.email} onChange={set('email')} required autoComplete="email" placeholder="you@example.com" className={inputCls} /></Field>
+      <ErrorBox error={error} />
+      <PrimaryButton loading={sending}>Send code</PrimaryButton>
+      <p className="text-center text-[12.5px] text-muted">By creating an account, you agree to the Terms and Privacy Policy.</p>
     </form>
   );
 }
@@ -496,13 +473,14 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
       tags: [...progNames, ...subjNames].slice(0, 6),
       bio: form.bio.trim() ? (form.bio.length > 160 ? form.bio.slice(0, 160) + '…' : form.bio) : 'Your bio shows here after the next step.',
     };
+    const card = <PreviewCard p={preview} />;
     const L: LeftContent[] = [
-      { eyebrow: 'STEP 1 OF 5 · ACCOUNT', head: 'Teach with\nCareerPath.', sub: 'Apply in five short steps. An admin reviews every application.', points: ['Build courses here or bring your WordPress ones', 'Set your price; we suggest one per programme', 'Paid monthly to mobile money or bank', 'Decision by email, usually within 2 working days'], foot: TEACHER_FOOT },
-      { eyebrow: 'STEP 2 OF 5 · EMAIL CHECK', head: 'One quick\ncheck.', sub: 'We sent a 6-digit code to your inbox. It works for 10 minutes.', points: ['Look in spam or promotions if it’s not there', 'Five tries, then ask for a new code'], foot: TEACHER_FOOT },
-      { eyebrow: 'STEP 3 OF 5 · TEACHING', head: 'What will\nyou teach?', sub: 'Students find teachers by programme and subject.', preview, foot: TEACHER_FOOT },
-      { eyebrow: 'STEP 4 OF 5 · ABOUT YOU', head: 'Make your\nprofile shine.', sub: 'A clear bio and a CV get you approved faster.', preview, foot: TEACHER_FOOT },
-      { eyebrow: 'STEP 5 OF 5 · REVIEW', head: 'Almost\nthere!', sub: 'Check it over. You can’t change it after sending.', preview, foot: TEACHER_FOOT },
-      { eyebrow: 'APPLICATION SENT', head: `Thanks,\n${form.firstName || 'teacher'}.`, sub: `We emailed a copy to ${form.email}.`, preview, foot: TEACHER_FOOT },
+      { lines: ['Teach students', 'across Africa.'], sub: 'Apply in five short steps. A person on our team reads every application.', cards: [{ icon: 'T', title: 'Your course', body: 'Built here, or brought from WordPress. You set the price.' }, { icon: '₵', title: 'Payouts', body: 'Paid monthly to mobile money or bank.', pill: 'Monthly' }] },
+      { lines: ['One quick', 'check.'], sub: 'We sent a six-digit code to your inbox. It works for ten minutes. Five tries, then ask for a new one.', cards: [{ icon: '✉', title: 'CareerPath Africa', body: 'Your code is in your inbox. Look in spam if it isn’t.' }] },
+      { lines: ['What will', 'you teach?'], sub: 'Students find teachers by programme and subject.', extra: card },
+      { lines: ['Make your', 'profile shine.'], sub: 'A clear bio and a CV get you approved faster.', extra: card },
+      { lines: ['Almost', 'there.'], sub: 'Check it over. You can’t change it after sending.', extra: card },
+      { lines: ['Thanks,', `${form.firstName || 'teacher'}.`], sub: `We emailed a copy to ${form.email}.`, extra: card },
     ];
     setLeft(L[step]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -722,70 +700,110 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
 
 // ── Page ───────────────────────────────────────────────────────────────────
 const CHOOSE_LEFT: LeftContent = {
-  eyebrow: 'GET STARTED', head: 'Your journey\nstarts here.', sub: 'Exam prep, professional courses and live classes from teachers across Africa.',
-  points: ['GCE, WASSCE, BAC, KCSE, IGCSE and more', 'IELTS, TEF, ACCA, PMP and other certificates', 'Live classes and 1-to-1 mentors', 'Certificates anyone can check online'],
-  foot: STUDENT_FOOT,
+  lines: ['Every pass', 'starts with one question.'], sub: 'Exam prep, live classes and real teachers for students across Africa.',
+  cards: [{ icon: 'T', title: 'Your teacher', body: 'New mock exam: WASSCE Maths, Paper 1.' }, { icon: 'Y', title: 'You', body: 'Starting it after school. Wish me luck.', pill: '🎓 Free to join' }],
 };
 
 function RegisterPageInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const nextRaw = searchParams?.get('next') ?? null;
-  const nextUrl = nextRaw && nextRaw.startsWith('/') && !nextRaw.startsWith('//') ? nextRaw : null;
+  const [nextUrl, setNextUrl] = useState(nextRaw && nextRaw.startsWith('/') && !nextRaw.startsWith('//') ? nextRaw : null);
   const initial = searchParams?.get('role');
   const [role, setRole] = useState<Role | null>(initial === 'teacher' || initial === 'student' ? initial : null);
   const [countries, setCountries] = useState<Country[]>([]);
   const [left, setLeft] = useState<LeftContent>(CHOOSE_LEFT);
+  const [school, setSchool] = useState<string | null>(null);
+  const [schoolCode, setSchoolCode] = useState('');
+  const [schoolError, setSchoolError] = useState('');
+  const [checking, setChecking] = useState(false);
+  const [googleOn, setGoogleOn] = useState(false);
 
   useEffect(() => { api.get('/countries').then(r => setCountries(r.data ?? [])).catch(() => {}); }, []);
   useEffect(() => { if (!role) setLeft(CHOOSE_LEFT); }, [role]);
 
+  // Came from a school's join link (or typed its code): show which school is holding the place
+  useEffect(() => {
+    let code: string | null = null;
+    try { code = localStorage.getItem('cpa:pendingJoin'); } catch { /* storage unavailable */ }
+    if (!code && nextUrl?.startsWith('/student/join/')) code = nextUrl.split('/')[3] ?? null;
+    if (!code) return;
+    api.get(`/org/join/${encodeURIComponent(code)}`).then(r => { if (r.data?.valid && r.data.open) setSchool(r.data.name); }).catch(() => {});
+  }, [nextUrl]);
+
+  async function joinSchool(e: React.FormEvent) {
+    e.preventDefault();
+    const code = schoolCode.trim();
+    if (!code) return;
+    setSchoolError(''); setChecking(true);
+    try {
+      const { data } = await api.get(`/org/join/${encodeURIComponent(code)}`);
+      if (!data?.valid) setSchoolError('That code isn’t active. Check it with your school.');
+      else if (!data.open) setSchoolError(`All of ${data.name}’s places are taken. Ask your school to add more.`);
+      else {
+        // The student area takes the seat right after sign-up, same as with the join link
+        try { localStorage.setItem('cpa:pendingJoin', code); } catch { /* storage unavailable */ }
+        setNextUrl(`/student/join/${code}`);
+        setSchool(data.name);
+        setRole('student');
+      }
+    } catch { setSchoolError('Couldn’t check that code. Try again.'); }
+    finally { setChecking(false); }
+  }
+
+  async function withGoogle(credential: string) {
+    try {
+      const { data } = await api.post('/auth/google', { credential });
+      await setAuthToken(data.accessToken, true);
+      router.push(`/student/onboarding${nextUrl ? `?next=${encodeURIComponent(nextUrl)}` : ''}`);
+    } catch (err) { setSchoolError(apiError(err, 'Google sign-in didn’t work. Try your email instead.')); }
+  }
+
+  const signIn = `/login${nextUrl ? `?next=${encodeURIComponent(nextUrl)}` : ''}`;
   return (
-    <div className="flex min-h-screen bg-[#3F6FE8]">
-      <LeftPanel c={left} />
-
-      <div className="flex flex-1 flex-col bg-white lg:rounded-l-[2.5rem] lg:shadow-[-20px_0_50px_rgba(3,14,48,0.3)]">
-        <div className="flex items-center justify-between px-6 pb-2 pt-6 lg:hidden">
-          <Link href="/" className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-navy text-xs font-black text-white">C</span>
-            <span className="text-sm font-bold text-navy">CareerPath<span className="text-white/85">Africa</span></span>
-          </Link>
-          <Link href="/login" className="rounded-md border border-cloud px-3 py-1.5 text-xs font-semibold text-navy hover:bg-cloud">Sign in</Link>
-        </div>
-
-        <div className="flex flex-1 items-start justify-center overflow-y-auto px-6 py-8 lg:py-14">
-          <div className="w-full max-w-[460px]">
-            {role === null && (
-              <div className="flex flex-col gap-6">
-                <Heading eyebrow="Get started" title="Create your account"
-                  sub={<>Already have one? <Link href="/login" className="font-semibold text-azure hover:text-royal">Sign in</Link></>} />
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {([
-                    { r: 'student' as Role, icon: '🎓', t: 'Student', d: 'Prepare for exams and build skills', pts: ['Free account', 'Pick your exams and level', 'Start with free courses'], cta: 'Get started' },
-                    { r: 'teacher' as Role, icon: '🧑‍🏫', t: 'Teacher', d: 'Teach and earn across Africa', pts: ['Five short steps', 'Upload a CV if you have one', 'Reviewed by our team'], cta: 'Apply to teach' },
-                  ]).map(c => (
-                    <button key={c.r} type="button" onClick={() => setRole(c.r)}
-                      className="group flex flex-col items-start gap-3 rounded-[10px] border-2 border-cloud bg-white p-5 text-left transition-all hover:-translate-y-0.5 hover:border-azure/50 hover:shadow-lg">
-                      <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-azure/10 text-2xl">{c.icon}</span>
-                      <span><span className="block text-base font-black text-navy">{c.t}</span><span className="mt-0.5 block text-xs leading-relaxed text-royal/60">{c.d}</span></span>
-                      <ul className="list-disc space-y-0.5 pl-4 text-xs text-royal/75">{c.pts.map(p => <li key={p}>{p}</li>)}</ul>
-                      <span className="mt-auto text-xs font-bold text-azure">{c.cta} <span className="inline-block transition-transform group-hover:translate-x-0.5">→</span></span>
-                    </button>
-                  ))}
-                </div>
-                <p className="text-center text-xs text-royal/50">Joining through your school? Use the join link your school sent you.</p>
-              </div>
-            )}
-            {role === 'student' && <StudentFlow countries={countries} nextUrl={nextUrl} onBack={() => setRole(null)} setLeft={setLeft} />}
-            {role === 'teacher' && <TeacherFlow countries={countries} onBack={() => setRole(null)} setLeft={setLeft} />}
-          </div>
-        </div>
-      </div>
+    <AuthShell hero={left} wide={role === 'teacher'}>
+      {role === null && (
+        <>
+          <AuthTitle>Good to have you.</AuthTitle>
+          {([
+            { r: 'student' as Role, icon: '🎓', t: 'I’m a student', d: 'Prepare for exams and build skills' },
+            { r: 'teacher' as Role, icon: '🧑‍🏫', t: 'I want to teach', d: 'Apply in five short steps' },
+          ]).map(c => (
+            <button key={c.r} type="button" onClick={() => setRole(c.r)}
+              className="flex items-center gap-3.5 rounded-lg border border-line bg-white px-[18px] py-4 text-left transition hover:border-[#5889FA]">
+              <span className="text-[22px]">{c.icon}</span>
+              <span className="flex-1"><strong className="text-[15px] text-navy">{c.t}</strong><br /><span className="text-[13px] text-muted">{c.d}</span></span>
+              <span className="text-muted">›</span>
+            </button>
+          ))}
+          <form onSubmit={joinSchool} className="flex flex-col gap-2 rounded-lg border border-dashed border-[#5889FA] bg-white px-4 py-3.5">
+            <label htmlFor="school-code" className="text-sm font-semibold text-navy">🏫 Have a school code?</label>
+            <div className="flex gap-2">
+              <input id="school-code" value={schoolCode} onChange={e => setSchoolCode(e.target.value.toUpperCase())} placeholder="e.g. ACCRA-7K2Q" autoComplete="off"
+                className="h-11 min-w-0 flex-1 rounded-lg border border-line px-3 font-mono text-[15px] tracking-[0.1em] text-navy outline-none focus:border-[#5889FA]" />
+              <button type="submit" disabled={checking || !schoolCode.trim()} className="h-11 rounded-lg bg-[#EAF0FF] px-4 text-sm font-semibold text-[#2F57C9] disabled:opacity-50">{checking ? 'Checking…' : 'Join my school'}</button>
+            </div>
+            {schoolError ? <span role="alert" className="text-xs text-[#C1352B]">{schoolError}</span> : <span className="text-xs text-muted">Your school paid for your place. You’ll create your account next.</span>}
+          </form>
+          <span className="my-1.5 h-px bg-line" />
+          <p className="text-center text-sm text-ink2">Already have an account? <Link href={signIn} className="font-bold text-[#3F6FE8]">Sign in</Link></p>
+        </>
+      )}
+      {role === 'student' && (
+        <>
+          <GoogleButton onCredential={withGoogle} onReady={setGoogleOn} />
+          {googleOn && <Divider>or, with your email</Divider>}
+          <StudentFlow countries={countries} nextUrl={nextUrl} school={school} onBack={() => setRole(null)} setLeft={setLeft} />
+          <p className="text-center text-sm text-ink2">Already have an account? <Link href={signIn} className="font-bold text-[#3F6FE8]">Sign in</Link></p>
+        </>
+      )}
+      {role === 'teacher' && <TeacherFlow countries={countries} onBack={() => setRole(null)} setLeft={setLeft} />}
 
       <style>{`
         @keyframes shake { 0%,100%{transform:translateX(0)} 15%{transform:translateX(-6px)} 30%{transform:translateX(6px)} 45%{transform:translateX(-4px)} 60%{transform:translateX(4px)} 75%{transform:translateX(-2px)} 90%{transform:translateX(2px)} }
         .animate-\\[shake_0\\.5s_ease\\] { animation: shake 0.5s ease; }
       `}</style>
-    </div>
+    </AuthShell>
   );
 }
 
