@@ -285,6 +285,7 @@ export class TestCentreService {
           modelAnswer: AUTO_MARKED.includes(q.type) ? null : q.correctAnswer || null,
           explanation: q.explanation,
           needsSelfMark: answered && !AUTO_MARKED.includes(q.type) && a?.score == null,
+          markedBy: a?.markedBy ?? null, aiFeedback: a?.aiFeedback ?? null,
           lesson: lesson && lessonBy.has(lesson) ? { id: lesson, courseId: q.courseId, title: lessonBy.get(lesson) } : null,
           percentRight: total >= 5 ? Math.round((right / total) * 100) : null,
         } : null,
@@ -371,7 +372,7 @@ export class TestCentreService {
     if (!Number.isFinite(score) || score < 0 || score > max) throw new BadRequestException(`Give a mark from 0 to ${max}.`);
     const first = a.score == null;
     const isCorrect = score >= max / 2;
-    await this.prisma.testAnswer.update({ where: key, data: { score, isCorrect } });
+    await this.prisma.testAnswer.update({ where: key, data: { score, isCorrect, markedBy: 'SELF' } });
     if (first) await this.recordProgress(studentId, q.id, isCorrect);
     if (s.status === TestStatus.SUBMITTED) await this.resum(id);
     return { score, isCorrect };

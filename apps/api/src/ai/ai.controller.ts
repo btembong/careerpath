@@ -13,6 +13,9 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 export class AiController {
   constructor(private readonly aiService: AiService) {}
 
+  @Get('status')
+  status() { return this.aiService.status(); }
+
   /** Lesson-scoped tutor. Students need access to the lesson; teachers can try it on their own courses. */
   @Post('tutor')
   @Roles(UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN)

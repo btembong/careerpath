@@ -70,6 +70,37 @@ export class AiService {
     return this.ai;
   }
 
+  /**
+   * Local testing without an API key: AI_FAKE=1 makes structured() return the caller's canned answer.
+   * Never in production.
+   */
+  private get fake() {
+    return process.env.AI_FAKE === '1' && process.env.NODE_ENV !== 'production';
+  }
+
+  status() {
+    return { enabled: !!this.ai || this.fake, model: MODEL, test: !this.ai && this.fake };
+  }
+
+  /**
+   * One Claude call that must answer as JSON matching `schema`. Used by the question bank and Test Centre.
+   * `fakeAnswer` is what AI_FAKE returns, so every path can be tested without a key.
+   */
+  async structured<T>(opts: { prompt: string; schema: Record<string, unknown>; maxTokens?: number; effort?: 'low' | 'medium' | 'high'; fakeAnswer: () => T }): Promise<T> {
+    if (!this.ai) {
+      if (this.fake) return opts.fakeAnswer();
+      throw new ServiceUnavailableException('AI isn’t set up yet. Add the Anthropic API key to switch it on.');
+    }
+    const msg = await this.ask({
+      max_tokens: opts.maxTokens ?? 4000,
+      output_config: { effort: opts.effort ?? 'medium', format: { type: 'json_schema', schema: opts.schema } },
+      messages: [{ role: 'user', content: opts.prompt }],
+    } as Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 'betas' | 'fallbacks'>);
+    if (msg.stop_reason === 'refusal') throw new BadGatewayException('The AI declined this one.');
+    if (msg.stop_reason === 'max_tokens') throw new BadGatewayException('The AI’s answer was too long. Try fewer at a time.');
+    try { return JSON.parse(textOf(msg)) as T; } catch { throw new BadGatewayException('The AI answered in the wrong format. Please try again.'); }
+  }
+
   /** Calls Claude with refusal fallback and maps API failures to friendly HTTP errors. */
   private async ask(params: Omit<Anthropic.Beta.MessageCreateParamsNonStreaming, 'model' | 'betas' | 'fallbacks'>) {
     try {
@@ -113,7 +144,7 @@ export class AiService {
     if (typeof courseId !== 'string' || typeof lessonId !== 'string') throw new BadRequestException('courseId and lessonId are required');
 
     const lesson = await this.courses.lessonForViewer(user, courseId, lessonId);
-    this.client();
+    if (!this.fake) this.client();
     if ((user.role as UserRole) === UserRole.STUDENT) this.countUse(user.id);
 
     const chapters = Array.isArray(lesson.chapters) ? (lesson.chapters as { title?: string; startSec?: number }[]) : [];
@@ -139,6 +170,7 @@ export class AiService {
     }
     messages.push({ role: 'user', content: q });
 
+    if (!this.ai) return { answer: `Test answer about “${lesson.title}”: this is what the AI tutor will say once the API key is added.` };
     const msg = await this.ask({
       max_tokens: 8000,
       output_config: { effort: 'low' },

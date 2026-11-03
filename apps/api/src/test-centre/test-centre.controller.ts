@@ -8,6 +8,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { TestCentreService, TestFilters, StartTest } from './test-centre.service';
 import { QuestionBankService, QuestionInput } from './question-bank.service';
+import { QuestionAiService } from './question-ai.service';
+import { QuestionDifficulty, QuestionType } from '@prisma/client';
 
 @ApiTags('test centre')
 @ApiBearerAuth()
@@ -15,7 +17,7 @@ import { QuestionBankService, QuestionInput } from './question-bank.service';
 @Roles(UserRole.STUDENT)
 @Controller('test-centre')
 export class TestCentreController {
-  constructor(private readonly tests: TestCentreService) {}
+  constructor(private readonly tests: TestCentreService, private readonly qai: QuestionAiService) {}
 
   @Get('overview')
   @ApiOperation({ summary: 'Test Centre home: counts, weak topics, recent tests' })
@@ -50,6 +52,10 @@ export class TestCentreController {
     return this.tests.selfMark(user.id, id, body ?? ({} as { questionId: string; score: number }));
   }
 
+  @Post('sessions/:id/ai-mark')
+  @ApiOperation({ summary: 'Mark a written answer with AI: a suggested mark and feedback the student can change' })
+  aiMark(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: { questionId: string }) { return this.qai.markAnswer(user.id, id, body?.questionId); }
+
   @Post('sessions/:id/submit')
   submit(@CurrentUser() user: UserProfile, @Param('id') id: string) { return this.tests.submit(user.id, id); }
 
@@ -63,7 +69,26 @@ export class TestCentreController {
 @Roles(UserRole.TEACHER, UserRole.SUBJECT_REVIEWER, UserRole.ADMIN)
 @Controller('question-bank')
 export class QuestionBankController {
-  constructor(private readonly bank: QuestionBankService) {}
+  constructor(private readonly bank: QuestionBankService, private readonly qai: QuestionAiService) {}
+
+  @Post('ai/explanations')
+  @ApiOperation({ summary: 'Draft explanations with AI for questions without one; teachers accept or discard each draft' })
+  aiExplain(@CurrentUser() user: UserProfile, @Body() body: { ids?: string[]; courseId?: string }) { return this.qai.startExplanations(user, body ?? {}); }
+
+  @Get('ai/jobs/:id')
+  aiJob(@CurrentUser() user: UserProfile, @Param('id') id: string) { return this.qai.job(user, id); }
+
+  @Post('ai/generate')
+  @ApiOperation({ summary: 'Draft new questions with AI from lesson material; they arrive as drafts for review' })
+  aiGenerate(@CurrentUser() user: UserProfile, @Body() body: { courseId: string; moduleId?: string; lessonId?: string; count?: number; types?: QuestionType[]; difficulty?: QuestionDifficulty | 'MIXED' }) {
+    return this.qai.generate(user, body ?? ({} as { courseId: string }));
+  }
+
+  @Post(':id/ai-draft/accept')
+  aiAccept(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: { explanation?: string; modelAnswer?: string | null }) { return this.qai.acceptDraft(user, id, body ?? {}); }
+
+  @Post(':id/ai-draft/discard')
+  aiDiscard(@CurrentUser() user: UserProfile, @Param('id') id: string) { return this.qai.discardDraft(user, id); }
 
   @Get()
   @ApiOperation({ summary: 'Questions this person may see: admin all, teachers and reviewers their courses' })

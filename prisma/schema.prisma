@@ -507,6 +507,10 @@ model QuestionBank {
   parts          Json?
   createdById    String?
   reviewNote     String?
+  /// Written by AI, not yet checked by a teacher
+  aiGenerated    Boolean             @default(false)
+  /// AI suggestion waiting for the teacher: { explanation, modelAnswer?, markSchemes?, answerLooksWrong, note, at }. Never shown to students.
+  aiDraft        Json?
   attemptAnswers QuizAttemptAnswer[]
   testAnswers    TestAnswer[]
   progress       QuestionProgress[]
@@ -545,6 +549,9 @@ model TestAnswer {
   score      Float?
   flagged    Boolean      @default(false)
   timeSecs   Int          @default(0)
+  /// Who gave the mark on a written answer: SELF or AI
+  markedBy   String?
+  aiFeedback String?
   session    TestSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   question   QuestionBank @relation(fields: [questionId], references: [id], onDelete: Cascade)
 

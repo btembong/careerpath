@@ -29,6 +29,17 @@ export class QuestionBankService {
     return { teacherId: u.id };
   }
 
+  /** Course ids this person may work on; null means every course (admin) */
+  async scopedCourseIds(u: UserProfile): Promise<string[] | null> {
+    if (this.isAdmin(u)) return null;
+    return (await this.prisma.platformCourse.findMany({ where: await this.courseScope(u), select: { id: true } })).map(c => c.id);
+  }
+
+  assertCourseAccess(u: UserProfile, courseId: string) { return this.assertCourse(u, courseId); }
+
+  /** Validates a question the way the editor does; used for AI drafts too */
+  checked(dto: Partial<QuestionInput> & { courseId: string; type: QuestionType }) { return this.clean(dto); }
+
   private async assertCourse(u: UserProfile, courseId: string) {
     const c = await this.prisma.platformCourse.findFirst({ where: { id: courseId, ...(await this.courseScope(u)) }, select: { id: true } });
     if (!c) throw new ForbiddenException('That course isn’t yours');
@@ -61,6 +72,9 @@ export class QuestionBankService {
     if (q.type) where.type = q.type as QuestionType;
     if (q.status) where.status = q.status as QuestionStatus;
     if (q.missing === 'explanation') where.AND = [{ OR: [{ explanation: null }, { explanation: '' }] }];
+    if (q.ai === 'drafts') where.aiDraft = { not: Prisma.DbNull };
+    if (q.ai === 'written') where.aiGenerated = true;
+    if (q.ai === 'check') where.aiDraft = { path: ['answerLooksWrong'], equals: true };
     if (q.search?.trim()) where.questionText = { contains: q.search.trim(), mode: 'insensitive' };
 
     const page = Math.max(Number(q.page) || 1, 1);
@@ -87,20 +101,23 @@ export class QuestionBankService {
           id: r.id, text: r.questionText, type: r.type, difficulty: r.difficulty, status: r.status, bankOnly: r.bankOnly, reviewNote: r.reviewNote,
           courseId: r.courseId, courseTitle: c?.title ?? '', programme: c?.programme?.shortName ?? c?.programme?.name ?? null, moduleTitle: l?.module.title ?? null, lessonTitle: l?.title ?? null,
           hasExplanation: !!r.explanation?.trim(), answered: n, percentRight: n >= 5 ? Math.round((right / n) * 100) : null,
+          hasAiDraft: !!r.aiDraft, aiGenerated: r.aiGenerated, aiFlag: !!(r.aiDraft as { answerLooksWrong?: boolean } | null)?.answerLooksWrong,
         };
       }),
     };
   }
 
   private async stats(scope: Prisma.QuestionBankWhereInput) {
-    const [all, noWhy, mediumOnly, inReview, drafts] = await Promise.all([
+    const [all, noWhy, mediumOnly, inReview, drafts, aiDrafts, aiCheck] = await Promise.all([
       this.prisma.questionBank.count({ where: scope }),
       this.prisma.questionBank.count({ where: { ...scope, OR: [{ explanation: null }, { explanation: '' }] } }),
       this.prisma.questionBank.count({ where: { ...scope, difficulty: QuestionDifficulty.MEDIUM } }),
       this.prisma.questionBank.count({ where: { ...scope, status: QuestionStatus.IN_REVIEW } }),
       this.prisma.questionBank.count({ where: { ...scope, status: QuestionStatus.DRAFT } }),
+      this.prisma.questionBank.count({ where: { ...scope, aiDraft: { not: Prisma.DbNull } } }),
+      this.prisma.questionBank.count({ where: { ...scope, aiDraft: { path: ['answerLooksWrong'], equals: true } } }),
     ]);
-    return { all, noWhy, mediumOnly, inReview, drafts };
+    return { all, noWhy, mediumOnly, inReview, drafts, aiDrafts, aiCheck };
   }
 
   async one(u: UserProfile, id: string) {

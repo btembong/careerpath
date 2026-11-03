@@ -401,10 +401,12 @@ export class TutorImportService implements OnModuleInit {
       else await tx.questionBank.create({ data });
       if (mapped.type === 'WRITTEN') out.teacher++; else out.auto++;
     }
-    // Questions removed in Tutor: delete unless students have answered them
+    // Questions removed in Tutor: delete unless students have answered them or a teacher explained it here
     for (const [wpId, id] of byWp) {
       if (seen.has(wpId)) continue;
       if (await tx.quizAttemptAnswer.count({ where: { questionId: id } })) continue;
+      if (await tx.testAnswer.count({ where: { questionId: id } })) continue;
+      if (await tx.questionBank.count({ where: { id, explanation: { not: null }, NOT: { explanation: '' } } })) continue;
       await tx.questionBank.delete({ where: { id } });
     }
     return out;
