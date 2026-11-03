@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { Topbar } from '@/components/layout/Topbar';
 import { TestTiles, useTestOverview, plural } from '@/components/tests/TestTiles';
+import { ProgressViz } from '@/components/progress/ProgressViz';
 
 const when = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
@@ -33,6 +34,8 @@ export default function TestCentrePage() {
         )}
 
         <TestTiles data={data} />
+
+        {!nothing && <ProgressViz />}
 
         <div className="grid items-start gap-4 lg:grid-cols-[1.3fr_1fr]">
           <section className="flex flex-col gap-3 rounded-lg border border-line bg-white p-[18px]">

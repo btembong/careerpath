@@ -11,6 +11,7 @@ import { QuestionBankService, QuestionInput } from './question-bank.service';
 import { QuestionAiService } from './question-ai.service';
 import { MockExamService, ExamInput, Section } from './mock-exam.service';
 import { CatService } from './cat.service';
+import { ProgressService } from './progress.service';
 import { ExamKind, ExamStatus } from '@prisma/client';
 import { QuestionDifficulty, QuestionType } from '@prisma/client';
 
@@ -20,7 +21,7 @@ import { QuestionDifficulty, QuestionType } from '@prisma/client';
 @Roles(UserRole.STUDENT)
 @Controller('test-centre')
 export class TestCentreController {
-  constructor(private readonly tests: TestCentreService, private readonly qai: QuestionAiService, private readonly exams: MockExamService, private readonly cat: CatService) {}
+  constructor(private readonly tests: TestCentreService, private readonly qai: QuestionAiService, private readonly exams: MockExamService, private readonly cat: CatService, private readonly progress: ProgressService) {}
 
   @Get('exams')
   @ApiOperation({ summary: 'Mock exams or past papers, with which ones this student can take' })
@@ -43,6 +44,10 @@ export class TestCentreController {
   catAnswer(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: { questionId: string; answer: unknown; timeSecs?: number }) {
     return this.cat.answer(user.id, id, body ?? ({} as { questionId: string; answer: unknown }));
   }
+
+  @Get('progress')
+  @ApiOperation({ summary: 'Mock and CAT results over time, a five-week study calendar and headline tiles' })
+  progressView(@CurrentUser() user: UserProfile) { return this.progress.forStudent(user.id); }
 
   @Get('overview')
   @ApiOperation({ summary: 'Test Centre home: counts, weak topics, recent tests' })

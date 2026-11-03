@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
+import { ProgressViz } from '@/components/progress/ProgressViz';
 
 interface Stats { totalCourses: number; completedCourses: number; totalLessons: number; completedLessons: number; avgQuizScore: number | null; studyHours: number; streak: number; certificates: number }
 interface Week { week: string; hours: number; lessons: number }
@@ -46,6 +47,7 @@ export default function ProgressPage() {
     <div className="flex min-h-full flex-col">
       <Topbar title="My progress" subtitle="How much you’ve done, how well, and where your time goes" />
       <div className="flex flex-wrap items-start gap-5 p-4 lg:px-7 lg:py-6">
+        <div className="w-full"><ProgressViz /></div>
         <div className="flex min-w-0 flex-[999_1_540px] flex-col gap-4">
           <dl className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
             {[
