@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useAuth } from '@/hooks/useAuth';
+import api from '@/lib/api';
 import { notify } from '@/lib/notify';
 
 /** What goes on the share card: two lines, a small line and a label in the corner. */
@@ -41,7 +41,7 @@ export function Celebrate({ emoji, l1, l2, sub, next, share }: CelebrateProps) {
   const [open, setOpen] = useState(false);
   const nextCls = 'inline-flex h-11 items-center rounded-md border border-white/60 px-4 text-[14.5px] font-semibold text-white hover:bg-white/10';
   return (
-    <section className="relative flex flex-col justify-center gap-3.5 overflow-hidden rounded-[14px] bg-[#3F6FE8] px-6 py-8 sm:px-10 sm:py-10">
+    <section className="keep-light relative flex flex-col justify-center gap-3.5 overflow-hidden rounded-[14px] bg-[#3F6FE8] px-6 py-8 sm:px-10 sm:py-10">
       {DOTS.map((d, i) => (
         <span key={i} aria-hidden className="pointer-events-none absolute opacity-55" style={{ width: d.size, height: d.size, borderRadius: d.round ? 999 : 2, background: d.color, left: `${d.left}%`, top: `${d.top}%`, transform: `rotate(${d.rot}deg)` }} />
       ))}
@@ -123,17 +123,20 @@ function drawCard(canvas: HTMLCanvasElement, s: ShareText, who: string) {
 }
 
 export function ShareDialog({ share, onClose }: { share: ShareText; onClose: () => void }) {
-  const { user } = useAuth();
+  // The sign-in token carries no name, so read it from the profile
+  const [user, setUser] = useState<{ firstName?: string; lastName?: string; name?: string } | null>(null);
+  useEffect(() => { api.get('/auth/me').then(r => setUser(r.data)).catch(() => setUser({})); }, []);
   const ref = useRef<HTMLCanvasElement>(null);
   const [url, setUrl] = useState('');
-  const who = shortName(user as any);
+  const who = shortName(user);
   const link = share.link || (typeof window !== 'undefined' ? window.location.origin : '');
   const text = `${share.c1} ${share.c2} ${share.c3}`.replace(/\s+/g, ' ').trim();
 
   useEffect(() => {
     const draw = () => { if (ref.current) { drawCard(ref.current, share, who); setUrl(ref.current.toDataURL('image/png')); } };
+    if (!user) return;
     (document as any).fonts?.ready ? (document as any).fonts.ready.then(draw) : draw();
-  }, [share, who]);
+  }, [share.c1, share.c2, share.c3, share.label, who, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -157,7 +160,7 @@ export function ShareDialog({ share, onClose }: { share: ShareText; onClose: () 
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#072061]/50 p-4" onClick={onClose} role="dialog" aria-modal aria-label="Share">
-      <div className="flex max-h-full w-full max-w-[380px] flex-col items-center gap-3 overflow-y-auto rounded-[12px] bg-white p-5 dark:bg-[#13204A]" onClick={e => e.stopPropagation()}>
+      <div className="keep-light flex max-h-full w-full max-w-[380px] flex-col items-center gap-3 overflow-y-auto rounded-[12px] bg-white p-5" onClick={e => e.stopPropagation()}>
         <div className="flex w-full items-center justify-between"><strong className="text-[15px] text-navy">Share it</strong><button onClick={onClose} className="text-[13px] font-semibold text-muted hover:text-navy">Close</button></div>
         <canvas ref={ref} className="hidden" />
         {url ? <img src={url} alt={text} className="w-full max-w-[300px] rounded-[14px] shadow-[0_20px_40px_rgba(7,32,97,0.25)]" /> : <div className="aspect-[4/5] w-full max-w-[300px] animate-pulse rounded-[14px] bg-[#3F6FE8]" />}

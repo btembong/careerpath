@@ -16,7 +16,7 @@ interface Data {
   calendar: { days: { date: string; count: number; level: number }[]; streak: number };
 }
 
-const SHADE = ['#EDF1F8', '#C9D6FF', '#5889FA', '#2F57C9'];
+const SHADE = ['var(--color-subtle)', '#C9D6FF', '#5889FA', '#2F57C9'];
 const short = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const month = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { month: 'long' });
 const hrs = (h: number) => (h < 1 ? `${Math.round(h * 60)} min` : `${Math.round(h * 10) / 10} h`);
@@ -51,7 +51,7 @@ export function ProgressViz() {
           <div key={t.l} className="rounded-[10px] border border-line bg-white px-[18px] py-4">
             <span className="text-[12.5px] text-muted">{t.l}</span>
             <p className="mt-1 text-[26px] font-extrabold text-navy">{t.v}</p>
-            <span className="text-[12.5px] font-semibold text-[#2F57C9] dark:text-[#8FB0FF]">{t.d}</span>
+            <span className="text-[12.5px] font-semibold text-azure-strong">{t.d}</span>
           </div>
         ))}
       </div>
@@ -61,7 +61,7 @@ export function ProgressViz() {
           {pts.length ? (
             <svg viewBox={`0 0 ${W} ${H}`} className="h-[240px] w-full" role="img" aria-label="Results over time">
               <line x1={L} y1={y(d.passMark)} x2={Rr} y2={y(d.passMark)} stroke="#C9D3E6" strokeDasharray="4 4" />
-              <text x={L + 4} y={y(d.passMark) - 6} fontSize="11" fill="#637090">pass mark</text>
+              <text x={Rr} y={y(d.passMark) + 15} textAnchor="end" fontSize="11" fill="#637090">pass mark {d.passMark}%</text>
               <line x1={L} y1={bottom} x2={Rr} y2={bottom} stroke="#E4E9F3" />
               {pts.length > 1 && <polyline points={pts.map((p, i) => `${x(i)},${y(p.percent)}`).join(' ')} fill="none" stroke="#3F6FE8" strokeWidth="3" strokeLinejoin="round" />}
               {pts.map((p, i) => (
@@ -88,7 +88,7 @@ export function ProgressViz() {
             {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((w, i) => <span key={i}>{w}</span>)}
             {d.calendar.days.map(c => (
               <span key={c.date} title={c.level < 0 ? '' : `${short(c.date)} · ${c.count ? `${c.count} thing${c.count === 1 ? '' : 's'} studied` : 'nothing'}`}
-                className="h-[22px] rounded" style={{ background: c.level < 0 ? 'transparent' : SHADE[c.level], outline: c.level < 0 ? '1px dashed #E4E9F3' : undefined }} />
+                className="h-[22px] rounded" style={{ background: c.level < 0 ? 'transparent' : SHADE[c.level], outline: c.level < 0 ? '1px dashed var(--color-line)' : undefined }} />
             ))}
           </div>
           <div className="flex items-center gap-1.5 text-[11.5px] text-muted">Less{SHADE.map(s => <span key={s} className="h-3 w-3 rounded-[3px]" style={{ background: s }} />)}More</div>

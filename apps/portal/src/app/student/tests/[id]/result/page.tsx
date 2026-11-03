@@ -130,7 +130,7 @@ export default function TestResultPage() {
             <Celebrate emoji="🎉" l1="You passed." l2={`${r.percent}% on ${r.exam.title}.`}
               sub={`The pass mark was ${r.exam.passMark}%.${best ? ` Your strongest area was ${best.topic}.` : ''}`}
               next={{ label: 'See my answers', onClick: () => { setReview(true); setTimeout(() => document.getElementById('answers')?.scrollIntoView({ behavior: 'smooth' }), 50); } }}
-              share={{ c1: 'Passed my', c2: `${r.exam.title} ${what}.`.replace(/ (mock|past paper) (mock|past paper)\.$/i, ' $1.'), c3: `Scored ${r.percent}% · practising on CareerPath Africa`, label: 'Mock result' }} />
+              share={{ c1: 'Passed my', c2: /mock|paper/i.test(r.exam.title) ? `${r.exam.title}.` : `${r.exam.title} ${what}.`, c3: `Scored ${r.percent}% · practising on CareerPath Africa`, label: 'Mock result' }} />
           );
         })()}
         <div>
