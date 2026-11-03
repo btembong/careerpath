@@ -1,4 +1,5 @@
 'use client';
+import { DashboardHero } from '@/components/dashboard/DashboardHero';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -143,14 +144,7 @@ export default function TeacherDashboard() {
       <Topbar />
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
 
-        <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] text-muted">{dateLabel}</p>
-            <h1 className="mt-1 text-2xl font-extrabold tracking-[-0.01em] text-navy">{greeting}, {firstName}</h1>
-          </div>
-          <Link href="/teacher/live" className={btnSecondary}>Schedule a class</Link>
-          <Link href="/teacher/courses" className={btnPrimary}>New course</Link>
-        </div>
+        <DashboardHero />
 
         {profilePct < 100 && (
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-white px-4 py-3">

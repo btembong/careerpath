@@ -1,4 +1,5 @@
 'use client';
+import { DashboardHero } from '@/components/dashboard/DashboardHero';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -93,11 +94,11 @@ export default function AdminDashboard() {
     <div className="flex min-h-full flex-col">
       <Topbar />
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        <DashboardHero />
 
         <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] text-muted">{now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-            <h1 className="mt-1 text-2xl font-extrabold tracking-[-0.01em] text-navy">Platform overview</h1>
+            <h2 className="text-xl font-extrabold tracking-[-0.01em] text-navy">Platform overview</h2>
           </div>
           <div role="group" aria-label="Period" className="flex gap-0.5 rounded-md border border-line bg-white p-0.5">
             {RANGES.map(x => (

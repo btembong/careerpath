@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { PortalsController } from './portals.controller';
 import { PortalsService } from './portals.service';
+import { HeroService } from './hero.service';
+import { HeroController } from './hero.controller';
 import { StudentInsightsController } from './student-insights.controller';
 import { StudentInsightsService } from './student-insights.service';
 import { DashboardInsightsController } from './dashboard-insights.controller';
@@ -19,7 +21,7 @@ import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [WordPressModule, MailModule, AuditModule],
-  controllers: [PortalsController, StudentInsightsController, DashboardInsightsController, CohortInsightsController, PeopleController],
-  providers: [PortalsService, StudentInsightsService, DashboardInsightsService, CohortInsightsService, StudentLibraryService, StudentCalendarService, AdminTeachersService, StudentProgressService, AdminPeopleService],
+  controllers: [HeroController, PortalsController, StudentInsightsController, DashboardInsightsController, CohortInsightsController, PeopleController],
+  providers: [HeroService, PortalsService, StudentInsightsService, DashboardInsightsService, CohortInsightsService, StudentLibraryService, StudentCalendarService, AdminTeachersService, StudentProgressService, AdminPeopleService],
 })
 export class PortalsModule {}

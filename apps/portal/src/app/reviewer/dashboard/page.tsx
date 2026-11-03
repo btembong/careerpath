@@ -1,4 +1,5 @@
 'use client';
+import { DashboardHero } from '@/components/dashboard/DashboardHero';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -37,6 +38,7 @@ export default function ReviewerDashboard() {
     <div className="flex min-h-full flex-col">
       <Topbar title="Review queue" subtitle="Courses waiting for your subject review" />
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        <DashboardHero />
         <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
           {[
             { l: 'To review', v: s ? String(s.toReview) : '…', sub: s?.oldestWaitDays != null ? `Oldest waiting ${s.oldestWaitDays} day${s.oldestWaitDays === 1 ? '' : 's'}` : 'Nothing waiting' },

@@ -1,4 +1,5 @@
 'use client';
+import { DashboardHero } from '@/components/dashboard/DashboardHero';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -68,6 +69,7 @@ export default function RepDashboardPage() {
           </div>
         } />
       <div className="flex flex-col gap-[18px] p-4 lg:px-7 lg:py-6">
+        <DashboardHero />
         <dl className="grid gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
           {[
             { l: 'Sales', v: s ? money(s.sales, c) : '—', sub: s ? (s.salesChangePct != null ? `${s.salesChangePct >= 0 ? '+' : ''}${s.salesChangePct}% on the period before` : `${s.salesCount} sale${s.salesCount === 1 ? '' : 's'}`) + (s.otherCurrencies.length ? ` · plus ${s.otherCurrencies.map(o => money(o.amount, o.currency)).join(', ')}` : '') : '' },

@@ -1,4 +1,5 @@
 'use client';
+import { DashboardHero } from '@/components/dashboard/DashboardHero';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Topbar } from '@/components/layout/Topbar';
@@ -20,6 +21,7 @@ export default function SchoolDashboardPage() {
     <div className="flex min-h-full flex-col">
       <Topbar title={d?.org.name ?? 'Your school'} subtitle="Your seats, your students and how they’re doing" />
       <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-[22px]">
+        <DashboardHero />
         {!d ? <div className="h-[84px] animate-pulse rounded-lg border border-line bg-white" /> : (
           <section className="flex flex-wrap items-center gap-3.5 rounded-lg border border-azure bg-white px-[18px] py-4">
             <div className="min-w-0 flex-1">

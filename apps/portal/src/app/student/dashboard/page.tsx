@@ -1,4 +1,5 @@
 'use client';
+import { DashboardHero } from '@/components/dashboard/DashboardHero';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -236,22 +237,7 @@ export default function StudentDashboard() {
 
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
 
-        {/* Greeting */}
-        <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] text-muted">{dateLabel}</p>
-            <h1 className="mt-1 text-2xl font-extrabold tracking-[-0.01em] text-navy">{greeting}, {firstName}</h1>
-          </div>
-          {streak > 0 && (
-            <span className="inline-flex h-7 items-center gap-1.5 rounded bg-accent-soft px-2.5 text-[12.5px] font-semibold text-navy">
-              <Glyph d={P.flame} size={14} strokeWidth={1.8} /> {streak}-day streak
-            </span>
-          )}
-          <Link href="/student/calendar" className={btnSecondary}>Study calendar</Link>
-          <Link href={resumeHref} className={btnPrimary}>
-            <Glyph d={P.play} size={14} fill="currentColor" /> {resume ? ((resume.pct ?? 0) > 0 ? 'Resume lesson' : 'Start learning') : 'Find a course'}
-          </Link>
-        </div>
+        <DashboardHero />
 
         {/* One alert line, only when something needs action */}
         {(overdue.length > 0 || expiring.length > 0) && (
