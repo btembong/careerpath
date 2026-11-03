@@ -4,6 +4,7 @@ import {
   Injectable,
   ConflictException,
   UnauthorizedException,
+  ServiceUnavailableException,
   ForbiddenException,
   NotFoundException,
   BadRequestException,
@@ -551,7 +552,33 @@ export class AuthService {
 
   // ── Google SSO ───────────────────────────────────────────
 
-  async googleLogin(dto: { googleId: string; email: string; name?: string; avatarUrl?: string }): Promise<{ accessToken: string }> {
+  /**
+   * Checks a Google ID token with Google and returns who it belongs to. Nothing the browser says about the
+   * person is trusted: only what Google confirms for our client id.
+   */
+  private async verifyGoogle(credential: string) {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) throw new ServiceUnavailableException('Google sign-in isn’t set up yet.');
+    if (typeof credential !== 'string' || credential.length < 100 || credential.length > 4096) throw new UnauthorizedException('Google sign-in failed. Please try again.');
+    let info: { aud?: string; iss?: string; sub?: string; email?: string; email_verified?: string | boolean; exp?: string; name?: string; picture?: string };
+    try {
+      const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`, { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) throw new UnauthorizedException('Google sign-in failed. Please try again.');
+      info = await r.json();
+    } catch (e) {
+      if (e instanceof UnauthorizedException) throw e;
+      throw new ServiceUnavailableException('Couldn’t reach Google. Please try again.');
+    }
+    const verified = info.email_verified === true || info.email_verified === 'true';
+    const fresh = Number(info.exp) * 1000 > Date.now();
+    if (info.aud !== clientId || !['accounts.google.com', 'https://accounts.google.com'].includes(info.iss ?? '') || !info.sub || !info.email || !verified || !fresh) {
+      throw new UnauthorizedException('Google sign-in failed. Please try again.');
+    }
+    return { googleId: info.sub, email: info.email.toLowerCase(), name: info.name, avatarUrl: info.picture };
+  }
+
+  async googleLogin(body: { credential: string }): Promise<{ accessToken: string }> {
+    const dto = await this.verifyGoogle(body?.credential);
     let profile = await this.prisma.userProfile.findFirst({
       where: { OR: [{ googleId: dto.googleId }, { email: dto.email }] },
     });
@@ -571,7 +598,10 @@ export class AuthService {
       const firstName = dto.name?.split(' ')[0] ?? '';
       this.mail.sendWelcomeStudent(dto.email, firstName, ssoStudentNo).catch(() => {});
     } else if (!profile.googleId) {
+      // Google has confirmed this email belongs to them, so the existing account can be linked
       await this.prisma.userProfile.update({ where: { id: profile.id }, data: { googleId: dto.googleId } });
+    } else if (profile.googleId !== dto.googleId) {
+      throw new UnauthorizedException('This email is linked to a different Google account.');
     }
 
     if (profile.approvalStatus === ApprovalStatus.PENDING) {

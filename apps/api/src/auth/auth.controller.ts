@@ -143,9 +143,16 @@ export class AuthController {
 
   @Post('google')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Sign in or register with a Google ID token (SSO)' })
-  googleLogin(@Body() body: { googleId: string; email: string; name?: string; avatarUrl?: string }) {
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({ summary: 'Sign in or register with a Google ID token (checked with Google)' })
+  googleLogin(@Body() body: { credential: string }) {
     return this.authService.googleLogin(body);
+  }
+
+  @Get('google/config')
+  @ApiOperation({ summary: 'Whether Google sign-in is switched on, and the public client id the button needs' })
+  googleConfig() {
+    return { clientId: process.env.GOOGLE_CLIENT_ID || null };
   }
 
   @Get('me')
