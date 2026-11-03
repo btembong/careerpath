@@ -275,6 +275,9 @@ ${text}
     if (s.studentId !== studentId) throw new ForbiddenException('Not your test');
     if (!s.questionIds.includes(questionId)) throw new NotFoundException('That question isn’t in this test');
     if (s.mode === TestMode.EXAM && s.status !== TestStatus.SUBMITTED) throw new BadRequestException('Answers are marked after you submit.');
+    if (s.mockExamId && (await this.prisma.mockExam.findUnique({ where: { id: s.mockExamId }, select: { kind: true } }))?.kind === 'MOCK') {
+      throw new BadRequestException('Your teacher marks the written answers in this exam.');
+    }
     const q = await this.prisma.questionBank.findUnique({ where: { id: questionId } });
     if (!q) throw new NotFoundException('Question not found');
     if (AUTO.includes(q.type)) throw new BadRequestException('This question is marked automatically.');

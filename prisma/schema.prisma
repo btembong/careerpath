@@ -518,6 +518,41 @@ model QuestionBank {
   @@index([courseId, status])
 }
 
+/// A paper set up once and taken by many: a teacher's mock exam, or a real past paper
+model MockExam {
+  id              String       @id @default(uuid())
+  kind            ExamKind     @default(MOCK)
+  title           String
+  description     String?
+  programmeId     String?
+  /// Who can take it: anyone with access to one of these courses, or who bought one of these packages
+  courseIds       String[]
+  packageIds      String[]
+  status          ExamStatus   @default(DRAFT)
+  timeLimitSecs   Int
+  passMark        Int          @default(50)
+  /// 0 means no limit
+  attemptsAllowed Int          @default(0)
+  /// Whether students see the right answers after submitting
+  showAnswers     Boolean      @default(true)
+  /// true: each student gets a different mix following `sections`; false: everyone gets `questionIds` in order
+  randomised      Boolean      @default(true)
+  /// [{ title, courseIds, moduleIds, tags, count, easy, medium, hard }]
+  sections        Json?
+  questionIds     String[]
+  /// Past papers
+  examBody        String?
+  year            Int?
+  session         String?
+  paperNumber     String?
+  createdById     String
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  attempts        TestSession[]
+
+  @@index([status, kind])
+}
+
 /// One test a student took in the Test Centre. Separate from QuizAttempt, so it never touches course grades or certificates.
 model TestSession {
   id            String      @id @default(uuid())
@@ -528,6 +563,9 @@ model TestSession {
   filters       Json?
   questionIds   String[]
   timeLimitSecs Int?
+  /// Set when this is an attempt at a teacher's mock exam or a past paper
+  mockExamId    String?
+  mockExam      MockExam?   @relation(fields: [mockExamId], references: [id], onDelete: SetNull)
   startedAt     DateTime    @default(now())
   expiresAt     DateTime?
   submittedAt   DateTime?
@@ -1355,6 +1393,17 @@ enum QuestionStatus {
 enum TestMode {
   PRACTICE
   EXAM
+}
+
+enum ExamKind {
+  MOCK
+  PAST_PAPER
+}
+
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
 }
 
 enum TestStatus {

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserProfile } from '@prisma/client';
 import { UserRole } from '@cpa/shared';
@@ -9,6 +9,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { TestCentreService, TestFilters, StartTest } from './test-centre.service';
 import { QuestionBankService, QuestionInput } from './question-bank.service';
 import { QuestionAiService } from './question-ai.service';
+import { MockExamService, ExamInput, Section } from './mock-exam.service';
+import { ExamKind, ExamStatus } from '@prisma/client';
 import { QuestionDifficulty, QuestionType } from '@prisma/client';
 
 @ApiTags('test centre')
@@ -17,7 +19,17 @@ import { QuestionDifficulty, QuestionType } from '@prisma/client';
 @Roles(UserRole.STUDENT)
 @Controller('test-centre')
 export class TestCentreController {
-  constructor(private readonly tests: TestCentreService, private readonly qai: QuestionAiService) {}
+  constructor(private readonly tests: TestCentreService, private readonly qai: QuestionAiService, private readonly exams: MockExamService) {}
+
+  @Get('exams')
+  @ApiOperation({ summary: 'Mock exams or past papers, with which ones this student can take' })
+  examList(@CurrentUser() user: UserProfile, @Query('kind') kind?: string) {
+    return this.exams.forStudent(user.id, kind === 'PAST_PAPER' ? ExamKind.PAST_PAPER : ExamKind.MOCK);
+  }
+
+  @Post('exams/:id/start')
+  @ApiOperation({ summary: 'Start (or resume) an attempt; past papers can also be practised untimed' })
+  examStart(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: { practice?: boolean }) { return this.exams.start(user.id, id, body ?? {}); }
 
   @Get('overview')
   @ApiOperation({ summary: 'Test Centre home: counts, weak topics, recent tests' })
@@ -121,4 +133,52 @@ export class QuestionBankController {
   @Roles(UserRole.SUBJECT_REVIEWER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Approve a question, or send it back with a note' })
   decide(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: { approve: boolean; note?: string }) { return this.bank.decide(user, id, body ?? ({} as { approve: boolean })); }
+}
+
+@ApiTags('mock exams')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.TEACHER, UserRole.ADMIN)
+@Controller('mock-exams')
+export class MockExamController {
+  constructor(private readonly exams: MockExamService) {}
+
+  @Get()
+  list(@CurrentUser() user: UserProfile, @Query('kind') kind?: string) {
+    return this.exams.list(user, kind === 'PAST_PAPER' ? ExamKind.PAST_PAPER : kind === 'MOCK' ? ExamKind.MOCK : undefined);
+  }
+
+  @Post('availability')
+  @ApiOperation({ summary: 'How many live questions each section can draw on' })
+  availability(@Body() body: { sections?: Section[] }) { return this.exams.availability((body?.sections ?? []).filter(s => s?.courseIds?.length)); }
+
+  @Get('marking')
+  @ApiOperation({ summary: 'Finished attempts with written answers waiting for a mark' })
+  marking(@CurrentUser() user: UserProfile) { return this.exams.markingQueue(user); }
+
+  @Get('attempts/:sessionId')
+  attempt(@CurrentUser() user: UserProfile, @Param('sessionId') sessionId: string) { return this.exams.attemptForMarking(user, sessionId); }
+
+  @Post('attempts/:sessionId/mark')
+  mark(@CurrentUser() user: UserProfile, @Param('sessionId') sessionId: string, @Body() body: { questionId: string; score: number; feedback?: string }) {
+    return this.exams.mark(user, sessionId, body ?? ({} as { questionId: string; score: number }));
+  }
+
+  @Get(':id')
+  one(@CurrentUser() user: UserProfile, @Param('id') id: string) { return this.exams.get(user, id); }
+
+  @Post()
+  create(@CurrentUser() user: UserProfile, @Body() body: ExamInput) { return this.exams.create(user, body ?? {}); }
+
+  @Patch(':id')
+  update(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: ExamInput) { return this.exams.update(user, id, body ?? {}); }
+
+  @Post(':id/status')
+  status(@CurrentUser() user: UserProfile, @Param('id') id: string, @Body() body: { status: ExamStatus }) {
+    if (!Object.values(ExamStatus).includes(body?.status)) throw new BadRequestException('Unknown status');
+    return this.exams.setStatus(user, id, body.status);
+  }
+
+  @Delete(':id')
+  remove(@CurrentUser() user: UserProfile, @Param('id') id: string) { return this.exams.remove(user, id); }
 }

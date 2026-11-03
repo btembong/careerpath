@@ -5,12 +5,12 @@ import { PrismaService } from '../prisma/prisma.service';
 export interface QuestionInput {
   courseId: string; moduleId?: string | null; sourceLessonId?: string | null;
   questionText: string; type: QuestionType; difficulty?: QuestionDifficulty;
-  options?: { id: string; text: string }[] | null; correctAnswer?: string;
+  options?: { id: string; text: string; match?: string }[] | null; correctAnswer?: string;
   parts?: { label: string; text: string; marks: number; markScheme?: string }[] | null;
   explanation?: string | null; tags?: string[]; points?: number; imageUrl?: string | null;
 }
 
-const WRITABLE: QuestionType[] = [QuestionType.MCQ, QuestionType.TRUE_FALSE, QuestionType.FILL_BLANK, QuestionType.SHORT_ANSWER, QuestionType.WRITTEN, QuestionType.STRUCTURED];
+const WRITABLE: QuestionType[] = [QuestionType.MCQ, QuestionType.TRUE_FALSE, QuestionType.FILL_BLANK, QuestionType.SHORT_ANSWER, QuestionType.WRITTEN, QuestionType.STRUCTURED, QuestionType.MATCHING];
 const PAGE = 50;
 
 @Injectable()
@@ -130,7 +130,7 @@ export class QuestionBankService {
     const text = (dto.questionText ?? '').trim();
     if (text.length < 5) throw new BadRequestException('Write the question first.');
     const correct = (dto.correctAnswer ?? '').trim();
-    let options: { id: string; text: string }[] | null = null;
+    let options: { id: string; text: string; match?: string }[] | null = null;
     let parts: { label: string; text: string; marks: number; markScheme: string }[] | null = null;
     let points = Math.max(Math.round(Number(dto.points) || 1), 1);
 
@@ -138,6 +138,13 @@ export class QuestionBankService {
       options = (dto.options ?? []).map((o, i) => ({ id: o.id || String.fromCharCode(97 + i), text: (o.text ?? '').trim() })).filter(o => o.text);
       if (options.length < 2) throw new BadRequestException('Give at least two answers.');
       if (!options.some(o => o.id === correct)) throw new BadRequestException('Tick the correct answer.');
+    } else if (dto.type === QuestionType.MATCHING) {
+      // Each item on the left has one right answer; students pick from all the right-hand answers, shuffled
+      options = (dto.options ?? []).map((o, i) => ({ id: o.id || String(i + 1), text: (o.text ?? '').trim(), match: (o.match ?? '').trim() })).filter(o => o.text || o.match);
+      if (options.length < 2) throw new BadRequestException('Give at least two pairs.');
+      if (options.some(o => !o.text || !o.match)) throw new BadRequestException('Fill in both sides of every pair.');
+      if (new Set(options.map(o => o.match!.toLowerCase())).size !== options.length) throw new BadRequestException('Each answer on the right must be different.');
+      points = options.length;
     } else if (dto.type === QuestionType.TRUE_FALSE) {
       if (!['true', 'false'].includes(correct.toLowerCase())) throw new BadRequestException('Say whether it’s true or false.');
     } else if (dto.type === QuestionType.FILL_BLANK) {

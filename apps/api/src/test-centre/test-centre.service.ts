@@ -2,9 +2,23 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { CourseSource, Prisma, QuestionDifficulty, QuestionStatus, QuestionType, TestMode, TestStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-const AUTO_MARKED: QuestionType[] = [QuestionType.MCQ, QuestionType.TRUE_FALSE, QuestionType.FILL_BLANK];
-/** Matching has no answer screen yet, so it stays out of tests */
+const AUTO_MARKED: QuestionType[] = [QuestionType.MCQ, QuestionType.TRUE_FALSE, QuestionType.FILL_BLANK, QuestionType.MATCHING];
 const OFFERED: QuestionType[] = [...AUTO_MARKED, QuestionType.SHORT_ANSWER, QuestionType.WRITTEN, QuestionType.STRUCTURED];
+
+type Pair = { id: string; text: string; match: string };
+const pairsOf = (q: { options: Prisma.JsonValue }): Pair[] => (Array.isArray(q.options) ? (q.options as unknown as Pair[]) : []);
+/** The same order every time for a question, so a reload doesn't reshuffle the answers */
+function seededShuffle<T>(list: T[], seed: string): T[] {
+  let h = 2166136261;
+  for (const ch of seed) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    const j = Math.abs(h) % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 const MAX_QUESTIONS = 150;
 const MASTERED_STREAK = 3;
 
@@ -45,7 +59,7 @@ export class TestCentreService {
   constructor(private prisma: PrismaService) {}
 
   /** Buying a course or package unlocks its questions. Same rules as PlatformCoursesService.studentHasCourseAccess, for many courses at once. */
-  private async accessibleCourseIds(studentId: string): Promise<string[]> {
+  async accessibleCourseIds(studentId: string): Promise<string[]> {
     const active = { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] };
     const [pkgs, bought, enrolled] = await Promise.all([
       this.prisma.packagePurchase.findMany({ where: { studentId, ...active }, select: { package: { select: { courseIds: true } } } }),
@@ -220,18 +234,23 @@ export class TestCentreService {
       : minutes ? Math.round(minutes * 60) : null;
     if (limit != null && (limit < 60 || limit > 8 * 3600)) throw new BadRequestException('Time limit must be between 1 minute and 8 hours.');
 
-    const questions = await this.prisma.questionBank.findMany({ where: { id: { in: picked } }, select: { type: true, points: true, parts: true } });
-    const session = await this.prisma.testSession.create({
+    return this.createSession(studentId, {
+      mode, title: title || (mode === TestMode.EXAM ? 'Exam' : 'Practice'), ids: picked, limitSecs: limit,
+      filters: { programmeId: dto.programmeId, subjectId: dto.subjectId, courseIds: dto.courseIds, packageIds: dto.packageIds, moduleIds: dto.moduleIds, lessonIds: dto.lessonIds, pool: dto.pool, difficulty: dto.difficulty, types: dto.types, preset: dto.preset } as Prisma.InputJsonValue,
+    });
+  }
+
+  async createSession(studentId: string, o: { mode: TestMode; title: string; ids: string[]; limitSecs: number | null; mockExamId?: string; filters?: Prisma.InputJsonValue }) {
+    const questions = await this.prisma.questionBank.findMany({ where: { id: { in: o.ids } }, select: { type: true, points: true, parts: true } });
+    return this.prisma.testSession.create({
       data: {
-        studentId, mode, title: title || (mode === TestMode.EXAM ? 'Exam' : 'Practice'),
-        questionIds: picked, timeLimitSecs: limit,
-        expiresAt: limit ? new Date(Date.now() + limit * 1000) : null,
+        studentId, mode: o.mode, title: o.title.slice(0, 120), questionIds: o.ids, timeLimitSecs: o.limitSecs, mockExamId: o.mockExamId,
+        expiresAt: o.limitSecs ? new Date(Date.now() + o.limitSecs * 1000) : null,
         maxScore: questions.reduce((n, q) => n + maxMarks(q), 0),
-        filters: { programmeId: dto.programmeId, subjectId: dto.subjectId, courseIds: dto.courseIds, packageIds: dto.packageIds, moduleIds: dto.moduleIds, lessonIds: dto.lessonIds, pool: dto.pool, difficulty: dto.difficulty, types: dto.types, preset: dto.preset } as Prisma.InputJsonValue,
+        filters: o.filters,
       },
       select: { id: true },
     });
-    return session;
   }
 
   private async owned(studentId: string, id: string) {
@@ -250,8 +269,12 @@ export class TestCentreService {
     return false;
   }
 
+  private async examOf(s: { mockExamId: string | null }) {
+    return s.mockExamId ? this.prisma.mockExam.findUnique({ where: { id: s.mockExamId }, select: { id: true, kind: true, title: true, passMark: true, showAnswers: true } }) : null;
+  }
+
   /** What the student may see of a question. Answers stay here until practice has been answered or the exam is over. */
-  private async present(sessionMode: TestMode, finished: boolean, ids: string[], sessionId: string) {
+  private async present(sessionMode: TestMode, finished: boolean, ids: string[], sessionId: string, hideAnswers = false) {
     const [questions, answers] = await Promise.all([
       this.prisma.questionBank.findMany({ where: { id: { in: ids } } }),
       this.prisma.testAnswer.findMany({ where: { sessionId } }),
@@ -270,20 +293,25 @@ export class TestCentreService {
       const a = aBy.get(id);
       const answered = !!a && a.answer != null;
       const show = finished || (sessionMode === TestMode.PRACTICE && answered);
+      // Some mock exams keep the answers back; the student still sees their own marks
+      const full = show && !hideAnswers;
+      const pairs = q.type === QuestionType.MATCHING ? pairsOf(q) : [];
       const lesson = q.sourceLessonId ?? q.lessonId;
       const total = stats.filter(s => s.questionId === id).reduce((n, s) => n + s._count, 0);
       const right = stats.find(s => s.questionId === id && s.isCorrect)?._count ?? 0;
       return [{
         id: q.id, type: q.type, text: q.questionText, imageUrl: q.imageUrl, difficulty: q.difficulty,
         options: Array.isArray(q.options) ? (q.options as { id?: string; text?: string }[]).map(o => ({ id: o.id, text: o.text })) : null,
-        parts: parts(q).map(p => ({ label: p.label, text: p.text, marks: p.marks, ...(show ? { markScheme: p.markScheme } : {}) })),
+        choices: pairs.length ? seededShuffle([...new Set(pairs.map(p => p.match))], q.id) : undefined,
+        parts: parts(q).map(p => ({ label: p.label, text: p.text, marks: p.marks, ...(full ? { markScheme: p.markScheme } : {}) })),
         marks: maxMarks(q),
         answer: a?.answer ?? null, flagged: a?.flagged ?? false,
         reveal: show ? {
           isCorrect: a?.isCorrect ?? null, score: a?.score ?? null,
-          correctAnswer: AUTO_MARKED.includes(q.type) ? q.correctAnswer : null,
-          modelAnswer: AUTO_MARKED.includes(q.type) ? null : q.correctAnswer || null,
-          explanation: q.explanation,
+          correctAnswer: full && AUTO_MARKED.includes(q.type) && q.type !== QuestionType.MATCHING ? q.correctAnswer : null,
+          correctPairs: full && pairs.length ? Object.fromEntries(pairs.map(p => [p.id, p.match])) : null,
+          modelAnswer: full && !AUTO_MARKED.includes(q.type) ? q.correctAnswer || null : null,
+          explanation: full ? q.explanation : null,
           needsSelfMark: answered && !AUTO_MARKED.includes(q.type) && a?.score == null,
           markedBy: a?.markedBy ?? null, aiFeedback: a?.aiFeedback ?? null,
           lesson: lesson && lessonBy.has(lesson) ? { id: lesson, courseId: q.courseId, title: lessonBy.get(lesson) } : null,
@@ -297,10 +325,15 @@ export class TestCentreService {
     let s = await this.owned(studentId, id);
     if (await this.finishIfExpired(s)) s = await this.owned(studentId, id);
     const finished = s.status === TestStatus.SUBMITTED;
+    const exam = await this.examOf(s);
+    const questions = await this.present(s.mode, finished, s.questionIds, s.id, !!exam && !exam.showAnswers);
     return {
       id: s.id, title: s.title, mode: s.mode, status: s.status, timeLimitSecs: s.timeLimitSecs,
       remainingSecs: s.expiresAt && !finished ? Math.max(0, Math.round((s.expiresAt.getTime() - Date.now()) / 1000)) : null,
-      questions: await this.present(s.mode, finished, s.questionIds, s.id),
+      exam: exam ? { id: exam.id, kind: exam.kind, passMark: exam.passMark, showAnswers: exam.showAnswers } : null,
+      // In a teacher's mock exam the teacher marks written answers, not the student
+      selfMarking: exam?.kind !== 'MOCK',
+      questions: questions.map(q => (q.reveal && exam?.kind === 'MOCK' ? { ...q, reveal: { ...q.reveal, needsSelfMark: false } } : q)),
     };
   }
 
@@ -313,7 +346,13 @@ export class TestCentreService {
     });
   }
 
-  private autoMark(q: { type: QuestionType; correctAnswer: string; points: number }, answer: unknown) {
+  private autoMark(q: { type: QuestionType; correctAnswer: string; points: number; options: Prisma.JsonValue }, answer: unknown) {
+    if (q.type === QuestionType.MATCHING) {
+      const pairs = pairsOf(q);
+      const given = (answer && typeof answer === 'object' ? answer : {}) as Record<string, unknown>;
+      const right = pairs.filter(p => same(given[p.id], p.match)).length;
+      return { isCorrect: pairs.length > 0 && right === pairs.length, score: pairs.length ? (q.points * right) / pairs.length : 0 };
+    }
     const isCorrect = same(answer, q.correctAnswer);
     return { isCorrect, score: isCorrect ? q.points : 0 };
   }
@@ -363,6 +402,7 @@ export class TestCentreService {
     const q = await this.prisma.questionBank.findUnique({ where: { id: dto.questionId } });
     if (!q || !s.questionIds.includes(dto.questionId)) throw new NotFoundException('That question isn’t in this test');
     if (AUTO_MARKED.includes(q.type)) throw new BadRequestException('This question is marked automatically.');
+    if ((await this.examOf(s))?.kind === 'MOCK') throw new BadRequestException('Your teacher marks the written answers in this exam.');
     const key = { sessionId_questionId: { sessionId: id, questionId: q.id } };
     const a = await this.prisma.testAnswer.findUnique({ where: key });
     if (!a || a.answer == null) throw new BadRequestException('There’s no answer to mark.');
@@ -432,7 +472,20 @@ export class TestCentreService {
       groups.set(t.key, g);
     }
     const used = s.submittedAt ? Math.round((s.submittedAt.getTime() - s.startedAt.getTime()) / 1000) : 0;
+    const exam = await this.examOf(s);
+    const percent = s.maxScore ? Math.round(((s.score ?? 0) / s.maxScore) * 100) : 0;
+    let rank: { better: number; takers: number } | null = null;
+    if (exam && s.mode === TestMode.EXAM) {
+      // Each student's best finished attempt at this paper
+      const others = await this.prisma.testSession.findMany({ where: { mockExamId: exam.id, status: TestStatus.SUBMITTED, mode: TestMode.EXAM }, select: { studentId: true, score: true, maxScore: true } });
+      const best = new Map<string, number>();
+      for (const o of others) { const p = o.maxScore ? (o.score ?? 0) / o.maxScore : 0; if (p > (best.get(o.studentId) ?? -1)) best.set(o.studentId, p); }
+      if (best.size >= 5) rank = { better: [...best.entries()].filter(([id, p]) => id !== studentId && p > percent / 100).length, takers: best.size };
+    }
     return {
+      exam: exam ? { id: exam.id, kind: exam.kind, title: exam.title, passMark: exam.passMark, showAnswers: exam.showAnswers } : null,
+      passed: exam ? percent >= exam.passMark : null,
+      rank, waitingForTeacher: exam?.kind === 'MOCK' ? answers.filter(a => a.score == null).length : 0,
       id: s.id, title: s.title, mode: s.mode, startedAt: s.startedAt, submittedAt: s.submittedAt, timeLimitSecs: s.timeLimitSecs, usedSecs: used,
       score: s.score ?? 0, maxScore: s.maxScore, percent: s.maxScore ? Math.round(((s.score ?? 0) / s.maxScore) * 100) : 0,
       total: s.questionIds.length, right: answers.filter(a => a.isCorrect === true).length, wrong: answers.filter(a => a.isCorrect === false).length,
