@@ -194,7 +194,6 @@ function CodeStep({ email, cta, busy, error, setError, onVerified, onChangeEmail
   return (
     <form onSubmit={submit} className="flex flex-col gap-5">
       <div className="flex flex-col items-center gap-4 pt-1">
-        <span className="flex h-14 w-14 items-center justify-center rounded-lg bg-azure/10 text-[#3F6FE8]"><Icon name="mail" size={28} /></span>
         {!verified && <OtpBoxes value={code} onChange={setCode} bad={bad} />}
         {verified && <p className="rounded-md bg-azure/10 px-3 py-1.5 text-xs font-semibold text-royal">✓ Email checked</p>}
         {!verified && (
