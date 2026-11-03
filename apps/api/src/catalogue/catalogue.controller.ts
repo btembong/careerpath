@@ -20,6 +20,12 @@ export class CatalogueController {
     return this.catalogueService.listProgrammes({ type, countryId });
   }
 
+  @Get('home')
+  @ApiOperation({ summary: 'Public home page: programme and course counts' })
+  home() {
+    return this.catalogueService.homeCounts();
+  }
+
   @Get('summary')
   @ApiOperation({ summary: 'Programme counts by type (for tab badges)' })
   @ApiQuery({ name: 'countryId', required: false })

@@ -96,6 +96,18 @@ export class CatalogueService {
   }
 
   /** Public course catalogue — published courses with pricing info */
+  /** Public home page: active programmes with how many listed courses each has, busiest first */
+  async homeCounts() {
+    const [programmes, courses, grouped] = await Promise.all([
+      this.prisma.programme.findMany({ where: { isActive: true }, select: { id: true, name: true, shortName: true } }),
+      this.prisma.platformCourse.count({ where: { status: 'PUBLISHED', catalogueHidden: false } }),
+      this.prisma.platformCourse.groupBy({ by: ['programmeId'], where: { status: 'PUBLISHED', catalogueHidden: false, programmeId: { not: null } }, _count: { _all: true } }),
+    ]);
+    const n = new Map(grouped.map(g => [g.programmeId, g._count._all]));
+    const list = programmes.map(p => ({ id: p.id, name: p.shortName || p.name, courses: n.get(p.id) ?? 0 })).sort((x, y) => y.courses - x.courses || x.name.localeCompare(y.name));
+    return { programmeCount: programmes.length, courseCount: courses, programmes: list.slice(0, 11) };
+  }
+
   async listPublicCourses(opts: { programmeId?: string; subjectId?: string; isSoldIndividually?: boolean }) {
     // Hidden courses stay open to students who have them, but aren't listed
     const where: any = { status: 'PUBLISHED', catalogueHidden: false };

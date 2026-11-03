@@ -37,6 +37,12 @@ export default function PublicCoursesPage() {
   const [filter,     setFilter]     = useState<'ALL' | 'BUYABLE'>('BUYABLE');
   const [activeProg, setActiveProg] = useState<string>('ALL');
 
+  // Coming from a programme on the home page: open on it
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get('programme');
+    if (p) { setActiveProg(p); setFilter('ALL'); }
+  }, []);
+
   const isLoggedIn = !!Cookies.get('cpa_token');
 
   useEffect(() => {

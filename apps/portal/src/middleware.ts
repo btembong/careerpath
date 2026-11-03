@@ -42,7 +42,8 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('cpa_token')?.value;
 
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  // The home page is open to everyone; signed-in people go to their dashboard
+  const isPublic = pathname === '/' || PUBLIC_PATHS.some((p) => pathname.startsWith(p));
   const isOpen   = OPEN_PATHS.some((p) => pathname.startsWith(p));
 
   if (!token) {
