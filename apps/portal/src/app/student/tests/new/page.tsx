@@ -34,10 +34,15 @@ function Box({ on, partial }: { on: boolean; partial?: boolean }) {
   return <span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded text-[11px] text-white ${on || partial ? 'bg-[#3F6FE8]' : 'border border-[#C9D3E6]'}`}>{on ? '✓' : partial ? '–' : ''}</span>;
 }
 
+interface ExamSource { id: string; title: string; meta: string; count: number }
+
 export default function CreateTestPage() {
   const router = useRouter();
   const [cat, setCat] = useState<Catalog | null>(null);
-  const [source, setSource] = useState<'courses' | 'packages'>('courses');
+  const [source, setSource] = useState<'courses' | 'packages' | 'papers' | 'mocks'>('courses');
+  // Past papers you can take and mocks you've finished
+  const [sources, setSources] = useState<{ papers: ExamSource[]; mocks: ExamSource[] } | null>(null);
+  const [examIds, setExamIds] = useState<string[]>([]);
   const [programmeId, setProgrammeId] = useState('');
   const [subjectId, setSubjectId] = useState('');
   const [packageId, setPackageId] = useState('');
@@ -57,21 +62,29 @@ export default function CreateTestPage() {
   const [starting, setStarting] = useState(false);
 
   useEffect(() => { api.get('/test-centre/catalog').then(r => setCat(r.data)).catch(() => notify.error('Could not load your courses')); }, []);
+  useEffect(() => { api.get('/test-centre/draw-sources').then(r => setSources(r.data)).catch(() => setSources({ papers: [], mocks: [] })); }, []);
+  const fromExams = source === 'papers' || source === 'mocks';
+  const examList = source === 'papers' ? sources?.papers ?? [] : source === 'mocks' ? sources?.mocks ?? [] : [];
 
   const pkg = cat?.packages.find(p => p.id === packageId);
   const shown = useMemo(() => (cat?.courses ?? []).filter(c => c.count > 0
     && (!programmeId || c.programmeId === programmeId) && (!subjectId || c.subjectId === subjectId)
     && (source !== 'packages' || (pkg ? pkg.courseIds.includes(c.id) : (cat?.packages ?? []).some(p => p.courseIds.includes(c.id))))), [cat, programmeId, subjectId, source, pkg]);
 
-  const filters = useMemo(() => ({
+  const filters = useMemo(() => fromExams ? {
+    // Nothing ticked means all of them
+    examIds: examIds.length ? examIds : examList.map(e => e.id),
+    pool, difficulty: levels.length ? levels : undefined, types: types.length ? types : undefined,
+  } : ({
     programmeId: programmeId || undefined, subjectId: subjectId || undefined,
     packageIds: source === 'packages' ? (packageId ? [packageId] : cat?.packages.map(p => p.id)) : undefined,
     courseIds: courseIds.length ? courseIds : undefined, moduleIds: moduleIds.length ? moduleIds : undefined, lessonIds: lessonIds.length ? lessonIds : undefined,
     pool, difficulty: levels.length ? levels : undefined, types: types.length ? types : undefined,
-  }), [programmeId, subjectId, source, packageId, cat, courseIds, moduleIds, lessonIds, pool, levels, types]);
+  }), [fromExams, examIds, examList, programmeId, subjectId, source, packageId, cat, courseIds, moduleIds, lessonIds, pool, levels, types]);
 
   useEffect(() => {
     if (!cat) return;
+    if (fromExams && !examList.length) { setMatched(0); return; }
     const t = setTimeout(() => { api.post('/test-centre/match', filters).then(r => setMatched(r.data.count)).catch(() => setMatched(null)); }, 250);
     return () => clearTimeout(t);
   }, [filters, cat]);
@@ -127,15 +140,34 @@ export default function CreateTestPage() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[13px] font-semibold text-navy">Draw from</span>
               <div role="tablist" className="flex flex-wrap gap-1 rounded-lg border border-line p-[3px] text-[13px]">
-                {([['courses', 'My courses'], ['packages', 'Packages']] as const).map(([k, l]) => (
-                  <button key={k} role="tab" aria-selected={source === k} onClick={() => { setSource(k); setPackageId(''); }} className={`rounded-md px-2.5 py-1 ${source === k ? 'bg-[#EAF0FF] font-semibold text-navy' : 'text-ink2'}`}>{l}</button>
+                {([['courses', 'My courses'], ['packages', 'Packages'], ['papers', 'Past papers'], ['mocks', 'Mock exams']] as const).map(([k, l]) => (
+                  <button key={k} role="tab" aria-selected={source === k} onClick={() => { setSource(k); setPackageId(''); setExamIds([]); }} className={`rounded-md px-2.5 py-1 ${source === k ? 'bg-[#EAF0FF] font-semibold text-navy' : 'text-ink2'}`}>{l}</button>
                 ))}
-                {['Past papers', 'Mock exams'].map(l => <span key={l} title="Coming soon" className="cursor-not-allowed rounded-md px-2.5 py-1 text-muted">{l}</span>)}
               </div>
               <span className="flex-1" />
               <button type="button" onClick={() => start('surprise')} disabled={starting} className="inline-flex h-8 items-center rounded-md border border-[#5889FA] px-3 text-[13px] font-semibold text-[#3F6FE8] hover:bg-[#EAF0FF]">Pick at random for me</button>
             </div>
 
+            {fromExams ? (
+              <div className="flex flex-col gap-2.5">
+                <p className="text-[13px] text-ink2">{source === 'papers' ? 'Past papers you can take. Tick one or more; tick none to use them all.' : 'Mock exams you’ve finished: practise their questions again. Mocks you haven’t sat yet aren’t here, so practice can’t give them away.'}</p>
+                {!sources && <p className="text-sm text-muted">Loading…</p>}
+                {sources && !examList.length && (
+                  <p className="rounded-lg bg-subtle px-4 py-3 text-[13.5px] text-ink2">{source === 'papers' ? 'No past papers for your courses yet. They appear as your teachers add them.' : 'Finish a mock exam and its questions show up here to practise.'} <Link href={source === 'papers' ? '/student/tests/papers' : '/student/tests/mocks'} className="font-semibold text-[#3F6FE8]">{source === 'papers' ? 'See past papers' : 'See mock exams'}</Link></p>
+                )}
+                <div className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
+                  {examList.map(e => {
+                    const on = examIds.includes(e.id);
+                    return (
+                      <label key={e.id} className={`flex cursor-pointer items-start gap-2.5 rounded-lg px-3.5 py-3 ${on ? 'border-2 border-[#3F6FE8] bg-[#F5F8FF]' : 'border border-line bg-white'}`}>
+                        <input type="checkbox" checked={on} onChange={() => toggle(examIds, setExamIds, e.id)} className="mt-0.5 h-[18px] w-[18px] accent-[#3F6FE8]" />
+                        <span className="flex min-w-0 flex-col gap-0.5"><strong className="text-sm text-navy">{e.title}</strong><span className="text-[12.5px] text-muted">{[e.meta, `${e.count} questions`].filter(Boolean).join(' · ')}</span></span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (<>
             <div className="grid gap-2.5 sm:grid-cols-3">
               <label className="flex flex-col gap-1 text-[13px] font-semibold text-navy">Programme
                 <select className={select} value={programmeId} onChange={e => setProgrammeId(e.target.value)}><option value="">All programmes</option>{cat?.programmes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
@@ -190,6 +222,7 @@ export default function CreateTestPage() {
                 );
               })}
             </div>
+            </>)}
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Question pool</span>

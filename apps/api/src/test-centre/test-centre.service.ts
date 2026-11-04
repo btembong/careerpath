@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { CourseSource, Prisma, QuestionDifficulty, QuestionStatus, QuestionType, TestMode, TestStatus } from '@prisma/client';
+import { CourseSource, Prisma, QuestionDifficulty, QuestionStatus, QuestionType, TestMode, TestStatus, ExamKind, ExamStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const AUTO_MARKED: QuestionType[] = [QuestionType.MCQ, QuestionType.TRUE_FALSE, QuestionType.FILL_BLANK, QuestionType.MATCHING];
@@ -27,6 +27,8 @@ export type Pool = 'all' | 'unused' | 'wrong' | 'learning' | 'mastered' | 'flagg
 export interface TestFilters {
   programmeId?: string; subjectId?: string;
   courseIds?: string[]; packageIds?: string[]; moduleIds?: string[]; lessonIds?: string[];
+  /** Draw from these past papers (ones you can take) or mock exams (ones you've finished) instead of whole courses */
+  examIds?: string[];
   pool?: Pool; difficulty?: QuestionDifficulty[]; types?: QuestionType[];
 }
 
@@ -163,8 +165,56 @@ export class TestCentreService {
     };
   }
 
+  /** Packages the student holds right now */
+  private async heldPackages(studentId: string) {
+    return (await this.prisma.packagePurchase.findMany({ where: { studentId, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, select: { packageId: true } })).map(p => p.packageId);
+  }
+
+  /**
+   * Past papers the student can take, and mock exams they have already finished, with how many questions each
+   * gives. Unfinished mocks are left out so practice can't give a mock away before it's sat.
+   */
+  async drawSources(studentId: string) {
+    const [courses, packages, exams, done] = await Promise.all([
+      this.accessibleCourseIds(studentId), this.heldPackages(studentId),
+      this.prisma.mockExam.findMany({ where: { status: ExamStatus.PUBLISHED, kind: { in: [ExamKind.PAST_PAPER, ExamKind.MOCK] } }, orderBy: [{ examBody: 'asc' }, { year: 'desc' }, { paperNumber: 'asc' }, { title: 'asc' }] }),
+      this.prisma.testSession.findMany({ where: { studentId, status: TestStatus.SUBMITTED, mockExamId: { not: null } }, select: { mockExamId: true, questionIds: true, score: true, maxScore: true, submittedAt: true }, orderBy: { submittedAt: 'desc' } }),
+    ]);
+    const open = (e: { courseIds: string[]; packageIds: string[] }) => e.courseIds.some(c => courses.includes(c)) || e.packageIds.some(p => packages.includes(p));
+    const papers = exams.filter(e => e.kind === ExamKind.PAST_PAPER && e.questionIds.length && open(e))
+      .map(e => ({ id: e.id, title: e.title, meta: [e.examBody, e.year, e.paperNumber ? `Paper ${e.paperNumber}` : null].filter(Boolean).join(' · '), count: e.questionIds.length }));
+    const mocks = exams.filter(e => e.kind === ExamKind.MOCK).flatMap(e => {
+      const tries = done.filter(d => d.mockExamId === e.id);
+      if (!tries.length) return [];
+      const qs = new Set(tries.flatMap(t => t.questionIds));
+      const best = Math.max(...tries.map(t => (t.maxScore ? Math.round(((t.score ?? 0) / t.maxScore) * 100) : 0)));
+      return [{ id: e.id, title: e.title, meta: `Your best: ${best}%`, count: qs.size }];
+    });
+    return { papers, mocks };
+  }
+
+  /** The questions a set of past papers or finished mocks give this student */
+  private async examQuestionIds(studentId: string, examIds: string[]): Promise<string[]> {
+    const { papers, mocks } = await this.drawSources(studentId);
+    const want = new Set(examIds.slice(0, 50));
+    const ids = new Set<string>();
+    const paperIds = papers.filter(p => want.has(p.id)).map(p => p.id);
+    if (paperIds.length) (await this.prisma.mockExam.findMany({ where: { id: { in: paperIds } }, select: { questionIds: true } })).forEach(e => e.questionIds.forEach(q => ids.add(q)));
+    const mockIds = mocks.filter(m => want.has(m.id)).map(m => m.id);
+    if (mockIds.length) (await this.prisma.testSession.findMany({ where: { studentId, status: TestStatus.SUBMITTED, mockExamId: { in: mockIds } }, select: { questionIds: true } })).forEach(s => s.questionIds.forEach(q => ids.add(q)));
+    return [...ids];
+  }
+
   /** Question ids matching the filters, only ever inside what the student has access to */
   private async matches(studentId: string, f: TestFilters): Promise<string[]> {
+    if (f.examIds?.length) {
+      const fromExams = await this.examQuestionIds(studentId, f.examIds);
+      if (!fromExams.length) return [];
+      const where: Prisma.QuestionBankWhereInput = { id: { in: fromExams }, status: QuestionStatus.LIVE, type: { in: OFFERED } };
+      if (f.difficulty?.length) where.difficulty = { in: f.difficulty };
+      if (f.types?.length) where.type = { in: f.types.filter(t => OFFERED.includes(t)) };
+      return (await this.prisma.questionBank.findMany({ where, select: { id: true } })).map(q => q.id);
+    }
     let ids = await this.accessibleCourseIds(studentId);
     if (f.courseIds?.length) ids = ids.filter(id => f.courseIds!.includes(id));
     if (f.packageIds?.length) {
@@ -243,7 +293,7 @@ export class TestCentreService {
 
     return this.createSession(studentId, {
       mode, title: title || (mode === TestMode.EXAM ? 'Exam' : 'Practice'), ids: picked, limitSecs: limit,
-      filters: { programmeId: dto.programmeId, subjectId: dto.subjectId, courseIds: dto.courseIds, packageIds: dto.packageIds, moduleIds: dto.moduleIds, lessonIds: dto.lessonIds, pool: dto.pool, difficulty: dto.difficulty, types: dto.types, preset: dto.preset } as Prisma.InputJsonValue,
+      filters: { programmeId: dto.programmeId, subjectId: dto.subjectId, courseIds: dto.courseIds, packageIds: dto.packageIds, examIds: dto.examIds, moduleIds: dto.moduleIds, lessonIds: dto.lessonIds, pool: dto.pool, difficulty: dto.difficulty, types: dto.types, preset: dto.preset } as Prisma.InputJsonValue,
     });
   }
 

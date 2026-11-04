@@ -49,6 +49,10 @@ export class TestCentreController {
   @ApiOperation({ summary: 'Mock and CAT results over time, a five-week study calendar and headline tiles' })
   progressView(@CurrentUser() user: UserProfile) { return this.progress.forStudent(user.id); }
 
+  @Get('draw-sources')
+  @ApiOperation({ summary: 'Past papers you can take and mock exams you have finished, to draw a custom test from' })
+  drawSources(@CurrentUser() user: UserProfile) { return this.tests.drawSources(user.id); }
+
   @Get('overview')
   @ApiOperation({ summary: 'Test Centre home: counts, weak topics, recent tests' })
   overview(@CurrentUser() user: UserProfile) { return this.tests.overview(user.id); }
