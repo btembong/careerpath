@@ -14,5 +14,6 @@ import { TestCentreController, QuestionBankController, MockExamController } from
   imports: [PrismaModule, AiModule, MailModule],
   providers: [TestCentreService, QuestionBankService, QuestionAiService, MockExamService, CatService, ProgressService],
   controllers: [TestCentreController, QuestionBankController, MockExamController],
+  exports: [TestCentreService],
 })
 export class TestCentreModule {}

@@ -99,6 +99,13 @@ export class MentorshipController {
 
   // ── Shared (student + teacher) ───────────────────────────
 
+  @Get('bookings/:bookingId/board')
+  @Roles(UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'The shared whiteboard from a mentoring session, as it was left' })
+  board(@CurrentUser() user: UserProfile, @Param('bookingId') bookingId: string) {
+    return this.mentorshipService.board(user, bookingId);
+  }
+
   @Get('bookings/:bookingId/token')
   @Roles(UserRole.STUDENT, UserRole.TEACHER)
   @ApiOperation({ summary: 'Get a Daily.co token for a booked mentorship session' })

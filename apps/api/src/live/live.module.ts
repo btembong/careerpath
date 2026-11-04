@@ -7,10 +7,14 @@ import { LiveInsightsController } from './live-insights.controller';
 import { LiveInsightsService } from './live-insights.service';
 import { WhiteboardGateway } from './whiteboard.gateway';
 import { DailyModule } from './daily/daily.module';
+import { ClassToolsController } from './class-tools.controller';
+import { ClassToolsService } from './class-tools.service';
+import { TestCentreModule } from '../test-centre/test-centre.module';
 
 @Module({
   imports: [
     DailyModule,
+    TestCentreModule,
     ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -20,8 +24,8 @@ import { DailyModule } from './daily/daily.module';
       }),
     }),
   ],
-  controllers: [LiveController, LiveInsightsController],
-  providers: [LiveService, LiveInsightsService, WhiteboardGateway],
+  controllers: [LiveController, LiveInsightsController, ClassToolsController],
+  providers: [LiveService, LiveInsightsService, WhiteboardGateway, ClassToolsService],
   exports: [WhiteboardGateway],
 })
 export class LiveModule {}

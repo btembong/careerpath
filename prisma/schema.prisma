@@ -388,6 +388,10 @@ model LiveClass {
   whiteboardSnapshot String?
   attendance         LiveAttendance[]
   cohort             Cohort           @relation(fields: [cohortId], references: [id])
+  polls              ClassPoll[]
+  questions          ClassQuestion[]
+  quizzes            ClassQuiz[]
+  groups             ClassGroup[]
 }
 
 model LiveAttendance {
@@ -756,6 +760,8 @@ model MentorBooking {
   cancelReason String?
   cancelledAt  DateTime?
   meetingUrl   String?
+  /// The shared whiteboard from the session, saved as it was drawn
+  whiteboardSnapshot String?
   status       String        @default("CONFIRMED")
   slot         MentorSlot    @relation(fields: [slotId], references: [id])
   student      UserProfile   @relation("StudentBookings", fields: [studentId], references: [id])
@@ -1622,4 +1628,118 @@ model WpPull {
   /// What the check found, e.g. { new: 5, changed: 3, same: 110, gone: 2 }
   found     Json?
   by        UserProfile? @relation(fields: [byId], references: [id], onDelete: SetNull)
+}
+
+/// A poll the teacher runs during a live class. OPEN: students answering · SHOWN: results shown to everyone · CLOSED
+model ClassPoll {
+  id          String          @id @default(uuid())
+  liveClassId String
+  question    String
+  options     String[]
+  status      String          @default("OPEN")
+  createdAt   DateTime        @default(now())
+  liveClass   LiveClass       @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  votes       ClassPollVote[]
+
+  @@index([liveClassId])
+}
+
+model ClassPollVote {
+  id        String    @id @default(uuid())
+  pollId    String
+  studentId String
+  option    Int
+  createdAt DateTime  @default(now())
+  poll      ClassPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, studentId])
+}
+
+/// A question asked during a live class; kept on the class page afterwards. OPEN · LIVE (answered in class) · LATER · ANSWERED
+model ClassQuestion {
+  id          String              @id @default(uuid())
+  liveClassId String
+  authorId    String
+  anonymous   Boolean             @default(false)
+  body        String
+  answer      String?
+  state       String              @default("OPEN")
+  createdAt   DateTime            @default(now())
+  answeredAt  DateTime?
+  liveClass   LiveClass           @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  votes       ClassQuestionVote[]
+
+  @@index([liveClassId])
+}
+
+model ClassQuestionVote {
+  id         String        @id @default(uuid())
+  questionId String
+  userId     String
+  question   ClassQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, userId])
+}
+
+/// A few questions from the teacher's question bank, answered by everyone at once; each student's answers are a Test Centre practice session
+model ClassQuiz {
+  id          String    @id @default(uuid())
+  liveClassId String
+  courseId    String
+  questionIds String[]
+  secondsEach Int       @default(60)
+  startedAt   DateTime  @default(now())
+  endsAt      DateTime
+  liveClass   LiveClass @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+
+  @@index([liveClassId])
+}
+
+/// Breakout group: its own video room for a few minutes
+model ClassGroup {
+  id          String    @id @default(uuid())
+  liveClassId String
+  name        String
+  roomUrl     String
+  memberIds   String[]
+  endsAt      DateTime
+  createdAt   DateTime  @default(now())
+  liveClass   LiveClass @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+
+  @@index([liveClassId])
+}
+
+/// A kind of crash in the portal or the API, grouped by cause. No names or emails are stored with it.
+model ErrorEvent {
+  id          String     @id @default(uuid())
+  fingerprint String     @unique
+  /// PORTAL | API
+  source      String
+  message     String
+  where       String
+  stack       String?
+  count       Int        @default(1)
+  /// Who hit it (user ids only, up to 50), to look them up
+  userIds     String[]
+  /// e.g. { "Chrome on Android": 12 }
+  browsers    Json?
+  /// OPEN | FIXED | IGNORED. A FIXED kind that happens again opens again.
+  status      String     @default("OPEN")
+  firstSeen   DateTime   @default(now())
+  lastSeen    DateTime   @default(now())
+  notifiedAt  DateTime?
+  hits        ErrorHit[]
+
+  @@index([status, lastSeen])
+}
+
+/// Each time an error happens; kept 30 days for the "last 24 hours" numbers
+model ErrorHit {
+  id      String     @id @default(uuid())
+  errorId String
+  userId  String?
+  at      DateTime   @default(now())
+  error   ErrorEvent @relation(fields: [errorId], references: [id], onDelete: Cascade)
+
+  @@index([at])
 }

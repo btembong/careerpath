@@ -402,6 +402,16 @@ export class MentorshipService {
 
   // ── My Bookings (student) ─────────────────────────────────
 
+  /** The board from a mentoring session, for its student, its mentor or an admin */
+  async board(user: UserProfile, bookingId: string) {
+    const b = await this.prisma.mentorBooking.findUnique({ where: { id: bookingId }, include: { slot: { select: { teacherId: true, startsAt: true } } } });
+    if (!b) throw new NotFoundException('Booking not found');
+    if (user.role !== 'ADMIN' && b.studentId !== user.id && b.slot.teacherId !== user.id) throw new ForbiddenException('Not your session');
+    let elements: unknown[] = [];
+    try { elements = b.whiteboardSnapshot ? JSON.parse(b.whiteboardSnapshot) : []; } catch { elements = []; }
+    return { elements, startsAt: b.slot.startsAt };
+  }
+
   async getMyBookings(studentId: string) {
     return this.prisma.mentorBooking.findMany({
       where: { studentId },

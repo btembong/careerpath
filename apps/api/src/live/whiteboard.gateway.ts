@@ -76,6 +76,8 @@ export class WhiteboardGateway implements OnGatewayConnection, OnGatewayDisconne
   /** Tells this server's own messages apart on the shared channel */
   private readonly instance = randomUUID();
   private sub?: Redis;
+  /** Mentoring boards are kept with the booking, written a moment after the drawing stops */
+  private keepTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private jwt: JwtService,
@@ -231,7 +233,18 @@ export class WhiteboardGateway implements OnGatewayConnection, OnGatewayDisconne
     board.elements = elements;
     board.appState = appState;
     await this.save(room, board);
+    this.keepMentoringBoard(room, elements);
     this.broadcast(room, 'whiteboard:update', { elements, appState, senderId: socket.user.id }, socket);
+  }
+
+  private keepMentoringBoard(room: string, elements: any[]) {
+    if (!room.startsWith('mentor:')) return;
+    clearTimeout(this.keepTimers.get(room));
+    this.keepTimers.set(room, setTimeout(() => {
+      this.keepTimers.delete(room);
+      this.prisma.mentorBooking.update({ where: { id: room.slice(7) }, data: { whiteboardSnapshot: JSON.stringify(elements) } })
+        .catch(err => this.logger.warn(`Could not keep the board for ${room}: ${err.message}`));
+    }, 3000));
   }
 
   // ── Leader opens or closes the board ─────────────────────
@@ -264,6 +277,7 @@ export class WhiteboardGateway implements OnGatewayConnection, OnGatewayDisconne
     board.elements = [];
     board.appState = {};
     await this.save(data.classId, board);
+    this.keepMentoringBoard(data.classId, []);
     this.broadcast(data.classId, 'whiteboard:update', { elements: [], appState: {}, senderId: socket.user.id });
   }
 
