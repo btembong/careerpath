@@ -5,10 +5,15 @@ import Link from 'next/link';
 import { Spinner } from '@/components/ui/Spinner';
 import { Icon } from '@/components/ui/Icon';
 import api from '@/lib/api';
+import { WhiteboardPanel } from '@/components/live/WhiteboardPanel';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function MentorshipSessionPage() {
   const { bookingId } = useParams<{ bookingId: string }>();
   const [roomUrl, setRoomUrl] = useState<string | null>(null);
+  const { user } = useAuth();
+  // A board you both draw on; it's saved with the booking
+  const [board, setBoard] = useState(false);
   const [sessionInfo, setSessionInfo] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,18 +74,28 @@ export default function MentorshipSessionPage() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-azure animate-pulse" />
-          <span className="text-xs text-white/50">Live</span>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setBoard(v => !v)} aria-expanded={board}
+            className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${board ? 'bg-azure text-white' : 'border border-white/20 text-white/70 hover:text-white'}`}>
+            {board ? 'Hide the board' : 'Open the board'}
+          </button>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-azure animate-pulse" /><span className="text-xs text-white/50">Live</span></span>
         </div>
       </div>
       {/* Daily.co Prebuilt UI */}
-      <iframe
-        src={roomUrl!}
-        allow="camera; microphone; fullscreen; speaker; display-capture"
-        className="flex-1 w-full border-0"
-        title="Mentorship session"
-      />
+      <div className="flex min-h-0 flex-1 max-md:flex-col">
+        <iframe
+          src={roomUrl!}
+          allow="camera; microphone; fullscreen; speaker; display-capture"
+          className={`border-0 ${board ? 'w-[360px] max-md:h-[40%] max-md:w-full' : 'w-full'}`}
+          title="Mentorship session"
+        />
+        {board && user && (
+          <div className="min-w-0 flex-1 border-l border-white/10">
+            <WhiteboardPanel classId={`mentor:${bookingId}`} isTeacher userId={user.id} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

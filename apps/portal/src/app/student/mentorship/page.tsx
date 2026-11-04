@@ -160,6 +160,7 @@ export default function StudentMentorshipPage() {
                     <p className="truncate text-[13.5px] font-semibold text-navy">{nameOf(b.slot.teacher)}</p>
                     <p className="mt-0.5 truncate text-xs text-muted">{when(b.slot.startsAt)} · {cancelled ? (b.cancelReason ?? 'cancelled') : `${b.slot.durationMins} min`}</p>
                   </div>
+                  {!cancelled && <Link href={`/mentorship/board/${b.id}`} className="text-[12.5px] font-semibold text-azure-strong hover:underline">Board</Link>}
                   {cancelled ? <span className="text-[12.5px] text-muted">Cancelled</span>
                     : b.review ? <span className="text-[12.5px] font-semibold text-navy">{'★'.repeat(b.review.rating)}</span>
                     : <button type="button" onClick={() => setRating(b)} className="text-[12.5px] font-semibold text-azure-strong hover:underline">Rate it</button>}
