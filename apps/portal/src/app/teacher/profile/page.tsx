@@ -11,6 +11,7 @@ import { uploadVideo } from '@/lib/uploadVideo';
 import api from '@/lib/api';
 import { parseVideoUrl } from '@cpa/shared';
 import { PayoutCard, type Payout } from '@/components/payout/PayoutCard';
+import { ProfileHero, StatTiles, heroPrimary, heroSecondary } from '@/components/profile/ProfileHero';
 
 interface Profile {
   id: string; email: string; name: string | null; firstName: string | null; lastName: string | null;
@@ -79,13 +80,31 @@ export default function TeacherProfilePage() {
   }
 
   const displayName = about.name || p?.email.split('@')[0] || '';
+  const live = p ? p.platformCourses.filter(c => c.status === 'PUBLISHED').length : 0;
+  const waiting = p ? p.platformCourses.filter(c => c.status === 'PENDING_REVIEW').length : 0;
+  const country = countries.find(c => c.id === (p?.countryId ?? ''))?.name;
   const initials = displayName.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
   return (
     <div className="flex min-h-full flex-col">
-      <Topbar title="My profile" subtitle="What students see, and where your earnings are paid"
-        actions={<Button variant="secondary" size="sm" onClick={() => setPreview(true)} disabled={!p}>See it as a student</Button>} />
-      {!p ? <div className="m-4 h-96 rounded-lg bg-subtle animate-pulse lg:mx-7 lg:my-6" /> : (
+      <Topbar title="My profile" subtitle="What students see, and where your earnings are paid" />
+      {!p ? <div className="m-4 h-96 rounded-lg bg-subtle animate-pulse lg:mx-7 lg:my-6" /> : (<>
+        <div className="flex flex-col gap-4 px-4 pt-4 lg:px-7 lg:pt-6">
+          <ProfileHero photo={p.avatarUrl} initials={initials} onPhoto={uploadPhoto} uploading={uploadingPhoto}
+            kicker={['Teacher', country, p.teacherApplication?.yearsExperience ? `${p.teacherApplication.yearsExperience} years teaching` : null].filter(Boolean).join(' · ')}
+            l1={`${displayName}.`} l2={subjects.length ? `${subjects.slice(0, 2).join(' and ')}.` : 'Teaching on CareerPath.'}
+            bio={p.bio} chips={subjects.slice(0, 4)}
+            actions={<>
+              <a href="#about" className={heroPrimary}>Edit profile</a>
+              <button type="button" onClick={() => setPreview(true)} className={heroSecondary}>See it as students do</button>
+            </>} />
+          <StatTiles tiles={[
+            { l: 'Students', v: String(p.studentCount) },
+            { l: 'Rating', v: p.avgRating != null ? `${p.avgRating} ★` : '—', d: p.reviewCount ? `from ${p.reviewCount} review${p.reviewCount === 1 ? '' : 's'}` : 'No reviews yet' },
+            { l: 'Courses live', v: String(live), d: waiting ? `${waiting} waiting for review` : undefined },
+            { l: 'Profile', v: `${doneCount} of ${steps.length}`, d: todo.length ? 'Finish it for more bookings' : 'Complete' },
+          ]} />
+        </div>
         <div className="flex flex-wrap items-start gap-5 p-4 lg:px-7 lg:py-6">
           <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-4">
             <section className={clsx('flex flex-col gap-2 rounded-lg border bg-white px-[18px] py-4', todo.length ? 'border-azure' : 'border-line')}>
@@ -94,7 +113,7 @@ export default function TeacherProfilePage() {
               <p className="text-[13px] text-ink2">{todo.length ? <>Still to do: <strong className="text-navy">{todo.map(t => t.todo).join(', ')}</strong>.</> : 'Everything’s done. Students see your full profile.'}</p>
             </section>
 
-            <section className={card}>
+            <section id="about" className={clsx(card, 'scroll-mt-4')}>
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-bold text-navy">About you</h2>
                 <span className="flex items-center gap-2.5">
@@ -134,7 +153,7 @@ export default function TeacherProfilePage() {
             </section>
           </aside>
         </div>
-      )}
+      </>)}
 
       {preview && p && (
         <Dialog open onOpenChange={o => { if (!o) setPreview(false); }}>
