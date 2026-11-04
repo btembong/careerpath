@@ -7,6 +7,7 @@ import { LiveInsightsController } from './live-insights.controller';
 import { LiveInsightsService } from './live-insights.service';
 import { WhiteboardGateway } from './whiteboard.gateway';
 import { DailyModule } from './daily/daily.module';
+import { MailModule } from '../mail/mail.module';
 import { ClassToolsController } from './class-tools.controller';
 import { ClassToolsService } from './class-tools.service';
 import { TestCentreModule } from '../test-centre/test-centre.module';
@@ -14,6 +15,7 @@ import { TestCentreModule } from '../test-centre/test-centre.module';
 @Module({
   imports: [
     DailyModule,
+    MailModule,
     TestCentreModule,
     ConfigModule,
     JwtModule.registerAsync({

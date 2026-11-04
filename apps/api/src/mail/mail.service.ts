@@ -26,6 +26,7 @@ import {
   newMessageTemplate,
   orgSeatInviteTemplate,
   mockMarkedTemplate,
+  classScheduledTemplate,
   passwordResetTemplate,
   adminCodeTemplate,
   orgAdminWelcomeTemplate,
@@ -62,6 +63,7 @@ export class MailService {
     subject: string,
     htmlContent: string,
     senderType: SenderType = 'system',
+    attachments?: { name: string; content: string }[],
   ): Promise<void> {
     if (!this.client) {
       this.logger.warn(`[DEV] Mail skipped — no BREVO_API_KEY`);
@@ -76,6 +78,8 @@ export class MailService {
         to: [{ email: to }],
         subject,
         htmlContent,
+        // Brevo takes attachments as base64
+        ...(attachments?.length ? { attachment: attachments.map(a => ({ name: a.name, content: Buffer.from(a.content).toString('base64') })) } : {}),
       });
       this.logger.log(`[${SENDER_NAMES[senderType]}] "${subject}" → ${to} | messageId: ${(res as any)?.messageId ?? 'n/a'}`);
     } catch (err: any) {
@@ -112,6 +116,10 @@ export class MailService {
 
   async sendAdminCode(email: string, code: string): Promise<void> {
     await this.send(email, `${code} is your CareerPath admin sign-in code`, adminCodeTemplate(code), 'system');
+  }
+
+  async sendClassScheduled(email: string, o: { firstName: string; teacherName: string; cohortName: string; title: string; when: string; weeks: number; classLink: string; googleLink: string; ics: string }): Promise<void> {
+    await this.send(email, `New live class: ${o.title} · ${o.when}`, classScheduledTemplate(o), 'support', [{ name: 'careerpath-class.ics', content: o.ics }]);
   }
 
   async sendMockMarked(email: string, opts: { firstName: string; teacherName: string; examTitle: string; percent: number; passMark: number; link: string }): Promise<void> {

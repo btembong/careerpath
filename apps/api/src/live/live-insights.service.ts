@@ -1,7 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserProfile } from '@prisma/client';
 import { UserRole } from '@cpa/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
+import { resolvePrefs } from '../notifications/notification-prefs';
+import { classIcs, googleCalendarLink } from './calendar';
 
 const DAY = 86_400_000;
 type Person = { name: string | null; firstName: string | null; lastName: string | null; email: string };
@@ -16,7 +19,8 @@ const missingRecording = (c: Cls & { recordingUrl: string | null }, now: number)
 
 @Injectable()
 export class LiveInsightsService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(LiveInsightsService.name);
+  constructor(private prisma: PrismaService, private mail: MailService) {}
 
   // ── Student ────────────────────────────────────────────────────────────
 
@@ -138,7 +142,26 @@ export class LiveInsightsService {
       scheduledAt: new Date(start.getTime() + i * 7 * DAY), durationMins: mins, status: 'SCHEDULED' as const,
     }));
     await this.prisma.liveClass.createMany({ data: rows });
+    this.tellCohort(cohortId, rows[0].title, rows[0].description, start, mins, weeks).catch(err => this.logger.warn(`Class emails failed: ${err.message}`));
     return { created: rows.length, last: rows[rows.length - 1].scheduledAt };
+  }
+
+  /** Email each student in the cohort (if they want live-class emails), with a calendar file and a Google Calendar link */
+  private async tellCohort(cohortId: string, title: string, description: string | null, start: Date, minutes: number, weeks: number) {
+    const cohort = await this.prisma.cohort.findUnique({ where: { id: cohortId }, include: { teacher: { select: PERSON } } });
+    const first = await this.prisma.liveClass.findFirst({ where: { cohortId, title, scheduledAt: start }, select: { id: true } });
+    if (!cohort || !first) return;
+    const roster = await this.prisma.cohortRoster.findMany({
+      where: { cohortId }, select: { student: { select: { email: true, firstName: true, timezone: true, notificationPrefs: true, deletedAt: true } } },
+    });
+    const portal = (process.env.PORTAL_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+    const event = { uid: first.id, title, description, start, minutes, weeks, link: `${portal}/student/live/${first.id}` };
+    const ics = classIcs(event), googleLink = googleCalendarLink(event);
+    for (const { student: s } of roster) {
+      if (s.deletedAt || resolvePrefs(s.notificationPrefs).live?.email === false) continue;
+      const when = start.toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: s.timezone || 'Africa/Lagos', timeZoneName: 'short' });
+      this.mail.sendClassScheduled(s.email, { firstName: s.firstName ?? '', teacherName: nameOf(cohort.teacher), cohortName: cohort.name, title, when, weeks, classLink: event.link, googleLink, ics }).catch(() => {});
+    }
   }
 
   // ── Admin ──────────────────────────────────────────────────────────────

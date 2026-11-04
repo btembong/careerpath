@@ -1012,6 +1012,22 @@ export function adminCodeTemplate(code: string): string {
   return base(hero, body);
 }
 
+// ── A live class was scheduled ──────────────────────────────────────────────
+
+export function classScheduledTemplate(o: { firstName: string; teacherName: string; cohortName: string; title: string; when: string; weeks: number; classLink: string; googleLink: string }): string {
+  const hero = headline('New live class:', `${escapeHtml(o.title)}.`);
+  const body = `
+    <p style="margin:0;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
+      Hi ${escapeHtml(o.firstName || 'there')}, ${escapeHtml(o.teacherName)} scheduled a live class for ${escapeHtml(o.cohortName)}.
+    </p>
+    <p style="margin:14px 0 0;padding:12px 14px;border-radius:8px;background:#F4F6FB;font-size:15px;color:#072061;font-family:${FONT}">
+      <strong>${escapeHtml(o.when)}</strong>${o.weeks > 1 ? `<br/>Then every week, ${o.weeks} classes in all` : ''}
+    </p>
+    ${ctaButton('Add to Google Calendar', o.googleLink)}
+    <p style="margin:6px 0 0;font-size:13px;color:#637090;font-family:${FONT}">Outlook, Apple or your phone: open the calendar file attached to this email. <a href="${o.classLink}" style="color:#3F6FE8">Open the class page</a></p>`;
+  return base(hero, body);
+}
+
 // ── Mock exam marked by a teacher ────────────────────────────────────────────
 
 export function mockMarkedTemplate(opts: {
