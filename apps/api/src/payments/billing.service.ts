@@ -71,7 +71,7 @@ export class BillingService {
     const text = (t: string, x: number, y: number, size = 11, f = font, color = navy) => page.drawText(t, { x, y, size, font: f, color });
 
     page.drawRectangle({ x: 0, y: 772, width: 595, height: 70, color: blue });
-    page.drawRectangle({ x: 48, y: 793, width: 28, height: 28, color: rgb(1, 1, 1) });
+    page.drawSvgPath('M6,0 H22 A6,6 0 0 1 28,6 V22 A6,6 0 0 1 22,28 H6 A6,6 0 0 1 0,22 V6 A6,6 0 0 1 6,0 Z', { x: 48, y: 821, color: rgb(1, 1, 1) });
     text('C', 62 - bold.widthOfTextAtSize('C', 16) / 2, 801, 16, bold, blue);
     text('careerpath', 86, 800, 20, bold, navy);
     text('.', 86 + bold.widthOfTextAtSize('careerpath', 20), 800, 20, bold, rgb(1, 1, 1));

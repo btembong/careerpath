@@ -212,7 +212,8 @@ export class CertificatesService {
 
     // ── Header — logo mark + title ──────────────────────────
     // "careerpath." logo: white C tile, navy word, white dot
-    page.drawRectangle({ x: 66, y: height - 62, width: 34, height: 34, color: white, borderColor: white, borderWidth: 0 });
+    // Rounded C tile, like the logo on the site (SVG paths run downwards from the top-left corner)
+    page.drawSvgPath('M7,0 H27 A7,7 0 0 1 34,7 V27 A7,7 0 0 1 27,34 H7 A7,7 0 0 1 0,27 V7 A7,7 0 0 1 7,0 Z', { x: 66, y: height - 28, color: white });
     page.drawText('C', {
       x: 83 - boldFont.widthOfTextAtSize('C', 20) / 2, y: height - 52,
       size: 20, font: boldFont, color: blue,
