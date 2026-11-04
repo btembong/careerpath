@@ -22,7 +22,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const user = await this.prisma.userProfile.findUnique({
       where: { id: payload.sub },
     });
-    if (!user) throw new UnauthorizedException();
+    // Deleted accounts can’t keep using an old sign-in
+    if (!user || user.deletedAt) throw new UnauthorizedException();
     return user; // attached as request.user
   }
 }

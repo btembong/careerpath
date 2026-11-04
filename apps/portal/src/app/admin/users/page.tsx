@@ -76,6 +76,7 @@ export default function AdminUsersPage() {
           ...(['STUDENT', 'TEACHER', 'SUBJECT_REVIEWER', 'COUNTRY_REP', 'ADMIN'] as Role[]).map(r => ({ key: r, label: r === 'SUBJECT_REVIEWER' ? 'Reviewers' : r === 'COUNTRY_REP' ? 'Reps' : `${ROLE[r]}s`, count: c?.[r] ?? 0 })),
           ...(c?.pending ? [{ key: 'pending', label: 'Waiting for approval', count: c.pending }] : []),
         ]}
+        top={<DeletionRequests />}
         tab={tab} onTab={k => { setTab(k); setPage(1); }} search={q} onSearch={v => { setQ(v); setPage(1); }} searchLabel="Search name, email or phone"
         cols={['Person', 'Role', 'Country', 'Joined', 'Status', '']}
         loading={!d} empty={d && !d.rows.length ? 'Nobody matches.' : null}
@@ -208,5 +209,38 @@ function Person({ id, onClose, onChanged }: { id: string | null; onClose: () => 
         </>}
       </DrawerContent>
     </Drawer>
+  );
+}
+
+interface Deletion { id: string; email: string; name: string; role: string; requestedAt: string; dueAt: string; needsAdmin: boolean; balance: { amount: number; currency: string } | null }
+
+/** People who asked to delete their account. Students go by themselves after 7 days; staff wait for an admin here. */
+function DeletionRequests() {
+  const [rows, setRows] = useState<Deletion[] | null>(null);
+  const [busy, setBusy] = useState('');
+  const load = useCallback(() => { api.get('/account/admin/deletions').then(r => setRows(r.data)).catch(() => setRows([])); }, []);
+  useEffect(load, [load]);
+  if (!rows?.length) return null;
+  async function finish(r: Deletion) {
+    if (!window.confirm(`Delete ${r.name}'s account now? This can't be undone.`)) return;
+    setBusy(r.id);
+    try { await api.post(`/account/admin/deletions/${r.id}`); notify.success('Account deleted'); load(); }
+    catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not delete it'); } finally { setBusy(''); }
+  }
+  return (
+    <section className="flex flex-col gap-2 rounded-lg border border-line bg-white p-4">
+      <h2 className="text-[15px] font-bold text-navy">Deletion requests</h2>
+      {rows.map(r => {
+        const owed = !!r.balance && r.balance.amount > 0;
+        return (
+          <div key={r.id} className="flex flex-wrap items-center gap-3 border-t border-line pt-2 text-[13.5px] first-of-type:border-t-0 first-of-type:pt-0">
+            <span className="min-w-0 flex-1"><strong className="text-navy">{r.name}</strong> <span className="text-muted">· {ROLE[r.role as Role] ?? r.role} · asked {date(r.requestedAt)} · due {date(r.dueAt)}{owed ? ` · ${money(r.balance!.amount, r.balance!.currency)} still to pay out` : ''}</span></span>
+            {r.needsAdmin
+              ? <button onClick={() => finish(r)} disabled={busy === r.id || owed} title={owed ? 'Pay out what they are owed first' : ''} className="h-8 rounded-md border border-line px-3 text-[13px] font-semibold text-navy hover:bg-subtle disabled:opacity-50">{owed ? 'Pay out first' : 'Delete now'}</button>
+              : <span className="text-xs text-muted">Deleted automatically on the due date</span>}
+          </div>
+        );
+      })}
+    </section>
   );
 }

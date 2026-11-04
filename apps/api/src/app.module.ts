@@ -25,6 +25,7 @@ import { SupportModule } from './support/support.module';
 import { FilesModule } from './files/files.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { MailModule } from './mail/mail.module';
+import { AccountModule } from './account/account.module';
 import { CatalogueModule } from './catalogue/catalogue.module';
 import { PlatformCoursesModule } from './platform-courses/platform-courses.module';
 import { PayoutAccountsModule } from './payout-accounts/payout-accounts.module';
@@ -83,6 +84,7 @@ import { RedisModule } from './redis/redis.module';
     SupportModule,
     SchedulerModule,
     MailModule,
+    AccountModule,
     CatalogueModule,
     PlatformCoursesModule,
     PayoutAccountsModule,

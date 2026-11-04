@@ -29,6 +29,10 @@ model UserProfile {
   /// bcrypt hash; copied from WordPress the first time someone signs in after the switch, then the portal checks it itself
   passwordHash         String?
   passwordUpdatedAt    DateTime?
+  /// Settings → Delete my account: asked at, and when it happens (7 days later); deletedAt once done
+  deletionRequestedAt  DateTime?
+  deletionDueAt        DateTime?
+  deletedAt            DateTime?
   googleId             String?                  @unique
   lastActiveDate       DateTime?
   /// When the account was created (backfilled for older accounts from their first activity)
