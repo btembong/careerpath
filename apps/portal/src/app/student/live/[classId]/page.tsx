@@ -4,6 +4,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import { WhiteboardPanel } from '@/components/live/WhiteboardPanel';
+import { ClassTools, type ToolsState } from '@/components/live/ClassTools';
+import { AfterClass } from '@/components/live/AfterClass';
 import { useAuth } from '@/hooks/useAuth';
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_ORIGIN } from '@/lib/images';
@@ -38,6 +40,19 @@ export default function StudentLiveClassPage() {
   const [socketStatus, setSocketStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [leaving, setLeaving] = useState(false);
   const [mobileWbOpen, setMobileWbOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  // Breakout group: while it runs, the video switches to the group's own room
+  const [group, setGroup] = useState<{ id: string; name: string; endsAt: string; url: string } | null>(null);
+  const onTools = useCallback((st: ToolsState) => {
+    const g = st.myGroup;
+    if (!g) { setGroup(null); return; }
+    setGroup(cur => {
+      if (cur?.id === g.id) return cur;
+      api.post<{ roomUrl: string; token: string }>(`/live/classes/${classId}/groups/${g.id}/token`)
+        .then(r => setGroup({ ...g, url: `${r.data.roomUrl}?t=${r.data.token}` })).catch(() => {});
+      return cur;
+    });
+  }, [classId]);
 
   // Class details; while waiting for the teacher, check again every 15 seconds
   useEffect(() => {
@@ -142,7 +157,7 @@ export default function StudentLiveClassPage() {
     : 'Waiting for the teacher to start';
 
   const video = (cls: string) => (
-    <iframe src={roomUrl!} allow="camera; microphone; fullscreen; speaker; display-capture" className={clsx('h-full w-full border-0', cls)} title="Live class" />
+    <iframe key={group?.url ?? 'main'} src={group?.url ?? roomUrl!} allow="camera; microphone; fullscreen; speaker; display-capture" className={clsx('h-full w-full border-0', cls)} title="Live class" />
   );
 
   return (
@@ -156,6 +171,11 @@ export default function StudentLiveClassPage() {
           {info && <p className="truncate text-[12.5px] text-muted">{info.cohort.name} · {info.teacher}</p>}
         </div>
         {socketStatus === 'disconnected' && live && <span className="text-xs font-semibold text-muted">Reconnecting the whiteboard…</span>}
+        {live && (
+          <button type="button" onClick={() => setToolsOpen(v => !v)} aria-expanded={toolsOpen} className="h-8 rounded-md border border-line px-2.5 text-xs font-semibold text-navy lg:hidden">
+            {toolsOpen ? 'Hide class tools' : 'Poll and questions'}
+          </button>
+        )}
         {whiteboardOpen && live && (
           <button type="button" onClick={() => setMobileWbOpen(v => !v)} className="h-8 rounded-md border border-line px-2.5 text-xs font-semibold text-navy sm:hidden">
             {mobileWbOpen ? 'Hide board' : 'Show board'}
@@ -174,12 +194,19 @@ export default function StudentLiveClassPage() {
         )}
       </header>
 
+      {group && live && (
+        <p className="flex-shrink-0 border-b border-line bg-[#3F6FE8] px-4 py-2 text-center text-[13px] font-semibold text-white">
+          You’re in {group.name} · everyone comes back at {new Date(group.endsAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+        </p>
+      )}
+
       {wbBanner && live && (
         <p className="flex-shrink-0 border-b border-line bg-accent-soft px-4 py-2 text-center text-xs font-semibold text-navy">
           The whiteboard is open{canDraw ? ' — you can draw on it' : ''}
         </p>
       )}
 
+      {info?.status === 'COMPLETED' ? <AfterClass info={info} /> : (
       <div className="flex min-h-0 flex-1 gap-5 p-3 sm:p-5">
         <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-white">
           {live ? <>
@@ -207,14 +234,16 @@ export default function StudentLiveClassPage() {
                   </p>
                 </>
               )}
-              {info?.status === 'COMPLETED' && (info.recordingUrl
-                ? <a href={info.recordingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center rounded-md bg-azure-strong px-4 text-[13.5px] font-semibold text-on-accent">Watch the recording</a>
-                : <p className="text-sm text-ink2">The recording will appear on your live classes page once the teacher adds it.</p>)}
             </div>
           )}
         </section>
 
-        {(!live || !whiteboardOpen) && info && (
+        {live && (
+          <aside className={clsx('w-[340px] flex-shrink-0 overflow-hidden rounded-lg border border-line bg-white max-lg:fixed max-lg:inset-x-3 max-lg:bottom-3 max-lg:top-[64px] max-lg:z-30 max-lg:w-auto max-lg:shadow-xl', toolsOpen ? 'flex flex-col' : 'max-lg:hidden lg:flex lg:flex-col')}>
+            <ClassTools classId={classId} onState={onTools} />
+          </aside>
+        )}
+        {!live && info && (
           <aside className="hidden w-[300px] flex-shrink-0 flex-col gap-4 overflow-y-auto lg:flex">
             <section className="flex flex-col gap-2.5 rounded-lg border border-line bg-white p-[18px]">
               <h3 className="text-[15px] font-semibold text-navy">This class</h3>
@@ -244,6 +273,7 @@ export default function StudentLiveClassPage() {
           </aside>
         )}
       </div>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Icon } from '@/components/ui/Icon';
 import { Button } from '@/components/ui/Button';
 import { WhiteboardPanel } from '@/components/live/WhiteboardPanel';
+import { ClassTools } from '@/components/live/ClassTools';
 import { useAuth } from '@/hooks/useAuth';
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_ORIGIN } from '@/lib/images';
@@ -29,6 +30,8 @@ export default function TeacherLiveClassPage() {
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [whiteboardOpen, setWhiteboardOpen] = useState(false);
   const [audioOnly, setAudioOnly] = useState(false);
+  // Poll, quick quiz, questions and groups beside the video
+  const [toolsOpen, setToolsOpen] = useState(true);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -173,6 +176,17 @@ export default function TeacherLiveClassPage() {
             <Icon name="wifi" size={13} />
             {audioOnly ? 'Audio only' : 'HD video'}
           </button>
+          {/* Class tools toggle */}
+          <button
+            onClick={() => setToolsOpen(v => !v)}
+            aria-expanded={toolsOpen}
+            className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+              toolsOpen ? 'bg-azure text-white' : 'border border-white/20 text-white/60 hover:text-white hover:border-white/40'
+            }`}
+          >
+            <Icon name="question" size={13} />
+            Class tools
+          </button>
           {/* Whiteboard toggle */}
           <button
             onClick={toggleWhiteboard}
@@ -200,7 +214,7 @@ export default function TeacherLiveClassPage() {
       </div>
 
       {/* Main content — video + optional whiteboard side panel */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex flex-1 overflow-hidden">
         {/* Daily.co video (shrinks when whiteboard opens) */}
         <div className={`flex-1 min-w-0 transition-all duration-300 ${whiteboardOpen ? 'w-[60%]' : 'w-full'}`}>
           <iframe
@@ -220,6 +234,12 @@ export default function TeacherLiveClassPage() {
               userId={user.id}
             />
           </div>
+        )}
+
+        {toolsOpen && (
+          <aside className="flex w-[360px] flex-shrink-0 flex-col border-l border-white/10 bg-white max-md:absolute max-md:inset-x-0 max-md:bottom-0 max-md:top-0 max-md:z-30 max-md:w-auto">
+            <ClassTools classId={classId} />
+          </aside>
         )}
       </div>
 
