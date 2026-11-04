@@ -47,6 +47,8 @@ export default function TeacherMentorshipPage() {
 
   const now = Date.now();
   const upcoming = bookings.filter(b => b.status !== 'CANCELLED' && new Date(b.slot.endsAt).getTime() > now).sort((a, b) => +new Date(a.slot.startsAt) - +new Date(b.slot.startsAt));
+  // Finished sessions, newest first: their whiteboard stays with the booking
+  const past = bookings.filter(b => b.status !== 'CANCELLED' && new Date(b.slot.endsAt).getTime() <= now).sort((a, b) => +new Date(b.slot.startsAt) - +new Date(a.slot.startsAt));
   const next = upcoming[0];
   const nextOpen = next && new Date(next.slot.startsAt).getTime() - now < 10 * 60_000;
   const rated = bookings.filter(b => b.review);
@@ -126,6 +128,15 @@ export default function TeacherMentorshipPage() {
                 {b.notes && <p className="mt-1 text-[12.5px] text-ink2">“{b.notes}”</p>}
               </div>
             ))}
+            {past.length > 0 && <>
+              <h3 className="mt-2 text-[15px] font-semibold text-navy">Past sessions</h3>
+              {past.slice(0, 8).map(b => (
+                <div key={b.id} className="flex items-center gap-2.5 rounded-md border border-line px-3 py-2.5">
+                  <span className="min-w-0 flex-1"><span className="block truncate text-[13.5px] font-semibold text-navy">{nameOf(b.student)}</span><span className="text-xs text-muted">{when(b.slot.startsAt)}{b.review ? ` · ${'★'.repeat(b.review.rating)}` : ''}</span></span>
+                  <Link href={`/mentorship/board/${b.id}`} className="text-[12.5px] font-semibold text-azure-strong hover:underline">Board</Link>
+                </div>
+              ))}
+            </>}
             <p className="mt-1 text-[13px] text-navy">{avg != null ? <><strong>{avg} / 5</strong> <span className="text-muted">from {rated.length} student rating{rated.length === 1 ? '' : 's'}</span></> : <span className="text-muted">No ratings yet</span>}</p>
           </aside>
         </div>

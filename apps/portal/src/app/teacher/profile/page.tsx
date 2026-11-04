@@ -4,7 +4,7 @@ import { useDropzone } from 'react-dropzone';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/Button';
-import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
+import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent } from '@/components/ui/Dialog';
 import { VideoEmbed } from '@/components/ui/VideoEmbed';
 import { notify } from '@/lib/notify';
 import { uploadVideo } from '@/lib/uploadVideo';
@@ -35,6 +35,8 @@ export default function TeacherProfilePage() {
   const [savingAbout, setSavingAbout] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [preview, setPreview] = useState(false);
+  // Editing happens in a drawer, so the page reads like a profile
+  const [editing, setEditing] = useState(false);
   const photoRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -95,7 +97,7 @@ export default function TeacherProfilePage() {
             l1={`${displayName}.`} l2={subjects.length ? `${subjects.slice(0, 2).join(' and ')}.` : 'Teaching on CareerPath.'}
             bio={p.bio} chips={subjects.slice(0, 4)}
             actions={<>
-              <a href="#about" className={heroPrimary}>Edit profile</a>
+              <button type="button" onClick={() => setEditing(true)} className={heroPrimary}>Edit profile</button>
               <button type="button" onClick={() => setPreview(true)} className={heroSecondary}>See it as students do</button>
             </>} />
           <StatTiles tiles={[
@@ -113,33 +115,12 @@ export default function TeacherProfilePage() {
               <p className="text-[13px] text-ink2">{todo.length ? <>Still to do: <strong className="text-navy">{todo.map(t => t.todo).join(', ')}</strong>.</> : 'Everything’s done. Students see your full profile.'}</p>
             </section>
 
-            <section id="about" className={clsx(card, 'scroll-mt-4')}>
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-bold text-navy">About you</h2>
-                <span className="flex items-center gap-2.5">
-                  {p.avatarUrl ? <img src={p.avatarUrl} alt="" className="h-9 w-9 rounded-md object-cover" /> : <span className="grid h-9 w-9 place-items-center rounded-md bg-accent-soft text-xs font-extrabold text-azure-strong">{initials}</span>}
-                  <input ref={photoRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); e.target.value = ''; }} />
-                  <button onClick={() => photoRef.current?.click()} className="text-[13px] font-semibold text-azure-strong hover:underline">{uploadingPhoto ? 'Uploading…' : p.avatarUrl ? 'Change photo' : 'Add photo'}</button>
-                </span>
-              </div>
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                <Field label="Name shown to students"><input className={input} value={about.name} onChange={e => setAbout({ ...about, name: e.target.value })} placeholder="Mr A. Tabi" maxLength={80} /></Field>
-                <Field label="Subjects" hint="Ask an admin to change your subjects."><input className={input} value={subjects.join(', ') || 'Not set'} disabled /></Field>
-                <Field label="Years teaching"><input className={input} value={p.teacherApplication?.yearsExperience ?? '—'} disabled /></Field>
-                <Field label="Country">
-                  <select className={input} value={about.countryId} onChange={e => setAbout({ ...about, countryId: e.target.value })}>
-                    <option value="">Choose…</option>{countries.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </Field>
-              </div>
-              <Field label="Bio" hint={`${about.bio.trim().length} characters · at least 100`}>
-                <textarea rows={4} value={about.bio} onChange={e => setAbout({ ...about, bio: e.target.value })} maxLength={2000}
-                  placeholder="Mathematics teacher with 9 years of WASSCE and GCE exam preparation…" className="min-h-16 resize-y rounded-md border border-line p-2.5 text-[13.5px] text-ink2 outline-none focus:border-azure" />
-              </Field>
-              <div><Button size="sm" onClick={saveAbout} loading={savingAbout}>Save profile</Button></div>
+            <section className={card}>
+              <div className="flex items-center justify-between"><h2 className="text-base font-bold text-navy">What students see</h2>
+                <button onClick={() => setEditing(true)} className="text-[13px] font-semibold text-azure-strong hover:underline">Edit</button></div>
+              <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink2">{p.bio || 'No bio yet. Add one so students know who you are.'}</p>
+              {p.videoIntroUrl ? <VideoEmbed url={p.videoIntroUrl} /> : <p className="rounded-md bg-subtle px-3 py-2.5 text-[13px] text-ink2">No intro video yet. Students who see one book more mentoring sessions.</p>}
             </section>
-
-            <IntroVideo url={p.videoIntroUrl} onChange={url => setP(prev => prev ? { ...prev, videoIntroUrl: url } : prev)} />
           </div>
 
           <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-3.5">
@@ -155,6 +136,42 @@ export default function TeacherProfilePage() {
         </div>
       </>)}
 
+
+      {p && (
+        <Drawer open={editing} onOpenChange={o => { if (!o) setEditing(false); }}>
+          <DrawerContent title="Edit profile" description="What students see on your profile and when they book you" width="lg">
+            <div className="flex flex-col gap-4">
+                  <section className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-base font-bold text-navy">About you</h2>
+                      <span className="flex items-center gap-2.5">
+                        {p.avatarUrl ? <img src={p.avatarUrl} alt="" className="h-9 w-9 rounded-md object-cover" /> : <span className="grid h-9 w-9 place-items-center rounded-md bg-accent-soft text-xs font-extrabold text-azure-strong">{initials}</span>}
+                        <input ref={photoRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); e.target.value = ''; }} />
+                        <button onClick={() => photoRef.current?.click()} className="text-[13px] font-semibold text-azure-strong hover:underline">{uploadingPhoto ? 'Uploading…' : p.avatarUrl ? 'Change photo' : 'Add photo'}</button>
+                      </span>
+                    </div>
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                      <Field label="Name shown to students"><input className={input} value={about.name} onChange={e => setAbout({ ...about, name: e.target.value })} placeholder="Mr A. Tabi" maxLength={80} /></Field>
+                      <Field label="Subjects" hint="Ask an admin to change your subjects."><input className={input} value={subjects.join(', ') || 'Not set'} disabled /></Field>
+                      <Field label="Years teaching"><input className={input} value={p.teacherApplication?.yearsExperience ?? '—'} disabled /></Field>
+                      <Field label="Country">
+                        <select className={input} value={about.countryId} onChange={e => setAbout({ ...about, countryId: e.target.value })}>
+                          <option value="">Choose…</option>{countries.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </Field>
+                    </div>
+                    <Field label="Bio" hint={`${about.bio.trim().length} characters · at least 100`}>
+                      <textarea rows={4} value={about.bio} onChange={e => setAbout({ ...about, bio: e.target.value })} maxLength={2000}
+                        placeholder="Mathematics teacher with 9 years of WASSCE and GCE exam preparation…" className="min-h-16 resize-y rounded-md border border-line p-2.5 text-[13.5px] text-ink2 outline-none focus:border-azure" />
+                    </Field>
+                    <div><Button size="sm" onClick={saveAbout} loading={savingAbout}>Save profile</Button></div>
+                  </section>
+      
+                        <IntroVideo url={p.videoIntroUrl} onChange={url => setP(prev => prev ? { ...prev, videoIntroUrl: url } : prev)} />
+                  </div>
+          </DrawerContent>
+        </Drawer>
+      )}
       {preview && p && (
         <Dialog open onOpenChange={o => { if (!o) setPreview(false); }}>
           <DialogContent title="How students see you" size="lg">
