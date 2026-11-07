@@ -1,10 +1,12 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { AuthShell, AuthTitle, AuthError, AuthSwitch, authButton, authInput } from '@/components/auth/AuthShell';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
+  // Sign-up sends people here with ?email= when they already have an account
+  useEffect(() => { const e = new URLSearchParams(window.location.search).get('email'); if (e) setEmail(e); }, []);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');

@@ -164,7 +164,7 @@ export class WordPressService {
         const wpCode: string | undefined = err.response?.data?.code;
         if (wpCode === 'existing_user_login') continue;
         if (wpCode === 'existing_user_email') {
-          throw new ConflictException('An account with this email already exists. Please log in instead.');
+          throw new ConflictException('You already have an account on careerpathafrica.com with this email. Sign in with that password, or reset it.');
         }
         this.logger.error('WP user creation failed', err.response?.data ?? err.message);
         if (err.response?.status === 400) {
@@ -334,6 +334,18 @@ export class WordPressService {
     if (this.devBypass || wpUserId < 0) return;
     try { await this.client.post(`/wp/v2/users/${wpUserId}`, { password }, { timeout: 20_000 }); }
     catch (err: any) { this.logger.warn(`Could not update WordPress password for user ${wpUserId}: ${err.response?.status ?? err.message}`); }
+  }
+
+  /** Whether the website already has a user with this email. Null when WordPress can't be asked. */
+  async emailExists(email: string): Promise<boolean | null> {
+    if (this.devBypass || this.demoAccount(email)) return false;
+    try {
+      const res = await this.client.get<{ email?: string }[]>('/wp/v2/users', { params: { search: email, context: 'edit', per_page: 5 }, timeout: 10_000 });
+      return (res.data ?? []).some(u => (u.email ?? '').toLowerCase() === email.toLowerCase());
+    } catch (err: any) {
+      this.logger.warn(`Could not check the website for an email: ${err.response?.status ?? err.message}`);
+      return null;
+    }
   }
 
   /**

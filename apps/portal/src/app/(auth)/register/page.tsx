@@ -295,6 +295,30 @@ function PreviewCard({ p }: { p: Preview }) {
 }
 
 // ── Student sign-up ────────────────────────────────────────────────────────
+type Existing = 'portal' | 'website' | null;
+
+/** Before sending a code: if the email already has an account, point the person to sign in instead */
+async function existingAccount(email: string): Promise<Existing> {
+  try { return (await api.post<{ exists: Existing }>('/auth/register/check', { email: email.trim() })).data.exists; }
+  catch { return null; } // can't tell: let sign-up carry on and decide
+}
+
+function AlreadyHaveAccount({ where, email }: { where: Exclude<Existing, null>; email: string }) {
+  const q = `?email=${encodeURIComponent(email.trim())}`;
+  return (
+    <div role="alert" className="flex flex-col gap-2.5 rounded-lg border border-[#5889FA] bg-[#EAF0FF] px-4 py-3.5 text-[13.5px] text-navy">
+      <strong className="text-sm">You already have an account with this email.</strong>
+      <span className="text-ink2">{where === 'website'
+        ? 'You signed up on careerpathafrica.com before. Sign in here with that same password; your portal account is made the first time you do.'
+        : 'Sign in with your password, or with a code we email you.'}</span>
+      <div className="flex flex-wrap gap-2">
+        <Link href={`/login${q}`} className="inline-flex h-9 items-center rounded-md bg-[#3F6FE8] px-3.5 text-[13px] font-bold text-white hover:bg-[#2F57C9]">Sign in</Link>
+        <Link href={`/forgot-password${q}`} className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-subtle">I forgot my password</Link>
+      </div>
+    </div>
+  );
+}
+
 function StudentFlow({ countries, nextUrl, school, onBack, setLeft }: { countries: Country[]; nextUrl: string | null; school: string | null; onBack: () => void; setLeft: (c: LeftContent) => void }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -304,6 +328,7 @@ function StudentFlow({ countries, nextUrl, school, onBack, setLeft }: { countrie
   const [sending, setSending] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [existing, setExisting] = useState<Existing>(null);
 
   // Referral code from ?ref=…, kept for the session in case the URL changes
   const [referralCode, setReferralCode] = useState('');
@@ -333,6 +358,9 @@ function StudentFlow({ countries, nextUrl, school, onBack, setLeft }: { countrie
     setError('');
     if (!firstName || !lastName) { setError('Write your first and last name.'); return; }
     setSending(true);
+    const found = await existingAccount(form.email);
+    setExisting(found);
+    if (found) { setSending(false); return; }
     try { await api.post('/auth/otp/send', { email: form.email.trim() }); setStep('code'); }
     catch (err) { setError(apiError(err, 'Could not send the code. Try again.')); }
     finally { setSending(false); }
@@ -387,7 +415,8 @@ function StudentFlow({ countries, nextUrl, school, onBack, setLeft }: { countrie
       <Heading eyebrow="Student account" title="Good to have you." onBack={onBack} />
       {banners}
       <Field label="Your name"><input value={name} onChange={e => setName(e.target.value)} required autoComplete="name" placeholder="First and last name" className={inputCls} /></Field>
-      <Field label="Email address" hint="We’ll send a code to check it’s yours."><input type="email" value={form.email} onChange={set('email')} required autoComplete="email" placeholder="you@example.com" className={inputCls} /></Field>
+      <Field label="Email address" hint="We’ll send a code to check it’s yours."><input type="email" value={form.email} onChange={e => { setExisting(null); set('email')(e); }} required autoComplete="email" placeholder="you@example.com" className={inputCls} /></Field>
+      {existing && <AlreadyHaveAccount where={existing} email={form.email} />}
       <ErrorBox error={error} />
       <PrimaryButton loading={sending}>Send code</PrimaryButton>
       <p className="text-center text-[12.5px] text-muted">By creating an account, you agree to the Terms and Privacy Policy.</p>
@@ -438,6 +467,7 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(0);
   const [error, setError] = useState('');
+  const [existing, setExisting] = useState<Existing>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -492,6 +522,9 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
     if (form.password !== form.confirmPassword) { setError('The two passwords don’t match.'); return; }
     if (!form.countryId) { setError('Please pick your country.'); return; }
     setBusy(true);
+    const found = await existingAccount(form.email);
+    setExisting(found);
+    if (found) { setBusy(false); return; }
     try { await api.post('/auth/otp/send', { email: form.email.trim() }); go(1); }
     catch (err) { setError(apiError(err, 'Could not send the code. Try again.')); }
     finally { setBusy(false); }
@@ -559,7 +592,7 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
       <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
         <Field label="First name"><input value={form.firstName} onChange={e => setF('firstName', e.target.value)} required autoComplete="given-name" className={inputCls} /></Field>
         <Field label="Last name"><input value={form.lastName} onChange={e => setF('lastName', e.target.value)} required autoComplete="family-name" className={inputCls} /></Field>
-        <Field label="Email address" wide><input type="email" value={form.email} onChange={e => setF('email', e.target.value)} required autoComplete="email" placeholder="you@example.com" className={inputCls} /></Field>
+        <Field label="Email address" wide><input type="email" value={form.email} onChange={e => { setExisting(null); setF('email', e.target.value); }} required autoComplete="email" placeholder="you@example.com" className={inputCls} /></Field>
         <Field label="Password" hint={<StrengthHint pw={form.password} />}><PasswordInput value={form.password} onChange={v => setF('password', v)} /></Field>
         <Field label="Confirm" good={!!form.confirmPassword && form.confirmPassword === form.password}
           hint={form.confirmPassword ? (form.confirmPassword === form.password ? '✓ Passwords match' : 'Doesn’t match yet') : undefined}>
@@ -568,6 +601,7 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
         <Field label="Country"><CountrySelect value={form.countryId} onChange={id => setF('countryId', id)} countries={countries} /></Field>
         <Field label="Phone" optional><input type="tel" value={form.phone} onChange={e => setF('phone', e.target.value)} autoComplete="tel" placeholder="+233 24 123 4567" className={inputCls} /></Field>
       </div>
+      {existing && <AlreadyHaveAccount where={existing} email={form.email} />}
       <ErrorBox error={error} />
       <PrimaryButton loading={busy}>Send my code</PrimaryButton>
     </form>

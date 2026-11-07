@@ -72,6 +72,14 @@ export class AuthController {
     return this.authService.registerTeacher(dto, ip);
   }
 
+  @Post('register/check')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({ summary: 'Before sign-up: does this email already have an account (portal or website)?' })
+  checkEmail(@Body() body: { email: string }) {
+    return this.authService.checkEmail(body?.email);
+  }
+
   @Post('otp/send')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 5 } }) // 5 OTP sends per minute per IP

@@ -767,6 +767,18 @@ export class AuthService {
     return this.jwt.sign(payload);
   }
 
+  /**
+   * Before sign-up: does this email already have an account, in the portal or on the website?
+   * Sign-up would refuse it anyway; asking first lets the page point the person to sign in instead.
+   */
+  async checkEmail(email: string): Promise<{ exists: 'portal' | 'website' | null }> {
+    const e = String(email ?? '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new BadRequestException('Enter a valid email address.');
+    const p = await this.prisma.userProfile.findFirst({ where: { email: { equals: e, mode: 'insensitive' }, deletedAt: null }, select: { id: true } });
+    if (p) return { exists: 'portal' };
+    return { exists: (await this.wp.emailExists(e)) ? 'website' : null };
+  }
+
   private async assertEmailNotTaken(email: string): Promise<void> {
     const existing = await this.prisma.userProfile.findUnique({ where: { email } });
     if (existing) throw new ConflictException('An account with this email already exists.');
