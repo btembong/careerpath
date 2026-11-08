@@ -25,65 +25,67 @@ function icon(key: keyof typeof SVG_PATHS, size: number, color: string): string 
 
 // ── Shared primitives ────────────────────────────────────────────────────────
 
-const FONT = "'Bricolage Grotesque',system-ui,-apple-system,'Segoe UI',Arial,sans-serif";
+// Light version of the myfiti layout: logo and a small label above a white card, a plain title, one blue button.
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 const BLUE = '#3F6FE8';
+const C = {
+  page: '#F4F6FB', card: '#FFFFFF', border: '#E4E9F3', surface: '#F7F9FD',
+  pri: '#072061', sec: '#3A4A70', mut: '#7C89A8',
+};
 
-/** "careerpath." with the white C tile, for the blue header. */
-function logo(): string {
+/** "careerpath." with the blue C tile, and the email's label */
+function logo(badge?: string): string {
+  const label = badge
+    ? `<td style="padding-left:8px;vertical-align:middle">
+        <span style="font-size:10px;font-weight:600;color:${C.mut};background:#ffffff;border:1px solid ${C.border};padding:2px 8px;border-radius:4px;letter-spacing:0.02em;font-family:${FONT}">${badge}</span>
+      </td>`
+    : '';
   return `
-    <table cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td width="26" height="26" style="width:26px;height:26px;background:#ffffff;border-radius:6px;text-align:center;vertical-align:middle;line-height:26px">
-          <span style="color:${BLUE};font-size:13px;font-weight:900;font-family:${FONT}">C</span>
-        </td>
-        <td style="padding-left:8px;vertical-align:middle">
-          <span style="color:#072061;font-size:16px;font-weight:800;font-family:${FONT};letter-spacing:-0.3px">careerpath</span><span style="color:#ffffff;font-size:16px;font-weight:800;font-family:${FONT}">.</span>
-        </td>
-      </tr>
-    </table>`;
+    <table cellpadding="0" cellspacing="0" border="0"><tr>
+      <td width="22" height="22" style="width:22px;height:22px;background:${BLUE};border-radius:6px;text-align:center;vertical-align:middle">
+        <span style="display:block;font-size:11px;font-weight:800;color:#ffffff;line-height:22px;font-family:${FONT}">C</span>
+      </td>
+      <td style="padding-left:9px;vertical-align:middle">
+        <span style="font-size:15px;font-weight:700;color:${C.pri};letter-spacing:-0.02em;font-family:${FONT}">careerpath</span><span style="font-size:15px;font-weight:700;color:${BLUE};font-family:${FONT}">.</span>
+      </td>
+      ${label}
+    </tr></table>`;
 }
 
-/** Two-line headline: first line navy, second line white. */
+/** The email's title: one plain line (the two parts read as one sentence) */
 function headline(first: string, second = ''): string {
-  return `<h1 style="margin:22px 0 0;font-size:30px;line-height:1.08;font-weight:800;letter-spacing:-0.8px;color:#072061;font-family:${FONT}">${first}${second ? `<br/><span style="color:#ffffff">${second}</span>` : ''}</h1>`;
+  return `<p style="margin:0 0 4px;font-size:20px;font-weight:600;color:${C.pri};letter-spacing:-0.01em;line-height:1.3;font-family:${FONT}">${first}${second ? ' ' + second : ''}</p>`;
 }
 
 function ctaButton(label: string, href: string, _color?: string): string {
   return `
-    <table cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 6px">
-      <tr>
-        <td style="background:${BLUE};border-radius:6px">
-          <a href="${href}"
-             style="display:inline-block;padding:13px 22px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;font-family:${FONT}">
-            ${label}
-          </a>
-        </td>
-      </tr>
-    </table>`;
+    <table cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 6px"><tr>
+      <td style="background:${BLUE};border-radius:10px">
+        <a href="${href}" style="display:inline-block;padding:11px 22px;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;letter-spacing:-0.01em;font-family:${FONT}">${label}</a>
+      </td>
+    </tr></table>`;
 }
 
-/** Big code in a pale blue box (sign-in codes, school codes). */
-function codeBox(code: string, size = 30): string {
+/** A code in a soft box (sign-in codes, school codes) */
+function codeBox(code: string, size = 36): string {
   return `
-    <table cellpadding="0" cellspacing="0" border="0" style="margin:6px 0 18px">
-      <tr>
-        <td style="background:#EAF0FF;border-radius:8px;padding:12px 20px">
-          <span style="font-size:${size}px;font-weight:800;letter-spacing:0.25em;color:#072061;font-family:${FONT}">${code}</span>
-        </td>
-      </tr>
-    </table>`;
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 18px"><tr>
+      <td align="center" style="background:${C.surface};border:1px solid ${C.border};border-radius:12px;padding:24px 0">
+        <span style="font-size:${size}px;font-weight:700;letter-spacing:0.18em;color:${C.pri};font-family:${FONT}">${code}</span>
+      </td>
+    </tr></table>`;
 }
 
 function divider(): string {
   return `<table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:22px 0">
-    <tr><td style="border-top:1px solid #E4E9F3;font-size:0;line-height:0">&nbsp;</td></tr>
+    <tr><td style="border-top:1px solid ${C.border};font-size:0;line-height:0">&nbsp;</td></tr>
   </table>`;
 }
 
 // ── Base shell ───────────────────────────────────────────────────────────────
 
-/** One template for every email: blue header with logo and headline, white body, one quiet footer line. */
-function base(heroHtml: string, bodyHtml: string): string {
+/** Every email: logo and label above a white card on a light page; title, body, then a quiet footer inside the card. */
+function base(heroHtml: string, bodyHtml: string, badge?: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -93,33 +95,27 @@ function base(heroHtml: string, bodyHtml: string): string {
   <meta name="color-scheme" content="light only"/>
   <title>CareerPath Africa</title>
 </head>
-<body style="margin:0;padding:0;background:#E9EDF5;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#E9EDF5;padding:32px 12px">
-    <tr>
-      <td align="center">
-        <table cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px;background:#ffffff;border-radius:8px;overflow:hidden">
-          <tr>
-            <td style="background:${BLUE};padding:24px 30px 28px;border-radius:8px 10px 0 0">
-              ${logo()}
-              ${heroHtml}
-            </td>
-          </tr>
-          <tr>
-            <td class="cpa-body" style="background:#ffffff;padding:26px 30px 24px;font-family:${FONT};font-size:15px;line-height:1.55;color:#3A4A70">
-              ${bodyHtml}
-            </td>
-          </tr>
-          <tr>
-            <td style="background:#ffffff;border-top:1px solid #E4E9F3;padding:14px 30px;border-radius:0 0 10px 10px">
-              <p style="margin:0;font-size:12px;color:#97A2BD;font-family:${FONT}">
-                CareerPath Africa &middot; <a href="${PORTAL_URL}/settings" style="color:#97A2BD;text-decoration:underline">Email settings</a> &middot; &copy; ${new Date().getFullYear()}
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
+<body style="margin:0;padding:0;background:${C.page};font-family:${FONT};-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${C.page}">
+<tr><td align="center" style="padding:44px 16px 48px">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px">
+    <tr><td style="padding:0 4px 16px">${logo(badge)}</td></tr>
+    <tr><td style="background:${C.card};border:1px solid ${C.border};border-radius:14px;overflow:hidden">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr><td class="cpa-body" style="padding:32px 32px 28px;font-family:${FONT};font-size:14px;line-height:1.65;color:${C.sec}">
+          ${heroHtml}
+          ${bodyHtml}
+        </td></tr>
+        <tr><td style="border-top:1px solid ${C.border};padding:14px 32px">
+          <p style="margin:0;font-size:11px;color:${C.mut};line-height:1.6;font-family:${FONT}">
+            &copy; ${new Date().getFullYear()} CareerPath Africa &nbsp;&middot;&nbsp; <a href="${PORTAL_URL}/settings#notifications" style="color:${C.mut};text-decoration:underline">Email settings</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
   </table>
+</td></tr>
+</table>
 </body>
 </html>`;
 }
@@ -140,8 +136,8 @@ export function otpTemplate(code: string): string {
         <td align="center">
           <table cellpadding="0" cellspacing="0" border="0">
             <tr>
-              <td style="background:#F0F4FF;border:2px solid #E6ECFD;border-radius:8px;padding:20px 36px;text-align:center">
-                <span style="font-size:38px;font-weight:900;letter-spacing:12px;color:#072061;font-family:'Courier New',Courier,monospace">
+              <td style="background:${C.surface};border:1px solid ${C.border};border-radius:12px;padding:20px 36px;text-align:center">
+                <span style="font-size:38px;font-weight:700;letter-spacing:10px;color:#072061;font-family:${FONT}">
                   ${code}
                 </span>
               </td>
@@ -164,7 +160,7 @@ export function otpTemplate(code: string): string {
       </tr>
     </table>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Account security');
 }
 
 // ── 2. Teacher Approved ──────────────────────────────────────────────────────
@@ -177,7 +173,7 @@ export function teacherApprovedTemplate(teacherNo?: string): string {
       <tr>
         <td style="background:#F0F4FF;border:1.5px dashed #5889FA;border-radius:8px;padding:14px 18px">
           <p style="margin:0 0 3px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#5889FA;font-family:${FONT}">Your Teacher ID</p>
-          <p style="margin:0;font-size:20px;font-weight:900;color:#072061;font-family:'Courier New',Courier,monospace;letter-spacing:2px">${teacherNo}</p>
+          <p style="margin:0;font-size:20px;font-weight:900;color:#072061;font-family:${FONT};letter-spacing:2px">${teacherNo}</p>
           <p style="margin:4px 0 0;font-size:11px;color:#3A4A70;opacity:0.7;font-family:${FONT}">Quote this ID in all support and billing queries.</p>
         </td>
       </tr>
@@ -220,7 +216,7 @@ export function teacherApprovedTemplate(teacherNo?: string): string {
       If you have any questions, reply to this email or visit our support centre.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Teaching');
 }
 
 // ── 3. Teacher Rejected ──────────────────────────────────────────────────────
@@ -256,7 +252,7 @@ export function teacherRejectedTemplate(rejectionReason?: string): string {
       You can reapply at any time from <a href="${PORTAL_URL}/register" style="color:#5889FA;text-decoration:none">careerpathafrica.com</a>.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Teaching');
 }
 
 // ── 4. Country Rep Assigned ──────────────────────────────────────────────────
@@ -306,7 +302,7 @@ export function repAssignedTemplate(countryName: string, currency: string): stri
       Questions about your role? Contact our partnership team at <a href="mailto:partnerships@careerpathafrica.com" style="color:#5889FA;text-decoration:none">partnerships@careerpathafrica.com</a>.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Welcome');
 }
 
 // ── 5a. Welcome — Student ────────────────────────────────────────────────────
@@ -320,7 +316,7 @@ export function welcomeStudentTemplate(firstName: string, studentNo?: string): s
       <tr>
         <td style="background:#F0F4FF;border:1.5px dashed #5889FA;border-radius:8px;padding:14px 18px">
           <p style="margin:0 0 3px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#5889FA;font-family:${FONT}">Your Student ID</p>
-          <p style="margin:0;font-size:20px;font-weight:900;color:#072061;font-family:'Courier New',Courier,monospace;letter-spacing:2px">${studentNo}</p>
+          <p style="margin:0;font-size:20px;font-weight:900;color:#072061;font-family:${FONT};letter-spacing:2px">${studentNo}</p>
           <p style="margin:4px 0 0;font-size:11px;color:#3A4A70;opacity:0.7;font-family:${FONT}">Keep this for reference in all support queries.</p>
         </td>
       </tr>
@@ -337,7 +333,7 @@ export function welcomeStudentTemplate(firstName: string, studentNo?: string): s
       Need help getting started? Email us at <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Welcome');
 }
 
 // ── 5b. Welcome — Teacher (pending review) ───────────────────────────────────
@@ -366,7 +362,7 @@ export function welcomeTeacherTemplate(firstName: string): string {
       Questions? Contact us at <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Teaching');
 }
 
 // ── 5b. Admin announcement (broadcast) ───────────────────────────────────────
@@ -385,7 +381,7 @@ export function announcementTemplate(title: string, message: string): string {
     </p>
     ${ctaButton('Open CareerPath Africa', PORTAL_URL)}`;
 
-  return base(hero, body);
+  return base(hero, body, 'Announcement');
 }
 
 // ── 5b2. New message (only when the person isn't online) ─────────────────────
@@ -403,7 +399,7 @@ export function newMessageTemplate(fromName: string, preview: string, where: str
       You get this email because you weren’t online. Turn message emails off in Settings → Notifications.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Messages');
 }
 
 // ── 5b3. School seat invitation and school admin welcome ─────────────────────
@@ -419,7 +415,7 @@ export function orgSeatInviteTemplate(orgName: string, packageName: string, link
       <strong style="color:#072061">${escapeHtml(orgName)}</strong> paid for your place on <strong style="color:#072061">${escapeHtml(packageName)}</strong>. Create your account with this email address, then take your place.
     </p>
     ${ctaButton('Take my place', link)}${codePart}`;
-  return base(hero, body);
+  return base(hero, body, 'School');
 }
 
 export function orgAdminWelcomeTemplate(name: string, orgName: string, link: string): string {
@@ -429,7 +425,7 @@ export function orgAdminWelcomeTemplate(name: string, orgName: string, link: str
       You can now manage <strong style="color:#072061">${escapeHtml(orgName)}</strong>’s seats: invite students, share your join link and see how they’re doing. Sign in with this email — we send you a code each time, so there’s no password to remember.
     </p>
     ${ctaButton('Open the school portal', link)}`;
-  return base(hero, body);
+  return base(hero, body, 'School');
 }
 
 // ── 5c. Course Approved ──────────────────────────────────────────────────────
@@ -447,7 +443,7 @@ export function courseApprovedTemplate(courseTitle: string): string {
       Commissions are credited to your wallet as students enrol. Check your earnings at any time from the <a href="${PORTAL_URL}/teacher/wallet" style="color:#5889FA;text-decoration:none">wallet page</a>.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Courses');
 }
 
 // ── 5d. Reviewer Assigned ────────────────────────────────────────────────────
@@ -466,7 +462,7 @@ export function reviewerAssignedTemplate(courseTitle: string): string {
       Your commission is credited once you submit your decision. Questions? Contact <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Review');
 }
 
 // ── 5e. Payout Initiated ─────────────────────────────────────────────────────
@@ -493,7 +489,7 @@ export function payoutInitiatedTemplate(formattedAmount: string, currency: strin
       Issues? Contact <a href="mailto:billing@careerpathafrica.com" style="color:#5889FA;text-decoration:none">billing@careerpathafrica.com</a>.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Payout');
 }
 
 // ── 5f. Payout Completed ─────────────────────────────────────────────────────
@@ -511,7 +507,7 @@ export function payoutCompletedTemplate(formattedAmount: string, currency: strin
       Questions about this payment? Email <a href="mailto:billing@careerpathafrica.com" style="color:#5889FA;text-decoration:none">billing@careerpathafrica.com</a>.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Payout');
 }
 
 // ── 5g. Package Expiry Warning ───────────────────────────────────────────────
@@ -530,7 +526,7 @@ export function expiryWarningTemplate(packageName: string, daysLeft: number, exp
       Need help? Contact <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Access');
 }
 
 // ── 5h. Weekly Earnings Digest (Teacher / Country Rep) ───────────────────────
@@ -583,7 +579,7 @@ export function weeklyEarningsDigestTemplate(opts: {
       This digest is sent every Monday. Contact <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a> to unsubscribe.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Earnings');
 }
 
 // ── 5i. Daily Admin Digest ───────────────────────────────────────────────────
@@ -622,7 +618,7 @@ export function dailyAdminDigestTemplate(opts: {
       Automated daily digest. Sent at 07:00 UTC.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Admin');
 }
 
 // ── 5. Purchase Receipt ──────────────────────────────────────────────────────
@@ -670,10 +666,10 @@ export function purchaseReceiptTemplate(
 
     <!-- Receipt card -->
     <table cellpadding="0" cellspacing="0" border="0" width="100%"
-           style="border:2px solid #E6ECFD;border-radius:8px;overflow:hidden;margin-bottom:8px">
+           style="border:1px solid ${C.border};border-radius:12px;overflow:hidden;margin-bottom:8px">
       <tr>
-        <td style="background:#072061;padding:12px 20px">
-          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.6);font-family:${FONT}">
+        <td style="background:${C.surface};border-bottom:1px solid ${C.border};padding:10px 20px">
+          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${C.mut};font-family:${FONT}">
             Receipt · CareerPath Africa${invoiceNo ? ` · ${invoiceNo}` : ''}
           </p>
         </td>
@@ -694,7 +690,7 @@ export function purchaseReceiptTemplate(
       Receipts are also available in your <a href="${PORTAL_URL}/student/billing" style="color:#5889FA;text-decoration:none">billing history</a>. Need help? Contact <a href="mailto:billing@careerpathafrica.com" style="color:#5889FA;text-decoration:none">billing@careerpathafrica.com</a>.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Receipt');
 }
 
 // ── 6. Mentorship Booking — Student ─────────────────────────────────────────
@@ -717,10 +713,10 @@ export function mentorshipBookingStudentTemplate(opts: {
 
     <!-- Session details card -->
     <table cellpadding="0" cellspacing="0" border="0" width="100%"
-           style="border:2px solid #E6ECFD;border-radius:8px;overflow:hidden;margin-bottom:24px">
+           style="border:1px solid ${C.border};border-radius:12px;overflow:hidden;margin-bottom:24px">
       <tr>
-        <td style="background:#072061;padding:12px 20px">
-          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.6);font-family:${FONT}">
+        <td style="background:${C.surface};border-bottom:1px solid ${C.border};padding:10px 20px">
+          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${C.mut};font-family:${FONT}">
             Session Details
           </p>
         </td>
@@ -756,7 +752,7 @@ export function mentorshipBookingStudentTemplate(opts: {
       You can also access this from your <a href="${PORTAL_URL}/student/mentorship" style="color:#5889FA;text-decoration:none">mentorship page</a>. If you need to cancel, please do so at least 24 hours in advance.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Mentoring');
 }
 
 // ── 7. Mentorship Booking — Teacher ──────────────────────────────────────────
@@ -788,10 +784,10 @@ export function mentorshipBookingTeacherTemplate(opts: {
     </p>
 
     <table cellpadding="0" cellspacing="0" border="0" width="100%"
-           style="border:2px solid #E6ECFD;border-radius:8px;overflow:hidden;margin-bottom:20px">
+           style="border:1px solid ${C.border};border-radius:12px;overflow:hidden;margin-bottom:20px">
       <tr>
-        <td style="background:#072061;padding:12px 20px">
-          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.6);font-family:${FONT}">
+        <td style="background:${C.surface};border-bottom:1px solid ${C.border};padding:10px 20px">
+          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${C.mut};font-family:${FONT}">
             Session Details
           </p>
         </td>
@@ -827,7 +823,7 @@ export function mentorshipBookingTeacherTemplate(opts: {
       Your meeting room will open automatically at session time. Manage all bookings from your <a href="${PORTAL_URL}/teacher/mentorship" style="color:#5889FA;text-decoration:none">mentorship page</a>.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Mentoring');
 }
 
 // ── 8. Mentorship Cancellation ───────────────────────────────────────────────
@@ -861,7 +857,7 @@ export function mentorshipCancellationTemplate(
       Questions? Contact <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Mentoring');
 }
 
 // ── 9. Assignment Graded ─────────────────────────────────────────────────────
@@ -919,7 +915,7 @@ export function assignmentGradedTemplate(opts: {
       Keep it up — consistent effort is how you improve. Visit your <a href="${PORTAL_URL}/student/dashboard" style="color:#5889FA;text-decoration:none">dashboard</a> for more resources.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Assignments');
 }
 
 // ── 10. Certificate Earned ───────────────────────────────────────────────────
@@ -940,7 +936,7 @@ export function certificateEarnedTemplate(
       <tr>
         <td style="background:#F0F4FF;border:1.5px dashed #5889FA;border-radius:8px;padding:18px 20px;text-align:center">
           <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#5889FA;font-family:${FONT}">Verification URL</p>
-          <a href="${verifyUrl}" style="font-size:13px;color:#072061;font-family:'Courier New',Courier,monospace;word-break:break-all;text-decoration:none">${verifyUrl}</a>
+          <a href="${verifyUrl}" style="font-size:13px;color:#072061;font-family:${FONT};word-break:break-all;text-decoration:none">${verifyUrl}</a>
           <p style="margin:6px 0 0;font-size:11px;color:#3A4A70;opacity:0.7;font-family:${FONT}">Share this link with employers to verify your certificate.</p>
         </td>
       </tr>
@@ -953,7 +949,7 @@ export function certificateEarnedTemplate(
       Share this achievement on LinkedIn and let your network know. You've earned it!
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Certificate');
 }
 
 // ── 11. Live Session Reminder ────────────────────────────────────────────────
@@ -987,7 +983,7 @@ export function liveSessionReminderTemplate(
       View all your upcoming sessions from your <a href="${PORTAL_URL}/student/live" style="color:#5889FA;text-decoration:none">live sessions page</a>.
     </p>`;
 
-  return base(hero, body);
+  return base(hero, body, 'Live class');
 }
 
 // ── Password reset (our own, no longer WordPress) ───────────────────────────
@@ -1000,7 +996,7 @@ export function passwordResetTemplate(firstName: string, link: string): string {
     </p>
     ${ctaButton('Choose a new password', link)}
     <p style="margin:10px 0 0;font-size:13px;color:#637090;font-family:${FONT}">Didn’t ask for this? Ignore it; your password stays the same.</p>`;
-  return base(hero, body);
+  return base(hero, body, 'Account security');
 }
 
 export function adminCodeTemplate(code: string): string {
@@ -1009,7 +1005,7 @@ export function adminCodeTemplate(code: string): string {
     <p style="margin:0 0 6px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">Type this code to finish signing in to the admin portal. It works for 10 minutes.</p>
     ${codeBox(code)}
     <p style="margin:0;font-size:13px;color:#637090;font-family:${FONT}">Didn’t just sign in? Someone has your password: change it now in Settings.</p>`;
-  return base(hero, body);
+  return base(hero, body, 'Account security');
 }
 
 // ── A live class was scheduled ──────────────────────────────────────────────
@@ -1025,7 +1021,7 @@ export function classScheduledTemplate(o: { firstName: string; teacherName: stri
     </p>
     ${ctaButton('Add to Google Calendar', o.googleLink)}
     <p style="margin:6px 0 0;font-size:13px;color:#637090;font-family:${FONT}">Outlook, Apple or your phone: open the calendar file attached to this email. <a href="${o.classLink}" style="color:#3F6FE8">Open the class page</a></p>`;
-  return base(hero, body);
+  return base(hero, body, 'Live class');
 }
 
 // ── Mock exam marked by a teacher ────────────────────────────────────────────
@@ -1047,5 +1043,5 @@ export function mockMarkedTemplate(opts: {
     </p>
     ${ctaButton('See my result', opts.link)}
     <p style="margin:10px 0 0;font-size:13px;color:#637090;font-family:${FONT}">Review every answer and practise what you got wrong.</p>`;
-  return base(hero, body);
+  return base(hero, body, 'Test Centre');
 }
