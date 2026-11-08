@@ -39,6 +39,7 @@
     "clsx": "^2.1.0",
     "cmdk": "^1.1.1",
     "date-fns": "^4.4.0",
+    "emoji-picker-react": "^4.22.3",
     "framer-motion": "^13.4.6",
     "jose": "^6.2.12",
     "js-cookie": "^3.0.5",

@@ -130,8 +130,8 @@ export class AccountService {
   }
 
   /**
-   * Removes the person: name, contact details, photo, sign-in, progress, notes and what they wrote.
-   * Payments and certificate records stay (tax law and certificate checks need them), with no name attached.
+   * Removes the person: name, contact details, photo, sign-in, progress, notes and community posts.
+   * Payments, certificate records and messages stay (tax law, certificate checks and the message record need them), with no name attached.
    */
   async anonymise(id: string) {
     await this.prisma.$transaction(async tx => {
@@ -144,7 +144,7 @@ export class AccountService {
       await tx.threadRead.deleteMany({ where: { userId: id } });
       await tx.lessonProgress.deleteMany({ where: { studentId: id } });
       await tx.testSession.deleteMany({ where: { studentId: id } });
-      await tx.message.updateMany({ where: { senderId: id }, data: { body: '(message deleted)', attachmentName: null } });
+      // Messages they sent stay, for the record; with the name gone below they read as from a deleted account
       await tx.courseDiscussionPost.updateMany({ where: { authorId: id }, data: { body: '(post deleted)' } });
       await tx.userProfile.update({
         where: { id },

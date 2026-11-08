@@ -5,6 +5,7 @@ import { MessagesService } from './messages.service';
 import { MessagesController } from './messages.controller';
 import { MessagesGateway } from './messages.gateway';
 import { GroupsService } from './groups.service';
+import { MessageActionsService } from './message-actions.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MailModule } from '../mail/mail.module';
@@ -20,7 +21,7 @@ import { FilesModule } from '../files/files.module';
     }),
   ],
   controllers: [MessagesController],
-  providers: [MessagesService, MessagesGateway, GroupsService],
+  providers: [MessagesService, MessagesGateway, GroupsService, MessageActionsService],
   exports: [MessagesService, MessagesGateway],
 })
 export class MessagesModule {}

@@ -62,6 +62,8 @@ model UserProfile {
   studyBlocks          StudyBlock[]             @relation("StudentStudyBlocks")
   threadReads          ThreadRead[]
   threadMemberships    ThreadMember[]
+  messageReactions     MessageReaction[]
+  messageStars         MessageStar[]
   wpPulls              WpPull[]
   coursePurchases      CoursePurchase[]
   discussionUpvotes    DiscussionUpvote[]
@@ -1263,8 +1265,60 @@ model Message {
   attachmentWave     String?
   /// TEXT, or SYSTEM for notes like "Kofi added Ama" (sender = who did it)
   kind           String        @default("TEXT")
+  /// The message this one replies to (shown quoted)
+  replyToId      String?
+  /// People tagged with @, and whether @everyone was used
+  mentions       String[]      @default([])
+  mentionsAll    Boolean       @default(false)
+  /// Edited: the latest text is in body; every earlier version is kept in MessageEdit
+  editedAt       DateTime?
+  /// "Delete for everyone" only hides it: the text, file and voice note stay stored, for the record
+  deletedAt      DateTime?
+  deletedById    String?
   sender         UserProfile   @relation("SentMessages", fields: [senderId], references: [id])
+  replyTo        Message?      @relation("Replies", fields: [replyToId], references: [id])
+  replies        Message[]     @relation("Replies")
+  edits          MessageEdit[]
+  reactions      MessageReaction[]
+  stars          MessageStar[]
   thread         MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+}
+
+/// Every earlier version of an edited message, kept for the record
+model MessageEdit {
+  id          String   @id @default(uuid())
+  messageId   String
+  body        String
+  editedById  String
+  editedAt    DateTime @default(now())
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+/// One reaction per person per message
+model MessageReaction {
+  id        String      @id @default(uuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime    @default(now())
+  message   Message     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+}
+
+/// Messages someone starred to find again (only they see it)
+model MessageStar {
+  messageId String
+  userId    String
+  createdAt DateTime    @default(now())
+  message   Message     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId])
+  @@index([userId])
 }
 
 model LessonNote {

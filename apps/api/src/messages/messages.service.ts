@@ -8,7 +8,7 @@ import { studentCourseIds } from '../prisma/student-courses';
 import { MessagesGateway } from './messages.gateway';
 
 type Person = { id: string; name: string | null; firstName: string | null; lastName: string | null; email: string; avatarUrl: string | null; role: string; lastActiveDate?: Date | null };
-const nameOf = (p: Pick<Person, 'name' | 'firstName' | 'lastName' | 'email'>) => p.name || [p.firstName, p.lastName].filter(Boolean).join(' ') || p.email.split('@')[0];
+const nameOf = (p: Pick<Person, 'name' | 'firstName' | 'lastName' | 'email'>) => p.email.endsWith('@deleted.invalid') ? 'Deleted account' : p.name || [p.firstName, p.lastName].filter(Boolean).join(' ') || p.email.split('@')[0];
 const personSelect = { id: true, name: true, firstName: true, lastName: true, email: true, avatarUrl: true, role: true, lastActiveDate: true } as const;
 const msgSelect = { id: true, body: true, kind: true, senderId: true, createdAt: true, readAt: true, attachmentKey: true, attachmentName: true, attachmentType: true, attachmentSize: true, attachmentDuration: true, attachmentWave: true } as const;
 type ThreadShape = { id: string; participantAId: string | null; participantBId: string | null; cohortId: string | null; isGroup: boolean };
@@ -142,7 +142,7 @@ export class MessagesService {
         reads: { where: { userId: me.id }, select: { lastReadAt: true } },
         groupMembers: { where: { userId: me.id }, select: { muted: true } },
         _count: { select: { groupMembers: { where: { leftAt: null } } } },
-        messages: { orderBy: { createdAt: 'desc' }, take: 1, select: { body: true, kind: true, createdAt: true, senderId: true, readAt: true, attachmentName: true, attachmentType: true, attachmentDuration: true, sender: { select: { name: true, firstName: true, lastName: true, email: true } } } },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1, select: { body: true, kind: true, deletedAt: true, createdAt: true, senderId: true, readAt: true, attachmentName: true, attachmentType: true, attachmentDuration: true, sender: { select: { name: true, firstName: true, lastName: true, email: true } } } },
       },
       orderBy: { lastMessageAt: 'desc' },
     });
@@ -164,7 +164,7 @@ export class MessagesService {
       // Group chats with no messages yet still show; empty one-to-one threads only for the person who opened them
       .map(t => {
         const last = t.messages[0] ?? null;
-        const preview = last ? (last.body || attachmentPreview(last)) : null;
+        const preview = last ? (last.deletedAt ? 'This message was deleted' : last.body || attachmentPreview(last)) : null;
         if (isGroupThread(t)) {
           const count = t.cohort ? t.cohort._count.students + 1 : t._count.groupMembers;
           return {
@@ -256,18 +256,64 @@ export class MessagesService {
 
   // ── Reading ──────────────────────────────────────────────
 
-  /** Messages, newest first, 40 at a time; marks them read and tells the sender. */
-  async getMessages(threadId: string, me: UserProfile, cursor?: string) {
-    const { thread, members } = await this.threadFor(me, threadId);
-    const rows = await this.prisma.message.findMany({
-      where: { threadId, ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}) },
-      orderBy: { createdAt: 'desc' },
-      take: 40,
-      select: { ...msgSelect, sender: { select: { id: true, name: true, firstName: true, lastName: true, email: true, avatarUrl: true, role: true } } },
+  private fullSelect(viewerId: string) {
+    return {
+      ...msgSelect, replyToId: true, mentions: true, mentionsAll: true, editedAt: true, deletedAt: true,
+      sender: { select: { id: true, name: true, firstName: true, lastName: true, email: true, avatarUrl: true, role: true } },
+      replyTo: { select: { id: true, body: true, deletedAt: true, attachmentType: true, attachmentName: true, attachmentDuration: true, sender: { select: { name: true, firstName: true, lastName: true, email: true, role: true } } } },
+      reactions: { select: { emoji: true, userId: true } },
+      stars: { where: { userId: viewerId }, select: { userId: true } },
+    } as const;
+  }
+
+  /** Messages as a person sees them: a deleted one shows only that it was deleted (its content stays stored, for the record) */
+  private async present(thread: { cohortId: string | null; isGroup: boolean }, rows: any[], viewerId: string) {
+    const linked = await this.withLinks(rows.map(r => (r.deletedAt ? { ...r, attachmentKey: null } : r)));
+    const label = (s: { role: string } & Parameters<typeof nameOf>[0]) => (s.role === 'ADMIN' && !isGroupThread(thread) ? 'CareerPath support' : nameOf(s));
+    return linked.map(({ sender, replyTo, reactions, stars, ...m }: any) => {
+      const gone = !!m.deletedAt;
+      const counts = new Map<string, { emoji: string; count: number; mine: boolean }>();
+      for (const r of reactions ?? []) { const c = counts.get(r.emoji) ?? { emoji: r.emoji, count: 0, mine: false }; c.count++; if (r.userId === viewerId) c.mine = true; counts.set(r.emoji, c); }
+      return {
+        ...m,
+        body: gone ? '' : m.body,
+        ...(gone && { attachmentName: null, attachmentType: null, attachmentSize: null, attachmentDuration: null, attachmentWave: null, attachmentUrl: null, mentions: [], mentionsAll: false }),
+        deleted: gone, deletedAt: undefined,
+        isOwn: m.senderId === viewerId, senderName: label(sender), senderRole: sender.role, senderAvatarUrl: sender.avatarUrl ?? null,
+        replyTo: replyTo ? { id: replyTo.id, senderName: label(replyTo.sender), body: replyTo.deletedAt ? '' : replyTo.body, deleted: !!replyTo.deletedAt, attachmentType: replyTo.deletedAt ? null : replyTo.attachmentType, attachmentName: replyTo.deletedAt ? null : replyTo.attachmentName, attachmentDuration: replyTo.attachmentDuration } : null,
+        reactions: [...counts.values()].sort((a, b) => b.count - a.count),
+        starred: !!stars?.length,
+      };
     });
+  }
+
+  /** Some messages of a chat as one person sees them (for live updates) */
+  async shape(threadId: string, ids: string[], viewer: Pick<UserProfile, 'id'>) {
+    const thread = await this.prisma.messageThread.findUnique({ where: { id: threadId }, select: { cohortId: true, isGroup: true } });
+    if (!thread) return [];
+    const rows = await this.prisma.message.findMany({ where: { id: { in: ids }, threadId }, select: this.fullSelect(viewer.id) });
+    return this.present(thread, rows, viewer.id);
+  }
+
+  /** Messages, newest first, 40 at a time (or the ones around a message, to jump to it); marks them read and tells the sender. */
+  async getMessages(threadId: string, me: UserProfile, cursor?: string, around?: string) {
+    const { thread, members } = await this.threadFor(me, threadId);
+    let rows: any[];
+    const anchor = around ? await this.prisma.message.findFirst({ where: { id: around, threadId }, select: { createdAt: true } }) : null;
+    if (anchor) {
+      const [before, after] = await Promise.all([
+        this.prisma.message.findMany({ where: { threadId, createdAt: { lte: anchor.createdAt } }, orderBy: { createdAt: 'desc' }, take: 25, select: this.fullSelect(me.id) }),
+        this.prisma.message.findMany({ where: { threadId, createdAt: { gt: anchor.createdAt } }, orderBy: { createdAt: 'asc' }, take: 25, select: this.fullSelect(me.id) }),
+      ]);
+      rows = [...after.reverse(), ...before];
+    } else {
+      rows = await this.prisma.message.findMany({
+        where: { threadId, ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}) },
+        orderBy: { createdAt: 'desc' }, take: 40, select: this.fullSelect(me.id),
+      });
+    }
     await this.markRead(thread, members, me.id);
-    const linked = await this.withLinks(rows);
-    return linked.map(({ sender, ...m }) => ({ ...m, isOwn: m.senderId === me.id, senderName: sender.role === 'ADMIN' && !isGroupThread(thread) ? 'CareerPath support' : nameOf(sender), senderRole: sender.role }));
+    return this.present(thread, rows, me.id);
   }
 
   private async markRead(thread: { id: string; cohortId: string | null; isGroup: boolean }, members: string[], readerId: string) {
@@ -296,7 +342,7 @@ export class MessagesService {
   // ── Sending ──────────────────────────────────────────────
 
   /** Send text and/or one attachment. Members get it instantly; those not online get a notification and, if they want, an email. */
-  async sendMessage(threadId: string, sender: UserProfile, input: { body?: string; attachment?: AttachmentInput | null }) {
+  async sendMessage(threadId: string, sender: UserProfile, input: { body?: string; attachment?: AttachmentInput | null; replyToId?: string | null; mentions?: string[]; mentionAll?: boolean }) {
     const text = String(input.body ?? '').trim();
     const att = input.attachment ?? null;
     if (!text && !att) throw new BadRequestException('Write a message or add a file');
@@ -314,28 +360,42 @@ export class MessagesService {
     }
     const { thread, members } = await this.threadFor(sender, threadId);
     if (!members.includes(sender.id)) throw new ForbiddenException('Only members can write here');
-    if (isGroupThread(thread) && thread.onlyAdminsSend && !(await this.isGroupAdmin(thread, sender))) throw new ForbiddenException('Only group admins can send messages here');
+    const groupAdmin = isGroupThread(thread) && (await this.isGroupAdmin(thread, sender));
+    if (isGroupThread(thread) && thread.onlyAdminsSend && !groupAdmin) throw new ForbiddenException('Only group admins can send messages here');
+    const replyTo = input.replyToId ? await this.prisma.message.findFirst({ where: { id: input.replyToId, threadId, kind: 'TEXT' }, select: { id: true } }) : null;
+    if (input.replyToId && !replyTo) throw new BadRequestException('The message you’re replying to isn’t in this chat');
+    // Tags: only people in the chat; @everyone only from group admins
+    const mentions = isGroupThread(thread) ? [...new Set((Array.isArray(input.mentions) ? input.mentions : []).map(String))].filter(id => id !== sender.id && members.includes(id)) : [];
+    const mentionsAll = isGroupThread(thread) && !!input.mentionAll && groupAdmin;
 
     const [created] = await this.prisma.$transaction([
       this.prisma.message.create({
-        data: { threadId, senderId: sender.id, body: text, ...(att && { attachmentKey: att.key, attachmentName: String(att.name ?? 'file').slice(0, 200), attachmentType: att.type, attachmentSize: Math.max(0, Math.round(Number(att.size) || 0)), ...(voice && { attachmentDuration: voice.duration, attachmentWave: voice.wave }) }) },
-        select: msgSelect,
+        data: { threadId, senderId: sender.id, body: text, replyToId: replyTo?.id ?? null, mentions, mentionsAll, ...(att && { attachmentKey: att.key, attachmentName: String(att.name ?? 'file').slice(0, 200), attachmentType: att.type, attachmentSize: Math.max(0, Math.round(Number(att.size) || 0)), ...(voice && { attachmentDuration: voice.duration, attachmentWave: voice.wave }) }) },
+        select: { id: true, createdAt: true },
       }),
       this.prisma.messageThread.update({ where: { id: threadId }, data: { lastMessageAt: new Date() } }),
     ]);
     if (isGroupThread(thread)) await this.prisma.threadRead.upsert({ where: { threadId_userId: { threadId, userId: sender.id } }, update: { lastReadAt: new Date() }, create: { threadId, userId: sender.id } });
 
-    const [linked] = await this.withLinks([created]);
     const senderName = nameOf(sender);
-    const message = { ...linked, senderName, senderRole: sender.role };
+    const [mine] = await this.shape(threadId, [created.id], sender);
+    const [theirs] = await this.shape(threadId, [created.id], { id: '' });
     const others = members.filter(m => m !== sender.id);
     // Everyone in the conversation (and the sender's other tabs) sees it now
-    this.gateway.emitTo(others, 'message:new', { threadId, message: { ...message, isOwn: false } });
-    this.gateway.emitTo([sender.id], 'message:new', { threadId, message: { ...message, isOwn: true } });
+    this.gateway.emitTo(others, 'message:new', { threadId, message: { ...theirs, isOwn: false } });
+    this.gateway.emitTo([sender.id], 'message:new', { threadId, message: mine });
+    // Tagged people hear about it even if they muted the group
+    const tagged = mentionsAll ? others : mentions;
+    if (tagged.length) {
+      const where = thread.name ?? (thread.cohortId ? (await this.prisma.cohort.findUnique({ where: { id: thread.cohortId }, select: { name: true } }))?.name : null) ?? 'a group';
+      const people = await this.prisma.userProfile.findMany({ where: { id: { in: tagged } }, select: { id: true, role: true } });
+      const home: Record<string, string> = { TEACHER: '/teacher', ADMIN: '/admin', COUNTRY_REP: '/country-rep', SUBJECT_REVIEWER: '/reviewer' };
+      for (const p of people) this.notifications.notify(p.id, { type: 'message', title: `${senderName} mentioned ${mentionsAll ? 'everyone' : 'you'} in ${where}`, body: (text || 'an attachment').slice(0, 140), href: `${home[p.role] ?? '/student'}/messages?thread=${threadId}&message=${created.id}` });
+    }
 
     this.alertOffline(thread, others, sender, senderName, text || attachmentPreview({ attachmentType: att?.type, attachmentName: att?.name, attachmentDuration: voice?.duration }), created.createdAt, !text && !!voice)
       .catch(err => this.logger.warn(`Message alerts failed: ${err.message}`));
-    return { ...message, isOwn: true };
+    return mine;
   }
 
   /** In-app notification and email, once per conversation until it's read, and email only if they aren't online */

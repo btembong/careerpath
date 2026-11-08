@@ -11,7 +11,9 @@ import { notify } from '@/lib/notify';
 import { SOCKET_ORIGIN, shrinkPhoto, fileSize } from '@/lib/images';
 import api from '@/lib/api';
 import { useVoiceRecorder, MicButton, VoiceBar, VoicePlayer, VoiceClip } from './Voice';
+import { EmojiPicker } from './EmojiPicker';
 import { GroupInfoPanel, NewGroupDialog, GroupAvatar, GroupInfo } from './GroupPanel';
+import { MentionText, ReplyQuote, ReactionChips, MessageMenu, MessageInfoDialog, RecordDialog, ChatSearch, StarredList, MentionSuggest, quoteText, EDIT_MINS, DELETE_MINS, ReplyRef, Reaction, MenuActions } from './ChatExtras';
 
 type Role = 'student' | 'teacher' | 'admin' | 'rep' | 'reviewer';
 interface Person { id: string; name: string; avatarUrl: string | null; role: string; context: string; online?: boolean; lastSeen?: string | null }
@@ -26,6 +28,9 @@ interface Message {
   id: string; body: string; senderId: string; senderName: string; senderRole: string; createdAt: string; isOwn: boolean; readAt: string | null;
   /** TEXT, or SYSTEM for notes like "Kofi added Ama" */
   kind?: string;
+  replyTo?: ReplyRef | null; mentions?: string[]; mentionsAll?: boolean; editedAt?: string | null;
+  /** Deleted for everyone: shown as deleted (the content is kept for the record) */
+  deleted?: boolean; reactions?: Reaction[]; starred?: boolean; senderAvatarUrl?: string | null;
   attachmentUrl: string | null; attachmentName: string | null; attachmentType: string | null; attachmentSize: number | null;
   /** Voice notes: seconds, and the waveform's bar heights */
   attachmentDuration?: number | null; attachmentWave?: string | null;
@@ -108,7 +113,7 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
   const [msgLoading, setMsgLoading] = useState(false);
   const [draft, setDraft] = useState('');
   const [file, setFile] = useState<{ file: File; preview: string | null } | null>(null);
-  const [filter, setFilter] = useState<'all' | 'unread' | 'groups'>('all');
+  const [filter, setFilter] = useState<'all' | 'unread' | 'groups' | 'starred'>('all');
   const [q, setQ] = useState('');
   const [picking, setPicking] = useState(false);
   const [viewer, setViewer] = useState<Message | null>(null);
@@ -119,6 +124,18 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
   const [infoOpen, setInfoOpen] = useState(false);
   const [group, setGroup] = useState<GroupInfo | null>(null);
   const [newGroup, setNewGroup] = useState(false);
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [editing, setEditing] = useState<Message | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [infoFor, setInfoFor] = useState<string | null>(null);
+  const [recordFor, setRecordFor] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const [pendingJump, setPendingJump] = useState<string | null>(null);
+  const [caret, setCaret] = useState(0);
+  const [tagged, setTagged] = useState<{ id: string; name: string }[]>([]);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [card, setCard] = useState<{ id: string; name: string; avatarUrl: string | null; role: string } | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const activeRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -147,7 +164,7 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
     const to = params.get('to'), thread = params.get('thread');
     loadThreads().then(list => {
       if (to) openWith(to);
-      else if (thread && list.some(t => t.id === thread)) setActiveId(thread);
+      else if (thread && list.some(t => t.id === thread)) { setActiveId(thread); const m = params.get('message'); if (m) setPendingJump(m); }
       else if (window.innerWidth >= 1024 && list[0]) setActiveId(list[0].id);
     }).catch(() => { setThreads([]); notify.error('Could not load your messages'); });
     if (role === 'teacher') api.get('/portals/teacher/my-students').then(r => setStudents(r.data.students ?? [])).catch(() => setStudents([]));
@@ -170,6 +187,10 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
     socket.on('thread:read', ({ threadId }: { threadId: string }) => {
       if (threadId === activeRef.current) setMessages(prev => prev.map(m => m.isOwn && !m.readAt && !m.pending ? { ...m, readAt: new Date().toISOString() } : m));
       setThreads(prev => prev?.map(t => t.id === threadId && t.lastMessage?.isOwn ? { ...t, lastMessage: { ...t.lastMessage, readAt: new Date().toISOString() } } : t) ?? prev);
+    });
+    socket.on('message:updated', ({ threadId, message }: { threadId: string; message: Message }) => {
+      if (threadId === activeRef.current) setMessages(prev => prev.map(m => m.id === message.id ? { ...message, localPreview: m.localPreview } : m));
+      loadThreads().catch(() => {});
     });
     socket.on('thread:updated', ({ threadId, removed }: { threadId: string; removed?: boolean }) => {
       if (threadId === activeRef.current) {
@@ -216,7 +237,7 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
   }
 
   useEffect(() => {
-    setMessages([]); setFile(null); setDraft(''); setInfoOpen(false); setGroup(null);
+    setMessages([]); setFile(null); setDraft(''); setInfoOpen(false); setGroup(null); setReplyTo(null); setEditing(null); setSearching(false); setTagged([]); setMenuFor(null);
     if (activeId) loadMessages(activeId);
   }, [activeId, loadMessages]);
   const activeKind = threads?.find(t => t.id === activeId)?.kind;
@@ -224,6 +245,18 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
     if (activeId && activeKind === 'group') api.get(`/messages/threads/${activeId}/info`).then(r => setGroup(r.data)).catch(() => setGroup(null));
   }, [activeId, activeKind]);
   useEffect(() => { loadGroup(); }, [loadGroup]);
+
+  const jumpTo = useCallback(async (id: string) => {
+    setAtBottom(false);
+    const show = () => { const el = document.getElementById(`msg-${id}`); if (!el) return false; el.scrollIntoView({ block: 'center', behavior: 'smooth' }); setHighlight(id); setTimeout(() => setHighlight(h => (h === id ? null : h)), 2200); return true; };
+    if (show() || !activeRef.current) return;
+    try {
+      const r = await api.get(`/messages/threads/${activeRef.current}`, { params: { around: id } });
+      setMessages((r.data as Message[]).reverse()); setHasMore(true);
+      requestAnimationFrame(() => requestAnimationFrame(() => show()));
+    } catch { notify.error('Could not find that message'); }
+  }, []);
+  useEffect(() => { if (pendingJump && !msgLoading && messages.length) { const id = pendingJump; setPendingJump(null); jumpTo(id); } }, [pendingJump, msgLoading, messages.length, jumpTo]);
 
   // Stay at the bottom as messages arrive, unless reading older ones
   useEffect(() => {
@@ -254,7 +287,19 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
 
   async function send() {
     const body = draft.trim();
+    if (editing) {
+      const target = editing;
+      if (!body) return;
+      setEditing(null); setDraft('');
+      try { await api.patch(`/messages/items/${target.id}`, { body }); setMessages(prev => prev.map(m => m.id === target.id ? { ...m, body, editedAt: new Date().toISOString() } : m)); }
+      catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not edit'); setDraft(body); setEditing(target); }
+      return;
+    }
     if ((!body && !file) || !activeId) return;
+    const reply = replyTo;
+    const tags = tagged.filter(t => body.includes(`@${t.name}`)).map(t => t.id);
+    const everyone = isGroup && !!group?.me.admin && /(^|\s)@everyone\b/.test(body);
+    setReplyTo(null); setTagged([]);
     const threadId = activeId;
     const tempId = `tmp-${Date.now()}`;
     const picked = file;
@@ -262,6 +307,7 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
       id: tempId, body, senderId: 'me', senderName: 'You', senderRole: '', createdAt: new Date().toISOString(), isOwn: true, readAt: null,
       attachmentUrl: null, attachmentName: picked?.file.name ?? null, attachmentType: picked?.file.type ?? null, attachmentSize: picked?.file.size ?? null,
       pending: 'sending', localPreview: picked?.preview ?? undefined,
+      replyTo: reply ? { id: reply.id, senderName: reply.isOwn ? 'You' : reply.senderName, body: reply.body, deleted: false, attachmentType: reply.attachmentType, attachmentName: reply.attachmentName, attachmentDuration: reply.attachmentDuration ?? null } : null,
     };
     setMessages(prev => [...prev, optimistic]); setDraft(''); setFile(null); setAtBottom(true);
     try {
@@ -273,7 +319,7 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
         const up = await api.post('/files/upload?folder=messages', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
         attachment = { key: up.data.key, name: ready.name, type: ready.type, size: ready.size };
       }
-      const r = await api.post(`/messages/threads/${threadId}`, { body, attachment });
+      const r = await api.post(`/messages/threads/${threadId}`, { body, attachment, replyToId: reply?.id ?? null, mentions: tags, mentionAll: everyone });
       setMessages(prev => {
         const without = prev.filter(m => m.id !== r.data.id);
         return without.map(m => m.id === tempId ? { ...r.data, localPreview: picked?.preview ?? undefined } : m);
@@ -322,6 +368,47 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
   const facts = role === 'teacher' && active && !isGroup ? students?.find(s => s.id === active.other.id) ?? null : null;
   const typingNow = activeId ? typing[activeId] : undefined;
 
+  const minsOld = (m: Message) => (Date.now() - +new Date(m.createdAt)) / 60_000;
+  function actionsFor(m: Message): MenuActions {
+    const live = !m.pending && !m.deleted && m.kind !== 'SYSTEM';
+    const groupAdmin = isGroup && !!group?.me.admin;
+    return {
+      reply: live ? () => { setEditing(null); setReplyTo(m); inputRef.current?.focus(); } : undefined,
+      react: live ? e => react(m, e) : undefined,
+      star: live ? () => api.post(`/messages/items/${m.id}/star`, { starred: !m.starred }).then(() => { setMessages(prev => prev.map(x => x.id === m.id ? { ...x, starred: !m.starred } : x)); notify.success(m.starred ? 'Unstarred' : 'Starred'); }).catch(() => notify.error('Could not star it')) : undefined,
+      starred: m.starred,
+      copy: live && m.body ? () => navigator.clipboard?.writeText(m.body).then(() => notify.success('Copied')).catch(() => {}) : undefined,
+      edit: live && m.isOwn && !!m.body && minsOld(m) < EDIT_MINS ? () => { setReplyTo(null); setEditing(m); setDraft(m.body); inputRef.current?.focus(); } : undefined,
+      pin: live && groupAdmin ? () => api.patch(`/messages/threads/${activeId}/info`, { pinnedMessageId: m.id }).then(r => { setGroup(r.data); notify.success('Pinned'); }).catch(e => notify.error(e?.response?.data?.message ?? 'Could not pin')) : undefined,
+      info: !m.pending && m.isOwn && m.kind !== 'SYSTEM' ? () => setInfoFor(m.id) : undefined,
+      record: role === 'admin' && !m.pending && (m.deleted || !!m.editedAt) ? () => setRecordFor(m.id) : undefined,
+      remove: live && ((m.isOwn && minsOld(m) < DELETE_MINS) || groupAdmin) ? () => {
+        if (!window.confirm('Delete this message for everyone? It will show as deleted. A record is kept.')) return;
+        api.delete(`/messages/items/${m.id}`).then(() => setMessages(prev => prev.map(x => x.id === m.id ? { ...x, deleted: true, body: '', attachmentType: null, attachmentUrl: null, attachmentName: null, reactions: [] } : x))).catch(e => notify.error(e?.response?.data?.message ?? 'Could not delete'));
+      } : undefined,
+    };
+  }
+  async function react(m: Message, emoji: string) {
+    try { await api.post(`/messages/items/${m.id}/react`, { emoji }); } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not react'); }
+  }
+  // Tagging: what follows the last @ before the cursor (names can have spaces: "@Ama K" narrows to Ama Kusi)
+  const TAG_AT = /(?:^|\s)@([^@\n]{0,30})$/;
+  const tagQuery = isGroup && group && !editing ? TAG_AT.exec(draft.slice(0, caret))?.[1] : undefined;
+  const tq = (tagQuery ?? '').toLowerCase();
+  const nameMatches = (name: string) => name.toLowerCase().startsWith(tq) || (!tq.includes(' ') && name.toLowerCase().split(/\s+/).some(w => w.startsWith(tq)));
+  const tagItems = tagQuery === undefined || !group || tagQuery.endsWith('  ') ? [] : [
+    ...(group.me.admin && 'everyone'.startsWith(tq) ? [{ id: 'everyone', name: 'everyone', sub: `Tags all ${group.members.length} members` }] : []),
+    ...group.members.filter(p => !p.isMe && nameMatches(p.name)).map(p => ({ id: p.id, name: p.name, sub: p.groupRole === 'ADMIN' ? 'Group admin' : p.role === 'TEACHER' ? 'Teacher' : 'Member' })),
+  ];
+  function pickTag(i: { id: string; name: string }) {
+    const before = draft.slice(0, caret).replace(/@([^@\n]{0,30})$/, `@${i.name} `);
+    const next = before + draft.slice(caret);
+    setDraft(next); setCaret(before.length);
+    if (i.id !== 'everyone') setTagged(t => t.some(x => x.id === i.id) ? t : [...t, i]);
+    requestAnimationFrame(() => { const el = inputRef.current; if (el) { el.focus(); el.setSelectionRange(before.length, before.length); } });
+  }
+  const memberNames = group?.members.map(p => p.name) ?? [];
+
   const status = !active ? '' : typingNow ? `${isGroup ? `${typingNow.name} is ` : ''}typing…` : isGroup ? active.other.context : active.other.online ? 'online' : lastSeen(active.other.lastSeen) || active.other.context;
 
   // Day chips, and runs of messages from the same person (tail on the first only)
@@ -339,8 +426,8 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
     <div className="flex h-full min-h-0 flex-col">
       <Topbar title="Messages" subtitle={SUB[role]} backHref={role === 'admin' ? backHref : undefined}
         actions={<div className="flex gap-2">
-          {(role === 'teacher' || role === 'admin') && <Button size="sm" variant="secondary" onClick={() => setNewGroup(true)}>New group</Button>}
-          <Button size="sm" onClick={() => setPicking(true)}>New message</Button>
+          {(role === 'teacher' || role === 'admin') && <Button size="sm" variant="secondary" onClick={() => setNewGroup(true)} aria-label="New group"><span className="sm:hidden">Group</span><span className="max-sm:hidden">New group</span></Button>}
+          <Button size="sm" onClick={() => setPicking(true)} aria-label="New message"><span className="sm:hidden">New</span><span className="max-sm:hidden">New message</span></Button>
         </div>} />
       <div className="flex h-[calc(100vh-64px)] min-h-[520px] flex-1 items-stretch overflow-hidden">
         {/* ── Chat list ── */}
@@ -349,14 +436,14 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search or start a new chat" aria-label="Search chats"
               className="h-9 rounded-full border border-line bg-subtle px-4 text-[13px] text-navy outline-none focus:border-azure focus:bg-white" />
             <div className="flex gap-1.5 text-[12.5px]">
-              {([['all', 'All'], ['unread', `Unread${unreadTotal ? ` ${unreadTotal}` : ''}`], ['groups', 'Groups']] as const).map(([k, l]) => (
+              {([['all', 'All'], ['unread', `Unread${unreadTotal ? ` ${unreadTotal}` : ''}`], ['groups', 'Groups'], ['starred', 'Starred']] as const).map(([k, l]) => (
                 <button key={k} onClick={() => setFilter(k)} aria-pressed={filter === k}
                   className={clsx('rounded-full px-3 py-1 font-medium', filter === k ? 'bg-accent-soft font-semibold text-navy' : 'bg-subtle text-ink2 hover:text-navy')}>{l}</button>
               ))}
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {!threads ? <div className="m-3 h-40 rounded-md bg-subtle animate-pulse" /> : !shown.length ? (
+            {filter === 'starred' ? <StarredList onOpen={st => { setFilter('all'); if (st.threadId === activeId) jumpTo(st.id); else { setActiveId(st.threadId); setPendingJump(st.id); } }} /> : !threads ? <div className="m-3 h-40 rounded-md bg-subtle animate-pulse" /> : !shown.length ? (
               <div className="px-4 py-10 text-center text-[13px] text-ink2">
                 {threads.length ? 'No chats match.' : <>No messages yet. <button onClick={() => setPicking(true)} className="font-semibold text-azure-strong">Start one</button></>}
               </div>
@@ -418,12 +505,16 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
                 <p className={clsx('truncate text-[12.5px]', typingNow || active.other.online ? 'text-azure-strong' : 'text-muted')}>{status}</p>
               </div>
               </>}
+              <button onClick={() => setSearching(v => !v)} aria-label="Search in this chat" aria-pressed={searching} className={clsx('grid h-9 w-9 shrink-0 place-items-center rounded-md', searching ? 'bg-accent-soft text-azure-strong' : 'text-ink2 hover:bg-subtle')}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" /></svg>
+              </button>
               {role === 'student' && active.other.role === 'TEACHER' && <Link href={`/student/teachers/${active.other.id}`} className="text-[13px] font-semibold text-azure-strong hover:underline">View profile</Link>}
               {role === 'teacher' && facts && <Link href="/teacher/students" className="text-[13px] font-semibold text-azure-strong hover:underline">View student</Link>}
             </header>
 
+            {searching && <ChatSearch threadId={active.id} onJump={jumpTo} onClose={() => setSearching(false)} />}
             {isGroup && group?.pinned && (
-              <button onClick={() => { const el = document.getElementById(`msg-${group.pinned!.id}`); el?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }}
+              <button onClick={() => jumpTo(group.pinned!.id)}
                 className="flex items-center gap-2.5 border-b border-line bg-white px-4 py-2 text-left text-[13px] lg:px-5">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 text-azure-strong" aria-hidden><path d="M9 3h6l-1 6 4 4H6l4-4zM12 13v8" /></svg>
                 <span className="min-w-0 flex-1 truncate text-ink2"><strong className="text-navy">Pinned</strong> · {group.pinned.text}</span>
@@ -437,7 +528,10 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
                 <p key={`d${i}`} className="sticky top-0 z-10 mx-auto my-2.5 w-fit rounded-md bg-white/95 px-2.5 py-1 text-[11.5px] font-medium text-ink2 shadow-sm">{r.label}</p>
               ) : (
                 <Bubble key={r.m.id} m={r.m} first={r.first} last={r.last} group={isGroup} onOpen={() => setViewer(r.m)}
-                  onRetry={() => { setMessages(prev => prev.filter(x => x.id !== r.m.id)); setDraft(r.m.body); inputRef.current?.focus(); }} />
+                  onRetry={() => { setMessages(prev => prev.filter(x => x.id !== r.m.id)); setDraft(r.m.body); inputRef.current?.focus(); }}
+                  names={memberNames} actions={actionsFor(r.m)} menuOpen={menuFor === r.m.id} onMenu={open => setMenuFor(open ? r.m.id : null)}
+                  onReact={e => react(r.m, e)} onJump={jumpTo} highlight={highlight === r.m.id}
+                  onPerson={() => setCard({ id: r.m.senderId, name: r.m.senderName, avatarUrl: r.m.senderAvatarUrl ?? null, role: r.m.senderRole })} />
               ))}
               {typingNow && (
                 <div className="mt-1 flex w-fit items-center gap-2 rounded-lg rounded-tl-none bg-white px-3 py-2.5 shadow-sm">
@@ -464,15 +558,39 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
                 <button onClick={() => setFile(null)} className="text-muted hover:text-navy" aria-label="Remove file">{Icon.close}</button>
               </div>
             )}
-            <form onSubmit={e => { e.preventDefault(); send(); }} className="flex items-end gap-2 border-t border-line bg-subtle px-3 py-2.5 lg:px-4">
+            {(replyTo || editing) && (
+              <div className="flex items-center gap-3 border-t border-line bg-white px-4 py-2">
+                <div className="min-w-0 flex-1 border-l-[3px] border-azure-strong pl-2.5 text-[12.5px]">
+                  <p className="font-bold text-azure-strong">{editing ? 'Editing your message' : `Replying to ${replyTo!.isOwn ? 'yourself' : replyTo!.senderName}`}</p>
+                  <p className="truncate text-ink2">{quoteText({ body: (editing ?? replyTo)!.body, deleted: false, attachmentType: (editing ?? replyTo)!.attachmentType, attachmentName: (editing ?? replyTo)!.attachmentName, attachmentDuration: (editing ?? replyTo)!.attachmentDuration ?? null })}</p>
+                </div>
+                <button onClick={() => { if (editing) setDraft(''); setReplyTo(null); setEditing(null); }} className="text-muted hover:text-navy" aria-label={editing ? 'Stop editing' : 'Cancel reply'}>{Icon.close}</button>
+              </div>
+            )}
+            <form onSubmit={e => { e.preventDefault(); send(); }} className="relative flex items-end gap-2 border-t border-line bg-subtle px-3 py-2.5 lg:px-4">
+              <MentionSuggest items={tagItems} onPick={pickTag} />
+              {emojiOpen && <EmojiPicker className="absolute bottom-full left-2 mb-2" onClose={() => setEmojiOpen(false)} onPick={e => {
+                const at = inputRef.current?.selectionStart ?? draft.length;
+                const next = draft.slice(0, at) + e + draft.slice(at);
+                setDraft(next); setCaret(at + e.length);
+                requestAnimationFrame(() => { const el = inputRef.current; if (el) { el.focus(); el.setSelectionRange(at + e.length, at + e.length); } });
+              }} />}
+              <button type="button" onClick={() => setEmojiOpen(o => !o)} aria-label="Emoji" aria-expanded={emojiOpen} className={clsx('grid h-11 w-11 shrink-0 place-items-center rounded-full hover:bg-white', emojiOpen ? 'text-azure-strong' : 'text-ink2 hover:text-navy')}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8.5 14.5s1.2 2 3.5 2 3.5-2 3.5-2M9 9.5h.01M15 9.5h.01" /></svg>
+              </button>
               <input ref={fileRef} type="file" accept={ACCEPT} className="hidden" onChange={e => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
               <button type="button" onClick={() => fileRef.current?.click()} className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink2 hover:bg-white hover:text-navy" aria-label="Attach a photo or file">{Icon.clip}</button>
-              <textarea ref={inputRef} value={draft} onChange={e => onType(e.target.value)} rows={1} maxLength={4000} aria-label="Message"
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+              <textarea ref={inputRef} value={draft} onChange={e => { onType(e.target.value); setCaret(e.target.selectionStart ?? e.target.value.length); }} rows={1} maxLength={4000} aria-label="Message"
+                onSelect={e => setCaret(e.currentTarget.selectionStart ?? 0)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey && tagItems.length) { e.preventDefault(); pickTag(tagItems[0]); return; }
+                  if (e.key === 'Escape' && (replyTo || editing)) { if (editing) setDraft(''); setReplyTo(null); setEditing(null); return; }
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+                }}
                 onPaste={e => { const f = [...e.clipboardData.files][0]; if (f) { e.preventDefault(); pickFile(f); } }}
                 placeholder={file ? 'Add a caption' : 'Type a message'}
                 className="max-h-36 min-h-[44px] flex-1 resize-none rounded-[22px] border border-line bg-white px-4 py-[11px] text-[14px] leading-5 text-navy outline-none focus:border-azure" />
-              {!draft.trim() && !file && voice.supported ? <MicButton voice={voice} />
+              {!draft.trim() && !file && !editing && voice.supported ? <MicButton voice={voice} />
                 : <button type="submit" disabled={!draft.trim() && !file} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-azure-strong text-on-accent disabled:opacity-40" aria-label="Send">{Icon.send}</button>}
             </form>
             </>}
@@ -502,30 +620,79 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
       {newGroup && <NewGroupDialog role={role} onClose={() => setNewGroup(false)} onCreated={async id => { setNewGroup(false); await loadThreads(); setActiveId(id); }} />}
       {picking && <NewChatDialog onClose={() => setPicking(false)} onPick={id => { setPicking(false); openWith(id); }} />}
       {viewer && <PhotoViewer m={viewer} onClose={() => setViewer(null)} />}
-      <style>{`.chat-wallpaper{background-color:var(--color-subtle,#F4F6FB);background-image:radial-gradient(rgba(63,111,232,.07) 1px,transparent 1px);background-size:18px 18px}`}</style>
+      {infoFor && <MessageInfoDialog id={infoFor} onClose={() => setInfoFor(null)} />}
+      {card && <ContactCard person={card} groupRole={group?.members.find(p => p.id === card.id)?.groupRole} onClose={() => setCard(null)} onMessage={() => { setCard(null); openWith(card.id); }} />}
+      {recordFor && <RecordDialog id={recordFor} onClose={() => setRecordFor(null)} />}
+      {/* WhatsApp-style doodles behind the messages: faint study icons, drawn to suit light and dark mode */}
+      <style>{`.chat-wallpaper{background-color:var(--color-subtle,#F4F6FB);background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22300%22%20height%3D%22300%22%20viewBox%3D%220%200%20300%20300%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23072061%22%20stroke-opacity%3D%220.09%22%20stroke-width%3D%221.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cg%20transform%3D%22translate(14%2018)%20rotate(-12%2013%2013)%20scale(1.083)%22%3E%3Cpath%20d%3D%22M3%205.5A1.5%201.5%200%200%201%204.5%204H11v15H4.5A1.5%201.5%200%200%201%203%2017.5zM21%205.5A1.5%201.5%200%200%200%2019.5%204H13v15h6.5a1.5%201.5%200%200%200%201.5-1.5zM11%204h2v15h-2%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(78%2010)%20rotate(18%2011%2011)%20scale(0.917)%22%3E%3Cpath%20d%3D%22M4%2020l1-4L16%205l3%203L8%2019zM14%207l3%203%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(140%2022)%20rotate(-6%2014%2014)%20scale(1.167)%22%3E%3Cpath%20d%3D%22M2%209l10-5%2010%205-10%205zM6%2011v5c3%202.5%209%202.5%2012%200v-5M22%209v6%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(210%2012)%20rotate(14%2012%2012)%20scale(1.000)%22%3E%3Cpath%20d%3D%22M9%2018h6M10%2021h4M12%203a6%206%200%200%200-3.5%2010.9c.6.5%201%201.2%201%202.1h5c0-.9.4-1.6%201-2.1A6%206%200%200%200%2012%203z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(30%2082)%20rotate(8%2013%2013)%20scale(1.083)%22%3E%3Cpath%20d%3D%22M12%2012m-1.5%200a1.5%201.5%200%201%200%203%200a1.5%201.5%200%201%200-3%200M12%203c4%200%204%2018%200%2018S8%203%2012%203zM4.2%207.5c2-3.5%2017.6%205.5%2015.6%209s-17.6-5.5-15.6-9zM4.2%2016.5c-2-3.5%2013.6-12.5%2015.6-9s-13.6%2012.5-15.6%209z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(104%2070)%20rotate(-10%2012%2012)%20scale(1.000)%22%3E%3Cpath%20d%3D%22M6%203h12v18H6zM8.5%206h7v3h-7zM9%2012h.01M12%2012h.01M15%2012h.01M9%2015h.01M12%2015h.01M15%2015h.01M9%2018h.01M12%2018h3%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(168%2084)%20rotate(6%2012%2012)%20scale(1.000)%22%3E%3Cpath%20d%3D%22M4%205h16v11H9l-5%204z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(232%2076)%20rotate(-14%2013%2013)%20scale(1.083)%22%3E%3Cpath%20d%3D%22M12%2021a9%209%200%201%200%200-18%209%209%200%200%200%200%2018zM3%2012h18M12%203c3%203%203%2015%200%2018M12%203c-3%203-3%2015%200%2018%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(8%20146)%20rotate(20%2010%2010)%20scale(0.833)%22%3E%3Cpath%20d%3D%22M12%203l2.8%205.7%206.2.9-4.5%204.4%201%206.2L12%2017.3%206.5%2020.2l1-6.2L3%209.6l6.2-.9z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(64%20134)%20rotate(-8%2010%2010)%20scale(0.833)%22%3E%3Cpath%20d%3D%22M12%2020s-7-4.4-7-10a4%204%200%200%201%207-2.6A4%204%200%200%201%2019%2010c0%205.6-7%2010-7%2010z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(124%20138)%20rotate(30%2013%2013)%20scale(1.083)%22%3E%3Cpath%20d%3D%22M3%2017L17%203l4%204L7%2021zM7%2013l2%202M10%2010l2%202M13%207l2%202%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(190%20144)%20rotate(-6%2012%2012)%20scale(1.000)%22%3E%3Cpath%20d%3D%22M9%203h6M10%203v6l-5%209a2%202%200%200%200%201.8%203h10.4a2%202%200%200%200%201.8-3l-5-9V3M7.5%2015h9%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(250%20140)%20rotate(10%2011%2011)%20scale(0.917)%22%3E%3Cpath%20d%3D%22M9%2018V5l11-2v13M9%2018a3%203%200%201%201-6%200%203%203%200%200%201%206%200zM20%2016a3%203%200%201%201-6%200%203%203%200%200%201%206%200z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(30%20206)%20rotate(-4%2012%2012)%20scale(1.000)%22%3E%3Cpath%20d%3D%22M4%208h13v6a5%205%200%200%201-5%205H9a5%205%200%200%201-5-5zM17%2010h1.5a2.5%202.5%200%200%201%200%205H17M8%202v3M12%202v3%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(96%20196)%20rotate(12%2012%2012)%20scale(1.000)%22%3E%3Cpath%20d%3D%22M8%203l4%206%204-6M12%2021a6%206%200%201%200%200-12%206%206%200%200%200%200%2012zM12%2013v4M10%2015h4%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(160%20206)%20rotate(-8%2013%2013)%20scale(1.083)%22%3E%3Cpath%20d%3D%22M5%205h14v10H5zM2%2019h20%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(226%20204)%20rotate(6%2011%2011)%20scale(0.917)%22%3E%3Cpath%20d%3D%22M4%207h16M8%207v11M15%207v9a2%202%200%200%200%203%201.7%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(60%20250)%20rotate(0%207%207)%20scale(0.583)%22%3E%3Cpath%20d%3D%22M12%206v12M6%2012h12%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(196%20254)%20rotate(0%209%209)%20scale(0.750)%22%3E%3Cpath%20d%3D%22M6%2012h.01M12%2012h.01M18%2012h.01%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(270%2030)%20rotate(-20%207%207)%20scale(0.583)%22%3E%3Cpath%20d%3D%22M12%203l2.8%205.7%206.2.9-4.5%204.4%201%206.2L12%2017.3%206.5%2020.2l1-6.2L3%209.6l6.2-.9z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(280%20260)%20rotate(14%207%207)%20scale(0.583)%22%3E%3Cpath%20d%3D%22M12%2020s-7-4.4-7-10a4%204%200%200%201%207-2.6A4%204%200%200%201%2019%2010c0%205.6-7%2010-7%2010z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(120%20250)%20rotate(45%206%206)%20scale(0.500)%22%3E%3Cpath%20d%3D%22M12%206v12M6%2012h12%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(262%20196)%20rotate(22%209%209)%20scale(0.750)%22%3E%3Cpath%20d%3D%22M3%205.5A1.5%201.5%200%200%201%204.5%204H11v15H4.5A1.5%201.5%200%200%201%203%2017.5zM21%205.5A1.5%201.5%200%200%200%2019.5%204H13v15h6.5a1.5%201.5%200%200%200%201.5-1.5zM11%204h2v15h-2%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(0%20252)%20rotate(-10%2010%2010)%20scale(0.833)%22%3E%3Cpath%20d%3D%22M12%2021a9%209%200%201%200%200-18%209%209%200%200%200%200%2018zM12%207v5l3%202%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E");background-size:300px 300px}.dark .chat-wallpaper{background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22300%22%20height%3D%22300%22%20viewBox%3D%220%200%20300%20300%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23EAF0FF%22%20stroke-opacity%3D%220.07%22%20stroke-width%3D%221.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cg%20transform%3D%22translate(14%2018)%20rotate(-12%2013%2013)%20scale(1.083)%22%3E%3Cpath%20d%3D%22M3%205.5A1.5%201.5%200%200%201%204.5%204H11v15H4.5A1.5%201.5%200%200%201%203%2017.5zM21%205.5A1.5%201.5%200%200%200%2019.5%204H13v15h6.5a1.5%201.5%200%200%200%201.5-1.5zM11%204h2v15h-2%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(78%2010)%20rotate(18%2011%2011)%20scale(0.917)%22%3E%3Cpath%20d%3D%22M4%2020l1-4L16%205l3%203L8%2019zM14%207l3%203%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(140%2022)%20rotate(-6%2014%2014)%20scale(1.167)%22%3E%3Cpath%20d%3D%22M2%209l10-5%2010%205-10%205zM6%2011v5c3%202.5%209%202.5%2012%200v-5M22%209v6%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(210%2012)%20rotate(14%2012%2012)%20scale(1.000)%22%3E%3Cpath%20d%3D%22M9%2018h6M10%2021h4M12%203a6%206%200%200%200-3.5%2010.9c.6.5%201%201.2%201%202.1h5c0-.9.4-1.6%201-2.1A6%206%200%200%200%2012%203z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(30%2082)%20rotate(8%2013%2013)%20scale(1.083)%22%3E%3Cpath%20d%3D%22M12%2012m-1.5%200a1.5%201.5%200%201%200%203%200a1.5%201.5%200%201%200-3%200M12%203c4%200%204%2018%200%2018S8%203%2012%203zM4.2%207.5c2-3.5%2017.6%205.5%2015.6%209s-17.6-5.5-15.6-9zM4.2%2016.5c-2-3.5%2013.6-12.5%2015.6-9s-13.6%2012.5-15.6%209z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(104%2070)%20rotate(-10%2012%2012)%20scale(1.000)%22%3E%3Cpath%20d%3D%22M6%203h12v18H6zM8.5%206h7v3h-7zM9%2012h.01M12%2012h.01M15%2012h.01M9%2015h.01M12%2015h.01M15%2015h.01M9%2018h.01M12%2018h3%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(168%2084)%20rotate(6%2012%2012)%20scale(1.000)%22%3E%3Cpath%20d%3D%22M4%205h16v11H9l-5%204z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(232%2076)%20rotate(-14%2013%2013)%20scale(1.083)%22%3E%3Cpath%20d%3D%22M12%2021a9%209%200%201%200%200-18%209%209%200%200%200%200%2018zM3%2012h18M12%203c3%203%203%2015%200%2018M12%203c-3%203-3%2015%200%2018%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(8%20146)%20rotate(20%2010%2010)%20scale(0.833)%22%3E%3Cpath%20d%3D%22M12%203l2.8%205.7%206.2.9-4.5%204.4%201%206.2L12%2017.3%206.5%2020.2l1-6.2L3%209.6l6.2-.9z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(64%20134)%20rotate(-8%2010%2010)%20scale(0.833)%22%3E%3Cpath%20d%3D%22M12%2020s-7-4.4-7-10a4%204%200%200%201%207-2.6A4%204%200%200%201%2019%2010c0%205.6-7%2010-7%2010z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(124%20138)%20rotate(30%2013%2013)%20scale(1.083)%22%3E%3Cpath%20d%3D%22M3%2017L17%203l4%204L7%2021zM7%2013l2%202M10%2010l2%202M13%207l2%202%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(190%20144)%20rotate(-6%2012%2012)%20scale(1.000)%22%3E%3Cpath%20d%3D%22M9%203h6M10%203v6l-5%209a2%202%200%200%200%201.8%203h10.4a2%202%200%200%200%201.8-3l-5-9V3M7.5%2015h9%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(250%20140)%20rotate(10%2011%2011)%20scale(0.917)%22%3E%3Cpath%20d%3D%22M9%2018V5l11-2v13M9%2018a3%203%200%201%201-6%200%203%203%200%200%201%206%200zM20%2016a3%203%200%201%201-6%200%203%203%200%200%201%206%200z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(30%20206)%20rotate(-4%2012%2012)%20scale(1.000)%22%3E%3Cpath%20d%3D%22M4%208h13v6a5%205%200%200%201-5%205H9a5%205%200%200%201-5-5zM17%2010h1.5a2.5%202.5%200%200%201%200%205H17M8%202v3M12%202v3%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(96%20196)%20rotate(12%2012%2012)%20scale(1.000)%22%3E%3Cpath%20d%3D%22M8%203l4%206%204-6M12%2021a6%206%200%201%200%200-12%206%206%200%200%200%200%2012zM12%2013v4M10%2015h4%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(160%20206)%20rotate(-8%2013%2013)%20scale(1.083)%22%3E%3Cpath%20d%3D%22M5%205h14v10H5zM2%2019h20%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(226%20204)%20rotate(6%2011%2011)%20scale(0.917)%22%3E%3Cpath%20d%3D%22M4%207h16M8%207v11M15%207v9a2%202%200%200%200%203%201.7%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(60%20250)%20rotate(0%207%207)%20scale(0.583)%22%3E%3Cpath%20d%3D%22M12%206v12M6%2012h12%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(196%20254)%20rotate(0%209%209)%20scale(0.750)%22%3E%3Cpath%20d%3D%22M6%2012h.01M12%2012h.01M18%2012h.01%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(270%2030)%20rotate(-20%207%207)%20scale(0.583)%22%3E%3Cpath%20d%3D%22M12%203l2.8%205.7%206.2.9-4.5%204.4%201%206.2L12%2017.3%206.5%2020.2l1-6.2L3%209.6l6.2-.9z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(280%20260)%20rotate(14%207%207)%20scale(0.583)%22%3E%3Cpath%20d%3D%22M12%2020s-7-4.4-7-10a4%204%200%200%201%207-2.6A4%204%200%200%201%2019%2010c0%205.6-7%2010-7%2010z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(120%20250)%20rotate(45%206%206)%20scale(0.500)%22%3E%3Cpath%20d%3D%22M12%206v12M6%2012h12%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(262%20196)%20rotate(22%209%209)%20scale(0.750)%22%3E%3Cpath%20d%3D%22M3%205.5A1.5%201.5%200%200%201%204.5%204H11v15H4.5A1.5%201.5%200%200%201%203%2017.5zM21%205.5A1.5%201.5%200%200%200%2019.5%204H13v15h6.5a1.5%201.5%200%200%200%201.5-1.5zM11%204h2v15h-2%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate(0%20252)%20rotate(-10%2010%2010)%20scale(0.833)%22%3E%3Cpath%20d%3D%22M12%2021a9%209%200%201%200%200-18%209%209%200%200%200%200%2018zM12%207v5l3%202%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E")}`}</style>
     </div>
   );
 }
 
-function Bubble({ m, first, last, group, onOpen, onRetry }: { m: Message; first: boolean; last: boolean; group: boolean; onOpen: () => void; onRetry: () => void }) {
+const ROLE_LABEL: Record<string, string> = { TEACHER: 'Teacher', STUDENT: 'Student', ADMIN: 'CareerPath', COUNTRY_REP: 'Country representative', SUBJECT_REVIEWER: 'Subject reviewer' };
+
+/** Someone in a group: photo, name, role, and a way to message them on their own */
+function ContactCard({ person, groupRole, onClose, onMessage }: { person: { id: string; name: string; avatarUrl: string | null; role: string }; groupRole?: string; onClose: () => void; onMessage: () => void }) {
+  return (
+    <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent title={person.name} description={[ROLE_LABEL[person.role] ?? person.role, groupRole === 'ADMIN' ? 'Group admin' : ''].filter(Boolean).join(' · ')}>
+        <div className="flex flex-col items-center gap-3 py-2">
+          {person.avatarUrl ? <img src={person.avatarUrl} alt="" className="h-24 w-24 rounded-full object-cover" />
+            : <span className="grid h-24 w-24 place-items-center rounded-full text-[30px] font-extrabold text-white" style={{ background: colourFor(person.id) }}>{initials(person.name)}</span>}
+          <Button onClick={onMessage}>Message {person.name.split(' ')[0]}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Bubble({ m, first, last, group, onOpen, onRetry, names, actions, menuOpen, onMenu, onReact, onJump, highlight, onPerson }: {
+  m: Message; first: boolean; last: boolean; group: boolean; onOpen: () => void; onRetry: () => void;
+  names: string[]; actions: MenuActions; menuOpen: boolean; onMenu: (open: boolean) => void; onReact: (e: string) => void; onJump: (id: string) => void; highlight: boolean; onPerson: () => void;
+}) {
   const own = m.isOwn;
+  const hasMenu = Object.entries(actions).some(([k, v]) => k !== 'starred' && !!v);
   const isImage = !!m.attachmentType?.startsWith('image/');
   const isVoice = !!m.attachmentType?.startsWith('audio/');
   const src = m.attachmentUrl ?? m.localPreview ?? null;
   if (m.kind === 'SYSTEM') return <p id={`msg-${m.id}`} className="mx-auto my-2 w-fit max-w-[85%] rounded-md bg-white/95 px-3 py-1.5 text-center text-[12.5px] text-ink2 shadow-sm">{m.body}</p>;
   const meta = (
     <span className={clsx('ml-2 inline-flex translate-y-1 items-center gap-1 whitespace-nowrap text-[10.5px]', own ? 'text-white/80' : 'text-muted')}>
-      {time(m.createdAt)}{own && <Ticks m={m} group={group} light />}
+      {m.starred && <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-label="Starred"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z" /></svg>}
+      {m.editedAt && !m.deleted && <span>edited</span>}
+      {time(m.createdAt)}{own && !m.deleted && <Ticks m={m} group={group} light />}
     </span>
   );
   return (
-    <div id={`msg-${m.id}`} className={clsx('flex', own ? 'justify-end' : 'justify-start', first ? 'mt-2' : 'mt-0.5')}>
-      <div className={clsx('relative max-w-[78%] rounded-lg px-2 pb-1.5 pt-1.5 text-[14px] leading-[1.4] shadow-sm sm:max-w-[65%]',
+    <div id={`msg-${m.id}`} className={clsx('flex gap-1.5', own ? 'justify-end' : 'justify-start', first ? 'mt-2' : 'mt-0.5')}>
+      {group && !own && (first
+        ? <button type="button" onClick={onPerson} aria-label={`${m.senderName}: contact card`} className="mt-0.5 h-8 w-8 shrink-0 self-start overflow-hidden rounded-full">
+            {m.senderAvatarUrl ? <img src={m.senderAvatarUrl} alt="" className="h-8 w-8 object-cover" /> : <span className="grid h-8 w-8 place-items-center text-[11.5px] font-extrabold text-white" style={{ background: colourFor(m.senderId) }}>{initials(m.senderName)}</span>}
+          </button>
+        : <span className="w-8 shrink-0" aria-hidden />)}
+      <div className={clsx('flex min-w-0 max-w-full flex-col', own ? 'items-end' : 'items-start')}>
+      <div onContextMenu={e => { if (hasMenu) { e.preventDefault(); onMenu(true); } }}
+        className={clsx('group relative max-w-[min(78vw,560px)] rounded-lg px-2 pb-1.5 pt-1.5 text-[14px] leading-[1.4] shadow-sm transition-shadow lg:max-w-[min(48vw,560px)]',
         own ? 'bg-azure-strong text-on-accent' : 'bg-white text-navy',
-        first && (own ? 'rounded-tr-none' : 'rounded-tl-none'))}>
+        first && (own ? 'rounded-tr-none' : 'rounded-tl-none'), highlight && 'ring-4 ring-amber-300')}>
+        {hasMenu && (
+          <button type="button" onClick={() => onMenu(!menuOpen)} aria-label="Message menu" aria-haspopup="menu" aria-expanded={menuOpen}
+            className={clsx('absolute right-1 top-1 z-10 grid h-6 w-6 place-items-center rounded-full opacity-0 focus:opacity-100 group-hover:opacity-100', own ? 'bg-azure-strong text-white' : 'bg-white text-muted', menuOpen && 'opacity-100')}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+        )}
+        {menuOpen && <MessageMenu own={own} a={actions} onClose={() => onMenu(false)} />}
         {/* Tail on the first bubble of a run */}
         {first && <span aria-hidden className={clsx('absolute top-0 h-3 w-2.5', own ? '-right-2 bg-azure-strong [clip-path:polygon(0_0,100%_0,0_100%)]' : '-left-2 bg-white [clip-path:polygon(0_0,100%_0,100%_100%)]')} />}
-        {group && !own && first && <p className="px-1 pb-0.5 text-[12.5px] font-semibold" style={{ color: colourFor(m.senderId) }}>{m.senderName}{m.senderRole === 'TEACHER' ? ' · Teacher' : ''}</p>}
+        {group && !own && first && <button type="button" onClick={onPerson} className="block px-1 pb-0.5 pr-6 text-left text-[12.5px] font-semibold hover:underline" style={{ color: colourFor(m.senderId) }}>{m.senderName}{m.senderRole === 'TEACHER' ? ' · Teacher' : ''}</button>}
+        {m.deleted ? (
+          <p className={clsx('flex flex-wrap items-center gap-x-2 px-1 italic', own ? 'text-white/85' : 'text-muted')}>
+            {own ? 'You deleted this message' : 'This message was deleted'}
+            {actions.record && <button type="button" onClick={actions.record} className="not-italic text-[12px] font-semibold underline">Show original</button>}
+            {meta}
+          </p>
+        ) : <>
+        {m.replyTo && <ReplyQuote r={m.replyTo} own={own} onJump={() => onJump(m.replyTo!.id)} />}
         {isVoice ? (
           <div className="px-1 pb-0.5 pt-0.5"><VoicePlayer src={src} duration={m.attachmentDuration ?? 0} wave={m.attachmentWave} own={own} /></div>
         ) : m.attachmentType && (isImage ? (
@@ -541,9 +708,12 @@ function Bubble({ m, first, last, group, onOpen, onRetry }: { m: Message; first:
           </a>
         ))}
         {m.body ? (
-          <p className="whitespace-pre-wrap break-words px-1">{m.body}{meta}</p>
+          <p className="whitespace-pre-wrap break-words px-1"><MentionText text={m.body} names={group ? names : []} own={own} />{meta}</p>
         ) : <p className="flex justify-end px-1">{meta}</p>}
+        </>}
         {m.pending === 'failed' && <button onClick={onRetry} className="mt-1 block px-1 text-[12px] font-semibold underline">Not sent — tap to try again</button>}
+      </div>
+      {!m.deleted && <ReactionChips list={m.reactions ?? []} own={own} onToggle={onReact} />}
       </div>
     </div>
   );

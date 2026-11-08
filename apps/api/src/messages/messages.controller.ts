@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards } f
 import { UserProfile } from '@prisma/client';
 import { MessagesService, AttachmentInput } from './messages.service';
 import { GroupsService } from './groups.service';
+import { MessageActionsService } from './message-actions.service';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -9,7 +10,35 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @Controller('messages')
 @UseGuards(JwtAuthGuard)
 export class MessagesController {
-  constructor(private svc: MessagesService, private groups: GroupsService) {}
+  constructor(private svc: MessagesService, private groups: GroupsService, private actions: MessageActionsService) {}
+
+  // ── One message: edit, delete for everyone, react, star, who read it ──
+
+  @Get('starred')
+  starred(@CurrentUser() user: UserProfile) { return this.actions.starred(user); }
+
+  @Patch('items/:messageId')
+  editMessage(@Param('messageId') id: string, @CurrentUser() user: UserProfile, @Body('body') body: string) { return this.actions.edit(user, id, body); }
+
+  /** Hides it for everyone; the content is kept for the record */
+  @Delete('items/:messageId')
+  deleteMessage(@Param('messageId') id: string, @CurrentUser() user: UserProfile) { return this.actions.remove(user, id); }
+
+  @Post('items/:messageId/react')
+  react(@Param('messageId') id: string, @CurrentUser() user: UserProfile, @Body('emoji') emoji: string) { return this.actions.react(user, id, emoji); }
+
+  @Post('items/:messageId/star')
+  star(@Param('messageId') id: string, @CurrentUser() user: UserProfile, @Body('starred') starred: boolean) { return this.actions.star(user, id, starred); }
+
+  @Get('items/:messageId/info')
+  messageInfo(@Param('messageId') id: string, @CurrentUser() user: UserProfile) { return this.actions.info(user, id); }
+
+  /** Admins: the full record of a message (deleted content, every earlier version) */
+  @Get('items/:messageId/record')
+  record(@Param('messageId') id: string, @CurrentUser() user: UserProfile) { return this.actions.record(user, id); }
+
+  @Get('threads/:threadId/search')
+  search(@Param('threadId') threadId: string, @CurrentUser() user: UserProfile, @Query('q') q: string) { return this.actions.search(user, threadId, q); }
 
   // ── Groups ───────────────────────────────────────────────
 
@@ -64,13 +93,13 @@ export class MessagesController {
   }
 
   @Get('threads/:threadId')
-  getMessages(@Param('threadId') threadId: string, @CurrentUser() user: UserProfile, @Query('cursor') cursor?: string) {
-    return this.svc.getMessages(threadId, user, cursor);
+  getMessages(@Param('threadId') threadId: string, @CurrentUser() user: UserProfile, @Query('cursor') cursor?: string, @Query('around') around?: string) {
+    return this.svc.getMessages(threadId, user, cursor, around);
   }
 
   /** Text and/or one attachment uploaded first through POST /files/upload?folder=messages */
   @Post('threads/:threadId')
-  sendMessage(@Param('threadId') threadId: string, @CurrentUser() user: UserProfile, @Body() body: { body?: string; attachment?: AttachmentInput | null }) {
+  sendMessage(@Param('threadId') threadId: string, @CurrentUser() user: UserProfile, @Body() body: { body?: string; attachment?: AttachmentInput | null; replyToId?: string | null; mentions?: string[]; mentionAll?: boolean }) {
     return this.svc.sendMessage(threadId, user, body ?? {});
   }
 
