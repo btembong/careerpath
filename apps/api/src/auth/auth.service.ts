@@ -661,13 +661,14 @@ export class AuthService {
   async sendLoginCode(email: string): Promise<{ message: string }> {
     const e = String(email ?? '').trim().toLowerCase();
     const profile = e ? await this.findByEmail(e) : null;
-    if (profile && profile.wpUserId < 0 && profile.approvalStatus === ApprovalStatus.APPROVED) {
+    // Anyone but an admin: getting into the inbox proves who they are. Admins use their password, then a code.
+    if (profile && profile.role !== UserRole.ADMIN && profile.approvalStatus === ApprovalStatus.APPROVED && !profile.deletedAt) {
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       await this.redis.set(loginCodeKey(e), code, OTP_TTL);
       await this.redis.del(loginTriesKey(e));
       await this.mail.sendOtp(e, code);
     }
-    return { message: 'If that email has a CareerPath account that signs in with a code, we’ve sent one.' };
+    return { message: 'If that email has a CareerPath account, we’ve sent a code.' };
   }
 
   async loginWithCode(email: string, code: string): Promise<SignInResult> {
@@ -683,7 +684,9 @@ export class AuthService {
     }
     await this.redis.del(loginCodeKey(e)); await this.redis.del(loginTriesKey(e));
     const profile = await this.findByEmail(e);
-    if (!profile || profile.wpUserId >= 0 || profile.approvalStatus !== ApprovalStatus.APPROVED) throw new UnauthorizedException('This account signs in with a password.');
+    if (!profile || profile.deletedAt) throw new UnauthorizedException('That code has expired. Ask for a new one.');
+    if (profile.role === UserRole.ADMIN) throw new UnauthorizedException('Admins sign in with their password, then a code.');
+    this.assertCanSignIn(profile);
     await this.prisma.userProfile.update({ where: { id: profile.id }, data: { lastActiveDate: new Date() } }).catch(() => {});
     return this.finishSignIn(profile);
   }

@@ -113,7 +113,7 @@ export class AuthController {
   @Post('login/code')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
-  @ApiOperation({ summary: 'Email me a sign-in code (school admins and other accounts without a WordPress password)' })
+  @ApiOperation({ summary: 'Email me a sign-in code (any account except admins)' })
   sendLoginCode(@Body('email') email: string) {
     return this.authService.sendLoginCode(email);
   }
