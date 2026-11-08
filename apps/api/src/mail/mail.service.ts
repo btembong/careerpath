@@ -104,8 +104,8 @@ export class MailService {
     await this.send(email, title, announcementTemplate(title, message), 'support');
   }
 
-  async sendNewMessage(email: string, fromName: string, preview: string, where: string | null, link: string): Promise<void> {
-    await this.send(email, `${fromName} sent you a message${where ? ` in ${where}` : ''}`, newMessageTemplate(fromName, preview, where, link), 'support');
+  async sendNewMessage(email: string, fromName: string, preview: string, where: string | null, link: string, isVoice = false): Promise<void> {
+    await this.send(email, `${fromName} sent you a ${isVoice ? 'voice note' : 'message'}${where ? ` in ${where}` : ''}`, newMessageTemplate(fromName, preview, where, link, isVoice), 'support');
   }
 
   async sendOrgSeatInvite(email: string, orgName: string, packageName: string, link: string, joinCode?: string | null): Promise<void> {

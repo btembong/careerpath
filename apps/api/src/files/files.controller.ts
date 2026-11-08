@@ -29,6 +29,8 @@ import { UserRole } from '@cpa/shared';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
 const ALLOWED_TYPES = /^(application\/pdf|image\/(jpeg|png|webp)|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)$/;
+/** Voice notes, recorded in the browser: only into chats */
+const VOICE_TYPES = /^audio\/(webm|ogg|mp4|mpeg|aac|x-m4a)(;.*)?$/;
 
 @ApiTags('files')
 @ApiBearerAuth()
@@ -43,8 +45,8 @@ export class FilesController {
     FileInterceptor('file', {
       storage: memoryStorage(),
       limits: { fileSize: MAX_FILE_SIZE },
-      fileFilter: (_req, file, cb) => {
-        if (ALLOWED_TYPES.test(file.mimetype)) {
+      fileFilter: (req, file, cb) => {
+        if (ALLOWED_TYPES.test(file.mimetype) || (req.query?.folder === 'messages' && VOICE_TYPES.test(file.mimetype))) {
           cb(null, true);
         } else {
           cb(new BadRequestException('Only PDF, DOCX, JPG, and PNG files are allowed'), false);

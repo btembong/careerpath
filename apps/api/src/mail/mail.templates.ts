@@ -387,14 +387,14 @@ export function announcementTemplate(title: string, message: string): string {
 // ── 5b2. New message (only when the person isn't online) ─────────────────────
 
 /** Sender name and message text are typed by users, so they're escaped. */
-export function newMessageTemplate(fromName: string, preview: string, where: string | null, link: string): string {
-  const hero = headline('New message', `from ${escapeHtml(fromName)}.`);
+export function newMessageTemplate(fromName: string, preview: string, where: string | null, link: string, isVoice = false): string {
+  const hero = isVoice ? headline(`${escapeHtml(fromName)} sent you`, 'a voice note.') : headline('New message', `from ${escapeHtml(fromName)}.`);
 
   const body = `
     <p style="margin:0 0 20px;padding:14px 16px;border-radius:8px;background:#F4F6FB;font-size:15px;color:#072061;line-height:1.6;font-family:${FONT}">
       ${escapeHtml(preview).replace(/\n/g, '<br>')}
     </p>
-    ${ctaButton('Reply on CareerPath', link)}
+    ${ctaButton(isVoice ? 'Listen on CareerPath' : 'Reply on CareerPath', link)}
     <p style="margin:16px 0 0;font-size:12px;color:#3A4A70;opacity:0.7;font-family:${FONT}">
       You get this email because you weren’t online. Turn message emails off in Settings → Notifications.
     </p>`;

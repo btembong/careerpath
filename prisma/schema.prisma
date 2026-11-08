@@ -1226,6 +1226,9 @@ model Message {
   attachmentName String?
   attachmentType String?
   attachmentSize Int?
+  /// Voice notes: length in seconds, and 40 bar heights (0-9) drawn as its waveform
+  attachmentDuration Int?
+  attachmentWave     String?
   sender         UserProfile   @relation("SentMessages", fields: [senderId], references: [id])
   thread         MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 }

@@ -10,12 +10,22 @@ import { MessagesGateway } from './messages.gateway';
 type Person = { id: string; name: string | null; firstName: string | null; lastName: string | null; email: string; avatarUrl: string | null; role: string; lastActiveDate?: Date | null };
 const nameOf = (p: Pick<Person, 'name' | 'firstName' | 'lastName' | 'email'>) => p.name || [p.firstName, p.lastName].filter(Boolean).join(' ') || p.email.split('@')[0];
 const personSelect = { id: true, name: true, firstName: true, lastName: true, email: true, avatarUrl: true, role: true, lastActiveDate: true } as const;
-const msgSelect = { id: true, body: true, senderId: true, createdAt: true, readAt: true, attachmentKey: true, attachmentName: true, attachmentType: true, attachmentSize: true } as const;
+const msgSelect = { id: true, body: true, senderId: true, createdAt: true, readAt: true, attachmentKey: true, attachmentName: true, attachmentType: true, attachmentSize: true, attachmentDuration: true, attachmentWave: true } as const;
+const VOICE_TYPES = /^audio\/(webm|ogg|mp4|mpeg|aac|x-m4a)$/;
+/** Longest voice note, in seconds (5 minutes, with a little slack for the recorder stopping) */
+const VOICE_MAX_SECS = 305;
+const clock = (secs: number) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+/** What a chat list, notification or email shows for a message with no text */
+function attachmentPreview(a: { attachmentType?: string | null; attachmentName?: string | null; attachmentDuration?: number | null }) {
+  if (a.attachmentType?.startsWith('audio/')) return `🎤 Voice note (${clock(a.attachmentDuration ?? 0)})`;
+  if (a.attachmentType?.startsWith('image/')) return '📷 Photo';
+  return `📎 ${a.attachmentName ?? 'File'}`;
+}
 const ATTACHMENT_TYPES = /^(application\/pdf|image\/(jpeg|png|webp)|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)$/;
 /** Signed links to attachments last this long; the page asks again when it reloads the conversation */
 const LINK_SECS = 60 * 60;
 
-export interface AttachmentInput { key: string; name: string; type: string; size: number }
+export interface AttachmentInput { key: string; name: string; type: string; size: number; duration?: number; wave?: string }
 
 @Injectable()
 export class MessagesService {
@@ -108,7 +118,7 @@ export class MessagesService {
         participantB: { select: personSelect },
         cohort: { select: { id: true, name: true, _count: { select: { students: true } } } },
         reads: { where: { userId: me.id }, select: { lastReadAt: true } },
-        messages: { orderBy: { createdAt: 'desc' }, take: 1, select: { body: true, createdAt: true, senderId: true, readAt: true, attachmentName: true, attachmentType: true, sender: { select: { name: true, firstName: true, lastName: true, email: true } } } },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1, select: { body: true, createdAt: true, senderId: true, readAt: true, attachmentName: true, attachmentType: true, attachmentDuration: true, sender: { select: { name: true, firstName: true, lastName: true, email: true } } } },
       },
       orderBy: { lastMessageAt: 'desc' },
     });
@@ -130,7 +140,7 @@ export class MessagesService {
       // Group chats with no messages yet still show; empty one-to-one threads only for the person who opened them
       .map(t => {
         const last = t.messages[0] ?? null;
-        const preview = last ? (last.body || (last.attachmentType?.startsWith('image/') ? '📷 Photo' : `📎 ${last.attachmentName ?? 'File'}`)) : null;
+        const preview = last ? (last.body || attachmentPreview(last)) : null;
         if (t.cohortId && t.cohort) {
           return {
             id: t.id, kind: 'group' as const,
@@ -266,16 +276,23 @@ export class MessagesService {
     const att = input.attachment ?? null;
     if (!text && !att) throw new BadRequestException('Write a message or add a file');
     if (text.length > 4000) throw new BadRequestException('Messages can be up to 4000 characters');
+    let voice: { duration: number; wave: string | null } | null = null;
     if (att) {
       if (typeof att.key !== 'string' || !/^messages\/[0-9a-f-]{36}\.[a-z0-9]{1,5}$/i.test(att.key)) throw new BadRequestException('Upload the file first');
-      if (!ATTACHMENT_TYPES.test(att.type ?? '')) throw new BadRequestException('Send photos (JPG, PNG, WebP), PDFs or Word documents');
+      att.type = String(att.type ?? '').split(';')[0].trim().toLowerCase(); // "audio/webm;codecs=opus" → "audio/webm"
+      if (VOICE_TYPES.test(att.type)) {
+        const duration = Math.round(Number(att.duration));
+        if (!Number.isFinite(duration) || duration < 1) throw new BadRequestException('That voice note is too short');
+        if (duration > VOICE_MAX_SECS) throw new BadRequestException('Voice notes can be up to 5 minutes');
+        voice = { duration, wave: typeof att.wave === 'string' && /^[0-9]{10,64}$/.test(att.wave) ? att.wave : null };
+      } else if (!ATTACHMENT_TYPES.test(att.type)) throw new BadRequestException('Send photos (JPG, PNG, WebP), PDFs, Word documents or voice notes');
     }
     const { thread, members } = await this.threadFor(sender, threadId);
     if (!members.includes(sender.id)) throw new ForbiddenException('Only members can write here');
 
     const [created] = await this.prisma.$transaction([
       this.prisma.message.create({
-        data: { threadId, senderId: sender.id, body: text, ...(att && { attachmentKey: att.key, attachmentName: String(att.name ?? 'file').slice(0, 200), attachmentType: att.type, attachmentSize: Math.max(0, Math.round(Number(att.size) || 0)) }) },
+        data: { threadId, senderId: sender.id, body: text, ...(att && { attachmentKey: att.key, attachmentName: String(att.name ?? 'file').slice(0, 200), attachmentType: att.type, attachmentSize: Math.max(0, Math.round(Number(att.size) || 0)), ...(voice && { attachmentDuration: voice.duration, attachmentWave: voice.wave }) }) },
         select: msgSelect,
       }),
       this.prisma.messageThread.update({ where: { id: threadId }, data: { lastMessageAt: new Date() } }),
@@ -290,13 +307,13 @@ export class MessagesService {
     this.gateway.emitTo(others, 'message:new', { threadId, message: { ...message, isOwn: false } });
     this.gateway.emitTo([sender.id], 'message:new', { threadId, message: { ...message, isOwn: true } });
 
-    this.alertOffline(thread, others, sender, senderName, text || (att?.type.startsWith('image/') ? '📷 Photo' : `📎 ${att?.name ?? 'File'}`), created.createdAt)
+    this.alertOffline(thread, others, sender, senderName, text || attachmentPreview({ attachmentType: att?.type, attachmentName: att?.name, attachmentDuration: voice?.duration }), created.createdAt, !text && !!voice)
       .catch(err => this.logger.warn(`Message alerts failed: ${err.message}`));
     return { ...message, isOwn: true };
   }
 
   /** In-app notification and email, once per conversation until it's read, and email only if they aren't online */
-  private async alertOffline(thread: { id: string; cohortId: string | null }, recipients: string[], sender: UserProfile, senderName: string, preview: string, sentAt: Date) {
+  private async alertOffline(thread: { id: string; cohortId: string | null }, recipients: string[], sender: UserProfile, senderName: string, preview: string, sentAt: Date, isVoice = false) {
     if (!recipients.length) return;
     const cohort = thread.cohortId ? await this.prisma.cohort.findUnique({ where: { id: thread.cohortId }, select: { name: true } }) : null;
     const people = await this.prisma.userProfile.findMany({ where: { id: { in: recipients } }, select: { id: true, email: true, role: true } });
@@ -311,11 +328,11 @@ export class MessagesService {
       const home = p.role === 'TEACHER' ? '/teacher' : p.role === 'ADMIN' ? '/admin' : p.role === 'COUNTRY_REP' ? '/country-rep' : p.role === 'SUBJECT_REVIEWER' ? '/reviewer' : '/student';
       const href = `${home}/messages?thread=${thread.id}`;
       this.notifications.notify(p.id, {
-        type: 'message', title: cohort ? `${senderName} in ${cohort.name}` : `New message from ${senderName}`, body: preview.slice(0, 140), href,
+        type: 'message', title: cohort ? `${senderName} in ${cohort.name}` : isVoice ? `${senderName} sent you a voice note` : `New message from ${senderName}`, body: preview.slice(0, 140), href,
       });
       if (!this.gateway.isOnline(p.id) && await this.notifications.wantsEmail(p.id, 'message')) {
         const base = process.env.PORTAL_URL || 'http://localhost:3000';
-        await this.mail.sendNewMessage(p.email, senderName, preview.slice(0, 600), cohort?.name ?? null, `${base}${href}`);
+        await this.mail.sendNewMessage(p.email, senderName, preview.slice(0, 600), cohort?.name ?? null, `${base}${href}`, isVoice);
       }
     }
   }

@@ -10,6 +10,7 @@ import { Dialog, DialogContent } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import { SOCKET_ORIGIN, shrinkPhoto, fileSize } from '@/lib/images';
 import api from '@/lib/api';
+import { useVoiceRecorder, MicButton, VoiceBar, VoicePlayer, VoiceClip } from './Voice';
 
 type Role = 'student' | 'teacher' | 'admin' | 'rep' | 'reviewer';
 interface Person { id: string; name: string; avatarUrl: string | null; role: string; context: string; online?: boolean; lastSeen?: string | null }
@@ -21,6 +22,8 @@ interface ThreadSummary {
 interface Message {
   id: string; body: string; senderId: string; senderName: string; senderRole: string; createdAt: string; isOwn: boolean; readAt: string | null;
   attachmentUrl: string | null; attachmentName: string | null; attachmentType: string | null; attachmentSize: number | null;
+  /** Voice notes: seconds, and the waveform's bar heights */
+  attachmentDuration?: number | null; attachmentWave?: string | null;
   /** Client-only: still uploading/sending, or failed */
   pending?: 'sending' | 'failed'; localPreview?: string;
 }
@@ -263,6 +266,34 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
     }
   }
 
+  const voice = useVoiceRecorder(clip => { sendVoice(clip); });
+  // Switching chats throws away a recording in progress
+  useEffect(() => { voice.cancel(); }, [activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function sendVoice(clip: VoiceClip) {
+    if (!activeId) return;
+    const threadId = activeId;
+    const tempId = `tmp-${Date.now()}`;
+    const type = clip.type.split(';')[0];
+    const optimistic: Message = {
+      id: tempId, body: '', senderId: 'me', senderName: 'You', senderRole: '', createdAt: new Date().toISOString(), isOwn: true, readAt: null,
+      attachmentUrl: null, attachmentName: `voice-note.${clip.ext}`, attachmentType: type, attachmentSize: clip.blob.size,
+      attachmentDuration: clip.duration, attachmentWave: clip.wave, pending: 'sending', localPreview: clip.url,
+    };
+    setMessages(prev => [...prev, optimistic]); setAtBottom(true);
+    try {
+      if (clip.blob.size > MAX_BYTES) throw new Error('That voice note is too big to send');
+      const fd = new FormData(); fd.append('file', new File([clip.blob], `voice-note.${clip.ext}`, { type: clip.type }));
+      const up = await api.post('/files/upload?folder=messages', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const r = await api.post(`/messages/threads/${threadId}`, { body: '', attachment: { key: up.data.key, name: `voice-note.${clip.ext}`, type, size: clip.blob.size, duration: clip.duration, wave: clip.wave } });
+      setMessages(prev => prev.filter(m => m.id !== r.data.id).map(m => m.id === tempId ? { ...r.data, localPreview: clip.url } : m));
+      loadThreads().catch(() => {});
+    } catch (e: any) {
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, pending: 'failed' } : m));
+      notify.error(e?.response?.data?.message ?? e?.message ?? 'Voice note not sent');
+    }
+  }
+
   const active = threads?.find(t => t.id === activeId) ?? null;
   const isGroup = active?.kind === 'group';
   const unreadTotal = (threads ?? []).filter(t => t.unread > 0).length;
@@ -325,7 +356,7 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
                       <span className={clsx('flex min-w-0 flex-1 items-center gap-1 truncate text-[13px]', tt ? 'font-medium text-azure-strong' : t.unread ? 'font-[650] text-navy' : 'text-muted')}>
                         {tt ? `${t.kind === 'group' ? `${tt.name} is ` : ''}typing…` : lm ? <>
                           {lm.isOwn && t.kind === 'direct' && <Ticks m={{ readAt: lm.readAt }} group={false} />}
-                          <span className="truncate">{lm.sender && t.kind === 'group' ? `${lm.sender}: ` : ''}{lm.body}</span>
+                          <span className="truncate">{lm.sender && t.kind === 'group' ? `${lm.sender}: ` : ''}{lm.body.startsWith('🎤 ') ? <span className="inline-flex items-center gap-1 align-middle"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" /></svg>{lm.body.slice(3)}</span> : lm.body}</span>
                         </> : <span className="truncate">{t.other.context}</span>}
                       </span>
                       {t.unread > 0 && <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-azure-strong px-1.5 text-[11px] font-bold text-on-accent" aria-label={`${t.unread} unread`}>{t.unread}</span>}
@@ -344,7 +375,7 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
           onDrop={e => { e.preventDefault(); setDragging(false); pickFile(e.dataTransfer.files?.[0]); }}>
           {!active ? (
             <div className="grid flex-1 place-items-center bg-subtle p-8 text-center">
-              <div className="max-w-xs"><p className="text-[17px] font-bold text-navy">CareerPath messages</p><p className="mt-1.5 text-[13px] text-ink2">Pick a chat on the left, or start a new one with a teacher, a classmate or support. You can send photos and documents.</p></div>
+              <div className="max-w-xs"><p className="text-[17px] font-bold text-navy">CareerPath messages</p><p className="mt-1.5 text-[13px] text-ink2">Pick a chat on the left, or start a new one with a teacher, a classmate or support. You can send photos, documents and voice notes.</p></div>
             </div>
           ) : <>
             <header className="flex items-center gap-3 border-b border-line bg-white px-3 py-2.5 lg:px-5">
@@ -381,6 +412,7 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
             )}
             {dragging && <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-accent-soft/90 text-[15px] font-semibold text-navy">Drop to send</div>}
 
+            {voice.phase !== 'idle' ? <VoiceBar voice={voice} /> : <>
             {file && (
               <div className="flex items-center gap-3 border-t border-line bg-white px-4 py-2.5">
                 {file.preview ? <img src={file.preview} alt="" className="h-14 w-14 rounded-md object-cover" /> : <span className="grid h-14 w-14 place-items-center rounded-md bg-subtle text-azure-strong">{Icon.file}</span>}
@@ -396,8 +428,10 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
                 onPaste={e => { const f = [...e.clipboardData.files][0]; if (f) { e.preventDefault(); pickFile(f); } }}
                 placeholder={file ? 'Add a caption' : 'Type a message'}
                 className="max-h-36 min-h-[44px] flex-1 resize-none rounded-[22px] border border-line bg-white px-4 py-[11px] text-[14px] leading-5 text-navy outline-none focus:border-azure" />
-              <button type="submit" disabled={!draft.trim() && !file} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-azure-strong text-on-accent disabled:opacity-40" aria-label="Send">{Icon.send}</button>
+              {!draft.trim() && !file && voice.supported ? <MicButton voice={voice} />
+                : <button type="submit" disabled={!draft.trim() && !file} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-azure-strong text-on-accent disabled:opacity-40" aria-label="Send">{Icon.send}</button>}
             </form>
+            </>}
           </>}
         </section>
 
@@ -425,6 +459,7 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
 function Bubble({ m, first, last, group, onOpen, onRetry }: { m: Message; first: boolean; last: boolean; group: boolean; onOpen: () => void; onRetry: () => void }) {
   const own = m.isOwn;
   const isImage = !!m.attachmentType?.startsWith('image/');
+  const isVoice = !!m.attachmentType?.startsWith('audio/');
   const src = m.attachmentUrl ?? m.localPreview ?? null;
   const meta = (
     <span className={clsx('ml-2 inline-flex translate-y-1 items-center gap-1 whitespace-nowrap text-[10.5px]', own ? 'text-white/80' : 'text-muted')}>
@@ -439,7 +474,9 @@ function Bubble({ m, first, last, group, onOpen, onRetry }: { m: Message; first:
         {/* Tail on the first bubble of a run */}
         {first && <span aria-hidden className={clsx('absolute top-0 h-3 w-2.5', own ? '-right-2 bg-azure-strong [clip-path:polygon(0_0,100%_0,0_100%)]' : '-left-2 bg-white [clip-path:polygon(0_0,100%_0,100%_100%)]')} />}
         {group && !own && first && <p className="px-1 pb-0.5 text-[12.5px] font-semibold" style={{ color: colourFor(m.senderId) }}>{m.senderName}{m.senderRole === 'TEACHER' ? ' · Teacher' : ''}</p>}
-        {m.attachmentType && (isImage ? (
+        {isVoice ? (
+          <div className="px-1 pb-0.5 pt-0.5"><VoicePlayer src={src} duration={m.attachmentDuration ?? 0} wave={m.attachmentWave} own={own} /></div>
+        ) : m.attachmentType && (isImage ? (
           <button type="button" onClick={onOpen} disabled={!src} className="mb-1 block overflow-hidden rounded-md">
             {src ? <img src={src} alt={m.attachmentName ?? 'Photo'} className="max-h-[320px] w-full min-w-[180px] max-w-[300px] object-cover" loading="lazy" />
               : <span className="grid h-40 w-60 place-items-center bg-black/10 text-xs">Photo</span>}
