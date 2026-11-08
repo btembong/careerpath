@@ -113,7 +113,9 @@ export class AuthService {
    * and a good answer from WordPress saves the copy. So after one sign-in, WordPress can be down.
    */
   async login(dto: LoginDto): Promise<SignInResult> {
-    const existing = await this.prisma.userProfile.findUnique({ where: { email: dto.email } });
+    const existing = await this.findByEmail(dto.email);
+    // From here on use the email as the account has it; a new account gets it in lower case
+    dto = { ...dto, email: existing?.email ?? dto.email.trim().toLowerCase() };
     if (existing?.passwordHash && await bcrypt.compare(dto.password, existing.passwordHash)) {
       this.assertCanSignIn(existing);
       await this.prisma.userProfile.update({ where: { id: existing.id }, data: { lastActiveDate: new Date() } }).catch(() => {});
@@ -306,6 +308,7 @@ export class AuthService {
   // ── Student registration ─────────────────────────────────
 
   async registerStudent(dto: RegisterStudentDto): Promise<{ accessToken: string }> {
+    dto.email = dto.email.trim().toLowerCase();
     await this.assertEmailVerified(dto.email);
     await this.assertEmailNotTaken(dto.email);
 
@@ -347,6 +350,7 @@ export class AuthService {
   // ── Teacher registration ─────────────────────────────────
 
   async registerTeacher(dto: RegisterTeacherDto, ip?: string): Promise<{ message: string }> {
+    dto.email = dto.email.trim().toLowerCase();
     await this.assertEmailVerified(dto.email);
     await this.assertEmailNotTaken(dto.email);
     // Validate before creating the WP user so a bad payload can't orphan a WP account
@@ -464,7 +468,7 @@ export class AuthService {
   /** Our own reset email with a 30-minute, single-use link. Never says whether the email exists. */
   async forgotPassword(email: string): Promise<{ message: string }> {
     const e = String(email ?? '').trim().toLowerCase();
-    const p = e ? await this.prisma.userProfile.findUnique({ where: { email: e }, select: { id: true, firstName: true, approvalStatus: true } }) : null;
+    const p = e ? await this.findByEmail(e) : null;
     if (p && p.approvalStatus !== ApprovalStatus.REJECTED) {
       const token = randomBytes(32).toString('base64url');
       await this.redis.set(resetKey(token), p.id, 30 * 60);
@@ -488,7 +492,7 @@ export class AuthService {
     // Links WordPress sent before the switch still work
     if (!dto.login || !dto.key) throw new BadRequestException('This reset link is incomplete. Ask for a new one.');
     await this.wp.resetPassword(dto.login, dto.key, dto.newPassword);
-    const p = await this.prisma.userProfile.findFirst({ where: { email: dto.login.toLowerCase() } });
+    const p = await this.findByEmail(dto.login);
     if (p) await this.savePasswordCopy(p.id, dto.newPassword);
     return { message: 'Password reset successfully. You can now log in.' };
   }
@@ -656,7 +660,7 @@ export class AuthService {
    */
   async sendLoginCode(email: string): Promise<{ message: string }> {
     const e = String(email ?? '').trim().toLowerCase();
-    const profile = e ? await this.prisma.userProfile.findUnique({ where: { email: e }, select: { wpUserId: true, approvalStatus: true } }) : null;
+    const profile = e ? await this.findByEmail(e) : null;
     if (profile && profile.wpUserId < 0 && profile.approvalStatus === ApprovalStatus.APPROVED) {
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       await this.redis.set(loginCodeKey(e), code, OTP_TTL);
@@ -678,7 +682,7 @@ export class AuthService {
       throw new UnauthorizedException(tries >= 5 ? 'Too many wrong codes. Ask for a new one.' : 'That code isn’t right.');
     }
     await this.redis.del(loginCodeKey(e)); await this.redis.del(loginTriesKey(e));
-    const profile = await this.prisma.userProfile.findUnique({ where: { email: e } });
+    const profile = await this.findByEmail(e);
     if (!profile || profile.wpUserId >= 0 || profile.approvalStatus !== ApprovalStatus.APPROVED) throw new UnauthorizedException('This account signs in with a password.');
     await this.prisma.userProfile.update({ where: { id: profile.id }, data: { lastActiveDate: new Date() } }).catch(() => {});
     return this.finishSignIn(profile);
@@ -780,7 +784,18 @@ export class AuthService {
   }
 
   private async assertEmailNotTaken(email: string): Promise<void> {
-    const existing = await this.prisma.userProfile.findUnique({ where: { email } });
+    const existing = await this.findByEmail(email);
     if (existing) throw new ConflictException('An account with this email already exists.');
+  }
+
+  /**
+   * The account for an email, whatever capitals it was typed with. An exact match wins, so two old
+   * accounts that differ only in capitals each keep signing in as before.
+   */
+  private async findByEmail(email: string) {
+    const e = String(email ?? '').trim();
+    if (!e) return null;
+    return (await this.prisma.userProfile.findUnique({ where: { email: e } }))
+      ?? this.prisma.userProfile.findFirst({ where: { email: { equals: e, mode: 'insensitive' } }, orderBy: { createdAt: 'asc' } });
   }
 }
