@@ -25,7 +25,7 @@ function LoginPageInner() {
   const nextUrl      = nextRaw && nextRaw.startsWith('/') && !nextRaw.startsWith('//') ? nextRaw : null;
   const [email,     setEmail]     = useState(searchParams.get('email') ?? '');
   const [password,  setPassword]  = useState('');
-  // School admins and anyone without a password sign in with an emailed code (?with=code opens it directly)
+  // Anyone but an admin can sign in with an emailed code instead of a password (?with=code opens it directly)
   const [mode,      setMode]      = useState<'password' | 'code'>(searchParams.get('with') === 'code' ? 'code' : 'password');
   const [codeSent,  setCodeSent]  = useState(false);
   const [code,      setCode]      = useState('');
@@ -89,7 +89,8 @@ function LoginPageInner() {
     await setAuthToken(token, true);
     setFailCount(0); setLockUntil(0);
     const { role } = jwtDecode<{ role: string }>(token);
-    router.push(nextUrl && role === 'STUDENT' ? nextUrl : ROLE_HOME[role] ?? '/student/dashboard');
+    // Back to the page they were opening (a link in an email); a page outside their area sends them home anyway
+    router.push(nextUrl ?? ROLE_HOME[role] ?? '/student/dashboard');
   }
 
   function failed(err: any) {
@@ -207,7 +208,7 @@ function LoginPageInner() {
           ? <>No password? <button type="button" onClick={() => toMode('code')} className="font-semibold text-[#3F6FE8]">Email me a code instead</button></>
           : codeStep
             ? <>Can’t find it? Look in spam or promotions. Wrong email? <button type="button" onClick={() => toMode('code')} className="font-semibold text-[#3F6FE8]">Change it</button></>
-            : 'School admins and students without a password sign in this way.'}
+            : 'Works for everyone except admins, who sign in with their password.'}
       </p>
       {mode === 'code'
         ? <><span className="my-1.5 h-px bg-line" /><p className="text-center text-sm text-ink2">Have a password? <button type="button" onClick={() => toMode('password')} className="font-bold text-[#3F6FE8]">Sign in with it</button></p></>

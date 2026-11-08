@@ -38,6 +38,14 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
+/** Sign in, then come back here: links in emails land on the page they point to */
+function signInFirst(request: NextRequest) {
+  const url = new URL('/login', request.url);
+  const here = request.nextUrl.pathname + request.nextUrl.search;
+  if (here !== '/') url.searchParams.set('next', here);
+  return url;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('cpa_token')?.value;
@@ -48,7 +56,7 @@ export async function middleware(request: NextRequest) {
 
   if (!token) {
     if (isPublic || isOpen) return NextResponse.next();
-    return NextResponse.redirect(new URL('/login', request.url));
+    return NextResponse.redirect(signInFirst(request));
   }
 
   try {
@@ -58,7 +66,7 @@ export async function middleware(request: NextRequest) {
 
     // Reject expired tokens
     if (!payload.exp || payload.exp * 1000 < Date.now()) {
-      const res = NextResponse.redirect(new URL('/login', request.url));
+      const res = NextResponse.redirect(signInFirst(request));
       res.cookies.delete('cpa_token');
       return res;
     }
@@ -124,7 +132,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL(ROLE_HOME[payload.role], request.url));
     }
   } catch {
-    const res = NextResponse.redirect(new URL('/login', request.url));
+    const res = NextResponse.redirect(signInFirst(request));
     res.cookies.delete('cpa_token');
     return res;
   }
