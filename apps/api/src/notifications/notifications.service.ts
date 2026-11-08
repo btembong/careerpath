@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
+import type { NoticeOpts } from '../mail/mail.templates';
 import { resolvePrefs } from './notification-prefs';
 
 export type NotificationType = 'live' | 'assignment' | 'grade' | 'certificate' | 'message' | 'community' | 'system';
@@ -15,6 +16,17 @@ interface NewNotification {
   href?: string;
 }
 
+/** An email to send with the notice. The button goes to the notice's link unless `href` says otherwise. */
+export interface NoticeEmail extends Omit<NoticeOpts, 'firstName' | 'href'> {
+  subject: string;
+  href?: string;
+  /** Settings → Notifications kind that can switch this email off; left out = always sent (account, money, reviews) */
+  kind?: string;
+  /** Only email people for whom this is true (e.g. not online right now) */
+  onlyIf?: (userId: string) => boolean;
+  sender?: 'system' | 'support' | 'billing' | 'partnerships';
+}
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -22,9 +34,10 @@ export class NotificationsService {
   constructor(private prisma: PrismaService, private mail: MailService) {}
 
   /** Fire-and-forget from business flows: a failed notification must never fail the action that caused it. */
-  notify(userIds: string | string[], n: NewNotification): void {
+  notify(userIds: string | string[], n: NewNotification, email?: NoticeEmail): void {
     const ids = [...new Set(Array.isArray(userIds) ? userIds : [userIds])];
     if (!ids.length) return;
+    if (email) this.emailNotice(ids, n, email).catch(err => this.logger.warn(`Email "${email.subject}" failed: ${err.message}`));
     // Respect Settings → Notifications; system notices always go through
     const recipients = n.type === 'system' ? Promise.resolve(ids) : this.prisma.userProfile
       .findMany({ where: { id: { in: ids } }, select: { id: true, notificationPrefs: true } })
@@ -32,6 +45,20 @@ export class NotificationsService {
     recipients
       .then(to => to.length ? this.prisma.notification.createMany({ data: to.map(userId => ({ userId, ...n })) }) : null)
       .catch(err => this.logger.warn(`Notification "${n.title}" failed: ${err.message}`));
+  }
+
+  /** One by one on purpose: Brevo rate-limits bursts */
+  private async emailNotice(ids: string[], n: NewNotification, e: NoticeEmail) {
+    const href = e.href ?? n.href ?? '/';
+    const users = await this.prisma.userProfile.findMany({
+      where: { id: { in: ids }, deletedAt: null }, select: { id: true, email: true, firstName: true, notificationPrefs: true },
+    });
+    const { subject, kind, onlyIf, sender, ...opts } = e;
+    for (const u of users) {
+      if (kind && resolvePrefs(u.notificationPrefs)[kind]?.email === false) continue;
+      if (onlyIf && !onlyIf(u.id)) continue;
+      await this.mail.sendNotice(u.email, subject, { ...opts, href, firstName: u.firstName }, sender);
+    }
   }
 
   /** Whether a user wants emails of this kind (Settings → Notifications). */

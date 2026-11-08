@@ -30,6 +30,8 @@ import {
   passwordResetTemplate,
   adminCodeTemplate,
   orgAdminWelcomeTemplate,
+  noticeTemplate,
+  NoticeOpts,
 } from './mail.templates';
 
 // Sender names — same email address, different display name per context
@@ -124,6 +126,11 @@ export class MailService {
 
   async sendMockMarked(email: string, opts: { firstName: string; teacherName: string; examTitle: string; percent: number; passMark: number; link: string }): Promise<void> {
     await this.send(email, 'Your teacher marked your mock exam', mockMarkedTemplate(opts), 'support');
+  }
+
+  /** The short "something happened" emails that go with in-app notices */
+  async sendNotice(email: string, subject: string, opts: NoticeOpts, sender: SenderType = 'support'): Promise<void> {
+    await this.send(email, subject, noticeTemplate(opts), sender);
   }
 
   async sendOrgAdminWelcome(email: string, name: string, orgName: string, link: string): Promise<void> {

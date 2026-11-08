@@ -75,7 +75,7 @@ export class CommissionsService {
       const r = await this.prisma.userProfile.findFirst({ where: { id: dto.reviewerId, role: 'SUBJECT_REVIEWER' }, select: { id: true } });
       if (!r) throw new BadRequestException('That person isn’t a subject reviewer');
     }
-    const courses = await this.prisma.platformCourse.findMany({ where: { id: { in: courseIds } }, select: { id: true, teacherId: true, teacherPending: true } });
+    const courses = await this.prisma.platformCourse.findMany({ where: { id: { in: courseIds } }, select: { id: true, title: true, teacherId: true, teacherPending: true } });
     if (!courses.length) throw new NotFoundException('Course not found');
     const before = await this.prisma.courseAssignment.findMany({ where: { courseId: { in: courses.map(c => c.id) } } });
     await this.prisma.$transaction(courses.map(c => {
@@ -90,7 +90,13 @@ export class CommissionsService {
     // Tell a newly assigned reviewer what's now theirs
     const newlyTheirs = dto.reviewerId ? courses.filter(c => before.find(b => b.courseId === c.id)?.reviewerId !== dto.reviewerId) : [];
     if (dto.reviewerId && newlyTheirs.length) {
-      this.notifications.notify(dto.reviewerId, { type: 'system', title: `${newlyTheirs.length} course${newlyTheirs.length === 1 ? '' : 's'} to review`, body: 'You’re now the reviewer. They show in your review queue when the teacher submits them.', href: '/reviewer/courses' });
+      this.notifications.notify(dto.reviewerId, { type: 'system', title: `${newlyTheirs.length} course${newlyTheirs.length === 1 ? '' : 's'} to review`, body: 'You’re now the reviewer. They show in your review queue when the teacher submits them.', href: '/reviewer/courses' }, {
+        subject: `You're the reviewer for ${newlyTheirs.length === 1 ? `"${newlyTheirs[0].title}"` : `${newlyTheirs.length} courses`}`,
+        badge: 'Review', sender: 'partnerships', title: newlyTheirs.length === 1 ? 'A course to review' : `${newlyTheirs.length} courses to review`,
+        text: `you're now the subject reviewer for ${newlyTheirs.length === 1 ? 'this course' : 'these courses'}. ${newlyTheirs.length === 1 ? 'It shows' : 'They show'} in your review queue when the teacher sends ${newlyTheirs.length === 1 ? 'it' : 'them'} for review.`,
+        details: newlyTheirs.slice(0, 8).map((c, i) => [`Course ${i + 1}`, c.title] as [string, string]),
+        cta: 'Open my review queue',
+      });
     }
     for (const c of courses) {
       this.audit.log(admin.id, 'course.commission', 'CourseAssignment', c.id, before.find(b => b.courseId === c.id) ?? undefined, dto as Record<string, unknown>);

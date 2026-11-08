@@ -303,6 +303,10 @@ export class PayoutsService {
         type: 'system', title: 'Add your payout account to get paid',
         body: 'You have earnings waiting. Add your mobile money or bank details so we can pay you.',
         href: p.role === 'TEACHER' ? '/teacher/profile' : p.role === 'SUBJECT_REVIEWER' ? '/reviewer/profile' : '/country-rep/profile',
+      }, {
+        subject: 'Add your payout account so we can pay you', badge: 'Payout', sender: 'billing', title: 'You have earnings waiting',
+        text: 'we\'re ready to pay you, but we don\'t have your payout details yet. Add your mobile money number or bank account on your profile and you\'ll be included in the next payout.',
+        cta: 'Add my payout account', footnote: 'It takes a minute. We only use these details to pay you.',
       });
     }
     return { reminded: people.length };

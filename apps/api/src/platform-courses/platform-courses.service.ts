@@ -11,6 +11,7 @@ import { GamificationService } from '../gamification/gamification.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { courseChecklist, COURSE_TEMPLATE } from './course-quality';
 import * as crypto from 'crypto';
+import { priceEmail } from '../notifications/price-email';
 
 @Injectable()
 export class PlatformCoursesService {
@@ -324,6 +325,10 @@ export class PlatformCoursesService {
     this.notifications.notify(course.teacherId, {
       type: 'system', title: 'Your course is live', body: `"${course.title}" is now published and visible to students.`,
       href: `/teacher/courses/${course.id}/builder`,
+    }, course.teacherPending ? undefined : {
+      subject: `"${course.title}" is live`, badge: 'Courses', title: 'Your course is live',
+      text: `"${course.title}" passed review and is now published. Students can find it and start learning.`,
+      cta: 'Open my course', footnote: 'Share it with your students, and keep an eye on their questions in Community.',
     });
     return course;
   }
@@ -343,6 +348,11 @@ export class PlatformCoursesService {
     this.notifications.notify(course.teacherId, {
       type: 'system', title: 'Changes needed before publishing', body: `"${course.title}" was sent back: ${reason}`,
       href: `/teacher/courses/${course.id}/builder`,
+    }, course.teacherPending ? undefined : {
+      subject: `Changes needed: "${course.title}"`, badge: 'Courses', title: 'A few changes before it goes live',
+      text: `the review of "${course.title}" is done. It's back with you as a draft, with this note:`,
+      quote: reason, quoteLabel: 'From the reviewer',
+      cta: 'Make the changes', footnote: 'When you’re done, send it for review again from the course builder.',
     });
     return course;
   }
@@ -1022,14 +1032,14 @@ export class PlatformCoursesService {
       this.notifications.notify(owner!.teacherId, {
         type: 'system', title: 'Price not approved', body: `Your proposed price for "${owner!.title}" was not approved. The course stays in its packages.`,
         href: `/teacher/courses/${courseId}/pricing`,
-      });
+      }, priceEmail(owner!.title, false));
       return this.prisma.platformCourse.update({ where: { id: courseId }, data: clear, select: { id: true } });
     }
     const { amount, currency } = this.validPrice(dto.amount ?? course.proposedPriceAmount, dto.currency ?? course.proposedPriceCurrency);
     this.notifications.notify(owner!.teacherId, {
       type: 'system', title: 'Course price approved', body: `"${owner!.title}" can now be bought on its own.`,
       href: `/teacher/courses/${courseId}/pricing`,
-    });
+    }, priceEmail(owner!.title, true, `${currency} ${(amount / 100).toLocaleString('en-GB')}`));
     return this.prisma.platformCourse.update({
       where: { id: courseId },
       data: { ...clear, priceAmount: amount, priceCurrency: currency, isSoldIndividually: true },

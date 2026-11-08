@@ -1045,3 +1045,52 @@ export function mockMarkedTemplate(opts: {
     <p style="margin:10px 0 0;font-size:13px;color:#637090;font-family:${FONT}">Review every answer and practise what you got wrong.</p>`;
   return base(hero, body, 'Test Centre');
 }
+
+// ── Notices (support replies, course reviews, prices, payout accounts, community, reminders) ──
+
+export interface NoticeOpts {
+  /** Label next to the logo */
+  badge: string;
+  title: string;
+  /** First name for "Hi …,"; left out when unknown */
+  firstName?: string | null;
+  /** Plain text, escaped; blank lines become paragraphs */
+  text: string;
+  /** Someone's own words (a reply, a reason), shown in a quote box */
+  quote?: string | null;
+  quoteLabel?: string;
+  /** Label and value rows */
+  details?: [string, string][];
+  cta: string;
+  /** A portal path ("/student/support") or a full link */
+  href: string;
+  footnote?: string;
+}
+
+/** One layout for the short "something happened, here's the button" emails. Every value is escaped. */
+export function noticeTemplate(o: NoticeOpts): string {
+  const link = o.href.startsWith('/') ? `${PORTAL_URL}${o.href}` : o.href;
+  const p = (t: string) => `<p style="margin:0 0 14px;font-size:15px;color:${C.sec};line-height:1.6;font-family:${FONT}">${t}</p>`;
+  const paras = o.text.split(/\n\s*\n/).map(t => escapeHtml(t.trim()).replace(/\n/g, '<br>')).filter(Boolean);
+  if (o.firstName) paras[0] = `Hi ${escapeHtml(o.firstName)}, ${paras[0] ?? ''}`;
+  const quote = o.quote ? `
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 8px"><tr>
+      <td style="background:${C.surface};border:1px solid ${C.border};border-left:3px solid ${BLUE};border-radius:0 10px 10px 0;padding:14px 18px">
+        ${o.quoteLabel ? `<p style="margin:0 0 6px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${C.mut};font-family:${FONT}">${escapeHtml(o.quoteLabel)}</p>` : ''}
+        <p style="margin:0;font-size:14px;color:${C.pri};line-height:1.6;font-family:${FONT}">${escapeHtml(o.quote).replace(/\n/g, '<br>')}</p>
+      </td>
+    </tr></table>` : '';
+  const details = o.details?.length ? `
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 8px;border:1px solid ${C.border};border-radius:12px;overflow:hidden">
+      ${o.details.map(([k, v], i) => `<tr>
+        <td style="padding:11px 18px;${i ? `border-top:1px solid ${C.border};` : ''}font-size:13px;color:${C.mut};font-family:${FONT}">${escapeHtml(k)}</td>
+        <td style="padding:11px 18px;${i ? `border-top:1px solid ${C.border};` : ''}font-size:13px;font-weight:600;color:${C.pri};text-align:right;font-family:${FONT}">${escapeHtml(v)}</td>
+      </tr>`).join('')}
+    </table>` : '';
+  const body = `
+    <div style="margin-top:10px">${paras.map(p).join('')}</div>
+    ${quote}${details}
+    ${ctaButton(escapeHtml(o.cta), link)}
+    ${o.footnote ? `<p style="margin:10px 0 0;font-size:13px;color:${C.mut};line-height:1.6;font-family:${FONT}">${escapeHtml(o.footnote)}</p>` : ''}`;
+  return base(headline(escapeHtml(o.title)), body, escapeHtml(o.badge));
+}

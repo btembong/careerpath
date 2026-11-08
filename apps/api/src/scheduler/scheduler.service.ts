@@ -388,6 +388,36 @@ export class SchedulerService {
     }
   }
 
+  // ── 9b. Mentoring session reminders ─────────────────────
+  // Every 5 minutes — sessions starting in 60 ±2.5 min, so each is caught by exactly one run.
+
+  @Cron('*/5 * * * *')
+  async sendMentoringReminders() {
+    const now = Date.now();
+    const bookings = await this.prisma.mentorBooking.findMany({
+      where: { status: 'CONFIRMED', slot: { startsAt: { gte: new Date(now + 57.5 * 60_000), lte: new Date(now + 62.5 * 60_000) } } },
+      include: {
+        student: { select: { id: true, firstName: true, lastName: true, email: true } },
+        slot: { include: { teacher: { select: { id: true, firstName: true, lastName: true, email: true } } } },
+      },
+    });
+    const nameOf = (u: { firstName: string | null; lastName: string | null; email: string }) => [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email;
+    for (const b of bookings) {
+      const time = b.slot.startsAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC';
+      const details: [string, string][] = [['Starts', time], ['Length', `${b.slot.durationMins} minutes`]];
+      const title = 'Mentoring session in 1 hour';
+      this.notifications.notify(b.studentId, { type: 'live', title, body: `With ${nameOf(b.slot.teacher)} at ${time}.`, href: `/student/mentorship/session/${b.id}` }, {
+        subject: `In 1 hour: mentoring with ${nameOf(b.slot.teacher)}`, badge: 'Mentoring', kind: 'live', title,
+        text: `your session with ${nameOf(b.slot.teacher)} starts at ${time}. Have your questions ready.`, details, cta: 'Open the session',
+      });
+      this.notifications.notify(b.slot.teacherId, { type: 'live', title, body: `With ${nameOf(b.student)} at ${time}.`, href: `/teacher/mentorship/session/${b.id}` }, {
+        subject: `In 1 hour: mentoring with ${nameOf(b.student)}`, badge: 'Mentoring', kind: 'live', title,
+        text: `your session with ${nameOf(b.student)} starts at ${time}.`, quote: b.notes, quoteLabel: 'What they want to cover', details, cta: 'Open the session',
+      });
+    }
+    if (bookings.length) this.logger.log(`Mentoring reminders: ${bookings.length} session(s)`);
+  }
+
   // ── 10. Sync WordPress courses ──────────────────────────
   // Every 6 hours — pull published WP courses and upsert as PlatformCourse
   // rows with source=WORDPRESS so students can discover them in the portal.

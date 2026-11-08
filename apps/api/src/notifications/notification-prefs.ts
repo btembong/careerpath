@@ -4,7 +4,7 @@ export const NOTIFICATION_KINDS = [
   { key: 'assignment', label: 'Assignments and deadlines', hint: 'New work set, and reminders before it is due', email: true },
   { key: 'grade', label: 'Grades and feedback', hint: 'When a teacher grades your work', email: true },
   { key: 'message', label: 'Messages', hint: 'New direct messages', email: true },
-  { key: 'community', label: 'Community replies', hint: 'Answers to your questions', email: false },
+  { key: 'community', label: 'Community replies', hint: 'Answers to your questions, and new questions in your courses. Emailed only when you’re not online', email: true },
   { key: 'certificate', label: 'Certificates', hint: 'When you earn one', email: true },
   { key: 'news', label: 'Announcements', hint: 'News and offers from CareerPath Africa', email: true },
 ] as const;

@@ -3,6 +3,7 @@ import { UserRole } from '@cpa/shared';
 import { GamificationService } from '../gamification/gamification.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { MessagesGateway } from '../messages/messages.gateway';
 import { studentCourseIds } from '../prisma/student-courses';
 import { CreatePostDto } from './dto/create-post.dto';
 import { SubmitStoryDto } from './dto/submit-story.dto';
@@ -15,6 +16,7 @@ export class CommunityService {
     private prisma: PrismaService,
     private gamification: GamificationService,
     private notifications: NotificationsService,
+    private presence: MessagesGateway,
   ) {}
 
   // ── Course discussion ─────────────────────────────────────
@@ -229,10 +231,20 @@ export class CommunityService {
       this.notifications.notify(parent.authorId, {
         type: 'community', title: user.id === course.teacherId ? 'Your teacher answered your question' : 'New reply to your question',
         body: body.slice(0, 140), href: `/student/community?courseId=${course.id}&thread=${parent.id}`,
+      }, {
+        subject: user.id === course.teacherId ? `Your teacher answered your question in ${course.title}` : `New reply to your question in ${course.title}`,
+        badge: 'Community', kind: 'community', onlyIf: id => !this.presence.isOnline(id),
+        title: user.id === course.teacherId ? 'Your teacher answered' : 'Someone replied to your question',
+        text: `there's a new reply to your question in ${course.title}.`, quote: body.slice(0, 600), quoteLabel: 'Reply',
+        cta: 'Read the reply',
       });
     } else if (!parent && course.teacherId !== user.id) {
       this.notifications.notify(course.teacherId, {
         type: 'community', title: `New question in ${course.title}`, body: body.slice(0, 140), href: `/teacher/community?courseId=${course.id}&thread=${post.id}`,
+      }, {
+        subject: `New question in ${course.title}`, badge: 'Community', kind: 'community', onlyIf: id => !this.presence.isOnline(id),
+        title: 'A student asked a question', text: `a student asked a question in ${course.title}.`, quote: body.slice(0, 600), quoteLabel: 'Question',
+        cta: 'Answer it',
       });
     }
     return post;

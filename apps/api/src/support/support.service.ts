@@ -58,7 +58,11 @@ export class SupportService {
     });
     // Tell the student when there's a new answer
     if (reply && reply !== ticket.adminNote) {
-      this.notifications.notify(ticket.studentId, { type: 'system', title: 'Support replied', body: `${ticket.subject}: ${reply.slice(0, 140)}`, href: '/student/support' });
+      this.notifications.notify(ticket.studentId, { type: 'system', title: 'Support replied', body: `${ticket.subject}: ${reply.slice(0, 140)}`, href: '/student/support' }, {
+        subject: `Re: ${ticket.subject}`, badge: 'Support', title: 'Support answered your question',
+        text: `We replied to "${ticket.subject}".`, quote: reply, quoteLabel: 'Our reply',
+        cta: 'Open my support tickets', footnote: 'If this doesn’t solve it, reply on the support page and we’ll pick it up.',
+      });
     }
     return updated;
   }

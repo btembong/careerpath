@@ -20,6 +20,6 @@ import { FilesModule } from '../files/files.module';
   ],
   controllers: [MessagesController],
   providers: [MessagesService, MessagesGateway],
-  exports: [MessagesService],
+  exports: [MessagesService, MessagesGateway],
 })
 export class MessagesModule {}

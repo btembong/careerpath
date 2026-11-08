@@ -78,6 +78,18 @@ export class AccountService {
     const dueAt = new Date(Date.now() + WAIT_DAYS * DAY);
     await this.prisma.userProfile.update({ where: { id: user.id }, data: { deletionRequestedAt: new Date(), deletionDueAt: dueAt } });
     this.logger.log(`Deletion requested for ${user.id}, due ${dueAt.toISOString()}`);
+    // Always sent: if someone else asked for this, the owner finds out in time to stop it
+    const needsAdmin = NEEDS_ADMIN.includes(user.role);
+    const day = dueAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    this.mail.sendNotice(user.email, 'Your CareerPath Africa account is set to be deleted', {
+      badge: 'Account security', title: 'Your account will be deleted', firstName: user.firstName,
+      text: needsAdmin
+        ? `you asked us to delete your CareerPath Africa account. From ${day}, our team will finish it once anything you're owed is paid out.\n\nChanged your mind? Keep your account from Settings before then.`
+        : `you asked us to delete your CareerPath Africa account. It will be deleted on ${day}, with your progress, notes and messages.\n\nChanged your mind? Keep your account from Settings before then.`,
+      details: [['Deleted on', day], ['Account', user.email]],
+      cta: 'Keep my account', href: '/settings',
+      footnote: 'Didn’t ask for this? Sign in, keep your account, then change your password.',
+    }, 'system').catch(() => {});
     return { dueAt, needsAdmin: NEEDS_ADMIN.includes(user.role) };
   }
 

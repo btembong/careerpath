@@ -175,6 +175,12 @@ export class GradingService {
       type: 'grade', title: 'Quiz marked',
       body: `${lesson?.title ?? 'Your quiz'}: ${Math.round(finalScore)}/${maxScore} (${pct}%)${passed ? ' · passed' : ''}`,
       href: attempt.lessonId ? `/student/learn/${attempt.courseId}/lesson/${attempt.lessonId}` : '/student/quiz-history',
+    }, {
+      subject: `Your quiz was marked: ${lesson?.title ?? 'quiz'}`, badge: 'Grades', kind: 'grade', title: 'Your quiz is marked',
+      text: `your teacher marked the written answers in ${lesson?.title ? `"${lesson.title}"` : 'your quiz'}.${passMark != null ? (passed ? ' You passed.' : ` The pass mark is ${passMark}%; have another look and try again.`) : ''}`,
+      details: [['Score', `${Math.round(finalScore)} / ${maxScore}`], ['Percentage', `${pct}%`]],
+      quote: dto.feedback?.trim() || null, quoteLabel: 'Teacher’s feedback',
+      cta: 'See my answers',
     });
     return { finalScore, maxScore, percentage: pct, passed };
   }
