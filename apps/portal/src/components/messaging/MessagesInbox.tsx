@@ -11,6 +11,7 @@ import { notify } from '@/lib/notify';
 import { SOCKET_ORIGIN, shrinkPhoto, fileSize } from '@/lib/images';
 import api from '@/lib/api';
 import { useVoiceRecorder, MicButton, VoiceBar, VoicePlayer, VoiceClip } from './Voice';
+import { GroupInfoPanel, NewGroupDialog, GroupAvatar, GroupInfo } from './GroupPanel';
 
 type Role = 'student' | 'teacher' | 'admin' | 'rep' | 'reviewer';
 interface Person { id: string; name: string; avatarUrl: string | null; role: string; context: string; online?: boolean; lastSeen?: string | null }
@@ -18,9 +19,13 @@ interface ThreadSummary {
   id: string; kind: 'direct' | 'group'; other: Person;
   lastMessage: { body: string; createdAt: string; isOwn: boolean; sender: string | null; readAt: string | null } | null;
   unread: number; lastMessageAt: string;
+  /** Groups: whether I muted it, and whether it's a cohort's group */
+  muted?: boolean; cohortGroup?: boolean;
 }
 interface Message {
   id: string; body: string; senderId: string; senderName: string; senderRole: string; createdAt: string; isOwn: boolean; readAt: string | null;
+  /** TEXT, or SYSTEM for notes like "Kofi added Ama" */
+  kind?: string;
   attachmentUrl: string | null; attachmentName: string | null; attachmentType: string | null; attachmentSize: number | null;
   /** Voice notes: seconds, and the waveform's bar heights */
   attachmentDuration?: number | null; attachmentWave?: string | null;
@@ -111,6 +116,9 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
   const [students, setStudents] = useState<StudentFacts[] | null>(null);
   const [dragging, setDragging] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [group, setGroup] = useState<GroupInfo | null>(null);
+  const [newGroup, setNewGroup] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const activeRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -163,6 +171,13 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
       if (threadId === activeRef.current) setMessages(prev => prev.map(m => m.isOwn && !m.readAt && !m.pending ? { ...m, readAt: new Date().toISOString() } : m));
       setThreads(prev => prev?.map(t => t.id === threadId && t.lastMessage?.isOwn ? { ...t, lastMessage: { ...t.lastMessage, readAt: new Date().toISOString() } } : t) ?? prev);
     });
+    socket.on('thread:updated', ({ threadId, removed }: { threadId: string; removed?: boolean }) => {
+      if (threadId === activeRef.current) {
+        if (removed) { setActiveId(null); notify.info('You were removed from that group'); }
+        else api.get(`/messages/threads/${threadId}/info`).then(r => setGroup(r.data)).catch(() => {});
+      }
+      loadThreads().catch(() => {});
+    });
     socket.on('typing', ({ threadId, name }: { threadId: string; name: string }) => {
       setTyping(t => ({ ...t, [threadId]: { name, until: Date.now() + 4000 } }));
     });
@@ -201,9 +216,14 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
   }
 
   useEffect(() => {
-    setMessages([]); setFile(null); setDraft('');
+    setMessages([]); setFile(null); setDraft(''); setInfoOpen(false); setGroup(null);
     if (activeId) loadMessages(activeId);
   }, [activeId, loadMessages]);
+  const activeKind = threads?.find(t => t.id === activeId)?.kind;
+  const loadGroup = useCallback(() => {
+    if (activeId && activeKind === 'group') api.get(`/messages/threads/${activeId}/info`).then(r => setGroup(r.data)).catch(() => setGroup(null));
+  }, [activeId, activeKind]);
+  useEffect(() => { loadGroup(); }, [loadGroup]);
 
   // Stay at the bottom as messages arrive, unless reading older ones
   useEffect(() => {
@@ -310,15 +330,18 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
     const prev = messages[i - 1], next = messages[i + 1];
     const label = dayLabel(m.createdAt);
     if (!prev || dayLabel(prev.createdAt) !== label) rows.push({ kind: 'day', label });
-    const sameAsPrev = !!prev && prev.senderId === m.senderId && prev.isOwn === m.isOwn && dayLabel(prev.createdAt) === label && +new Date(m.createdAt) - +new Date(prev.createdAt) < 5 * 60_000;
-    const sameAsNext = !!next && next.senderId === m.senderId && next.isOwn === m.isOwn && dayLabel(next.createdAt) === label && +new Date(next.createdAt) - +new Date(m.createdAt) < 5 * 60_000;
+    const sameAsPrev = !!prev && prev.kind !== 'SYSTEM' && prev.senderId === m.senderId && prev.isOwn === m.isOwn && dayLabel(prev.createdAt) === label && +new Date(m.createdAt) - +new Date(prev.createdAt) < 5 * 60_000;
+    const sameAsNext = !!next && next.kind !== 'SYSTEM' && next.senderId === m.senderId && next.isOwn === m.isOwn && dayLabel(next.createdAt) === label && +new Date(next.createdAt) - +new Date(m.createdAt) < 5 * 60_000;
     rows.push({ kind: 'msg', m, first: !sameAsPrev, last: !sameAsNext });
   });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Topbar title="Messages" subtitle={SUB[role]} backHref={role === 'admin' ? backHref : undefined}
-        actions={<Button size="sm" onClick={() => setPicking(true)}>New message</Button>} />
+        actions={<div className="flex gap-2">
+          {(role === 'teacher' || role === 'admin') && <Button size="sm" variant="secondary" onClick={() => setNewGroup(true)}>New group</Button>}
+          <Button size="sm" onClick={() => setPicking(true)}>New message</Button>
+        </div>} />
       <div className="flex h-[calc(100vh-64px)] min-h-[520px] flex-1 items-stretch overflow-hidden">
         {/* ── Chat list ── */}
         <section className={clsx('flex w-full min-w-0 flex-col border-r border-line bg-white lg:w-[340px] lg:shrink-0', active && 'max-lg:hidden')}>
@@ -344,12 +367,12 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
                 <button key={t.id} onClick={() => setActiveId(t.id)}
                   className={clsx('flex w-full items-center gap-3 px-3.5 py-2.5 text-left', t.id === activeId ? 'bg-accent-soft' : 'hover:bg-subtle')}>
                   <span className="relative">
-                    <Avatar p={t.other} size={46} group={t.kind === 'group'} />
+                    {t.kind === 'group' ? <GroupAvatar name={t.other.name} photoUrl={t.other.avatarUrl} size={46} /> : <Avatar p={t.other} size={46} />}
                     {t.other.online && <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" aria-label="Online" />}
                   </span>
                   <div className="min-w-0 flex-1 border-b border-line pb-2.5 pt-0.5">
                     <p className="flex items-baseline justify-between gap-2">
-                      <strong className="truncate text-[14.5px] text-navy">{t.other.name}</strong>
+                      <strong className="flex min-w-0 items-center gap-1 truncate text-[14.5px] text-navy"><span className="truncate">{t.other.name}</span>{t.muted && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 text-muted" aria-label="Muted"><path d="M6 16V11a6 6 0 0 1 9-5.2M18 11v5l2 2H8M10 21h4M3 3l18 18" /></svg>}</strong>
                       {lm && <span className={clsx('shrink-0 text-[11.5px]', t.unread ? 'font-semibold text-azure-strong' : 'text-muted')}>{shortTime(lm.createdAt)}</span>}
                     </p>
                     <p className="mt-0.5 flex items-center gap-1.5">
@@ -380,15 +403,32 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
           ) : <>
             <header className="flex items-center gap-3 border-b border-line bg-white px-3 py-2.5 lg:px-5">
               <button onClick={() => setActiveId(null)} className="text-navy lg:hidden" aria-label="Back to chats">{Icon.back}</button>
-              <Avatar p={active.other} size={40} group={isGroup} />
+              {isGroup ? (
+                <button onClick={() => setInfoOpen(o => !o)} className="flex min-w-0 flex-1 items-center gap-3 text-left" aria-label="Group info">
+                  <GroupAvatar name={active.other.name} photoUrl={active.other.avatarUrl} size={40} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-bold text-navy">{active.other.name}</span>
+                    <span className={clsx('block truncate text-[12.5px]', typingNow ? 'text-azure-strong' : 'text-muted')}>{typingNow ? status : group ? `${group.members.slice(0, 4).map(m => m.isMe ? 'You' : m.name.split(' ')[0]).join(', ')}${group.members.length > 4 ? ` and ${group.members.length - 4} others` : ''} · tap for group info` : status}</span>
+                  </span>
+                </button>
+              ) : <>
+              <Avatar p={active.other} size={40} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-bold text-navy">{active.other.name}</p>
                 <p className={clsx('truncate text-[12.5px]', typingNow || active.other.online ? 'text-azure-strong' : 'text-muted')}>{status}</p>
               </div>
+              </>}
               {role === 'student' && active.other.role === 'TEACHER' && <Link href={`/student/teachers/${active.other.id}`} className="text-[13px] font-semibold text-azure-strong hover:underline">View profile</Link>}
               {role === 'teacher' && facts && <Link href="/teacher/students" className="text-[13px] font-semibold text-azure-strong hover:underline">View student</Link>}
             </header>
 
+            {isGroup && group?.pinned && (
+              <button onClick={() => { const el = document.getElementById(`msg-${group.pinned!.id}`); el?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }}
+                className="flex items-center gap-2.5 border-b border-line bg-white px-4 py-2 text-left text-[13px] lg:px-5">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 text-azure-strong" aria-hidden><path d="M9 3h6l-1 6 4 4H6l4-4zM12 13v8" /></svg>
+                <span className="min-w-0 flex-1 truncate text-ink2"><strong className="text-navy">Pinned</strong> · {group.pinned.text}</span>
+              </button>
+            )}
             <div ref={scrollRef} onScroll={onScroll} className="chat-wallpaper min-h-0 flex-1 overflow-y-auto px-3 py-4 lg:px-[7%]" aria-live="polite">
               {hasMore && <div className="mb-3 text-center"><button onClick={loadOlder} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-azure-strong shadow-sm">Load earlier messages</button></div>}
               {msgLoading && !messages.length ? <div className="mx-auto mt-8 h-24 w-2/3 rounded-lg bg-white/70 animate-pulse" /> : !messages.length ? (
@@ -412,7 +452,11 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
             )}
             {dragging && <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-accent-soft/90 text-[15px] font-semibold text-navy">Drop to send</div>}
 
-            {voice.phase !== 'idle' ? <VoiceBar voice={voice} /> : <>
+            {isGroup && group?.settings.onlyAdminsSend && !group.me.admin ? (
+              <p className="flex items-center justify-center gap-2 border-t border-line bg-subtle px-4 py-3.5 text-center text-[13.5px] text-muted">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M6 11V8a6 6 0 0 1 12 0v3M5 11h14v10H5z" /></svg>Only group admins can send messages
+              </p>
+            ) : voice.phase !== 'idle' ? <VoiceBar voice={voice} /> : <>
             {file && (
               <div className="flex items-center gap-3 border-t border-line bg-white px-4 py-2.5">
                 {file.preview ? <img src={file.preview} alt="" className="h-14 w-14 rounded-md object-cover" /> : <span className="grid h-14 w-14 place-items-center rounded-md bg-subtle text-azure-strong">{Icon.file}</span>}
@@ -435,7 +479,13 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
           </>}
         </section>
 
-        {role === 'teacher' && facts && (
+        {infoOpen && active && isGroup && (
+          <div className="max-lg:fixed max-lg:inset-0 max-lg:z-40 max-lg:flex">
+            <GroupInfoPanel threadId={active.id} onClose={() => setInfoOpen(false)} onChanged={() => { loadGroup(); loadThreads().catch(() => {}); }}
+              onMessage={id => { setInfoOpen(false); openWith(id); }} onLeft={() => { setInfoOpen(false); setActiveId(null); loadThreads().catch(() => {}); }} />
+          </div>
+        )}
+        {!infoOpen && role === 'teacher' && facts && (
           <aside className="hidden w-[260px] shrink-0 flex-col gap-2.5 border-l border-line bg-white p-[18px] xl:flex">
             <h3 className="text-[15px] font-semibold text-navy">About {facts.name.split(' ')[0]}</h3>
             {[
@@ -449,6 +499,7 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
         )}
       </div>
 
+      {newGroup && <NewGroupDialog role={role} onClose={() => setNewGroup(false)} onCreated={async id => { setNewGroup(false); await loadThreads(); setActiveId(id); }} />}
       {picking && <NewChatDialog onClose={() => setPicking(false)} onPick={id => { setPicking(false); openWith(id); }} />}
       {viewer && <PhotoViewer m={viewer} onClose={() => setViewer(null)} />}
       <style>{`.chat-wallpaper{background-color:var(--color-subtle,#F4F6FB);background-image:radial-gradient(rgba(63,111,232,.07) 1px,transparent 1px);background-size:18px 18px}`}</style>
@@ -461,13 +512,14 @@ function Bubble({ m, first, last, group, onOpen, onRetry }: { m: Message; first:
   const isImage = !!m.attachmentType?.startsWith('image/');
   const isVoice = !!m.attachmentType?.startsWith('audio/');
   const src = m.attachmentUrl ?? m.localPreview ?? null;
+  if (m.kind === 'SYSTEM') return <p id={`msg-${m.id}`} className="mx-auto my-2 w-fit max-w-[85%] rounded-md bg-white/95 px-3 py-1.5 text-center text-[12.5px] text-ink2 shadow-sm">{m.body}</p>;
   const meta = (
     <span className={clsx('ml-2 inline-flex translate-y-1 items-center gap-1 whitespace-nowrap text-[10.5px]', own ? 'text-white/80' : 'text-muted')}>
       {time(m.createdAt)}{own && <Ticks m={m} group={group} light />}
     </span>
   );
   return (
-    <div className={clsx('flex', own ? 'justify-end' : 'justify-start', first ? 'mt-2' : 'mt-0.5')}>
+    <div id={`msg-${m.id}`} className={clsx('flex', own ? 'justify-end' : 'justify-start', first ? 'mt-2' : 'mt-0.5')}>
       <div className={clsx('relative max-w-[78%] rounded-lg px-2 pb-1.5 pt-1.5 text-[14px] leading-[1.4] shadow-sm sm:max-w-[65%]',
         own ? 'bg-azure-strong text-on-accent' : 'bg-white text-navy',
         first && (own ? 'rounded-tr-none' : 'rounded-tl-none'))}>

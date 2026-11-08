@@ -61,6 +61,7 @@ model UserProfile {
   staffPosts           StaffPost[]              @relation("StaffPosts")
   studyBlocks          StudyBlock[]             @relation("StudentStudyBlocks")
   threadReads          ThreadRead[]
+  threadMemberships    ThreadMember[]
   wpPulls              WpPull[]
   coursePurchases      CoursePurchase[]
   discussionUpvotes    DiscussionUpvote[]
@@ -1192,15 +1193,46 @@ model MessageThread {
   participantAId String?
   participantBId String?
   cohortId       String?      @unique
+  /// A group a teacher or admin made (members in ThreadMember). Cohort groups take their members from the cohort.
+  isGroup        Boolean      @default(false)
+  /// Group name, description and photo (a cohort group shows the cohort's name until someone renames it)
+  name           String?
+  description    String?
+  photoUrl       String?
+  createdById    String?
+  /// Group settings, changed by group admins
+  onlyAdminsSend Boolean      @default(false)
+  onlyAdminsEdit Boolean      @default(true)
+  membersCanAdd  Boolean      @default(false)
+  pinnedMessageId String?
   lastMessageAt  DateTime     @default(now())
   createdAt      DateTime     @default(now())
   messages       Message[]
   reads          ThreadRead[]
+  groupMembers   ThreadMember[]
   participantA   UserProfile? @relation("ThreadParticipantA", fields: [participantAId], references: [id])
   participantB   UserProfile? @relation("ThreadParticipantB", fields: [participantBId], references: [id])
   cohort         Cohort?      @relation(fields: [cohortId], references: [id], onDelete: Cascade)
 
   @@unique([participantAId, participantBId])
+}
+
+/// People in a group. For groups a teacher or admin made, these rows are the members (leftAt set once they leave or are removed);
+/// in cohort groups members come from the cohort, and a row only records a group admin or someone who muted the group.
+model ThreadMember {
+  id        String        @id @default(uuid())
+  threadId  String
+  userId    String
+  role      String        @default("MEMBER") // MEMBER | ADMIN
+  muted     Boolean       @default(false)
+  addedById String?
+  joinedAt  DateTime      @default(now())
+  leftAt    DateTime?
+  thread    MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user      UserProfile   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, userId])
+  @@index([userId])
 }
 
 /// How far each member has read a group chat (one-to-one threads use Message.readAt)
@@ -1229,6 +1261,8 @@ model Message {
   /// Voice notes: length in seconds, and 40 bar heights (0-9) drawn as its waveform
   attachmentDuration Int?
   attachmentWave     String?
+  /// TEXT, or SYSTEM for notes like "Kofi added Ama" (sender = who did it)
+  kind           String        @default("TEXT")
   sender         UserProfile   @relation("SentMessages", fields: [senderId], references: [id])
   thread         MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 }

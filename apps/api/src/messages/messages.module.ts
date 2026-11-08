@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { MessagesService } from './messages.service';
 import { MessagesController } from './messages.controller';
 import { MessagesGateway } from './messages.gateway';
+import { GroupsService } from './groups.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { MailModule } from '../mail/mail.module';
@@ -19,7 +20,7 @@ import { FilesModule } from '../files/files.module';
     }),
   ],
   controllers: [MessagesController],
-  providers: [MessagesService, MessagesGateway],
+  providers: [MessagesService, MessagesGateway, GroupsService],
   exports: [MessagesService, MessagesGateway],
 })
 export class MessagesModule {}
