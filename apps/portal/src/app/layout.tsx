@@ -40,6 +40,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={bricolage.className}>
+      <head>
+        {/* Catch the browser's "this can be installed" offer before anything else loads; the install card reads it later */}
+        <script dangerouslySetInnerHTML={{ __html: "addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__cpaInstall=e;dispatchEvent(new Event('cpa-install'))});addEventListener('appinstalled',function(){window.__cpaInstall=null;dispatchEvent(new Event('cpa-install'))});" }} />
+      </head>
       <body>
         <NotificationProvider>
           <NotificationBridge />

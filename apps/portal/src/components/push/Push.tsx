@@ -71,14 +71,12 @@ export function usePush() {
 const INSTALL_KEY = 'cpa:install-prompt';
 const SHOWN_KEY = 'cpa:invite-shown'; // one card per visit: install first, notifications on a later visit
 
-// Chrome, Edge and Android offer installing in an event that fires once, early: keep it for when we ask
-let deferredInstall: any = null;
+// Chrome, Edge and Android offer installing in an event that fires once, often before this code has loaded:
+// a script at the top of every page (app/layout.tsx) keeps it on window.__cpaInstall and says "cpa-install"
 const installListeners = new Set<() => void>();
 const installChanged = () => installListeners.forEach(f => f());
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; installChanged(); });
-  window.addEventListener('appinstalled', () => { deferredInstall = null; installChanged(); });
-}
+const offer = (): any => (typeof window !== 'undefined' ? (window as any).__cpaInstall ?? null : null);
+if (typeof window !== 'undefined') window.addEventListener('cpa-install', installChanged);
 
 /** Can this device install the portal: a real Install button (Chrome, Edge, Android) or the iPhone steps */
 export function useInstall() {
@@ -90,13 +88,14 @@ export function useInstall() {
     return () => { installListeners.delete(f); };
   }, []);
   const isInstalled = ready && installed();
-  const canInstall = ready && !isInstalled && !!deferredInstall;
+  const canInstall = ready && !isInstalled && !!offer();
   const ios = ready && !isInstalled && isIOS();
   const install = useCallback(async () => {
-    if (!deferredInstall) return false;
-    deferredInstall.prompt();
-    const choice = await deferredInstall.userChoice.catch(() => null);
-    deferredInstall = null; installChanged();
+    const e = offer();
+    if (!e) return false;
+    e.prompt();
+    const choice = await e.userChoice.catch(() => null);
+    (window as any).__cpaInstall = null; installChanged();
     return choice?.outcome === 'accepted';
   }, []);
   return { ready, installed: isInstalled, canInstall, ios, available: canInstall || ios, install };
@@ -173,13 +172,15 @@ export function PushPrompt() {
   }, []);
 
   useEffect(() => {
-    if (!push.ready || !inst.ready) return;
+    // Installing doesn't wait for the notifications check: on a browser's first visit that waits for the
+    // service worker to finish setting up, which can take a while
+    if (!inst.ready) return;
     // Allowed before but not subscribed (new sign-in on this device): subscribe quietly
-    if (push.supported && push.permission === 'granted' && !push.subscribed) { push.enable(); return; }
+    if (push.ready && push.supported && push.permission === 'granted' && !push.subscribed) { push.enable(); return; }
     let shownThisVisit = false;
     try { shownThisVisit = sessionStorage.getItem(SHOWN_KEY) === '1'; } catch { /* storage blocked */ }
     const want = inst.available && due(INSTALL_KEY) ? 'install'
-      : !shownThisVisit && push.supported && !push.needsInstall && push.permission === 'default' && due(PROMPT_KEY) ? 'push' : null;
+      : push.ready && !shownThisVisit && push.supported && !push.needsInstall && push.permission === 'default' && due(PROMPT_KEY) ? 'push' : null;
     if (!want) { setCard(null); return; }
     let t: ReturnType<typeof setTimeout>;
     const tryShow = () => {
