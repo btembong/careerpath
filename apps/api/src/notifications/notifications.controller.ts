@@ -7,13 +7,42 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { NotificationsService } from './notifications.service';
+import { PushService } from './push.service';
 
 @ApiTags('notifications')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('notifications')
 export class NotificationsController {
-  constructor(private readonly svc: NotificationsService) {}
+  constructor(private readonly svc: NotificationsService, private readonly push: PushService) {}
+
+  // ── This device: phone and computer notifications ──
+
+  @Get('push/key')
+  @ApiOperation({ summary: 'The public key a browser needs to subscribe to push notifications' })
+  pushKey() { return this.push.publicKey(); }
+
+  @Get('push/devices')
+  @ApiOperation({ summary: 'My devices that get push notifications' })
+  pushDevices(@CurrentUser() user: UserProfile) { return this.push.devices(user.id); }
+
+  @Post('push/subscribe')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'This device gets push notifications (calls, messages, every notice) when the portal is closed' })
+  pushSubscribe(@CurrentUser() user: UserProfile, @Body() body: { subscription: any; device?: string }) { return this.push.subscribe(user.id, body?.subscription, body?.device); }
+
+  @Post('push/unsubscribe')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Stop push notifications on this device' })
+  pushUnsubscribe(@CurrentUser() user: UserProfile, @Body('endpoint') endpoint: string) { return this.push.unsubscribe(user.id, endpoint); }
+
+  @Post('push/test')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send myself a test notification' })
+  pushTest(@CurrentUser() user: UserProfile) {
+    this.push.send([user.id], { title: 'Notifications are on', body: 'This is how CareerPath Africa reaches you when the portal is closed.', url: '/settings', tag: 'test' });
+    return { sent: true };
+  }
 
   // Admin routes first so 'admin' isn't captured by ':id'
   @Get('admin/broadcasts')

@@ -1,6 +1,7 @@
 'use client';
 import { Sidebar } from '@/components/layout/Sidebar';
 import CallLayer from '@/components/calls/CallLayer';
+import { PushPrompt } from '@/components/push/Push';
 import { MobileNav } from '@/components/layout/MobileNav';
 import { CommandPalette } from '@/components/ui/CommandPalette';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
@@ -12,6 +13,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <OfflineIndicator />
       <Sidebar />
       <CallLayer />
+      <PushPrompt />
       <div className="flex flex-1 flex-col overflow-hidden">
         <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
           <ErrorBoundary>{children}</ErrorBoundary>

@@ -7,9 +7,9 @@
  *   - Images                  → Stale-while-revalidate
  */
 
-const SHELL_CACHE  = 'cpa-shell-v1';
-const PAGES_CACHE  = 'cpa-pages-v1';
-const IMAGES_CACHE = 'cpa-images-v1';
+const SHELL_CACHE  = 'cpa-shell-v2';
+const PAGES_CACHE  = 'cpa-pages-v2';
+const IMAGES_CACHE = 'cpa-images-v2';
 
 // Static assets to pre-cache on install
 const PRECACHE_URLS = [
@@ -22,8 +22,9 @@ const PRECACHE_URLS = [
 
 // ── Install ──────────────────────────────────────────────────────────────────
 self.addEventListener('install', event => {
+  // One by one, so a single missing file can't stop the worker installing (and with it, push notifications)
   event.waitUntil(
-    caches.open(SHELL_CACHE).then(cache => cache.addAll(PRECACHE_URLS))
+    caches.open(SHELL_CACHE).then(cache => Promise.all(PRECACHE_URLS.map(u => cache.add(u).catch(() => null))))
   );
   self.skipWaiting();
 });
@@ -112,3 +113,34 @@ async function networkFirstNav(request) {
     );
   }
 }
+
+// ── Push notifications ───────────────────────────────────────────────────────
+// Every notice in the bell reaches people who don't have the portal open, and incoming calls ring here.
+self.addEventListener('push', event => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch { d = { title: 'CareerPath Africa', body: event.data ? event.data.text() : '' }; }
+  const call = d.kind === 'call';
+  event.waitUntil(self.registration.showNotification(d.title || 'CareerPath Africa', {
+    body: d.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/badge-96.png',
+    tag: d.tag || undefined,
+    renotify: !!d.tag,
+    requireInteraction: !!d.requireInteraction,
+    vibrate: call ? [400, 200, 400, 200, 400, 200, 400] : [120],
+    data: { url: d.url || '/' },
+    actions: call ? [{ action: 'open', title: 'Answer' }] : [],
+  }));
+});
+
+// Tapping a notification opens that page, reusing an open portal tab if there is one
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const target = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href;
+  event.waitUntil((async () => {
+    const tabs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const tab = tabs.find(t => new URL(t.url).origin === self.location.origin);
+    if (tab) { await tab.focus(); return tab.navigate ? tab.navigate(target).catch(() => tab) : tab; }
+    return self.clients.openWindow(target);
+  })());
+});

@@ -3,6 +3,7 @@ import { ConnectedSocket, MessageBody, OnGatewayConnection, OnGatewayDisconnect,
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
+import { PresenceService } from '../notifications/presence.service';
 
 /**
  * Pushes messages to the people in a conversation the moment they're sent.
@@ -23,10 +24,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private readonly logger = new Logger(MessagesGateway.name);
-  /** Open sockets per user, so email is only sent to people who aren't online */
-  private online = new Map<string, number>();
-
-  constructor(private jwt: JwtService, private prisma: PrismaService) {}
+  constructor(private jwt: JwtService, private prisma: PrismaService, private presence: PresenceService) {}
 
   async handleConnection(socket: Socket) {
     try {
@@ -37,7 +35,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       if (!user || user.approvalStatus === 'SUSPENDED') { socket.disconnect(); return; }
       socket.data.userId = user.id;
       await socket.join(`user:${user.id}`);
-      this.online.set(user.id, (this.online.get(user.id) ?? 0) + 1);
+      this.presence.connected(user.id);
     } catch {
       socket.disconnect();
     }
@@ -46,12 +44,11 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   handleDisconnect(socket: Socket) {
     const id = socket.data?.userId as string | undefined;
     if (!id) return;
-    const n = (this.online.get(id) ?? 1) - 1;
-    if (n <= 0) this.online.delete(id); else this.online.set(id, n);
+    this.presence.disconnected(id);
   }
 
   isOnline(userId: string) {
-    return (this.online.get(userId) ?? 0) > 0;
+    return this.presence.isOnline(userId);
   }
 
   emitTo(userIds: string[], event: string, payload: unknown) {

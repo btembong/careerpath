@@ -112,7 +112,7 @@ export default function CallLayer() {
     setAudio({}); setSpeaking(null); setRemoteMuted({}); setHands({}); sessionToUser.current = {};
   }, []);
 
-  const reset = useCallback(() => { leaveDaily(); setCall(null); setPhase('idle'); setSmall(false); setMuted(false); setHand(false); setDeclining(false); }, [leaveDaily]);
+  const reset = useCallback(() => { clearCallNotices(); leaveDaily(); setCall(null); setPhase('idle'); setSmall(false); setMuted(false); setHand(false); setDeclining(false); }, [leaveDaily]);
 
   /** Into the room: Daily in real life, nothing to connect on a stand-in */
   const connect = useCallback(async (info: { call: CallView; roomUrl: string; token: string; fake?: boolean }) => {
@@ -163,6 +163,7 @@ export default function CallLayer() {
   }, [connect]);
   async function answer() {
     if (!call) return;
+    clearCallNotices();
     try { await connect((await api.post(`/calls/${call.id}/accept`)).data); }
     catch (e: any) { notify.error(e?.response?.data?.message ?? 'The call has ended'); reset(); }
   }
@@ -214,6 +215,8 @@ export default function CallLayer() {
       notify.info(why);
       reset();
     });
+    // The portal is open now: ringing notifications on this device are handled on the page
+    clearCallNotices();
     // A call ringing (or in progress) when the portal opened
     api.get('/calls/current').then(r => {
       const c = r.data.call as CallView | null;
@@ -331,6 +334,12 @@ export default function CallLayer() {
       )}
     </div>
   );
+}
+
+/** Closes this device's call notifications (the page shows the call itself) */
+function clearCallNotices() {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.getRegistration().then(reg => reg?.getNotifications()).then(list => list?.filter(n => n.tag?.startsWith('call-')).forEach(n => n.close())).catch(() => {});
 }
 
 /** Plays one person's voice */

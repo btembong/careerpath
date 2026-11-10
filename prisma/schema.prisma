@@ -66,6 +66,7 @@ model UserProfile {
   messageStars         MessageStar[]
   callsStarted         Call[]                   @relation("CallsStarted")
   callParticipations   CallParticipant[]
+  pushSubscriptions    PushSubscription[]
   wpPulls              WpPull[]
   coursePurchases      CoursePurchase[]
   discussionUpvotes    DiscussionUpvote[]
@@ -1321,6 +1322,21 @@ model CallParticipant {
   user       UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([callId, userId])
+}
+
+/// A phone or computer that gets push notifications (calls, messages, every notice) when the portal is closed
+model PushSubscription {
+  id         String      @id @default(uuid())
+  userId     String
+  endpoint   String      @unique
+  p256dh     String
+  auth       String
+  device     String?
+  createdAt  DateTime    @default(now())
+  lastUsedAt DateTime?
+  user       UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 /// Every earlier version of an edited message, kept for the record

@@ -8,6 +8,7 @@ import { notify } from '@/lib/notify';
 import { useAuth } from '@/hooks/useAuth';
 import { applyTextSize, TEXT_SIZE_KEY } from '@/components/providers/DisplayPrefsApplier';
 import api from '@/lib/api';
+import { PushSettings } from '@/components/push/Push';
 
 interface Me {
   id: string; email: string; role: string; firstName?: string; lastName?: string; phone?: string;
@@ -229,6 +230,7 @@ function NotificationsPanel({ prefs, save }: { prefs: Prefs | null; save: (p: Re
         })}
       </div>
       <p className="text-xs text-muted">Account and security messages are always sent.</p>
+      <PushSettings />
     </div>
   );
 }

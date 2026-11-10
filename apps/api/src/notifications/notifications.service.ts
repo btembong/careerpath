@@ -4,6 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import type { NoticeOpts } from '../mail/mail.templates';
 import { resolvePrefs } from './notification-prefs';
+import { PushService } from './push.service';
+import { PresenceService } from './presence.service';
 
 export type NotificationType = 'live' | 'assignment' | 'grade' | 'certificate' | 'message' | 'community' | 'system';
 const AUDIENCES = ['ALL', 'STUDENT', 'TEACHER', 'COUNTRY_REP', 'SUBJECT_REVIEWER'] as const;
@@ -14,6 +16,8 @@ interface NewNotification {
   title: string;
   body: string;
   href?: string;
+  /** Push only: notifications with the same tag replace each other on the phone (a missed call replaces its ringing) */
+  pushTag?: string;
 }
 
 /** An email to send with the notice. The button goes to the notice's link unless `href` says otherwise. */
@@ -31,7 +35,7 @@ export interface NoticeEmail extends Omit<NoticeOpts, 'firstName' | 'href'> {
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor(private prisma: PrismaService, private mail: MailService) {}
+  constructor(private prisma: PrismaService, private mail: MailService, private push: PushService, private presence: PresenceService) {}
 
   /** Fire-and-forget from business flows: a failed notification must never fail the action that caused it. */
   notify(userIds: string | string[], n: NewNotification, email?: NoticeEmail): void {
@@ -42,8 +46,14 @@ export class NotificationsService {
     const recipients = n.type === 'system' ? Promise.resolve(ids) : this.prisma.userProfile
       .findMany({ where: { id: { in: ids } }, select: { id: true, notificationPrefs: true } })
       .then(users => users.filter(u => resolvePrefs(u.notificationPrefs)[n.type]?.inApp !== false).map(u => u.id));
+    const { pushTag, ...row } = n;
     recipients
-      .then(to => to.length ? this.prisma.notification.createMany({ data: to.map(userId => ({ userId, ...n })) }) : null)
+      .then(async to => {
+        if (!to.length) return;
+        await this.prisma.notification.createMany({ data: to.map(userId => ({ userId, ...row })) });
+        // Anyone without the portal open also gets it on their phone or computer
+        this.push.send(to.filter(id => !this.presence.isOnline(id)), { title: n.title, body: n.body, url: n.href || '/', tag: pushTag ?? n.type });
+      })
       .catch(err => this.logger.warn(`Notification "${n.title}" failed: ${err.message}`));
   }
 
@@ -122,6 +132,7 @@ export class NotificationsService {
       await this.prisma.notification.createMany({
         data: recipients.map(r => ({ userId: r.id, type: 'system', title, body, broadcastId: sent.id })),
       });
+      this.push.send(recipients.filter(r => resolvePrefs(r.notificationPrefs).news?.inApp !== false && !this.presence.isOnline(r.id)).map(r => r.id), { title, body, url: '/', tag: `news-${sent.id}` });
     }
     if (channel !== 'IN_APP') {
       // Sequential on purpose: Brevo rate-limits bursts. Runs after the response is sent.

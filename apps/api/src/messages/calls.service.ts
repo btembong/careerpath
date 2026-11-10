@@ -4,6 +4,7 @@ import { UserProfile } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PushService } from '../notifications/push.service';
 import { DailyService } from '../live/daily/daily.service';
 import { MessagesService, isGroupThread, nameOf, personSelect } from './messages.service';
 import { MessagesGateway } from './messages.gateway';
@@ -42,6 +43,7 @@ export class CallsService {
     private gateway: MessagesGateway,
     private daily: DailyService,
     private notifications: NotificationsService,
+    private push: PushService,
   ) {}
 
   load(id: string) {
@@ -152,6 +154,11 @@ export class CallsService {
       for (const p of people) this.notifications.notify(p.id, { type: 'message', title: `${nameOf(me)} started a group call`, body: `${v.title} · tap to join`, href: `${HOME[p.role] ?? '/student'}/messages?thread=${threadId}` });
     } else {
       this.timers.set(call.id, setTimeout(() => this.ringOut(call.id).catch(() => {}), RING_SECS * 1000));
+      // Portal closed: ring their phone or computer
+      if (!this.gateway.isOnline(other!)) {
+        const callee = await this.prisma.userProfile.findUnique({ where: { id: other! }, select: { role: true } });
+        this.push.send([other!], { kind: 'call', title: `${nameOf(me)} is calling you`, body: 'Voice call on CareerPath Africa · tap to answer', url: `${HOME[callee?.role ?? ''] ?? '/student'}/messages?thread=${threadId}`, tag: `call-${call.id}`, requireInteraction: true });
+      }
     }
     return this.joinInfo(call, me);
   }
@@ -252,7 +259,7 @@ export class CallsService {
     await this.tell(fresh, 'call:update', people);
     if (status === 'MISSED' && call.kind === 'ONE') {
       const callee = fresh.participants.find(p => p.userId !== call.startedById);
-      if (callee) this.notifications.notify(callee.userId, { type: 'message', title: `Missed voice call from ${nameOf(fresh.startedBy)}`, body: 'Tap to call back', href: `${HOME[callee.user.role] ?? '/student'}/messages?thread=${call.threadId}` });
+      if (callee) this.notifications.notify(callee.userId, { type: 'message', title: `Missed voice call from ${nameOf(fresh.startedBy)}`, body: 'Tap to call back', href: `${HOME[callee.user.role] ?? '/student'}/messages?thread=${call.threadId}`, pushTag: `call-${call.id}` });
     }
   }
 
