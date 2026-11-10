@@ -401,6 +401,12 @@ html.dark .dark-invert-bg {
   }
 }
 
+/* The "notifications are off on this device" strip */
+.cpa-strip-warn { background: #FFF6E5; border-color: #F5D9A8; color: #5C3B00; }
+.cpa-strip-warn .cpa-strip-icon { color: #B26A00; }
+html.dark .cpa-strip-warn { background: #2A2110; border-color: #5A4318; color: #F5D9A8; }
+html.dark .cpa-strip-warn .cpa-strip-icon { color: #F0B65A; }
+
 /* ── Custom utilities ────────────────────────────────────────────────────── */
 
 @utility no-scrollbar {

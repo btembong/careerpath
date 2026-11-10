@@ -8,6 +8,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useBadges } from '@/hooks/useBadges';
 import type { IconName } from '@/lib/icons';
 import { useMe } from '@/hooks/useMe';
+import { usePush, useInstall, showIosSteps } from '@/components/push/Push';
+import { notify } from '@/lib/notify';
 
 interface NavItem { label: string; href: string; icon: IconName; also?: string[]; badge?: 'messages' | 'notices' }
 interface NavGroup { items: NavItem[] }
@@ -182,6 +184,8 @@ export function MobileNav() {
   const badges = useBadges();
   const last = useRef(0);
   const me = useMe(); // the sign-in token has no name or photo
+  const push = usePush();
+  const inst = useInstall();
 
   const config = ROLES[user?.role ?? ''];
   const hidden = !config || chatOpen || HIDE_ON.some(r => r.test(pathname));
@@ -281,6 +285,37 @@ export function MobileNav() {
           ] }].map((g, gi) => (
             <div key={gi}>
               <div aria-hidden className="h-2.5 bg-subtle" />
+              {gi === config.menu.length && (
+                <div className="cpa-device-rows">
+                  {inst.available && (
+                    <button type="button" onClick={async () => { if (inst.ios) { setOpen(false); showIosSteps(); return; } if (await inst.install()) notify.success('CareerPath is on your home screen'); }}
+                      className="flex w-full items-center gap-4 border-b border-line px-5 py-[13px] text-left text-navy active:bg-subtle">
+                      <Icon name="install" size={24} line />
+                      <span className="min-w-0 flex-1"><span className="block text-[16.5px] font-semibold">Install the app</span><span className="block text-[12px] text-muted">Opens from your home screen</span></span>
+                      <span className="rounded-full bg-accent-soft px-2.5 py-1 text-[12px] font-extrabold text-azure-strong">Install</span>
+                    </button>
+                  )}
+                  {push.ready && (push.supported || push.needsInstall) && (() => {
+                    const on = push.supported && push.subscribed && !push.needsInstall;
+                    const blocked = push.supported && push.permission === 'denied';
+                    const flip = async () => {
+                      if (push.needsInstall || !push.supported) { setOpen(false); showIosSteps(); return; }
+                      if (blocked) { notify.info('Notifications are blocked for this site. Allow them in your browser’s site settings, then come back.'); return; }
+                      if (on) await push.disable(); else if (await push.enable()) notify.success('Notifications are on for this phone');
+                    };
+                    return (
+                      <button type="button" role="switch" aria-checked={on} onClick={flip}
+                        className="flex w-full items-center gap-4 border-b border-line px-5 py-[13px] text-left text-navy active:bg-subtle">
+                        <Icon name="bell" size={24} line />
+                        <span className="min-w-0 flex-1"><span className="block text-[16.5px] font-semibold">Notifications on this phone</span><span className="block text-[12px] text-muted">{blocked ? 'Blocked in your browser’s settings' : 'Calls and messages when it’s closed'}</span></span>
+                        <span aria-hidden className={clsx('relative h-[25px] w-[42px] shrink-0 rounded-full transition-colors', on ? 'bg-[#3F6FE8]' : 'bg-line')}>
+                          <span className={clsx('absolute top-[3px] h-[19px] w-[19px] rounded-full bg-[#FFFFFF] shadow transition-all', on ? 'left-[20px]' : 'left-[3px]')} />
+                        </span>
+                      </button>
+                    );
+                  })()}
+                </div>
+              )}
               {g.items.map(i => {
                 const n = count(i.badge);
                 const on = isActive(i);

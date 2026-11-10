@@ -109,6 +109,13 @@ export const Icons = {
   lightbulbLine: 'solar:lightbulb-minimalistic-linear',
   sunLine:       'solar:sun-linear',
   moonLine:      'solar:moon-stars-linear',
+  install:       'solar:download-minimalistic-bold',
+  bellOff:       'solar:bell-off-bold',
+  shareIos:      'solar:square-share-line-bold',
+  addSquare:     'solar:add-square-bold',
+  supportReply:  'solar:chat-round-check-bold',
+  grade:         'solar:clipboard-check-bold',
+  phoneCall:     'solar:phone-calling-bold',
 } as const;
 
 export type IconName = keyof typeof Icons;

@@ -1,6 +1,7 @@
 'use client';
 import React, { useCallback, useEffect, useState } from 'react';
 import { notify } from '@/lib/notify';
+import { Icon } from '@/components/ui/Icon';
 import api from '@/lib/api';
 
 const PROMPT_KEY = 'cpa:push-prompt';
@@ -66,46 +67,187 @@ export function usePush() {
   return { ...state, enable, disable, test, refresh };
 }
 
+// ── Installing the portal as an app ──────────────────────────────────────────
+const INSTALL_KEY = 'cpa:install-prompt';
+const SHOWN_KEY = 'cpa:invite-shown'; // one card per visit: install first, notifications on a later visit
+
+// Chrome, Edge and Android offer installing in an event that fires once, early: keep it for when we ask
+let deferredInstall: any = null;
+const installListeners = new Set<() => void>();
+const installChanged = () => installListeners.forEach(f => f());
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; installChanged(); });
+  window.addEventListener('appinstalled', () => { deferredInstall = null; installChanged(); });
+}
+
+/** Can this device install the portal: a real Install button (Chrome, Edge, Android) or the iPhone steps */
+export function useInstall() {
+  const [, tick] = useState(0);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const f = () => tick(x => x + 1);
+    installListeners.add(f); setReady(true);
+    return () => { installListeners.delete(f); };
+  }, []);
+  const isInstalled = ready && installed();
+  const canInstall = ready && !isInstalled && !!deferredInstall;
+  const ios = ready && !isInstalled && isIOS();
+  const install = useCallback(async () => {
+    if (!deferredInstall) return false;
+    deferredInstall.prompt();
+    const choice = await deferredInstall.userChoice.catch(() => null);
+    deferredInstall = null; installChanged();
+    return choice?.outcome === 'accepted';
+  }, []);
+  return { ready, installed: isInstalled, canInstall, ios, available: canInstall || ios, install };
+}
+
+/** Opens the iPhone "add to home screen" steps from anywhere (the menu, the strip) */
+export const showIosSteps = () => window.dispatchEvent(new Event('cpa-ios-steps'));
+
+const due = (key: string) => { try { return Date.now() - Number(localStorage.getItem(key) ?? 0) > PROMPT_AGAIN_DAYS * 86_400_000; } catch { return false; } };
+const putOff = (key: string) => { try { localStorage.setItem(key, String(Date.now())); } catch { /* storage blocked */ } };
+// Never over a lesson, a test, a live class, mentoring or a call, nor the welcome tour
+const BUSY = [/\/learn\/[^/]+\/lesson\//, /\/tests\/(?!new|history|papers|mocks|cat$)[^/]+$/, /\/tests\/cat\/[^/]+/, /\/live\/[^/]+$/, /\/mentorship\/(session|board)\//, /\/quiz\/[^/]+/];
+const busy = () => BUSY.some(r => r.test(location.pathname)) || !!document.querySelector('[aria-labelledby="tour-title"], [aria-label="Hang up"], [aria-label^="Incoming call"]');
+
+// Floats just above the phone's tab bar; bottom-right on a computer
+const CARD = 'fixed left-2.5 right-2.5 z-[55] rounded-[18px] border border-line bg-white p-3.5 shadow-[0_16px_40px_rgba(7,32,97,0.28)] bottom-[calc(16px+env(safe-area-inset-bottom))] [html[data-tabbar=shown]_&]:bottom-[calc(90px+env(safe-area-inset-bottom))] lg:left-auto lg:right-6 lg:w-[400px] lg:bottom-6 [html[data-tabbar=shown]_&]:lg:bottom-6';
+const APP_ICON = <img src="/icons/icon-192.png" alt="" width={46} height={46} className="h-[46px] w-[46px] shrink-0 rounded-xl" />;
+
+function CardButtons({ no, yes, onNo, onYes }: { no: string; yes: string; onNo: () => void; onYes: () => void }) {
+  return (
+    <div className="mt-3 flex justify-end gap-2">
+      <button onClick={onNo} className="h-9 rounded-[10px] px-3 text-[13px] font-bold text-muted hover:text-navy">{no}</button>
+      <button onClick={onYes} className="h-9 rounded-[10px] bg-[#3F6FE8] px-4 text-[13px] font-extrabold text-[#FFFFFF] hover:brightness-95">{yes}</button>
+    </div>
+  );
+}
+
+/** iPhone: Safari has no install button, so the three steps, pointing at its Share button */
+function IosSteps({ onClose }: { onClose: () => void }) {
+  const ipad = /iPad/.test(navigator.userAgent);
+  const step = (n: number, text: React.ReactNode, icon: React.ReactNode) => (
+    <li className="flex items-center gap-3 border-b border-line py-2.5">
+      <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-full bg-accent-soft text-[12px] font-extrabold text-azure-strong">{n}</span>
+      <span className="flex-1 text-[13.5px] leading-snug text-navy">{text}</span>
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-subtle">{icon}</span>
+    </li>
+  );
+  return (
+    <>
+      <div className="fixed inset-0 z-[62] bg-[rgba(7,21,48,0.28)]" onClick={onClose} aria-hidden />
+      <div role="dialog" aria-modal="true" aria-label="Add CareerPath to your home screen" className="fixed inset-x-0 bottom-0 z-[63] mx-auto max-w-[480px] rounded-t-[22px] bg-white px-[18px] pb-[calc(20px+env(safe-area-inset-bottom))] pt-2.5">
+        <div aria-hidden className="mx-auto mb-3 h-[5px] w-[38px] rounded-full bg-line" />
+        <div className="flex items-center gap-3">
+          {APP_ICON}
+          <div><p className="text-[15px] font-bold text-navy">Add CareerPath to your home screen</p><p className="text-[12.5px] text-muted">iPhone needs this before it can send you notifications</p></div>
+        </div>
+        <ol className="mt-2">
+          {step(1, <>Tap <strong>Share</strong> {ipad ? 'at the top' : 'at the bottom'} of Safari</>, <Icon name="shareIos" size={18} line className="text-[#0A84FF]" />)}
+          {step(2, <>Scroll down, tap <strong>Add to Home Screen</strong></>, <Icon name="addSquare" size={18} line className="text-navy" />)}
+          {step(3, <>Open <strong>CareerPath</strong> from your home screen and turn on notifications</>, <img src="/icons/icon-192.png" alt="" width={22} height={22} className="rounded-md" />)}
+        </ol>
+        <button onClick={onClose} className="mt-3 h-11 w-full rounded-[11px] bg-[#3F6FE8] text-[14px] font-extrabold text-[#FFFFFF]">Got it</button>
+        {!ipad && <span aria-hidden className="mt-1 block animate-bounce text-center text-[20px] leading-none text-azure-strong">↓</span>}
+      </div>
+    </>
+  );
+}
+
 /**
- * Asks once (and again a fortnight after "Not now") whether this device should get calls, messages and notices
- * when the portal is closed. Also keeps an existing permission subscribed, e.g. after signing in on a new account.
+ * The two invitations, one at a time: install the app (where the device allows it), then, on a later visit,
+ * notifications. "Not now" puts either off for a fortnight; once installed or switched on they don't come back.
+ * Also keeps an existing permission subscribed, e.g. after signing in on a new account.
  */
 export function PushPrompt() {
   const push = usePush();
-  const [show, setShow] = useState(false);
+  const inst = useInstall();
+  const [card, setCard] = useState<null | 'install' | 'push'>(null);
+  const [steps, setSteps] = useState(false);
 
   useEffect(() => {
-    if (!push.ready) return;
+    const open = () => setSteps(true);
+    window.addEventListener('cpa-ios-steps', open);
+    return () => window.removeEventListener('cpa-ios-steps', open);
+  }, []);
+
+  useEffect(() => {
+    if (!push.ready || !inst.ready) return;
     // Allowed before but not subscribed (new sign-in on this device): subscribe quietly
     if (push.supported && push.permission === 'granted' && !push.subscribed) { push.enable(); return; }
-    let last = 0;
-    try { last = Number(localStorage.getItem(PROMPT_KEY) ?? 0); } catch { /* storage blocked */ }
-    const due = Date.now() - last > PROMPT_AGAIN_DAYS * 86_400_000;
-    const ask = (push.supported && push.permission === 'default') || (push.needsInstall && !push.supported);
-    if (!due || !ask) return;
-    const t = setTimeout(() => setShow(true), 6000); // not the moment the page opens
+    let shownThisVisit = false;
+    try { shownThisVisit = sessionStorage.getItem(SHOWN_KEY) === '1'; } catch { /* storage blocked */ }
+    const want = inst.available && due(INSTALL_KEY) ? 'install'
+      : !shownThisVisit && push.supported && !push.needsInstall && push.permission === 'default' && due(PROMPT_KEY) ? 'push' : null;
+    if (!want) { setCard(null); return; }
+    let t: ReturnType<typeof setTimeout>;
+    const tryShow = () => {
+      if (busy()) { t = setTimeout(tryShow, 5000); return; }
+      try { sessionStorage.setItem(SHOWN_KEY, '1'); } catch { /* storage blocked */ }
+      setCard(want);
+    };
+    t = setTimeout(tryShow, 6000); // not the moment the page opens
     return () => clearTimeout(t);
-  }, [push.ready, push.supported, push.permission, push.subscribed, push.needsInstall]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [push.ready, push.supported, push.permission, push.subscribed, inst.ready, inst.available]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const later = () => { try { localStorage.setItem(PROMPT_KEY, String(Date.now())); } catch { /* storage blocked */ } setShow(false); };
-  if (!show) return null;
+  const closeSteps = () => { setSteps(false); putOff(INSTALL_KEY); };
   return (
-    <div role="dialog" aria-label="Turn on notifications" className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] left-1/2 z-[55] flex w-[min(94vw,440px)] -translate-x-1/2 flex-col gap-3 rounded-xl border border-line bg-white p-4 shadow-2xl lg:left-auto lg:right-6 lg:translate-x-0">
-      <div className="flex gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-accent-soft text-azure-strong">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4" /></svg>
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[14.5px] font-bold text-navy">Get calls and messages when the portal is closed</p>
-          <p className="mt-0.5 text-[13px] text-ink2">{push.needsInstall && !push.supported
-            ? 'On iPhone, first add the portal to your home screen: tap Share, then “Add to Home Screen”. Open it from there and you can turn notifications on.'
-            : 'Calls ring on this device, and grades, class reminders, messages and other notices arrive even when the portal isn’t open. You choose which ones in Settings.'}</p>
+    <>
+      {steps && <IosSteps onClose={closeSteps} />}
+      {card === 'install' && !steps && (
+        <div role="dialog" aria-label="Install CareerPath Africa" className={CARD}>
+          <div className="flex gap-3">
+            {APP_ICON}
+            <div className="min-w-0">
+              <p className="text-[15px] font-bold text-navy">{inst.ios ? 'Add CareerPath to your home screen' : 'Install CareerPath Africa'}</p>
+              <p className="mt-0.5 text-[13px] leading-snug text-muted">Open it from your home screen like any app: full screen, quicker to start, and calls and messages reach you when it’s closed.</p>
+            </div>
+          </div>
+          <CardButtons no="Not now" yes={inst.ios ? 'Show me how' : 'Install'}
+            onNo={() => { putOff(INSTALL_KEY); setCard(null); }}
+            onYes={async () => { setCard(null); if (inst.ios) { setSteps(true); return; } putOff(INSTALL_KEY); if (await inst.install()) notify.success('CareerPath is on your home screen'); }} />
         </div>
-      </div>
-      <div className="flex justify-end gap-2">
-        <button onClick={later} className="h-9 rounded-md px-3 text-[13px] font-semibold text-ink2 hover:text-navy">Not now</button>
-        {!(push.needsInstall && !push.supported) && <button onClick={async () => { const ok = await push.enable(); later(); if (ok) notify.success('Notifications are on for this device'); }} className="h-9 rounded-md bg-azure-strong px-4 text-[13px] font-bold text-on-accent">Turn on</button>}
-      </div>
+      )}
+      {card === 'push' && (
+        <div role="dialog" aria-label="Turn on notifications" className={CARD}>
+          <div className="flex gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-accent-soft text-azure-strong"><Icon name="bell" size={22} line /></span>
+            <div className="min-w-0">
+              <p className="text-[15px] font-bold text-navy">Get calls and messages when the portal is closed</p>
+              <p className="mt-0.5 text-[13px] leading-snug text-muted">Calls ring on this {deviceWord()}, and grades, class reminders and messages arrive even when CareerPath isn’t open.</p>
+            </div>
+          </div>
+          <CardButtons no="Not now" yes="Turn on"
+            onNo={() => { putOff(PROMPT_KEY); setCard(null); }}
+            onYes={async () => { setCard(null); putOff(PROMPT_KEY); if (await push.enable()) notify.success('Notifications are on for this ' + deviceWord()); }} />
+        </div>
+      )}
+    </>
+  );
+}
+
+const deviceWord = () => (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches ? 'phone' : 'computer');
+
+/** The Notifications page: a strip while this device doesn't get them, with the way to turn them on */
+export function PushStrip() {
+  const push = usePush();
+  if (!push.ready || (push.supported && push.subscribed && !push.needsInstall) || (!push.supported && !push.needsInstall)) return null;
+  const blocked = !push.needsInstall && push.supported && push.permission === 'denied';
+  const where = deviceWord();
+  return (
+    <div className="cpa-strip-warn flex items-center gap-2.5 rounded-[13px] border px-3 py-2.5">
+      <Icon name="bellOff" size={20} line className="shrink-0 cpa-strip-icon" />
+      <p className="min-w-0 flex-1 text-[13px] leading-snug">
+        {push.needsInstall
+          ? <><strong>Off on this iPhone.</strong> Add CareerPath to your home screen first, then turn them on.</>
+          : blocked
+            ? <><strong>Blocked on this {where}.</strong> Allow notifications for this site in your browser’s settings (the lock next to the address), then come back.</>
+            : <><strong>Off on this {where}.</strong> You only see these when the portal is open.</>}
+      </p>
+      {push.needsInstall
+        ? <button onClick={showIosSteps} className="h-8 shrink-0 whitespace-nowrap rounded-[9px] bg-[#3F6FE8] px-3 text-[12.5px] font-extrabold text-[#FFFFFF]">Show me how</button>
+        : !blocked && <button onClick={async () => { if (await push.enable()) notify.success('Notifications are on for this ' + where); }} className="h-8 shrink-0 whitespace-nowrap rounded-[9px] bg-[#3F6FE8] px-3 text-[12.5px] font-extrabold text-[#FFFFFF]">Turn on</button>}
     </div>
   );
 }

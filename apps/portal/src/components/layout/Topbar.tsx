@@ -7,6 +7,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { useBadges } from '@/hooks/useBadges';
 import { useMe, initialsOf } from '@/hooks/useMe';
+import { useInstall } from '../push/Push';
+import { notify } from '@/lib/notify';
 import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 
 /* ─── OS detection for keyboard shortcut label ────────────────────────────── */
@@ -88,6 +90,7 @@ export function Topbar({ title, subtitle, backHref, backLabel, actions, breadcru
   const badges = useBadges();
   const profileHref = PROFILE_ROUTES[user?.role ?? ''] ?? '/student/profile';
   const me = useMe();
+  const inst = useInstall();
   const fullName = me?.name ?? user?.name ?? user?.email ?? '';
   const [hello, setHello] = useState('');
   useEffect(() => setHello(greetingNow()), []); // the hour is the phone's, not the server's
@@ -165,6 +168,13 @@ export function Topbar({ title, subtitle, backHref, backLabel, actions, breadcru
         {actions && <div className="flex items-center gap-2">{actions}</div>}
 
         {!bare && searchButton}
+
+        {inst.canInstall && (
+          <button onClick={async () => { if (await inst.install()) notify.success('CareerPath is installed'); }}
+            className="hidden h-[38px] items-center gap-1.5 rounded-md border border-line bg-white px-3 text-[13px] font-semibold text-navy hover:bg-subtle lg:inline-flex">
+            <Icon name="install" size={16} line />Install app
+          </button>
+        )}
 
         <div className="hidden lg:block">
           <LanguageSwitcher />
