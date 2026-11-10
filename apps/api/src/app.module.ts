@@ -2,7 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { UserThrottlerGuard } from './common/user-throttler.guard';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
@@ -52,7 +53,7 @@ import { RedisModule } from './redis/redis.module';
 @Module({
   providers: [
     // Apply throttler globally — all routes subject to rate limiting unless @SkipThrottle() is added
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: UserThrottlerGuard },
   ],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -61,9 +62,9 @@ import { RedisModule } from './redis/redis.module';
     CacheModule.register({ isGlobal: true, ttl: 300_000 /* 5 min ms */ }),
     // Cron job runner
     ScheduleModule.forRoot(),
-    // Rate limiting — default: 60 requests per 60 seconds per IP
+    // Rate limiting — 120 requests a minute per signed-in person (per address when not signed in; see UserThrottlerGuard)
     // Auth endpoints override this to be stricter (see auth.controller.ts)
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     PrismaModule,
     AuthModule,
     FilesModule,
