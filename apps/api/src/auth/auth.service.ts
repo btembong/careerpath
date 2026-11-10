@@ -633,6 +633,7 @@ export class AuthService {
       firstName: profile.firstName ?? undefined,
       lastName:  profile.lastName  ?? undefined,
       phone:     profile.phone     ?? undefined,
+      avatarUrl: profile.avatarUrl ?? null,
       role: profile.role as UserRole,
       approvalStatus: profile.approvalStatus as ApprovalStatus,
       countryId: profile.countryId,

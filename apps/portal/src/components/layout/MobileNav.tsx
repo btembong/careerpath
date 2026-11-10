@@ -7,7 +7,7 @@ import { Icon } from '@/components/ui/Icon';
 import { useAuth } from '@/hooks/useAuth';
 import { useBadges } from '@/hooks/useBadges';
 import type { IconName } from '@/lib/icons';
-import api from '@/lib/api';
+import { useMe } from '@/hooks/useMe';
 
 interface NavItem { label: string; href: string; icon: IconName; also?: string[]; badge?: 'messages' | 'notices' }
 interface NavGroup { items: NavItem[] }
@@ -24,7 +24,7 @@ const NOTICES: Record<string, string> = {
 const ROLES: Record<string, { tabs: NavItem[]; menu: NavGroup[]; profile: string }> = {
   STUDENT: {
     tabs: [
-      { label: 'Home', href: '/student/dashboard', icon: 'dashboard' },
+      { label: 'Home', href: '/student/dashboard', icon: 'home' },
       { label: 'My courses', href: '/student/courses', icon: 'courses', also: ['/student/learn'] },
       { label: 'Test Centre', href: '/student/tests', icon: 'docLine' },
       { label: 'Messages', href: '/student/messages', icon: 'messages', badge: 'messages' },
@@ -64,7 +64,7 @@ const ROLES: Record<string, { tabs: NavItem[]; menu: NavGroup[]; profile: string
   },
   TEACHER: {
     tabs: [
-      { label: 'Home', href: '/teacher/dashboard', icon: 'dashboard' },
+      { label: 'Home', href: '/teacher/dashboard', icon: 'home' },
       { label: 'Courses', href: '/teacher/courses', icon: 'courses', also: ['/teacher/quiz-builder'] },
       { label: 'Students', href: '/teacher/students', icon: 'student', also: ['/teacher/alerts'] },
       { label: 'Messages', href: '/teacher/messages', icon: 'messages', badge: 'messages' },
@@ -91,7 +91,7 @@ const ROLES: Record<string, { tabs: NavItem[]; menu: NavGroup[]; profile: string
   },
   ADMIN: {
     tabs: [
-      { label: 'Home', href: '/admin/dashboard', icon: 'dashboard' },
+      { label: 'Home', href: '/admin/dashboard', icon: 'home' },
       { label: 'Courses', href: '/admin/courses/manage', icon: 'courses', also: ['/admin/courses'] },
       { label: 'Users', href: '/admin/users', icon: 'student' },
       { label: 'Messages', href: '/admin/messages', icon: 'messages', badge: 'messages' },
@@ -144,7 +144,7 @@ const ROLES: Record<string, { tabs: NavItem[]; menu: NavGroup[]; profile: string
   },
   COUNTRY_REP: {
     tabs: [
-      { label: 'Home', href: '/country-rep/dashboard', icon: 'dashboard' },
+      { label: 'Home', href: '/country-rep/dashboard', icon: 'home' },
       { label: 'Students', href: '/country-rep/students', icon: 'student' },
       { label: 'Teachers', href: '/country-rep/teachers', icon: 'teacher' },
       { label: 'Messages', href: '/country-rep/messages', icon: 'messages', badge: 'messages' },
@@ -157,7 +157,7 @@ const ROLES: Record<string, { tabs: NavItem[]; menu: NavGroup[]; profile: string
   },
   ORG_ADMIN: {
     tabs: [
-      { label: 'Home', href: '/school/dashboard', icon: 'dashboard' },
+      { label: 'Home', href: '/school/dashboard', icon: 'home' },
       { label: 'Students', href: '/school/students', icon: 'student' },
       { label: 'Invite', href: '/school/invite', icon: 'mail' },
       { label: 'School settings', href: '/school/settings', icon: 'school' },
@@ -181,12 +181,7 @@ export function MobileNav() {
   const [chatOpen, setChatOpen] = useState(false);
   const badges = useBadges();
   const last = useRef(0);
-  // The sign-in token has no name or photo: the menu asks for them the first time it opens
-  const [me, setMe] = useState<{ name: string; avatarUrl: string | null } | null>(null);
-  useEffect(() => {
-    if (!open || me) return;
-    api.get('/auth/me').then(r => setMe({ name: r.data.name || [r.data.firstName, r.data.lastName].filter(Boolean).join(' ') || r.data.email, avatarUrl: r.data.avatarUrl ?? null })).catch(() => {});
-  }, [open, me]);
+  const me = useMe(); // the sign-in token has no name or photo
 
   const config = ROLES[user?.role ?? ''];
   const hidden = !config || chatOpen || HIDE_ON.some(r => r.test(pathname));
@@ -258,14 +253,14 @@ export function MobileNav() {
           return (
             <Link key={t.href} href={t.href} aria-label={n ? `${t.label}, ${n} unread` : t.label} aria-current={on ? 'page' : undefined}
               className={clsx('relative grid h-12 w-12 place-items-center rounded-full transition-colors', on ? 'cpa-tab-on' : 'text-[#EAF0FF] active:bg-white/10')}>
-              <Icon name={t.icon} size={22} />
+              <Icon name={t.icon} size={22} line />
               {n > 0 && !on && <span aria-hidden className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-[#0B1530] bg-[#5BB5FF]" />}
             </Link>
           );
         })}
         <button type="button" onClick={() => setOpen(o => !o)} aria-label={open ? 'Close menu' : 'Menu'} aria-expanded={open}
           className={clsx('relative grid h-12 w-12 place-items-center rounded-full transition-colors', open ? 'cpa-tab-on' : 'text-[#EAF0FF] active:bg-white/10')}>
-          <Icon name={open ? 'close' : 'grid'} size={22} />
+          <Icon name={open ? 'close' : 'grid'} size={22} line />
           {!open && badges.notices > 0 && <span aria-hidden className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-[#0B1530] bg-[#5BB5FF]" />}
         </button>
       </nav>
@@ -276,8 +271,8 @@ export function MobileNav() {
           <div className="flex items-center gap-3 px-5 pb-4 pt-5">
             {avatar ? <img src={avatar} alt="" className="h-12 w-12 rounded-full object-cover" />
               : <span className="grid h-12 w-12 place-items-center rounded-full bg-azure-strong text-[15px] font-extrabold text-on-accent">{initials(name)}</span>}
-            <span className="min-w-0 flex-1"><strong className="block truncate text-[17px] text-navy">{name}</strong><span className="block truncate text-[12.5px] text-muted">{ROLE_LABEL[user?.role ?? ''] ?? ''}</span></span>
-            <button onClick={() => setOpen(false)} aria-label="Close menu" className="grid h-9 w-9 place-items-center rounded-full bg-subtle text-navy"><Icon name="close" size={18} /></button>
+            <span className="min-w-0 flex-1"><strong className="block truncate text-[17px] text-navy">{name}</strong><span className="block truncate text-[12.5px] text-muted">{[ROLE_LABEL[user?.role ?? ''], user?.role === 'STUDENT' ? me?.packageName : null].filter(Boolean).join(' · ')}</span></span>
+            <button onClick={() => setOpen(false)} aria-label="Close menu" className="grid h-9 w-9 place-items-center rounded-full bg-subtle text-navy"><Icon name="close" size={18} line /></button>
           </div>
           {[...config.menu, { items: [
             { label: 'Settings', href: '/settings', icon: 'settings' as IconName },
@@ -292,7 +287,7 @@ export function MobileNav() {
                 return (
                   <Link key={i.href + i.label} href={i.href} onClick={() => setOpen(false)} aria-current={on ? 'page' : undefined}
                     className={clsx('flex items-center gap-4 border-b border-line px-5 py-[15px] active:bg-subtle', on ? 'text-azure-strong' : 'text-navy')}>
-                    <Icon name={i.icon} size={24} />
+                    <Icon name={i.icon} size={24} line />
                     <span className="flex-1 text-[16.5px] font-semibold">{i.label}</span>
                     {n > 0 && <span className="grid h-[22px] min-w-[22px] place-items-center rounded-full bg-azure-strong px-1.5 text-[12px] font-extrabold text-on-accent">{n > 99 ? '99+' : n}</span>}
                   </Link>
@@ -302,7 +297,7 @@ export function MobileNav() {
           ))}
           <div aria-hidden className="h-2.5 bg-subtle" />
           <button onClick={() => { setOpen(false); logout(); }} className="flex w-full items-center gap-4 px-5 py-[15px] text-left text-red-600 active:bg-red-50">
-            <Icon name="logout" size={24} /><span className="flex-1 text-[16.5px] font-semibold">Sign out</span>
+            <Icon name="logout" size={24} line /><span className="flex-1 text-[16.5px] font-semibold">Sign out</span>
           </button>
         </div>
       )}

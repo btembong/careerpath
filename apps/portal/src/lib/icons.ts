@@ -6,6 +6,7 @@
 export const Icons = {
   // Navigation
   dashboard:    'solar:widget-bold',
+  home:         'solar:home-2-bold',
   courses:      'solar:notebook-bookmark-bold',
   live:         'solar:videocamera-record-bold',
   assignments:  'solar:document-text-bold',

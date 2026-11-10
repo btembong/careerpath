@@ -6,6 +6,7 @@ import { DropdownMenu, DropdownItem, DropdownSeparator, DropdownLabel } from '..
 import { useAuth } from '@/hooks/useAuth';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { useBadges } from '@/hooks/useBadges';
+import { useMe, initialsOf } from '@/hooks/useMe';
 import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 
 /* ─── OS detection for keyboard shortcut label ────────────────────────────── */
@@ -18,9 +19,11 @@ function useIsMac() {
   return isMac;
 }
 
-function initials(s: string) {
-  const parts = s.replace(/@.*/, '').split(/[s._-]+/).filter(Boolean);
-  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'U';
+const initials = initialsOf;
+
+function greetingNow() {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }
 
 /* ─── Role-based routes ───────────────────────────────────────────────────── */
@@ -84,9 +87,32 @@ export function Topbar({ title, subtitle, backHref, backLabel, actions, breadcru
   const notifHref = NOTIFICATION_ROUTES[user?.role ?? ''] ?? '/student/notifications';
   const badges = useBadges();
   const profileHref = PROFILE_ROUTES[user?.role ?? ''] ?? '/student/profile';
+  const me = useMe();
+  const fullName = me?.name ?? user?.name ?? user?.email ?? '';
+  const [hello, setHello] = useState('');
+  useEffect(() => setHello(greetingNow()), []); // the hour is the phone's, not the server's
 
   return (
-    <header className="flex h-16 items-center border-b border-line bg-white px-4 lg:px-7 gap-3">
+    <>
+    {/* Phones, on a dashboard: a welcome header, your photo on the left and the bell alone on the right */}
+    {bare && (
+      <header className="flex items-center gap-3 px-4 pb-1 pt-4 lg:hidden">
+        <Link href={profileHref} aria-label="My profile" className="flex min-w-0 flex-1 items-center gap-3">
+          {me?.avatarUrl
+            ? <img src={me.avatarUrl} alt="" className="h-[46px] w-[46px] flex-shrink-0 rounded-full object-cover ring-[3px] ring-white" />
+            : <span className="grid h-[46px] w-[46px] flex-shrink-0 place-items-center rounded-full bg-[#3F6FE8] text-[15px] font-extrabold text-[#FFFFFF] ring-[3px] ring-white">{initials(fullName)}</span>}
+          <span className="min-w-0">
+            <span className="block text-[12.5px] text-muted">{hello || 'Welcome'} 👋</span>
+            <strong className="block truncate text-[18px] leading-tight text-navy">{fullName}</strong>
+          </span>
+        </Link>
+        <Link href={notifHref} aria-label={badges.notices > 0 ? `Notifications, ${badges.notices} unread` : 'Notifications'} className="relative grid h-[42px] w-[42px] flex-shrink-0 place-items-center rounded-full border border-line bg-white text-navy">
+          <Icon name="bell" size={21} />
+          {badges.notices > 0 && <span aria-hidden className="absolute right-[9px] top-2 h-[9px] w-[9px] rounded-full border-2 border-white bg-[#E5484D]" />}
+        </Link>
+      </header>
+    )}
+    <header className={`${bare ? 'hidden lg:flex' : 'flex'} h-16 items-center border-b border-line bg-white px-4 lg:px-7 gap-3`}>
 
       {/* Left — back button OR title + breadcrumbs */}
       {backHref ? (
@@ -190,5 +216,6 @@ export function Topbar({ title, subtitle, backHref, backLabel, actions, breadcru
         </DropdownMenu>
       </div>
     </header>
+    </>
   );
 }

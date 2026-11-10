@@ -16,7 +16,11 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // A saved name or photo reaches the top bar and the phone menu straight away
+    if (res.config.method === 'patch' && res.config.url === '/auth/me' && typeof window !== 'undefined') window.dispatchEvent(new Event('cpa-profile'));
+    return res;
+  },
   async (err) => {
     // A wrong password or code is a 401 too: show it on the sign-in page instead of reloading it
     const signingIn = /\/auth\/(login|google|otp)/.test(err.config?.url ?? '');

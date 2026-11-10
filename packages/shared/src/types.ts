@@ -27,6 +27,7 @@ export interface MeResponse {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  avatarUrl?: string | null;
   role: UserRole;
   approvalStatus: ApprovalStatus;
   countryId: string | null;
