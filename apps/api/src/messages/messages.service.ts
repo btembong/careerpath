@@ -164,13 +164,13 @@ export class MessagesService {
       // Group chats with no messages yet still show; empty one-to-one threads only for the person who opened them
       .map(t => {
         const last = t.messages[0] ?? null;
-        const preview = last ? (last.deletedAt ? 'This message was deleted' : last.body || attachmentPreview(last)) : null;
+        const preview = last ? (last.deletedAt ? 'This message was deleted' : last.kind === 'CALL' ? `📞 ${last.body}` : last.body || attachmentPreview(last)) : null;
         if (isGroupThread(t)) {
           const count = t.cohort ? t.cohort._count.students + 1 : t._count.groupMembers;
           return {
             id: t.id, kind: 'group' as const, muted: !!t.groupMembers[0]?.muted, cohortGroup: !!t.cohortId,
             other: { id: t.cohort?.id ?? t.id, name: t.name ?? t.cohort?.name ?? 'Group', avatarUrl: t.photoUrl, role: 'GROUP', context: `${t.cohortId ? 'Cohort group' : 'Group'} · ${count} members`, online: false, lastSeen: null },
-            lastMessage: last ? { body: preview!, createdAt: last.createdAt, isOwn: last.senderId === me.id, sender: last.kind === 'SYSTEM' ? null : last.senderId === me.id ? 'You' : nameOf(last.sender).split(' ')[0], readAt: null } : null,
+            lastMessage: last ? { body: preview!, createdAt: last.createdAt, isOwn: last.senderId === me.id, sender: last.kind !== 'TEXT' ? null : last.senderId === me.id ? 'You' : nameOf(last.sender).split(' ')[0], readAt: null } : null,
             unread: unread.get(t.id) ?? 0, lastMessageAt: t.lastMessageAt,
           };
         }
@@ -263,6 +263,7 @@ export class MessagesService {
       replyTo: { select: { id: true, body: true, deletedAt: true, attachmentType: true, attachmentName: true, attachmentDuration: true, sender: { select: { name: true, firstName: true, lastName: true, email: true, role: true } } } },
       reactions: { select: { emoji: true, userId: true } },
       stars: { where: { userId: viewerId }, select: { userId: true } },
+      call: { select: { id: true, kind: true, status: true, startedById: true, participants: { where: { joinedAt: { not: null }, leftAt: null }, select: { userId: true } } } },
     } as const;
   }
 
@@ -270,7 +271,7 @@ export class MessagesService {
   private async present(thread: { cohortId: string | null; isGroup: boolean }, rows: any[], viewerId: string) {
     const linked = await this.withLinks(rows.map(r => (r.deletedAt ? { ...r, attachmentKey: null } : r)));
     const label = (s: { role: string } & Parameters<typeof nameOf>[0]) => (s.role === 'ADMIN' && !isGroupThread(thread) ? 'CareerPath support' : nameOf(s));
-    return linked.map(({ sender, replyTo, reactions, stars, ...m }: any) => {
+    return linked.map(({ sender, replyTo, reactions, stars, call, ...m }: any) => {
       const gone = !!m.deletedAt;
       const counts = new Map<string, { emoji: string; count: number; mine: boolean }>();
       for (const r of reactions ?? []) { const c = counts.get(r.emoji) ?? { emoji: r.emoji, count: 0, mine: false }; c.count++; if (r.userId === viewerId) c.mine = true; counts.set(r.emoji, c); }
@@ -283,6 +284,7 @@ export class MessagesService {
         replyTo: replyTo ? { id: replyTo.id, senderName: label(replyTo.sender), body: replyTo.deletedAt ? '' : replyTo.body, deleted: !!replyTo.deletedAt, attachmentType: replyTo.deletedAt ? null : replyTo.attachmentType, attachmentName: replyTo.deletedAt ? null : replyTo.attachmentName, attachmentDuration: replyTo.attachmentDuration } : null,
         reactions: [...counts.values()].sort((a, b) => b.count - a.count),
         starred: !!stars?.length,
+        call: call ? { id: call.id, kind: call.kind, status: call.status, startedByMe: call.startedById === viewerId, inCall: call.participants.length, joined: call.participants.some((p: { userId: string }) => p.userId === viewerId) } : null,
       };
     });
   }

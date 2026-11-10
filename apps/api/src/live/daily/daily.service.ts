@@ -18,8 +18,20 @@ export class DailyService {
   private readonly domain: string;
   private readonly logger = new Logger(DailyService.name);
 
+  /**
+   * DAILY_FAKE=1 stands in for Daily on a developer's computer (no key yet): rooms and tokens are made up and
+   * the portal shows the call screens without audio. Refused in production.
+   */
+  readonly fake: boolean;
+
   constructor(private config: ConfigService) {
     this.domain = config.getOrThrow<string>('DAILY_DOMAIN');
+    this.fake = config.get<string>('DAILY_FAKE') === '1';
+    if (this.fake && process.env.NODE_ENV === 'production') {
+      this.logger.error('DAILY_FAKE is set but ignored in production');
+      this.fake = false;
+    }
+    if (this.fake) this.logger.warn('[DAILY_FAKE] calls use stand-in rooms: no audio');
 
     this.client = axios.create({
       baseURL: 'https://api.daily.co/v1',
@@ -81,12 +93,36 @@ export class DailyService {
   }
 
   /**
+   * A voice call room: audio only, no waiting room or pre-join screen, closes 3 hours after it opens.
+   */
+  async createCallRoom(name: string, maxParticipants: number): Promise<DailyRoom> {
+    if (this.fake) return { id: name, name, url: `https://fake-calls.daily.co/${name}`, created_at: new Date().toISOString(), privacy: 'private' } as unknown as DailyRoom;
+    try {
+      const res = await this.client.post<DailyRoom>('/rooms', {
+        name, privacy: 'private',
+        properties: {
+          exp: Math.floor(Date.now() / 1000) + 3 * 3600,
+          max_participants: maxParticipants,
+          start_video_off: true, start_audio_off: false,
+          enable_prejoin_ui: false, enable_knocking: false, enable_screenshare: false, enable_chat: false,
+          eject_at_room_exp: true,
+        },
+      });
+      return res.data;
+    } catch (err: any) {
+      this.logger.error('Failed to create call room', err.response?.data ?? err.message);
+      throw new InternalServerErrorException('Could not start the call');
+    }
+  }
+
+  /**
    * Issue a per-request, per-user meeting token.
    * Owner tokens (teachers) can mute/remove participants and manage the room.
    * Never reuse or cache a token across users.
    */
   async createToken(options: CreateTokenOptions): Promise<string> {
     const { roomName, userId, userName, isOwner, exp } = options;
+    if (this.fake && roomName.startsWith('call-')) return `fake.${userId}`;
 
     try {
       const res = await this.client.post<{ token: string }>('/meeting-tokens', {
@@ -112,6 +148,7 @@ export class DailyService {
    * Ejects all participants and makes the room inaccessible.
    */
   async closeRoom(roomName: string): Promise<void> {
+    if (this.fake && roomName.startsWith('call-')) return;
     try {
       await this.client.delete(`/rooms/${roomName}`);
       this.logger.log(`Closed Daily.co room: ${roomName}`);

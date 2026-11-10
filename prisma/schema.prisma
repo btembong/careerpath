@@ -64,6 +64,8 @@ model UserProfile {
   threadMemberships    ThreadMember[]
   messageReactions     MessageReaction[]
   messageStars         MessageStar[]
+  callsStarted         Call[]                   @relation("CallsStarted")
+  callParticipations   CallParticipant[]
   wpPulls              WpPull[]
   coursePurchases      CoursePurchase[]
   discussionUpvotes    DiscussionUpvote[]
@@ -1212,6 +1214,7 @@ model MessageThread {
   messages       Message[]
   reads          ThreadRead[]
   groupMembers   ThreadMember[]
+  calls          Call[]
   participantA   UserProfile? @relation("ThreadParticipantA", fields: [participantAId], references: [id])
   participantB   UserProfile? @relation("ThreadParticipantB", fields: [participantBId], references: [id])
   cohort         Cohort?      @relation(fields: [cohortId], references: [id], onDelete: Cascade)
@@ -1263,8 +1266,10 @@ model Message {
   /// Voice notes: length in seconds, and 40 bar heights (0-9) drawn as its waveform
   attachmentDuration Int?
   attachmentWave     String?
-  /// TEXT, or SYSTEM for notes like "Kofi added Ama" (sender = who did it)
+  /// TEXT, SYSTEM for notes like "Kofi added Ama" (sender = who did it), or CALL for a call's entry in the chat
   kind           String        @default("TEXT")
+  callId         String?       @unique
+  call           Call?         @relation(fields: [callId], references: [id])
   /// The message this one replies to (shown quoted)
   replyToId      String?
   /// People tagged with @, and whether @everyone was used
@@ -1282,6 +1287,40 @@ model Message {
   reactions      MessageReaction[]
   stars          MessageStar[]
   thread         MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+}
+
+/// A voice call in a chat: one-to-one (rings the other person) or a group call (started by a group admin; members join)
+model Call {
+  id          String            @id @default(uuid())
+  threadId    String
+  startedById String
+  kind        String            // ONE | GROUP
+  status      String            @default("RINGING") // RINGING | ACTIVE | ENDED | MISSED | DECLINED
+  roomName    String
+  roomUrl     String
+  startedAt   DateTime          @default(now())
+  answeredAt  DateTime?
+  endedAt     DateTime?
+  thread      MessageThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  startedBy   UserProfile       @relation("CallsStarted", fields: [startedById], references: [id])
+  participants CallParticipant[]
+  message     Message?
+
+  @@index([threadId, status])
+}
+
+/// Someone in a call: when they joined and left (or declined)
+model CallParticipant {
+  id         String      @id @default(uuid())
+  callId     String
+  userId     String
+  joinedAt   DateTime?
+  leftAt     DateTime?
+  declinedAt DateTime?
+  call       Call        @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user       UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([callId, userId])
 }
 
 /// Every earlier version of an edited message, kept for the record

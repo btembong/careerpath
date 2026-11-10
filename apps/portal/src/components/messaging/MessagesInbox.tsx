@@ -12,6 +12,7 @@ import { SOCKET_ORIGIN, shrinkPhoto, fileSize } from '@/lib/images';
 import api from '@/lib/api';
 import { useVoiceRecorder, MicButton, VoiceBar, VoicePlayer, VoiceClip } from './Voice';
 import { EmojiPicker } from './EmojiPicker';
+import { calls } from '@/components/calls/CallLayer';
 import { GroupInfoPanel, NewGroupDialog, GroupAvatar, GroupInfo } from './GroupPanel';
 import { MentionText, ReplyQuote, ReactionChips, MessageMenu, MessageInfoDialog, RecordDialog, ChatSearch, StarredList, MentionSuggest, quoteText, EDIT_MINS, DELETE_MINS, ReplyRef, Reaction, MenuActions } from './ChatExtras';
 
@@ -31,6 +32,8 @@ interface Message {
   replyTo?: ReplyRef | null; mentions?: string[]; mentionsAll?: boolean; editedAt?: string | null;
   /** Deleted for everyone: shown as deleted (the content is kept for the record) */
   deleted?: boolean; reactions?: Reaction[]; starred?: boolean; senderAvatarUrl?: string | null;
+  /** A call's entry in the chat */
+  call?: { id: string; kind: 'ONE' | 'GROUP'; status: string; startedByMe: boolean; inCall: number; joined: boolean } | null;
   attachmentUrl: string | null; attachmentName: string | null; attachmentType: string | null; attachmentSize: number | null;
   /** Voice notes: seconds, and the waveform's bar heights */
   attachmentDuration?: number | null; attachmentWave?: string | null;
@@ -408,6 +411,7 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
     requestAnimationFrame(() => { const el = inputRef.current; if (el) { el.focus(); el.setSelectionRange(before.length, before.length); } });
   }
   const memberNames = group?.members.map(p => p.name) ?? [];
+  const liveGroupCall = isGroup ? [...messages].reverse().find(m => m.call?.kind === 'GROUP' && m.call.status === 'ACTIVE')?.call ?? null : null;
 
   const status = !active ? '' : typingNow ? `${isGroup ? `${typingNow.name} is ` : ''}typing…` : isGroup ? active.other.context : active.other.online ? 'online' : lastSeen(active.other.lastSeen) || active.other.context;
 
@@ -417,8 +421,8 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
     const prev = messages[i - 1], next = messages[i + 1];
     const label = dayLabel(m.createdAt);
     if (!prev || dayLabel(prev.createdAt) !== label) rows.push({ kind: 'day', label });
-    const sameAsPrev = !!prev && prev.kind !== 'SYSTEM' && prev.senderId === m.senderId && prev.isOwn === m.isOwn && dayLabel(prev.createdAt) === label && +new Date(m.createdAt) - +new Date(prev.createdAt) < 5 * 60_000;
-    const sameAsNext = !!next && next.kind !== 'SYSTEM' && next.senderId === m.senderId && next.isOwn === m.isOwn && dayLabel(next.createdAt) === label && +new Date(next.createdAt) - +new Date(m.createdAt) < 5 * 60_000;
+    const sameAsPrev = !!prev && (prev.kind ?? 'TEXT') === 'TEXT' && prev.senderId === m.senderId && prev.isOwn === m.isOwn && dayLabel(prev.createdAt) === label && +new Date(m.createdAt) - +new Date(prev.createdAt) < 5 * 60_000;
+    const sameAsNext = !!next && (next.kind ?? 'TEXT') === 'TEXT' && next.senderId === m.senderId && next.isOwn === m.isOwn && dayLabel(next.createdAt) === label && +new Date(next.createdAt) - +new Date(m.createdAt) < 5 * 60_000;
     rows.push({ kind: 'msg', m, first: !sameAsPrev, last: !sameAsNext });
   });
 
@@ -505,6 +509,12 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
                 <p className={clsx('truncate text-[12.5px]', typingNow || active.other.online ? 'text-azure-strong' : 'text-muted')}>{status}</p>
               </div>
               </>}
+              {(!isGroup || group?.me.admin || liveGroupCall) && (
+                <button onClick={() => liveGroupCall ? calls.join(liveGroupCall.id) : calls.start(active.id)} aria-label={isGroup ? (liveGroupCall ? 'Join the group call' : 'Start a group voice call') : `Voice call ${active.other.name}`}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-azure-strong hover:bg-subtle">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" /></svg>
+                </button>
+              )}
               <button onClick={() => setSearching(v => !v)} aria-label="Search in this chat" aria-pressed={searching} className={clsx('grid h-9 w-9 shrink-0 place-items-center rounded-md', searching ? 'bg-accent-soft text-azure-strong' : 'text-ink2 hover:bg-subtle')}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" /></svg>
               </button>
@@ -513,6 +523,13 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
             </header>
 
             {searching && <ChatSearch threadId={active.id} onJump={jumpTo} onClose={() => setSearching(false)} />}
+            {liveGroupCall && !liveGroupCall.joined && (
+              <div className="flex items-center gap-3 border-b border-[#BFE6D1] bg-[#E5F5EC] px-4 py-2 text-[13px] text-[#1F5C40] lg:px-5">
+                <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#1F9D63]" aria-hidden />
+                <span className="min-w-0 flex-1 truncate"><strong>Group call in progress</strong> · {liveGroupCall.inCall} here</span>
+                <button onClick={() => calls.join(liveGroupCall.id)} className="h-8 shrink-0 rounded-md bg-[#1F9D63] px-3 text-[12.5px] font-bold text-white">Join</button>
+              </div>
+            )}
             {isGroup && group?.pinned && (
               <button onClick={() => jumpTo(group.pinned!.id)}
                 className="flex items-center gap-2.5 border-b border-line bg-white px-4 py-2 text-left text-[13px] lg:px-5">
@@ -531,7 +548,8 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
                   onRetry={() => { setMessages(prev => prev.filter(x => x.id !== r.m.id)); setDraft(r.m.body); inputRef.current?.focus(); }}
                   names={memberNames} actions={actionsFor(r.m)} menuOpen={menuFor === r.m.id} onMenu={open => setMenuFor(open ? r.m.id : null)}
                   onReact={e => react(r.m, e)} onJump={jumpTo} highlight={highlight === r.m.id}
-                  onPerson={() => setCard({ id: r.m.senderId, name: r.m.senderName, avatarUrl: r.m.senderAvatarUrl ?? null, role: r.m.senderRole })} />
+                  onPerson={() => setCard({ id: r.m.senderId, name: r.m.senderName, avatarUrl: r.m.senderAvatarUrl ?? null, role: r.m.senderRole })}
+                  onCall={() => r.m.call?.kind === 'GROUP' && r.m.call.status === 'ACTIVE' ? calls.join(r.m.call.id) : calls.start(active.id)} />
               ))}
               {typingNow && (
                 <div className="mt-1 flex w-fit items-center gap-2 rounded-lg rounded-tl-none bg-white px-3 py-2.5 shadow-sm">
@@ -646,15 +664,30 @@ function ContactCard({ person, groupRole, onClose, onMessage }: { person: { id: 
   );
 }
 
-function Bubble({ m, first, last, group, onOpen, onRetry, names, actions, menuOpen, onMenu, onReact, onJump, highlight, onPerson }: {
+function Bubble({ m, first, last, group, onOpen, onRetry, names, actions, menuOpen, onMenu, onReact, onJump, highlight, onPerson, onCall }: {
   m: Message; first: boolean; last: boolean; group: boolean; onOpen: () => void; onRetry: () => void;
-  names: string[]; actions: MenuActions; menuOpen: boolean; onMenu: (open: boolean) => void; onReact: (e: string) => void; onJump: (id: string) => void; highlight: boolean; onPerson: () => void;
+  names: string[]; actions: MenuActions; menuOpen: boolean; onMenu: (open: boolean) => void; onReact: (e: string) => void; onJump: (id: string) => void; highlight: boolean; onPerson: () => void; onCall: () => void;
 }) {
   const own = m.isOwn;
   const hasMenu = Object.entries(actions).some(([k, v]) => k !== 'starred' && !!v);
   const isImage = !!m.attachmentType?.startsWith('image/');
   const isVoice = !!m.attachmentType?.startsWith('audio/');
   const src = m.attachmentUrl ?? m.localPreview ?? null;
+  if (m.kind === 'CALL' && m.call) {
+    const c = m.call;
+    const missed = c.status === 'MISSED' && !c.startedByMe;
+    const live = c.kind === 'GROUP' && c.status === 'ACTIVE';
+    const action = live ? (c.joined ? null : 'Join') : c.kind === 'ONE' && c.status !== 'RINGING' && c.status !== 'ACTIVE' ? (missed ? 'Call back' : 'Call again') : null;
+    return (
+      <div id={`msg-${m.id}`} className={clsx('mx-auto my-2 flex w-fit max-w-[90%] items-center gap-3 rounded-xl border px-3 py-2 shadow-sm', missed ? 'border-red-200 bg-white' : live ? 'border-[#BFE6D1] bg-white' : 'border-line bg-white')}>
+        <span className={clsx('grid h-8 w-8 shrink-0 place-items-center rounded-full', missed ? 'bg-red-50 text-red-600' : live ? 'bg-[#E5F5EC] text-[#1F7A50]' : 'bg-accent-soft text-azure-strong')}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z" /></svg>
+        </span>
+        <span className="flex min-w-0 flex-col"><strong className="truncate text-[13.5px] text-navy">{c.status === 'MISSED' && c.startedByMe ? 'Voice call · no answer' : m.body}{live && c.joined ? ' · you’re in it' : ''}</strong><span className="text-[11.5px] text-muted">{m.isOwn ? 'You' : m.senderName} · {time(m.createdAt)}</span></span>
+        {action && <button onClick={onCall} className={clsx('h-8 shrink-0 rounded-md px-3 text-[12.5px] font-bold', live ? 'bg-[#1F9D63] text-white' : missed ? 'bg-red-600 text-white' : 'border border-line text-azure-strong')}>{action}</button>}
+      </div>
+    );
+  }
   if (m.kind === 'SYSTEM') return <p id={`msg-${m.id}`} className="mx-auto my-2 w-fit max-w-[85%] rounded-md bg-white/95 px-3 py-1.5 text-center text-[12.5px] text-ink2 shadow-sm">{m.body}</p>;
   const meta = (
     <span className={clsx('ml-2 inline-flex translate-y-1 items-center gap-1 whitespace-nowrap text-[10.5px]', own ? 'text-white/80' : 'text-muted')}>

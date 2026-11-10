@@ -65,10 +65,12 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (!userId || typeof body?.threadId !== 'string') return;
     const thread = await this.prisma.messageThread.findUnique({
       where: { id: body.threadId },
-      select: { participantAId: true, participantBId: true, cohort: { select: { teacherId: true, students: { select: { studentId: true } } } } },
+      select: { participantAId: true, participantBId: true, isGroup: true, groupMembers: { where: { leftAt: null }, select: { userId: true } }, cohort: { select: { teacherId: true, students: { select: { studentId: true } } } } },
     });
     if (!thread) return;
-    const members = thread.cohort ? [thread.cohort.teacherId, ...thread.cohort.students.map(s => s.studentId)] : [thread.participantAId, thread.participantBId].filter((x): x is string => !!x);
+    const members = thread.cohort ? [thread.cohort.teacherId, ...thread.cohort.students.map(s => s.studentId)]
+      : thread.isGroup ? thread.groupMembers.map(m => m.userId)
+      : [thread.participantAId, thread.participantBId].filter((x): x is string => !!x);
     if (!members.includes(userId)) return;
     const u = await this.prisma.userProfile.findUnique({ where: { id: userId }, select: { name: true, firstName: true, email: true } });
     const name = (u?.firstName || u?.name || u?.email.split('@')[0] || '').split(' ')[0];

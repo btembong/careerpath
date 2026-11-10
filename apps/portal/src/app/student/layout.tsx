@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
+import CallLayer from '@/components/calls/CallLayer';
 import { MobileNav } from '@/components/layout/MobileNav';
 import { CommandPalette } from '@/components/ui/CommandPalette';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
@@ -49,6 +50,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
     <div className="flex h-screen overflow-hidden bg-surface">
       <OfflineIndicator />
       <Sidebar />
+      <CallLayer />
       <div className="flex flex-1 flex-col overflow-hidden">
         <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
           <ErrorBoundary>
