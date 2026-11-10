@@ -5,6 +5,7 @@ import { Icon } from '../ui/Icon';
 import { DropdownMenu, DropdownItem, DropdownSeparator, DropdownLabel } from '../ui/DropdownMenu';
 import { useAuth } from '@/hooks/useAuth';
 import { useDarkMode } from '@/hooks/useDarkMode';
+import { useBadges } from '@/hooks/useBadges';
 import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 
 /* ─── OS detection for keyboard shortcut label ────────────────────────────── */
@@ -81,6 +82,7 @@ export function Topbar({ title, subtitle, backHref, backLabel, actions, breadcru
   );
 
   const notifHref = NOTIFICATION_ROUTES[user?.role ?? ''] ?? '/student/notifications';
+  const badges = useBadges();
   const profileHref = PROFILE_ROUTES[user?.role ?? ''] ?? '/student/profile';
 
   return (
@@ -153,7 +155,7 @@ export function Topbar({ title, subtitle, backHref, backLabel, actions, breadcru
         {/* Notifications */}
         <Link href={notifHref} aria-label="Notifications" className="relative flex h-[38px] w-[38px] items-center justify-center rounded-md border border-line bg-white text-ink2 hover:bg-subtle hover:text-navy transition-colors">
           <Icon name="bell" size={17} />
-          <span className="absolute right-2 top-2 h-[7px] w-[7px] rounded-full bg-azure" />
+          {badges.notices > 0 && <span className="absolute right-2 top-2 h-[7px] w-[7px] rounded-full bg-azure" aria-label={`${badges.notices} unread`} />}
         </Link>
 
         <span aria-hidden className="mx-1 hidden h-6 w-px bg-line md:block" />

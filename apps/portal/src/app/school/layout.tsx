@@ -8,7 +8,7 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
     <div className="flex h-screen overflow-hidden bg-surface">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">{children}</main>
+        <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
       <MobileNav />
       <CommandPalette />

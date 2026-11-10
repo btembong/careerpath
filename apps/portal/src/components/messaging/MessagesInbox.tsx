@@ -336,6 +336,12 @@ export default function MessagesInbox({ backHref, role = 'student' }: { backHref
   }
 
   const voice = useVoiceRecorder(clip => { sendVoice(clip); });
+  // On a phone, an open conversation takes the whole screen: the floating tab bar steps aside
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('cpa-tabbar', { detail: { hidden: !!activeId && window.innerWidth < 1024 } }));
+    return () => { window.dispatchEvent(new CustomEvent('cpa-tabbar', { detail: { hidden: false } })); };
+  }, [activeId]);
+
   // Switching chats throws away a recording in progress
   useEffect(() => { voice.cancel(); }, [activeId]); // eslint-disable-line react-hooks/exhaustive-deps
 

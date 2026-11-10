@@ -12,7 +12,7 @@ export default function ReviewerLayout({ children }: { children: React.ReactNode
       <CallLayer />
       <PushPrompt />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">{children}</main>
+        <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
       <MobileNav />
       <CommandPalette />

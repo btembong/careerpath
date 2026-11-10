@@ -88,6 +88,10 @@ export class NotificationsService {
     });
   }
 
+  async unreadCount(userId: string) {
+    return { count: await this.prisma.notification.count({ where: { userId, readAt: null } }) };
+  }
+
   async markRead(userId: string, id: string) {
     const { count } = await this.prisma.notification.updateMany({ where: { id, userId, readAt: null }, data: { readAt: new Date() } });
     if (!count && !(await this.prisma.notification.count({ where: { id, userId } }))) throw new NotFoundException('Notification not found');

@@ -65,6 +65,10 @@ export class NotificationsController {
     return this.svc.broadcast(user.id, dto);
   }
 
+  @Get('unread')
+  @ApiOperation({ summary: 'How many of my notifications are unread (for the bell and the phone menu)' })
+  unread(@CurrentUser() user: UserProfile) { return this.svc.unreadCount(user.id); }
+
   @Get()
   @ApiOperation({ summary: 'My notifications (latest 100)' })
   list(@CurrentUser() user: UserProfile) { return this.svc.list(user.id); }
