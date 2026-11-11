@@ -4,7 +4,7 @@ import { execSync } from 'node:child_process';
 
 // The version people see: the release (beta until payments are on; then 1.0 and a new release per feature),
 // the exact code that's live (its short git id, matching GitHub) and when it was built
-const RELEASE_LABEL = 'beta';
+const RELEASE_LABEL = '';
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 const [major, minor, patch] = pkg.version.split('.');
 const release = `${major}.${minor}${patch && patch !== '0' ? '.' + patch : ''}${RELEASE_LABEL ? ' ' + RELEASE_LABEL : ''}`;
