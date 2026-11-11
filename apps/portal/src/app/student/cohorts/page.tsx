@@ -304,7 +304,7 @@ const finishedOf = (c: Card) => !!c.o.cohort?.examDate && new Date(new Date(c.o.
 
 function Chip({ icon, label, value, red }: { icon: 'live' | 'docLine' | 'grade'; label: string; value: string; red?: boolean }) {
   return (
-    <div className="min-w-0 flex-1 rounded-xl bg-subtle px-[11px] py-2.5">
+    <div className="min-w-0 flex-1 rounded-md bg-subtle px-[11px] py-2.5">
       <span className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.05em] text-muted"><Icon name={icon} size={13} line />{label}</span>
       <strong className={clsx('mt-0.5 block whitespace-nowrap text-[15px]', red ? 'text-[#D23B2F]' : 'text-navy')}>{value}</strong>
     </div>
@@ -323,12 +323,11 @@ function CurrentCard({ c }: { c: Card }) {
   const work = !st || !st.assignments ? '—' : st.overdue ? `${st.overdue} overdue` : st.submitted >= st.assignments ? 'All done' : `${st.submitted} of ${st.assignments}`;
   const end = next ? new Date(new Date(next.scheduledAt).getTime() + next.durationMins * 60_000) : null;
   return (
-    <article onClick={() => router.push(href)} className="cursor-pointer overflow-hidden rounded-[18px] border border-line bg-white shadow-[0_6px_18px_rgba(7,32,97,0.06)] transition-shadow hover:shadow-[0_10px_26px_rgba(7,32,97,0.12)]">
+    <article onClick={() => router.push(href)} className="cursor-pointer overflow-hidden rounded-lg border border-line bg-white transition-shadow hover:shadow-[0_6px_18px_rgba(7,32,97,0.10)]">
       <div className="keep-light relative overflow-hidden bg-[#3F6FE8] p-[15px] text-[#FFFFFF] lg:p-[18px]">
-        <span aria-hidden className="absolute -right-10 -top-[50px] h-40 w-40 rounded-full bg-white/10" />
         <div className="relative flex items-center justify-between gap-2">
           <span className="truncate text-[11.5px] font-bold opacity-90">{cohort.sittingLabel ?? ''}</span>
-          {cohort.examDate && <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#FFFFFF] px-[9px] py-1 text-[11.5px] font-extrabold text-[#2F57C9]"><Icon name="clockLine" size={13} />{examIn(cohort.examDate)}</span>}
+          {cohort.examDate && <span className="inline-flex shrink-0 items-center gap-1.5 rounded bg-[#FFFFFF] px-2 py-1 text-[11.5px] font-extrabold text-[#2F57C9]"><Icon name="clockLine" size={13} />{examIn(cohort.examDate)}</span>}
         </div>
         <p className="relative mt-2 text-[19px] font-extrabold leading-[1.15] lg:text-[22px]">{cohort.name}</p>
         {o.teacher && (
@@ -341,10 +340,10 @@ function CurrentCard({ c }: { c: Card }) {
         )}
       </div>
       <div className="flex flex-col gap-3 p-[13px] lg:p-4">
-        <div className="flex items-center gap-[11px] rounded-[13px] border border-line p-[11px]">
+        <div className="flex items-center gap-[11px] rounded-md border border-line p-[11px]">
           {next ? (
             <>
-              <span className="w-[42px] shrink-0 rounded-[10px] bg-accent-soft py-[5px] text-center">
+              <span className="w-[42px] shrink-0 rounded-md bg-accent-soft py-[5px] text-center">
                 <span className="block text-[10px] font-extrabold uppercase text-azure-strong">{new Date(next.scheduledAt).toLocaleDateString('en-GB', { month: 'short' })}</span>
                 <strong className="block text-[17px] leading-tight text-navy">{new Date(next.scheduledAt).getDate()}</strong>
               </span>
@@ -353,7 +352,7 @@ function CurrentCard({ c }: { c: Card }) {
                 <strong className="block truncate text-[13.5px] text-navy">{next.title}</strong>
                 <span className="block text-[11.5px] text-muted">{new Date(next.scheduledAt).toLocaleDateString('en-GB', { weekday: 'long' })} {time(next.scheduledAt)} · {next.durationMins} min{!canJoin && end ? ' · Join opens 10 min before' : ''}</span>
               </span>
-              {canJoin && <Link href={`/student/live/${next.id}`} onClick={e => e.stopPropagation()} className="inline-flex h-9 shrink-0 items-center rounded-[10px] bg-[#3F6FE8] px-3.5 text-[12.5px] font-extrabold text-[#FFFFFF]">Join class</Link>}
+              {canJoin && <Link href={`/student/live/${next.id}`} onClick={e => e.stopPropagation()} className="inline-flex h-9 shrink-0 items-center rounded-md bg-[#3F6FE8] px-3.5 text-[12.5px] font-extrabold text-[#FFFFFF]">Join class</Link>}
             </>
           ) : <span className="text-[12.5px] text-muted">No live class scheduled yet. Your teacher will add the next one.</span>}
         </div>
@@ -372,7 +371,7 @@ function CurrentCard({ c }: { c: Card }) {
             </span>
           )}
           <span className="min-w-0 flex-1 whitespace-nowrap text-[12px] text-muted">{classmates.length ? `${classmates.length} classmate${classmates.length === 1 ? '' : 's'}` : ''}</span>
-          <Link href={href} onClick={e => e.stopPropagation()} className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] bg-[#3F6FE8] px-3.5 text-[12.5px] font-extrabold text-[#FFFFFF]">Open cohort <Icon name="arrowRight" size={15} /></Link>
+          <Link href={href} onClick={e => e.stopPropagation()} className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-[#3F6FE8] px-3.5 text-[12.5px] font-extrabold text-[#FFFFFF]">Open cohort <Icon name="arrowRight" size={15} /></Link>
         </div>
       </div>
     </article>
@@ -387,8 +386,8 @@ function FinishedRow({ c }: { c: Card }) {
     'recordings stay open',
   ].filter(Boolean).join(' · ');
   return (
-    <Link href={`/student/cohorts?id=${cohort.id}`} className="flex items-center gap-3 rounded-[15px] border border-line bg-white p-3 hover:bg-subtle lg:p-3.5">
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-subtle text-muted"><Icon name="certificates" size={22} line /></span>
+    <Link href={`/student/cohorts?id=${cohort.id}`} className="flex items-center gap-3 rounded-lg border border-line bg-white p-3 hover:bg-subtle lg:p-3.5">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-md bg-subtle text-muted"><Icon name="certificates" size={22} line /></span>
       <span className="min-w-0 flex-1"><strong className="block truncate text-[13.5px] text-navy">{cohort.name}</strong><span className="block text-[11.5px] text-muted">{bits}</span></span>
       <Icon name="chevronRight" size={18} className="shrink-0 text-muted" />
     </Link>
@@ -422,13 +421,13 @@ function CohortList() {
 
       <div className="flex flex-col gap-3 p-3.5 lg:px-7 lg:py-6">
         {!cards ? (
-          <div className="grid gap-4 lg:grid-cols-2">{[0, 1].map(i => <div key={i} className="h-[330px] animate-pulse rounded-[18px] border border-line bg-white" />)}</div>
+          <div className="grid gap-4 lg:grid-cols-2">{[0, 1].map(i => <div key={i} className="h-[330px] animate-pulse rounded-lg border border-line bg-white" />)}</div>
         ) : !cards.length ? (
-          <div className="mx-auto mt-6 w-full max-w-[440px] rounded-[18px] border border-line bg-white px-5 py-[26px] text-center">
-            <span className="mx-auto grid h-16 w-16 place-items-center rounded-[20px] bg-accent-soft text-azure-strong"><Icon name="mentorship" size={32} line /></span>
+          <div className="mx-auto mt-6 w-full max-w-[440px] rounded-lg border border-line bg-white px-5 py-[26px] text-center">
+            <span className="mx-auto grid h-16 w-16 place-items-center rounded-lg bg-accent-soft text-azure-strong"><Icon name="mentorship" size={32} line /></span>
             <p className="mt-3.5 text-[17px] font-extrabold text-navy">You’re not in a cohort yet</p>
             <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">Packages with live classes put you in a cohort: a teacher, weekly live lessons and classmates sitting the same exam.</p>
-            <Link href="/packages" className="mt-4 inline-flex h-11 items-center rounded-[11px] bg-[#3F6FE8] px-[18px] text-[13px] font-extrabold text-[#FFFFFF]">Browse packages</Link>
+            <Link href="/packages" className="mt-4 inline-flex h-11 items-center rounded-md bg-[#3F6FE8] px-[18px] text-[13px] font-extrabold text-[#FFFFFF]">Browse packages</Link>
           </div>
         ) : (
           <>
@@ -437,7 +436,7 @@ function CohortList() {
                 <p className={sectionLabel}>Current</p>
                 <div className="grid items-start gap-4 lg:grid-cols-2">
                   {current.map(c => <CurrentCard key={c.row.id} c={c} />)}
-                  <Link href="/packages" className="hidden min-h-[300px] flex-col items-center justify-center gap-2 rounded-[18px] border-2 border-dashed border-line p-5 text-center text-muted hover:bg-white lg:flex">
+                  <Link href="/packages" className="hidden min-h-[300px] flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-line p-5 text-center text-muted hover:bg-white lg:flex">
                     <Icon name="add" size={30} line className="text-[#9AA8CC]" />
                     <strong className="text-[13.5px] text-navy">Another exam coming up?</strong>
                     <span className="max-w-[230px] text-[12px] leading-relaxed">Packages with live classes add a cohort here.</span>
