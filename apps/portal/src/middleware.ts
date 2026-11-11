@@ -8,7 +8,7 @@ const PUBLIC_PATHS = [
   '/packages/success', '/apply/pending', '/forgot-password', '/reset-password',
 ];
 // Paths accessible without auth
-const OPEN_PATHS = ['/packages', '/courses'];
+const OPEN_PATHS = ['/packages', '/courses', '/offline'];
 // Logged-in students get sent to in-app equivalents
 const STUDENT_REDIRECT: Record<string, string> = {
   '/courses': '/student/catalogue',
@@ -38,9 +38,19 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
+/**
+ * An address on this site as the visitor reached it. Behind Caddy the portal itself only sees localhost:3000,
+ * so redirects built from request.url would send people to their own computer.
+ */
+function at(request: NextRequest, path: string) {
+  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  const proto = request.headers.get('x-forwarded-proto') ?? request.nextUrl.protocol.replace(':', '');
+  return new URL(path, host ? `${proto}://${host}` : request.url);
+}
+
 /** Sign in, then come back here: links in emails land on the page they point to */
 function signInFirst(request: NextRequest) {
-  const url = new URL('/login', request.url);
+  const url = at(request, '/login');
   const here = request.nextUrl.pathname + request.nextUrl.search;
   if (here !== '/') url.searchParams.set('next', here);
   return url;
@@ -73,7 +83,7 @@ export async function middleware(request: NextRequest) {
 
     // Reject tokens without a recognised role
     if (!payload.role || !(payload.role in ROLE_HOME)) {
-      const res = NextResponse.redirect(new URL('/login', request.url));
+      const res = NextResponse.redirect(at(request, '/login'));
       res.cookies.delete('cpa_token');
       return res;
     }
@@ -85,13 +95,13 @@ export async function middleware(request: NextRequest) {
 
     // Redirect logged-in users away from auth pages
     if (isPublic) {
-      return NextResponse.redirect(new URL(ROLE_HOME[payload.role], request.url));
+      return NextResponse.redirect(at(request, ROLE_HOME[payload.role]));
     }
 
     // Redirect logged-in students from public storefronts
     const studentDest = STUDENT_REDIRECT[pathname];
     if (studentDest && payload.role === 'STUDENT') {
-      return NextResponse.redirect(new URL(studentDest, request.url));
+      return NextResponse.redirect(at(request, studentDest));
     }
 
     // Redirect students who haven't completed onboarding
@@ -102,7 +112,7 @@ export async function middleware(request: NextRequest) {
       !pathname.startsWith('/student/onboarding') &&
       isStudentArea
     ) {
-      return NextResponse.redirect(new URL('/student/onboarding', request.url));
+      return NextResponse.redirect(at(request, '/student/onboarding'));
     }
 
     // ── Role-based route ownership ──────────────────────────────────────────
@@ -110,26 +120,26 @@ export async function middleware(request: NextRequest) {
     // Real RBAC is enforced by NestJS on every API call; this is a UI-level guard.
 
     if (pathname.startsWith('/student') && payload.role !== 'STUDENT') {
-      return NextResponse.redirect(new URL(ROLE_HOME[payload.role], request.url));
+      return NextResponse.redirect(at(request, ROLE_HOME[payload.role]));
     }
     if (pathname.startsWith('/teacher') && payload.role !== 'TEACHER') {
-      return NextResponse.redirect(new URL(ROLE_HOME[payload.role], request.url));
+      return NextResponse.redirect(at(request, ROLE_HOME[payload.role]));
     }
     if (pathname.startsWith('/admin') && payload.role !== 'ADMIN') {
-      return NextResponse.redirect(new URL(ROLE_HOME[payload.role], request.url));
+      return NextResponse.redirect(at(request, ROLE_HOME[payload.role]));
     }
     if (pathname.startsWith('/school') && payload.role !== 'ORG_ADMIN') {
-      return NextResponse.redirect(new URL(ROLE_HOME[payload.role], request.url));
+      return NextResponse.redirect(at(request, ROLE_HOME[payload.role]));
     }
     if (pathname.startsWith('/country-rep') && payload.role !== 'COUNTRY_REP') {
-      return NextResponse.redirect(new URL(ROLE_HOME[payload.role], request.url));
+      return NextResponse.redirect(at(request, ROLE_HOME[payload.role]));
     }
     if (
       pathname.startsWith('/reviewer') &&
       payload.role !== 'SUBJECT_REVIEWER' &&
       payload.role !== 'ADMIN'
     ) {
-      return NextResponse.redirect(new URL(ROLE_HOME[payload.role], request.url));
+      return NextResponse.redirect(at(request, ROLE_HOME[payload.role]));
     }
   } catch {
     const res = NextResponse.redirect(signInFirst(request));
@@ -141,5 +151,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|icons/).*)'],
+  // Files every visitor needs, signed in or not: the service worker can't be redirected (browsers refuse it)
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|robots.txt|icons/|demo/).*)'],
 };
