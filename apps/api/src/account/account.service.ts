@@ -89,7 +89,7 @@ export class AccountService {
       details: [['Deleted on', day], ['Account', user.email]],
       cta: 'Keep my account', href: '/settings',
       footnote: 'Didn’t ask for this? Sign in, keep your account, then change your password.',
-    }, 'system').catch(() => {});
+    }, 'support').catch(() => {});
     return { dueAt, needsAdmin: NEEDS_ADMIN.includes(user.role) };
   }
 

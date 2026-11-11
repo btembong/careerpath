@@ -32,17 +32,28 @@ import {
   orgAdminWelcomeTemplate,
   noticeTemplate,
   NoticeOpts,
+  FOOTER_NOTE_SLOT,
 } from './mail.templates';
 
-// Sender names — same email address, different display name per context
-const SENDER_NAMES = {
-  system:       'CareerPath Africa',        // OTP, security
-  support:      'CareerPath Support',       // welcome, approvals, expiry
-  billing:      'CareerPath Billing',       // receipts, payouts, invoices
-  partnerships: 'CareerPath Partnerships',  // rep/reviewer assignments, commission
+/**
+ * Who each kind of email comes from. Every address is a server setting (MAIL_FROM_…); one that isn't set falls back to
+ * BREVO_SENDER_EMAIL (hello@), so a sender can be switched on once its mailbox exists. Replies go to `reply`.
+ */
+const SENDERS = {
+  security:      { name: 'CareerPath Africa',        from: 'MAIL_FROM_NOREPLY',       reply: 'MAIL_FROM_HELLO',         note: 'You’re receiving this because a code or a change was requested on your CareerPath Africa account. If it wasn’t you, reply to this email.' },
+  hello:         { name: 'CareerPath Africa',        from: 'MAIL_FROM_HELLO',         reply: 'MAIL_FROM_HELLO',         note: 'You’re receiving this because you have a CareerPath Africa account. Reply to this email with any questions.' },
+  classes:       { name: 'CareerPath Classes',       from: 'MAIL_FROM_CLASSES',       reply: 'MAIL_FROM_CLASSES',       note: 'You’re receiving this because of a CareerPath class or mentoring session. Reply to reach our classes team.' },
+  learning:      { name: 'CareerPath Learning',      from: 'MAIL_FROM_LEARNING',      reply: 'MAIL_FROM_LEARNING',      note: 'You’re receiving this because you’re studying on CareerPath Africa. Reply to reach our learning team.' },
+  study:         { name: 'CareerPath Study',         from: 'MAIL_FROM_STUDY',         reply: 'MAIL_FROM_STUDY',         note: 'You’re receiving this because you’re preparing for an exam on CareerPath Africa. Reply to reach our study team.' },
+  notifications: { name: 'CareerPath Notifications', from: 'MAIL_FROM_NOTIFICATIONS', reply: 'MAIL_FROM_NOTIFICATIONS', note: 'You’re receiving this because of activity on your CareerPath Africa account. Choose which emails you get in Email settings.' },
+  teachers:      { name: 'CareerPath Teachers',      from: 'MAIL_FROM_TEACHERS',      reply: 'MAIL_FROM_TEACHERS',      note: 'You’re receiving this because you teach with CareerPath Africa. Reply to reach our teachers team.' },
+  billing:       { name: 'CareerPath Billing',       from: 'MAIL_FROM_BILLING',       reply: 'MAIL_FROM_BILLING',       note: 'You’re receiving this because of a payment or payout on your CareerPath Africa account. Reply with any billing questions.' },
+  partnerships:  { name: 'CareerPath Partnerships',  from: 'MAIL_FROM_PARTNERS',      reply: 'MAIL_FROM_PARTNERS',      note: 'You’re receiving this because you partner with CareerPath Africa. Reply to reach our partnerships team.' },
+  support:       { name: 'CareerPath Support',       from: 'MAIL_FROM_SUPPORT',       reply: 'MAIL_FROM_SUPPORT',       note: 'You’re receiving this about your CareerPath Africa account. Reply to reach our support team.' },
+  reports:       { name: 'CareerPath Reports',       from: 'MAIL_FROM_NOREPLY',       reply: 'MAIL_FROM_HELLO',         note: 'Sent to CareerPath Africa administrators.' },
 } as const;
 
-type SenderType = keyof typeof SENDER_NAMES;
+export type SenderType = keyof typeof SENDERS;
 
 @Injectable()
 export class MailService {
@@ -60,30 +71,35 @@ export class MailService {
 
   // ── Core send helper ─────────────────────────────────────
 
+  /** A sender's address: its own setting, else the main sender (hello@) */
+  private address(key: string) { return this.config.get<string>(key) || this.senderEmail; }
+
   private async send(
     to: string,
     subject: string,
     htmlContent: string,
-    senderType: SenderType = 'system',
+    senderType: SenderType = 'hello',
     attachments?: { name: string; content: string }[],
   ): Promise<void> {
     if (!this.client) {
-      this.logger.warn(`[DEV] Mail skipped — no BREVO_API_KEY`);
+      this.logger.warn(`[DEV] Mail skipped — no BREVO_API_KEY (${senderType})`);
       this.logger.debug(`  To:      ${to}`);
       this.logger.debug(`  Subject: ${subject}`);
       return;
     }
 
     try {
+      const who = SENDERS[senderType] ?? SENDERS.hello;
       const res = await this.client.transactionalEmails.sendTransacEmail({
-        sender: { name: SENDER_NAMES[senderType], email: this.senderEmail },
+        sender: { name: who.name, email: this.address(who.from) },
+        replyTo: { email: this.address(who.reply), name: who.name },
         to: [{ email: to }],
         subject,
-        htmlContent,
+        htmlContent: htmlContent.split(FOOTER_NOTE_SLOT).join(who.note),
         // Brevo takes attachments as base64
         ...(attachments?.length ? { attachment: attachments.map(a => ({ name: a.name, content: Buffer.from(a.content).toString('base64') })) } : {}),
       });
-      this.logger.log(`[${SENDER_NAMES[senderType]}] "${subject}" → ${to} | messageId: ${(res as any)?.messageId ?? 'n/a'}`);
+      this.logger.log(`[${who.name}] "${subject}" → ${to} | messageId: ${(res as any)?.messageId ?? 'n/a'}`);
     } catch (err: any) {
       this.logger.error(`Email failed: "${subject}" → ${to} | ${JSON.stringify(err?.response?.data ?? err?.message)}`);
     }
@@ -95,46 +111,45 @@ export class MailService {
     await this.send(
       email,
       `${code} is your CareerPath Africa verification code`,
-      otpTemplate(code),
-      'system',
+      otpTemplate(code), 'security',
     );
   }
 
   async sendAnnouncement(email: string, title: string, message: string): Promise<void> {
-    await this.send(email, title, announcementTemplate(title, message), 'support');
+    await this.send(email, title, announcementTemplate(title, message), 'hello');
   }
 
   async sendNewMessage(email: string, fromName: string, preview: string, where: string | null, link: string, isVoice = false): Promise<void> {
-    await this.send(email, `${fromName} sent you a ${isVoice ? 'voice note' : 'message'}${where ? ` in ${where}` : ''}`, newMessageTemplate(fromName, preview, where, link, isVoice), 'support');
+    await this.send(email, `${fromName} sent you a ${isVoice ? 'voice note' : 'message'}${where ? ` in ${where}` : ''}`, newMessageTemplate(fromName, preview, where, link, isVoice), 'notifications');
   }
 
   async sendOrgSeatInvite(email: string, orgName: string, packageName: string, link: string, joinCode?: string | null): Promise<void> {
-    await this.send(email, `${orgName} has a place for you on CareerPath Africa`, orgSeatInviteTemplate(orgName, packageName, link, joinCode), 'support');
+    await this.send(email, `${orgName} has a place for you on CareerPath Africa`, orgSeatInviteTemplate(orgName, packageName, link, joinCode), 'hello');
   }
 
   async sendPasswordReset(email: string, firstName: string, link: string): Promise<void> {
-    await this.send(email, 'Reset your CareerPath Africa password', passwordResetTemplate(firstName, link), 'support');
+    await this.send(email, 'Reset your CareerPath Africa password', passwordResetTemplate(firstName, link), 'security');
   }
 
   async sendAdminCode(email: string, code: string): Promise<void> {
-    await this.send(email, `${code} is your CareerPath admin sign-in code`, adminCodeTemplate(code), 'system');
+    await this.send(email, `${code} is your CareerPath admin sign-in code`, adminCodeTemplate(code), 'security');
   }
 
   async sendClassScheduled(email: string, o: { firstName: string; teacherName: string; cohortName: string; title: string; when: string; weeks: number; classLink: string; googleLink: string; ics: string }): Promise<void> {
-    await this.send(email, `New live class: ${o.title} · ${o.when}`, classScheduledTemplate(o), 'support', [{ name: 'careerpath-class.ics', content: o.ics }]);
+    await this.send(email, `New live class: ${o.title} · ${o.when}`, classScheduledTemplate(o), 'classes', [{ name: 'careerpath-class.ics', content: o.ics }]);
   }
 
   async sendMockMarked(email: string, opts: { firstName: string; teacherName: string; examTitle: string; percent: number; passMark: number; link: string }): Promise<void> {
-    await this.send(email, 'Your teacher marked your mock exam', mockMarkedTemplate(opts), 'support');
+    await this.send(email, 'Your teacher marked your mock exam', mockMarkedTemplate(opts), 'study');
   }
 
   /** The short "something happened" emails that go with in-app notices */
-  async sendNotice(email: string, subject: string, opts: NoticeOpts, sender: SenderType = 'support'): Promise<void> {
+  async sendNotice(email: string, subject: string, opts: NoticeOpts, sender: SenderType = 'notifications'): Promise<void> {
     await this.send(email, subject, noticeTemplate(opts), sender);
   }
 
   async sendOrgAdminWelcome(email: string, name: string, orgName: string, link: string): Promise<void> {
-    await this.send(email, `Your ${orgName} school portal on CareerPath Africa`, orgAdminWelcomeTemplate(name, orgName, link), 'support');
+    await this.send(email, `Your ${orgName} school portal on CareerPath Africa`, orgAdminWelcomeTemplate(name, orgName, link), 'hello');
   }
 
   // ── Support / Onboarding ─────────────────────────────────
@@ -143,8 +158,7 @@ export class MailService {
     await this.send(
       email,
       'Welcome to CareerPath Africa — your account is ready',
-      welcomeStudentTemplate(firstName, studentNo),
-      'support',
+      welcomeStudentTemplate(firstName, studentNo), 'hello',
     );
   }
 
@@ -152,8 +166,7 @@ export class MailService {
     await this.send(
       email,
       'Application received — CareerPath Africa',
-      welcomeTeacherTemplate(firstName),
-      'support',
+      welcomeTeacherTemplate(firstName), 'hello',
     );
   }
 
@@ -162,8 +175,7 @@ export class MailService {
       await this.send(
         email,
         'Your teacher application has been approved — CareerPath Africa',
-        teacherApprovedTemplate(teacherNo),
-        'support',
+        teacherApprovedTemplate(teacherNo), 'teachers',
       );
     } else {
       await this.send(
@@ -179,8 +191,7 @@ export class MailService {
     await this.send(
       email,
       `Your course "${courseTitle}" is now live — CareerPath Africa`,
-      courseApprovedTemplate(courseTitle),
-      'support',
+      courseApprovedTemplate(courseTitle), 'teachers',
     );
   }
 
@@ -188,8 +199,7 @@ export class MailService {
     await this.send(
       email,
       `Your access expires in ${daysLeft} day${daysLeft !== 1 ? 's' : ''} — ${packageName}`,
-      expiryWarningTemplate(packageName, daysLeft, expiresOn),
-      'support',
+      expiryWarningTemplate(packageName, daysLeft, expiresOn), 'billing',
     );
   }
 
@@ -199,8 +209,7 @@ export class MailService {
     await this.send(
       email,
       `You've been assigned as Country Rep for ${countryName} — CareerPath Africa`,
-      repAssignedTemplate(countryName, currency),
-      'partnerships',
+      repAssignedTemplate(countryName, currency), 'partnerships',
     );
   }
 
@@ -208,8 +217,7 @@ export class MailService {
     await this.send(
       email,
       `New review assignment: "${courseTitle}" — CareerPath Africa`,
-      reviewerAssignedTemplate(courseTitle),
-      'partnerships',
+      reviewerAssignedTemplate(courseTitle), 'partnerships',
     );
   }
 
@@ -217,8 +225,7 @@ export class MailService {
     await this.send(
       email,
       `Your weekly earnings summary — ${opts.weekLabel}`,
-      weeklyEarningsDigestTemplate(opts),
-      'partnerships',
+      weeklyEarningsDigestTemplate(opts), 'partnerships',
     );
   }
 
@@ -241,8 +248,7 @@ export class MailService {
     await this.send(
       email,
       subject,
-      purchaseReceiptTemplate(itemName, formatted, currency, invoiceNo, studentName, purchaseDate, itemType),
-      'billing',
+      purchaseReceiptTemplate(itemName, formatted, currency, invoiceNo, studentName, purchaseDate, itemType), 'billing',
     );
   }
 
@@ -255,8 +261,7 @@ export class MailService {
     await this.send(
       email,
       `Session confirmed with ${opts.teacherName} — ${opts.dateStr}`,
-      mentorshipBookingStudentTemplate(opts),
-      'support',
+      mentorshipBookingStudentTemplate(opts), 'classes',
     );
   }
 
@@ -267,8 +272,7 @@ export class MailService {
     await this.send(
       email,
       `New booking from ${opts.studentName} — ${opts.dateStr}`,
-      mentorshipBookingTeacherTemplate(opts),
-      'support',
+      mentorshipBookingTeacherTemplate(opts), 'classes',
     );
   }
 
@@ -283,8 +287,7 @@ export class MailService {
     await this.send(
       email,
       `Mentorship session cancelled — ${dateStr}`,
-      mentorshipCancellationTemplate(name, otherPartyName, dateStr, timeStr, cancelledByRole),
-      'support',
+      mentorshipCancellationTemplate(name, otherPartyName, dateStr, timeStr, cancelledByRole), 'classes',
     );
   }
 
@@ -298,8 +301,7 @@ export class MailService {
     await this.send(
       email,
       `Your assignment "${opts.assignmentTitle}" has been graded — ${pct}%`,
-      assignmentGradedTemplate(opts),
-      'support',
+      assignmentGradedTemplate(opts), 'learning',
     );
   }
 
@@ -312,8 +314,7 @@ export class MailService {
     await this.send(
       email,
       `Certificate earned: ${courseTitle} — CareerPath Africa`,
-      certificateEarnedTemplate(studentName, courseTitle, verifyUrl),
-      'support',
+      certificateEarnedTemplate(studentName, courseTitle, verifyUrl), 'learning',
     );
   }
 
@@ -328,8 +329,7 @@ export class MailService {
     await this.send(
       email,
       `Reminder: "${courseTitle}" live class starts in ${minutesBefore} minutes`,
-      liveSessionReminderTemplate(name, courseTitle, startTimeStr, roomUrl, minutesBefore),
-      'support',
+      liveSessionReminderTemplate(name, courseTitle, startTimeStr, roomUrl, minutesBefore), 'classes',
     );
   }
 
@@ -343,8 +343,7 @@ export class MailService {
     await this.send(
       email,
       `Payout initiated: ${currency} ${formatted} — CareerPath Africa`,
-      payoutInitiatedTemplate(formatted, currency, periodLabel),
-      'billing',
+      payoutInitiatedTemplate(formatted, currency, periodLabel), 'billing',
     );
   }
 
@@ -353,8 +352,7 @@ export class MailService {
     await this.send(
       email,
       `Payment confirmed: ${currency} ${formatted} sent — CareerPath Africa`,
-      payoutCompletedTemplate(formatted, currency),
-      'billing',
+      payoutCompletedTemplate(formatted, currency), 'billing',
     );
   }
 
@@ -362,8 +360,7 @@ export class MailService {
     await this.send(
       email,
       `Daily ops summary — ${opts.date}`,
-      dailyAdminDigestTemplate(opts),
-      'system',
+      dailyAdminDigestTemplate(opts), 'reports',
     );
   }
 }

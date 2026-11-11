@@ -83,6 +83,21 @@ function divider(): string {
   </table>`;
 }
 
+// ── Company details for the footer ───────────────────────────────────────────
+// Add the registration number and more social links here when they're ready; empty ones are left out.
+const COMPANY = {
+  name: 'CareerPath Africa – Online College &amp; University',
+  website: 'https://careerpathafrica.com',
+  websiteLabel: 'careerpathafrica.com',
+  registration: '',
+  social: [
+    ['Facebook', 'https://www.facebook.com/share/1DtBxPNoEA/'],
+    ['LinkedIn', 'https://www.linkedin.com/company/careerpath-africa-online-college-university/'],
+  ] as [string, string][],
+};
+/** Replaced when the email is sent with the line for its sender ("You’re receiving this because…") */
+export const FOOTER_NOTE_SLOT = '<!--cpa-footer-note-->';
+
 // ── Base shell ───────────────────────────────────────────────────────────────
 
 /** Every email: logo and label above a white card on a light page; title, body, then a quiet footer inside the card. */
@@ -107,8 +122,16 @@ function base(heroHtml: string, bodyHtml: string, badge?: string): string {
           ${heroHtml}
           ${bodyHtml}
         </td></tr>
-        <tr><td style="border-top:1px solid ${C.border};padding:14px 32px">
-          <p style="margin:0;font-size:11px;color:${C.mut};line-height:1.6;font-family:${FONT}">
+        <tr><td style="border-top:1px solid ${C.border};padding:18px 32px 20px;background:${C.page}">
+          <p style="margin:0 0 6px;font-size:11px;color:${C.mut};line-height:1.7;font-family:${FONT};text-align:center">
+            ${COMPANY.name} &nbsp;&middot;&nbsp; <a href="${COMPANY.website}" style="color:${C.mut};text-decoration:none">${COMPANY.websiteLabel}</a>
+          </p>
+          ${COMPANY.registration ? `<p style="margin:0 0 6px;font-size:10px;color:${C.mut};font-family:${FONT};text-align:center">${COMPANY.registration}</p>` : ''}
+          <p style="margin:0 0 8px;font-size:11px;color:${C.mut};font-family:${FONT};text-align:center">
+            ${COMPANY.social.map(([n, u]) => `<a href="${u}" style="color:${C.mut};text-decoration:none">${n}</a>`).join(' &nbsp;&middot;&nbsp; ')}
+          </p>
+          <p style="margin:0 0 6px;font-size:10.5px;color:${C.mut};line-height:1.6;font-family:${FONT};text-align:center">${FOOTER_NOTE_SLOT}</p>
+          <p style="margin:0;font-size:10.5px;color:${C.mut};font-family:${FONT};text-align:center">
             &copy; ${new Date().getFullYear()} CareerPath Africa &nbsp;&middot;&nbsp; <a href="${portalUrl()}/settings#notifications" style="color:${C.mut};text-decoration:underline">Email settings</a>
           </p>
         </td></tr>

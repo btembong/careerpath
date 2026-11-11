@@ -1,13 +1,15 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { MailService } from '../mail/mail.service';
+import { SenderType, MailService } from '../mail/mail.service';
 import type { NoticeOpts } from '../mail/mail.templates';
 import { resolvePrefs } from './notification-prefs';
 import { PushService } from './push.service';
 import { PresenceService } from './presence.service';
 
 export type NotificationType = 'live' | 'assignment' | 'grade' | 'certificate' | 'message' | 'community' | 'system';
+/** Which sender a notification's email comes from, by its kind */
+const SENDER_FOR_TYPE: Partial<Record<NotificationType, SenderType>> = { live: 'classes', assignment: 'learning', grade: 'learning', certificate: 'learning', message: 'notifications', community: 'notifications', system: 'notifications' };
 const AUDIENCES = ['ALL', 'STUDENT', 'TEACHER', 'COUNTRY_REP', 'SUBJECT_REVIEWER'] as const;
 const CHANNELS = ['IN_APP', 'EMAIL', 'BOTH'] as const;
 
@@ -28,7 +30,7 @@ export interface NoticeEmail extends Omit<NoticeOpts, 'firstName' | 'href'> {
   kind?: string;
   /** Only email people for whom this is true (e.g. not online right now) */
   onlyIf?: (userId: string) => boolean;
-  sender?: 'system' | 'support' | 'billing' | 'partnerships';
+  sender?: SenderType;
 }
 
 @Injectable()
@@ -67,7 +69,7 @@ export class NotificationsService {
     for (const u of users) {
       if (kind && resolvePrefs(u.notificationPrefs)[kind]?.email === false) continue;
       if (onlyIf && !onlyIf(u.id)) continue;
-      await this.mail.sendNotice(u.email, subject, { ...opts, href, firstName: u.firstName }, sender);
+      await this.mail.sendNotice(u.email, subject, { ...opts, href, firstName: u.firstName }, sender ?? SENDER_FOR_TYPE[n.type] ?? 'notifications');
     }
   }
 
