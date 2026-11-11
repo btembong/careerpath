@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
@@ -15,7 +16,12 @@ function assertProductionSecrets() {
 async function bootstrap() {
   assertProductionSecrets();
   // rawBody: true is required for Paystack + Tranzak webhook signature verification
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+  const production = process.env.NODE_ENV === 'production';
+
+  // Behind Caddy on the same machine: take the visitor's address from its X-Forwarded-For, so rate limits
+  // count each visitor rather than lumping everyone together as the proxy. Only a proxy on this machine is trusted.
+  app.set('trust proxy', 'loopback');
 
   app.setGlobalPrefix('api/v1');
 
@@ -30,26 +36,28 @@ async function bootstrap() {
   const allowedOrigins = (process.env.PORTAL_URL || 'http://localhost:3000')
     .split(',')
     .map(o => o.trim())
-    .concat(['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002']);
+    .concat(production ? [] : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002']);
 
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,
   });
 
-  const config = new DocumentBuilder()
-    .setTitle('CareerPath Africa API')
-    .setDescription('API gateway for the CareerPath Africa portal')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  // The API's own documentation pages: for development only
+  if (!production) {
+    const config = new DocumentBuilder()
+      .setTitle('CareerPath Africa API')
+      .setDescription('API gateway for the CareerPath Africa portal')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, config));
+  }
 
   const port = process.env.PORT || 3001;
   await app.listen(port);
   console.log(`API running on http://localhost:${port}/api/v1`);
-  console.log(`Swagger docs at http://localhost:${port}/api/docs`);
+  if (!production) console.log(`Swagger docs at http://localhost:${port}/api/docs`);
 }
 
 bootstrap();
