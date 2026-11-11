@@ -213,16 +213,21 @@ function Onboarding() {
     : 'Your dashboard and catalogue now lead with these.';
   const btn = 'rounded-md px-4 py-2.5 text-[13px] font-bold transition disabled:opacity-50';
 
+  // Set like the sign-in pages' blue panel: navy headline with its last word in white, no icon above
+  const words = title.split(' ');
+  const lastWord = words.pop() ?? '';
+
   return (
-    <div className="flex min-h-screen flex-col items-center bg-navy px-4 py-10">
+    <div className="keep-light flex min-h-screen flex-col items-center bg-[#3F6FE8] px-4 py-10">
       <div className="w-full max-w-4xl">
-        <div className="mb-6 text-center">
-          <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-lg bg-white/10 text-[26px]">{step === 3 ? '✅' : '🎓'}</div>
-          <h1 className="text-2xl font-black text-white sm:text-[26px]">{title}</h1>
-          <p className="mt-1 text-sm text-white/50">{sub}</p>
+        <div className="mb-7 text-center">
+          <h1 className="mx-auto max-w-[760px] text-[clamp(30px,4.2vw,48px)] font-extrabold leading-[1.05] tracking-[-0.035em] text-navy [text-wrap:balance]">
+            {words.join(' ')} <span className="text-[#FFFFFF]">{lastWord}</span>
+          </h1>
+          <p className="mx-auto mt-3 max-w-[520px] text-[17px] leading-relaxed text-navy/80">{sub}</p>
           {step !== 3 && (
             <div className="mt-5 flex items-center justify-center gap-3">
-              {dots.map(n => <span key={n} className={`h-2 rounded-full transition-all duration-300 ${step === n ? 'w-8 bg-white' : step > n ? 'w-2 bg-azure' : 'w-2 bg-white/25'}`} />)}
+              {dots.map(n => <span key={n} className={`h-2 rounded-full transition-all duration-300 ${step === n ? 'w-8 bg-[#FFFFFF]' : step > n ? 'w-2 bg-navy' : 'w-2 bg-[#FFFFFF]/40'}`} />)}
             </div>
           )}
         </div>
