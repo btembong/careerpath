@@ -34,7 +34,7 @@ export default function CertificatesPage() {
       <div className="flex flex-col gap-[18px] p-4 lg:px-7 lg:py-6">
         {certs?.[0] && Date.now() - +new Date(certs[0].issuedAt) < WEEK && (
           <Celebrate emoji="🎓" l1="Certified." l2="It’s official."
-            sub={`${certs[0].courseName}. Anyone can check it with the code ${certs[0].verifyCode} at careerpathafrica.com/verify.`}
+            sub={`${certs[0].courseName}. Anyone can check it with the code ${certs[0].verifyCode} at ${typeof window !== 'undefined' ? window.location.host : 'app.careerpathafrica.com'}/verify.`}
             next={{ label: 'Download PDF', href: certs[0].pdfUrl }}
             share={certShare(certs[0])} />
         )}

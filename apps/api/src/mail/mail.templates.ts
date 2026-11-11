@@ -4,7 +4,8 @@
 // Brand palette: Navy #072061 · Azure #5889FA · Royal #405FAD · Cloud #E6ECFD
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PORTAL_URL = 'https://portal.careerpathafrica.com';
+// The portal's address from the server settings, read when each email is built (settings load after this file)
+const portalUrl = () => (process.env.PORTAL_URL || 'https://app.careerpathafrica.com').replace(/\/$/, '');
 
 // ── Solar SVG icon paths (extracted from @iconify-json/solar) ────────────────
 const SVG_PATHS = {
@@ -108,7 +109,7 @@ function base(heroHtml: string, bodyHtml: string, badge?: string): string {
         </td></tr>
         <tr><td style="border-top:1px solid ${C.border};padding:14px 32px">
           <p style="margin:0;font-size:11px;color:${C.mut};line-height:1.6;font-family:${FONT}">
-            &copy; ${new Date().getFullYear()} CareerPath Africa &nbsp;&middot;&nbsp; <a href="${PORTAL_URL}/settings#notifications" style="color:${C.mut};text-decoration:underline">Email settings</a>
+            &copy; ${new Date().getFullYear()} CareerPath Africa &nbsp;&middot;&nbsp; <a href="${portalUrl()}/settings#notifications" style="color:${C.mut};text-decoration:underline">Email settings</a>
           </p>
         </td></tr>
       </table>
@@ -209,7 +210,7 @@ export function teacherApprovedTemplate(teacherNo?: string): string {
       </tr>`).join('')}
     </table>
 
-    ${ctaButton('Go to teacher dashboard', `${PORTAL_URL}/teacher/dashboard`)}
+    ${ctaButton('Go to teacher dashboard', `${portalUrl()}/teacher/dashboard`)}
 
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
@@ -249,7 +250,7 @@ export function teacherRejectedTemplate(rejectionReason?: string): string {
 
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
-      You can reapply at any time from <a href="${PORTAL_URL}/register" style="color:#5889FA;text-decoration:none">careerpathafrica.com</a>.
+      You can reapply at any time from <a href="${portalUrl()}/register" style="color:#5889FA;text-decoration:none">careerpathafrica.com</a>.
     </p>`;
 
   return base(hero, body, 'Teaching');
@@ -295,7 +296,7 @@ export function repAssignedTemplate(countryName: string, currency: string): stri
       You will earn a <strong style="color:#072061">commission</strong> for every student purchase from ${countryName}. Your earnings wallet is ready in <strong style="color:#072061">${currency}</strong>.
     </p>
 
-    ${ctaButton('View your dashboard', `${PORTAL_URL}/country-rep/dashboard`)}
+    ${ctaButton('View your dashboard', `${portalUrl()}/country-rep/dashboard`)}
 
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
@@ -327,7 +328,7 @@ export function welcomeStudentTemplate(firstName: string, studentNo?: string): s
       Your <strong style="color:#072061">CareerPath Africa</strong> account is ready. Browse available packages and start learning at your own pace.
     </p>
     ${idBox}
-    ${ctaButton('Explore packages', `${PORTAL_URL}/packages`)}
+    ${ctaButton('Explore packages', `${portalUrl()}/packages`)}
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Need help getting started? Email us at <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
@@ -379,7 +380,7 @@ export function announcementTemplate(title: string, message: string): string {
     <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       ${escapeHtml(message).replace(/\n/g, '<br>')}
     </p>
-    ${ctaButton('Open CareerPath Africa', PORTAL_URL)}`;
+    ${ctaButton('Open CareerPath Africa', portalUrl())}`;
 
   return base(hero, body, 'Announcement');
 }
@@ -437,10 +438,10 @@ export function courseApprovedTemplate(courseTitle: string): string {
     <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Great news — <strong style="color:#072061">${courseTitle}</strong> has been reviewed and approved. It is now published and visible to students.
     </p>
-    ${ctaButton('View your courses', `${PORTAL_URL}/teacher/courses`)}
+    ${ctaButton('View your courses', `${portalUrl()}/teacher/courses`)}
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
-      Commissions are credited to your wallet as students enrol. Check your earnings at any time from the <a href="${PORTAL_URL}/teacher/wallet" style="color:#5889FA;text-decoration:none">wallet page</a>.
+      Commissions are credited to your wallet as students enrol. Check your earnings at any time from the <a href="${portalUrl()}/teacher/wallet" style="color:#5889FA;text-decoration:none">wallet page</a>.
     </p>`;
 
   return base(hero, body, 'Courses');
@@ -456,7 +457,7 @@ export function reviewerAssignedTemplate(courseTitle: string): string {
       You've been assigned to review <strong style="color:#072061">${courseTitle}</strong> on CareerPath Africa.
       Please complete your review as soon as possible so the course can be published.
     </p>
-    ${ctaButton('Go to review queue', `${PORTAL_URL}/reviewer/dashboard`)}
+    ${ctaButton('Go to review queue', `${portalUrl()}/reviewer/dashboard`)}
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Your commission is credited once you submit your decision. Questions? Contact <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
@@ -483,7 +484,7 @@ export function payoutInitiatedTemplate(formattedAmount: string, currency: strin
         </td>
       </tr>
     </table>
-    ${ctaButton('View payout history', `${PORTAL_URL}/teacher/wallet`)}
+    ${ctaButton('View payout history', `${portalUrl()}/teacher/wallet`)}
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Issues? Contact <a href="mailto:billing@careerpathafrica.com" style="color:#5889FA;text-decoration:none">billing@careerpathafrica.com</a>.
@@ -501,7 +502,7 @@ export function payoutCompletedTemplate(formattedAmount: string, currency: strin
     <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
       Your payout of <strong style="color:#072061">${formattedAmount} ${currency}</strong> has been confirmed as paid to your registered bank account.
     </p>
-    ${ctaButton('View wallet', `${PORTAL_URL}/teacher/wallet`)}
+    ${ctaButton('View wallet', `${portalUrl()}/teacher/wallet`)}
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Questions about this payment? Email <a href="mailto:billing@careerpathafrica.com" style="color:#5889FA;text-decoration:none">billing@careerpathafrica.com</a>.
@@ -520,7 +521,7 @@ export function expiryWarningTemplate(packageName: string, daysLeft: number, exp
       Your access to <strong style="color:#072061">${packageName}</strong> expires on <strong style="color:#072061">${expiresOn}</strong>.
       Renew now to keep uninterrupted access to all course materials and live sessions.
     </p>
-    ${ctaButton('Renew access', `${PORTAL_URL}/packages`)}
+    ${ctaButton('Renew access', `${portalUrl()}/packages`)}
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Need help? Contact <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
@@ -573,7 +574,7 @@ export function weeklyEarningsDigestTemplate(opts: {
       </tr>
     </table>
 
-    ${ctaButton('View full dashboard', `${PORTAL_URL}${opts.dashboardPath}`)}
+    ${ctaButton('View full dashboard', `${portalUrl()}${opts.dashboardPath}`)}
     ${divider()}
     <p style="margin:0;font-size:11px;color:#3A4A70;opacity:0.5;font-family:${FONT}">
       This digest is sent every Monday. Contact <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a> to unsubscribe.
@@ -612,7 +613,7 @@ export function dailyAdminDigestTemplate(opts: {
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px">
       ${rows}
     </table>
-    ${ctaButton('Open admin dashboard', `${PORTAL_URL}/admin/dashboard`)}
+    ${ctaButton('Open admin dashboard', `${portalUrl()}/admin/dashboard`)}
     ${divider()}
     <p style="margin:0;font-size:11px;color:#3A4A70;opacity:0.5;font-family:${FONT}">
       Automated daily digest. Sent at 07:00 UTC.
@@ -683,11 +684,11 @@ export function purchaseReceiptTemplate(
       </tr>
     </table>
 
-    ${ctaButton('Access your courses', `${PORTAL_URL}/student/courses`)}
+    ${ctaButton('Access your courses', `${portalUrl()}/student/courses`)}
 
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
-      Receipts are also available in your <a href="${PORTAL_URL}/student/billing" style="color:#5889FA;text-decoration:none">billing history</a>. Need help? Contact <a href="mailto:billing@careerpathafrica.com" style="color:#5889FA;text-decoration:none">billing@careerpathafrica.com</a>.
+      Receipts are also available in your <a href="${portalUrl()}/student/billing" style="color:#5889FA;text-decoration:none">billing history</a>. Need help? Contact <a href="mailto:billing@careerpathafrica.com" style="color:#5889FA;text-decoration:none">billing@careerpathafrica.com</a>.
     </p>`;
 
   return base(hero, body, 'Receipt');
@@ -749,7 +750,7 @@ export function mentorshipBookingStudentTemplate(opts: {
 
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
-      You can also access this from your <a href="${PORTAL_URL}/student/mentorship" style="color:#5889FA;text-decoration:none">mentorship page</a>. If you need to cancel, please do so at least 24 hours in advance.
+      You can also access this from your <a href="${portalUrl()}/student/mentorship" style="color:#5889FA;text-decoration:none">mentorship page</a>. If you need to cancel, please do so at least 24 hours in advance.
     </p>`;
 
   return base(hero, body, 'Mentoring');
@@ -817,10 +818,10 @@ export function mentorshipBookingTeacherTemplate(opts: {
     </table>
 
     ${notesBlock}
-    ${ctaButton('View in dashboard', `${PORTAL_URL}/teacher/mentorship`)}
+    ${ctaButton('View in dashboard', `${portalUrl()}/teacher/mentorship`)}
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
-      Your meeting room will open automatically at session time. Manage all bookings from your <a href="${PORTAL_URL}/teacher/mentorship" style="color:#5889FA;text-decoration:none">mentorship page</a>.
+      Your meeting room will open automatically at session time. Manage all bookings from your <a href="${portalUrl()}/teacher/mentorship" style="color:#5889FA;text-decoration:none">mentorship page</a>.
     </p>`;
 
   return base(hero, body, 'Mentoring');
@@ -851,7 +852,7 @@ export function mentorshipCancellationTemplate(
         </td>
       </tr>
     </table>
-    ${ctaButton('Find available sessions', `${PORTAL_URL}/student/mentorship`, '#405FAD')}
+    ${ctaButton('Find available sessions', `${portalUrl()}/student/mentorship`, '#405FAD')}
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
       Questions? Contact <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
@@ -909,10 +910,10 @@ export function assignmentGradedTemplate(opts: {
     </table>
 
     ${feedbackBlock}
-    ${ctaButton('View your assignments', `${PORTAL_URL}/student/assignments`)}
+    ${ctaButton('View your assignments', `${portalUrl()}/student/assignments`)}
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
-      Keep it up — consistent effort is how you improve. Visit your <a href="${PORTAL_URL}/student/dashboard" style="color:#5889FA;text-decoration:none">dashboard</a> for more resources.
+      Keep it up — consistent effort is how you improve. Visit your <a href="${portalUrl()}/student/dashboard" style="color:#5889FA;text-decoration:none">dashboard</a> for more resources.
     </p>`;
 
   return base(hero, body, 'Assignments');
@@ -942,7 +943,7 @@ export function certificateEarnedTemplate(
       </tr>
     </table>
 
-    ${ctaButton('View your certificate', `${PORTAL_URL}/student/certificates`)}
+    ${ctaButton('View your certificate', `${portalUrl()}/student/certificates`)}
 
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
@@ -980,7 +981,7 @@ export function liveSessionReminderTemplate(
     ${ctaButton('Join live class', roomUrl)}
     ${divider()}
     <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
-      View all your upcoming sessions from your <a href="${PORTAL_URL}/student/live" style="color:#5889FA;text-decoration:none">live sessions page</a>.
+      View all your upcoming sessions from your <a href="${portalUrl()}/student/live" style="color:#5889FA;text-decoration:none">live sessions page</a>.
     </p>`;
 
   return base(hero, body, 'Live class');
@@ -1069,7 +1070,7 @@ export interface NoticeOpts {
 
 /** One layout for the short "something happened, here's the button" emails. Every value is escaped. */
 export function noticeTemplate(o: NoticeOpts): string {
-  const link = o.href.startsWith('/') ? `${PORTAL_URL}${o.href}` : o.href;
+  const link = o.href.startsWith('/') ? `${portalUrl()}${o.href}` : o.href;
   const p = (t: string) => `<p style="margin:0 0 14px;font-size:15px;color:${C.sec};line-height:1.6;font-family:${FONT}">${t}</p>`;
   const paras = o.text.split(/\n\s*\n/).map(t => escapeHtml(t.trim()).replace(/\n/g, '<br>')).filter(Boolean);
   if (o.firstName) paras[0] = `Hi ${escapeHtml(o.firstName)}, ${paras[0] ?? ''}`;

@@ -23,7 +23,7 @@ export class CertificatesService {
     private config: ConfigService,
     private notifications: NotificationsService,
   ) {
-    this.portalUrl = this.config.get<string>('PORTAL_URL', 'https://portal.careerpathafrica.com');
+    this.portalUrl = this.config.get<string>('PORTAL_URL', 'https://app.careerpathafrica.com');
   }
 
   // ── Student: their own certificates ─────────────────────
@@ -290,7 +290,7 @@ export class CertificatesService {
 
     // ── Verification footer ─────────────────────────────────
     const footerY = 58;
-    page.drawText(`Verify: portal.careerpathafrica.com/verify/${data.verifyCode}`, {
+    page.drawText(`Verify: ${new URL(this.portalUrl).host}/verify/${data.verifyCode}`, {
       x: 60, y: footerY,
       size: 8, font: regularFont, color: grey,
     });

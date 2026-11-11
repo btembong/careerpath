@@ -14,4 +14,4 @@ export interface SchoolStudent {
   studentId: string | null; name: string | null; email: string | null; invitedAt: string; joinedAt: string | null; remindedAt: string | null;
   lessons: { done: number; total: number }; avgQuiz: number | null; lastActive: string | null;
 }
-export const joinLink = (code: string) => `${typeof window !== 'undefined' ? window.location.origin : 'https://portal.careerpathafrica.com'}/join/school/${code}`;
+export const joinLink = (code: string) => `${typeof window !== 'undefined' ? window.location.origin : 'https://app.careerpathafrica.com'}/join/school/${code}`;

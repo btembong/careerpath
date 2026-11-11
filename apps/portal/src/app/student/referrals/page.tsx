@@ -12,7 +12,7 @@ export default function ReferralsPage() {
   const [s, setS] = useState<Stats | null>(null);
   useEffect(() => { api.get('/referrals/stats').then(r => setS(r.data)).catch(() => notify.error('Could not load your link')); }, []);
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://portal.careerpathafrica.com';
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://app.careerpathafrica.com';
   const link = s ? `${origin}/register?ref=${s.referralCode}` : '';
   const learning = s?.friends.filter(f => f.learning).length ?? 0;
   const message = `I’m preparing for my exams on CareerPath Africa — join me: ${link}`;
