@@ -168,6 +168,13 @@ export class LiveController {
     return this.liveService.leaveClass(user, liveClassId);
   }
 
+  @Get('classes/:liveClassId/recording-page')
+  @Roles(UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'The recording page: class, viewer (for the name over the picture), download rights, board, other recordings' })
+  getRecordingPage(@CurrentUser() user: UserProfile, @Param('liveClassId') liveClassId: string) {
+    return this.liveService.recordingPage(user, liveClassId);
+  }
+
   @Get('classes/:liveClassId/recording')
   @Roles(UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN)
   @ApiOperation({ summary: 'A short-lived link to watch a class recording (students in the class, its teacher, admins)' })

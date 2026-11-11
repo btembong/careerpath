@@ -217,6 +217,7 @@ export default function TeacherCohortPage() {
                     {new Date(c.scheduledAt).getTime() - Date.now() < DAY && <button type="button" disabled={busy === c.id} onClick={() => start(c)} className={btn(true)}>Start class</button>}
                     <button type="button" onClick={() => setEditClass(c)} className={btn(false)}>Edit</button>
                   </> : <>
+                    {c.recordingUrl && <Link href={`/teacher/recordings/${c.id}`} className={btn(false)}>Watch</Link>}
                     <button type="button" onClick={() => setAttendanceFor(c)} className={btn(false)}>Attendance</button>
                     <button type="button" onClick={() => setEditClass(c)} className={btn(false)}>{c.recordingUrl ? 'Change recording' : 'Add recording'}</button>
                   </>}

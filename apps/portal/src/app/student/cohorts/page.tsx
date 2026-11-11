@@ -203,7 +203,7 @@ function CohortDetail({ id }: { id: string }) {
                     </div>
                     <span className={badge(!!c.attended)}>{c.attended ? 'Attended' : c.beforeJoined ? 'Before you joined' : 'Missed'}</span>
                     {c.recordingUrl
-                      ? <a href={c.recordingUrl} target="_blank" rel="noopener noreferrer" className={btn(false)}>Watch recording</a>
+                      ? <Link href={`/student/recordings/${c.id}`} className={btn(false)}>Watch recording</Link>
                       : <span className="inline-flex h-8 items-center px-1 text-[12.5px] text-muted">Recording coming</span>}
                   </div>
                 ))}

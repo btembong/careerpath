@@ -74,8 +74,8 @@ export function AfterClass({ info }: { info: Info }) {
             <span className="text-[13px] text-ink2">{info.teacher}</span>
           </div>
           {rec
-            ? <a href={rec} target={rec.startsWith('/') ? undefined : '_blank'} rel="noopener noreferrer" className="inline-flex h-[42px] items-center gap-2 rounded-md bg-[#3F6FE8] px-4 text-sm font-bold text-white hover:bg-[#2F57C9]">
-                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden><path d="M8 5v14l11-7z" fill="currentColor" /></svg>Watch recording</a>
+            ? <Link href={`/student/recordings/${info.id}`} className="inline-flex h-[42px] items-center gap-2 rounded-md bg-[#3F6FE8] px-4 text-sm font-bold text-white hover:bg-[#2F57C9]">
+                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden><path d="M8 5v14l11-7z" fill="currentColor" /></svg>Watch recording</Link>
             : <span className="text-[13px] text-muted">The recording appears here a few minutes after class.</span>}
         </section>
 

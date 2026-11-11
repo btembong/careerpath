@@ -420,9 +420,51 @@ export class LiveService {
       if (found[0]) { recordingId = found[0].id; await this.attachRecording(found[0].room_name, recordingId); }
     }
     if (!recordingId) throw new NotFoundException('There’s no recording for this class yet. Recordings appear a few minutes after class ends.');
-    const link = await this.daily.recordingLink(recordingId);
+    // Asked for when someone presses play: enough for the class plus pauses, then it stops working
+    const link = await this.daily.recordingLink(recordingId, liveClass.durationMins * 60 + 45 * 60);
     if (!link) throw new NotFoundException('The recording isn’t ready yet. Try again in a few minutes.');
     return link;
+  }
+
+  /**
+   * The recording page: the class, who is watching (their name goes over the picture), whether they may
+   * download (its teacher and admins only), the board as it was left, and the cohort's other recordings.
+   * The video link itself comes from recordingLink when play is pressed.
+   */
+  async recordingPage(user: UserProfile, liveClassId: string) {
+    const liveClass = await this.prisma.liveClass.findUnique({
+      where: { id: liveClassId },
+      include: { cohort: { select: { id: true, name: true, teacherId: true, teacher: { select: { name: true, firstName: true, lastName: true } } } } },
+    });
+    if (!liveClass) throw new NotFoundException('Live class not found');
+    const isStaff = user.role === UserRole.ADMIN || liveClass.cohort.teacherId === user.id;
+    if (!isStaff) {
+      const roster = await this.prisma.cohortRoster.findUnique({ where: { studentId_cohortId: { studentId: user.id, cohortId: liveClass.cohortId } } });
+      if (!roster) throw new ForbiddenException('This recording is for students in the class');
+    }
+    const me = await this.prisma.userProfile.findUnique({ where: { id: user.id }, select: { name: true, firstName: true, lastName: true, email: true } });
+    const others = await this.prisma.liveClass.findMany({
+      where: { cohortId: liveClass.cohortId, status: 'COMPLETED' },
+      select: { id: true, title: true, scheduledAt: true, durationMins: true, recordingUrl: true, recordingId: true, dailyRoomUrl: true },
+      orderBy: { scheduledAt: 'desc' }, take: 30,
+    });
+    const nameOf = (p: { name: string | null; firstName: string | null; lastName: string | null } | null) => p?.name || [p?.firstName, p?.lastName].filter(Boolean).join(' ') || '';
+    let board: unknown[] = [];
+    try { board = liveClass.whiteboardSnapshot ? JSON.parse(String(liveClass.whiteboardSnapshot)) : []; } catch { board = []; }
+    // A pasted link to a video file plays in our player like a Daily recording; a page (YouTube, Drive…) can only be linked to
+    const pasted = liveClass.recordingUrl && /^https:\/\//i.test(liveClass.recordingUrl) ? liveClass.recordingUrl : null;
+    const external = pasted && !/\.(mp4|webm|mov|m4v)(\?|$)/i.test(pasted) ? pasted : null;
+    return {
+      id: liveClass.id, title: liveClass.title, scheduledAt: liveClass.scheduledAt, durationMins: liveClass.durationMins, status: liveClass.status,
+      cohort: { id: liveClass.cohort.id, name: liveClass.cohort.name }, teacher: nameOf(liveClass.cohort.teacher),
+      viewer: { name: nameOf(me) || me?.email || '', email: me?.email ?? '' },
+      canDownload: isStaff,
+      // A link the teacher pasted (YouTube, Drive…) can't be played in our player: the page offers it as a link
+      external,
+      ready: !!(liveClass.recordingId || liveClass.recordingUrl),
+      board: Array.isArray(board) ? board : [],
+      others: others.map(o => ({ id: o.id, title: o.title, scheduledAt: o.scheduledAt, durationMins: o.durationMins, ready: !!(o.recordingId || o.recordingUrl) })),
+    };
   }
 
   // ── Admin overview ───────────────────────────────────────

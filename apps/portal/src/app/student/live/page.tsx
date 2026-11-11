@@ -161,7 +161,7 @@ export default function StudentLivePage() {
                         </> : <>
                           <span className={badge(!!c.attended)}>{c.attended ? 'Attended' : c.beforeJoined ? 'Before you joined' : 'Missed'}</span>
                           {c.recordingUrl
-                            ? <a href={c.recordingUrl} target="_blank" rel="noopener noreferrer" className={btn(!c.attended && !c.beforeJoined)}>Watch recording</a>
+                            ? <Link href={`/student/recordings/${c.id}`} className={btn(!c.attended && !c.beforeJoined)}>Watch recording</Link>
                             : <span className="inline-flex h-8 items-center px-1 text-[12.5px] text-muted">Recording coming</span>}
                         </>}
                       </div>
@@ -188,7 +188,7 @@ export default function StudentLivePage() {
                         <p className="truncate text-[13.5px] font-semibold text-navy">{c.title}</p>
                         <p className="mt-0.5 text-xs text-muted">{new Date(c.scheduledAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} · {c.durationMins} min</p>
                       </div>
-                      <a href={c.recordingUrl!} target="_blank" rel="noopener noreferrer" className="inline-flex h-[30px] items-center rounded-md border border-line px-2.5 text-[12.5px] font-semibold text-navy hover:bg-subtle">Watch</a>
+                      <Link href={`/student/recordings/${c.id}`} className="inline-flex h-[30px] items-center rounded-md border border-line px-2.5 text-[12.5px] font-semibold text-navy hover:bg-subtle">Watch</Link>
                     </div>
                   ))}
                 </section>

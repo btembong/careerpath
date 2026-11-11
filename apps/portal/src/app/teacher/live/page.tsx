@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
@@ -162,6 +163,7 @@ export default function TeacherLivePage() {
                     <button type="button" onClick={() => setEdit(c)} className={btn(true)}>Add recording</button>
                   </> : <>
                     <span className={badge(true)}>Held</span>
+                    {c.recordingUrl && <Link href={`/teacher/recordings/${c.id}`} className={btn(false)}>Watch</Link>}
                     <button type="button" onClick={() => setAtt(c)} className={btn(false)}>Attendance</button>
                     <button type="button" onClick={() => setEdit(c)} className={btn(false)}>{c.recordingUrl ? 'Recording' : 'Add recording'}</button>
                   </>}
