@@ -422,12 +422,11 @@ export class SchedulerService {
     if (bookings.length) this.logger.log(`Mentoring reminders: ${bookings.length} session(s)`);
   }
 
-  // ── 10. Sync WordPress courses ──────────────────────────
-  // Every 6 hours — pull published WP courses and upsert as PlatformCourse
-  // rows with source=WORDPRESS so students can discover them in the portal.
-  // Skipped if WP credentials are not configured (dev environment).
-
-  @Cron('0 */6 * * *')
+  // ── 10. Sync WordPress courses (switched off) ───────────
+  // The older automatic sync. It published every WordPress course straight away, rewrote titles and
+  // descriptions every 6 hours over the admin's own, and only read the first 100. Admin → Courses →
+  // "Pull from WordPress" replaced it: the admin reviews what comes in, new courses wait as drafts if
+  // the admin wants, and its optional nightly check only looks. Kept, unscheduled, for reference.
   async syncWordPressCourses() {
     try {
       const [wpCourses, systemTeacherId] = await Promise.all([
