@@ -62,8 +62,6 @@ export class DailyService {
           // ── Multi-participant UX ──────────────────────────
           enable_chat: true,
           enable_screenshare: true,
-          // Cap screenshare bitrate — keeps bandwidth predictable for lower-end connections
-          screenshare_send_max_bitrate: 2500,  // kbps — clear for slides/code, not wasteful
           enable_network_ui: true,
           // Pre-join screen: camera/mic preview before entering
           enable_prejoin_ui: true,
