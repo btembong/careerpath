@@ -1,6 +1,11 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { Suspense as _Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Icon } from '@/components/ui/Icon';
+
+// The repo's React types don't accept Suspense as a JSX element (same workaround as the login page)
+const Suspense = _Suspense as any;
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
@@ -55,15 +60,11 @@ const badge = (blue: boolean) => clsx('inline-flex h-6 items-center whitespace-n
 const btn = (primary: boolean) => clsx('inline-flex h-8 items-center whitespace-nowrap rounded-md border px-3 text-[13px] font-semibold',
   primary ? 'border-azure-strong bg-azure-strong text-on-accent' : 'border-line bg-white text-navy hover:bg-subtle');
 
-export default function StudentCohortPage() {
+function CohortDetail({ id }: { id: string }) {
   const [data, setData] = useState<Overview | null>(null);
-  const [cohortId, setCohortId] = useState<string>('');
+  const [cohortId, setCohortId] = useState<string>(id);
   const [tab, setTab] = useState<Tab>('classes');
 
-  useEffect(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get('id') ?? '';
-    setCohortId(fromUrl);
-  }, []);
   useEffect(() => {
     setData(null);
     api.get('/portals/student/cohort-overview', { params: cohortId ? { cohortId } : {} })
@@ -72,7 +73,7 @@ export default function StudentCohortPage() {
 
   if (!data) return (
     <div className="flex min-h-full flex-col">
-      <Topbar title="My cohort" subtitle="Your class, live lessons and assignments in one place" />
+      <Topbar title="My cohort" subtitle="Your class, live lessons and assignments in one place" backHref="/student/cohorts" backLabel="My cohorts" />
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
         <div className="h-40 rounded-lg border border-line bg-white animate-pulse" />
         <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">{[0, 1, 2, 3].map(i => <div key={i} className="h-24 rounded-lg border border-line bg-white animate-pulse" />)}</div>
@@ -82,7 +83,7 @@ export default function StudentCohortPage() {
 
   if (!data.cohort) return (
     <div className="flex min-h-full flex-col">
-      <Topbar title="My cohort" subtitle="Your class, live lessons and assignments in one place" />
+      <Topbar title="My cohort" subtitle="Your class, live lessons and assignments in one place" backHref="/student/cohorts" backLabel="My cohorts" />
       <div className="m-4 rounded-lg border border-line bg-white p-10 text-center lg:m-7">
         <p className="text-sm font-semibold text-navy">You’re not in a cohort yet</p>
         <p className="mx-auto mt-1 max-w-md text-[13px] text-ink2">Packages with live classes put you in a cohort with a teacher and classmates preparing for the same exam.</p>
@@ -101,7 +102,7 @@ export default function StudentCohortPage() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <Topbar title="My cohort" subtitle="Your class, live lessons and assignments in one place"
+      <Topbar title="My cohort" subtitle="Your class, live lessons and assignments in one place" backHref="/student/cohorts" backLabel="My cohorts"
         actions={data.cohorts.length > 1 ? (
           <label className="flex h-9 items-center gap-2 rounded-md border border-line bg-white px-2.5 text-[13.5px] text-ink2">
             <span className="text-muted">Cohort:</span>
@@ -286,4 +287,183 @@ export default function StudentCohortPage() {
       </div>
     </div>
   );
+}
+
+/* ── My cohorts: the list ─────────────────────────────────────────────────── */
+
+interface CohortRow { id: string; name: string; examDate: string | null }
+interface Card { row: CohortRow; o: Overview }
+
+const AVATAR_COLOURS = ['#1F9D74', '#C2410C', '#7C3AED', '#0E7490', '#B45309', '#BE185D'];
+const colourFor = (name: string) => AVATAR_COLOURS[[...name].reduce((n, c) => n + c.charCodeAt(0), 0) % AVATAR_COLOURS.length];
+const examIn = (d: string) => {
+  const days = Math.round((new Date(new Date(d).toDateString()).getTime() - new Date(new Date().toDateString()).getTime()) / DAY);
+  return days === 0 ? 'Exam today' : days === 1 ? 'Exam tomorrow' : `Exam in ${days} days`;
+};
+const finishedOf = (c: Card) => !!c.o.cohort?.examDate && new Date(new Date(c.o.cohort.examDate).toDateString()).getTime() < new Date(new Date().toDateString()).getTime();
+
+function Chip({ icon, label, value, red }: { icon: 'live' | 'docLine' | 'grade'; label: string; value: string; red?: boolean }) {
+  return (
+    <div className="min-w-0 flex-1 rounded-xl bg-subtle px-[11px] py-2.5">
+      <span className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.05em] text-muted"><Icon name={icon} size={13} line />{label}</span>
+      <strong className={clsx('mt-0.5 block whitespace-nowrap text-[15px]', red ? 'text-[#D23B2F]' : 'text-navy')}>{value}</strong>
+    </div>
+  );
+}
+
+function CurrentCard({ c }: { c: Card }) {
+  const router = useRouter();
+  const { o } = c;
+  const cohort = o.cohort!;
+  const href = `/student/cohorts?id=${cohort.id}`;
+  const next = o.next;
+  const canJoin = !!next && (next.live || new Date(next.scheduledAt).getTime() - Date.now() <= 10 * 60_000);
+  const st = o.stats;
+  const classmates = (o.members ?? []).filter(m => !m.me && m.role !== 'Teacher');
+  const work = !st || !st.assignments ? '—' : st.overdue ? `${st.overdue} overdue` : st.submitted >= st.assignments ? 'All done' : `${st.submitted} of ${st.assignments}`;
+  const end = next ? new Date(new Date(next.scheduledAt).getTime() + next.durationMins * 60_000) : null;
+  return (
+    <article onClick={() => router.push(href)} className="cursor-pointer overflow-hidden rounded-[18px] border border-line bg-white shadow-[0_6px_18px_rgba(7,32,97,0.06)] transition-shadow hover:shadow-[0_10px_26px_rgba(7,32,97,0.12)]">
+      <div className="keep-light relative overflow-hidden bg-[#3F6FE8] p-[15px] text-[#FFFFFF] lg:p-[18px]">
+        <span aria-hidden className="absolute -right-10 -top-[50px] h-40 w-40 rounded-full bg-white/10" />
+        <div className="relative flex items-center justify-between gap-2">
+          <span className="truncate text-[11.5px] font-bold opacity-90">{cohort.sittingLabel ?? ''}</span>
+          {cohort.examDate && <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#FFFFFF] px-[9px] py-1 text-[11.5px] font-extrabold text-[#2F57C9]"><Icon name="clockLine" size={13} />{examIn(cohort.examDate)}</span>}
+        </div>
+        <p className="relative mt-2 text-[19px] font-extrabold leading-[1.15] lg:text-[22px]">{cohort.name}</p>
+        {o.teacher && (
+          <div className="relative mt-[11px] flex items-center gap-[9px]">
+            {o.teacher.avatarUrl
+              ? <img src={o.teacher.avatarUrl} alt="" className="h-[30px] w-[30px] rounded-full object-cover ring-2 ring-white/40" />
+              : <span className="grid h-[30px] w-[30px] place-items-center rounded-full bg-[#FFFFFF] text-[11px] font-extrabold text-[#2F57C9] ring-2 ring-white/40">{initials(o.teacher.name)}</span>}
+            <span className="truncate text-[12.5px]"><strong>{o.teacher.name}</strong>{o.teacher.subjects[0] && <span className="opacity-85"> · {o.teacher.subjects.slice(0, 2).join(', ')}</span>}</span>
+          </div>
+        )}
+      </div>
+      <div className="flex flex-col gap-3 p-[13px] lg:p-4">
+        <div className="flex items-center gap-[11px] rounded-[13px] border border-line p-[11px]">
+          {next ? (
+            <>
+              <span className="w-[42px] shrink-0 rounded-[10px] bg-accent-soft py-[5px] text-center">
+                <span className="block text-[10px] font-extrabold uppercase text-azure-strong">{new Date(next.scheduledAt).toLocaleDateString('en-GB', { month: 'short' })}</span>
+                <strong className="block text-[17px] leading-tight text-navy">{new Date(next.scheduledAt).getDate()}</strong>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[10.5px] font-extrabold uppercase tracking-[0.05em] text-azure-strong">{next.live ? 'Live now' : 'Next live class'}</span>
+                <strong className="block truncate text-[13.5px] text-navy">{next.title}</strong>
+                <span className="block text-[11.5px] text-muted">{new Date(next.scheduledAt).toLocaleDateString('en-GB', { weekday: 'long' })} {time(next.scheduledAt)} · {next.durationMins} min{!canJoin && end ? ' · Join opens 10 min before' : ''}</span>
+              </span>
+              {canJoin && <Link href={`/student/live/${next.id}`} onClick={e => e.stopPropagation()} className="inline-flex h-9 shrink-0 items-center rounded-[10px] bg-[#3F6FE8] px-3.5 text-[12.5px] font-extrabold text-[#FFFFFF]">Join class</Link>}
+            </>
+          ) : <span className="text-[12.5px] text-muted">No live class scheduled yet. Your teacher will add the next one.</span>}
+        </div>
+        <div className="flex gap-2">
+          <Chip icon="live" label="Attended" value={st?.held ? `${st.attended} of ${st.held}` : '—'} />
+          <Chip icon="docLine" label="Work" value={work} red={!!st?.overdue} />
+          <Chip icon="grade" label="Grade" value={st?.avgGradePct != null ? `${st.avgGradePct}%` : '—'} />
+        </div>
+        <div className="flex items-center gap-2.5">
+          {classmates.length > 0 && (
+            <span className="flex shrink-0">
+              {classmates.slice(0, 4).map((m, i) => (
+                <span key={m.id} title={m.name} className={clsx('grid h-7 w-7 place-items-center rounded-full text-[9.5px] font-extrabold tracking-[-0.03em] text-[#FFFFFF] ring-2 ring-white', i > 0 && '-ml-2')} style={{ background: colourFor(m.name) }}>{initials(m.name)}</span>
+              ))}
+              {classmates.length > 4 && <span className="-ml-2 grid h-7 w-7 place-items-center rounded-full bg-line text-[9.5px] font-extrabold text-navy ring-2 ring-white">+{classmates.length - 4}</span>}
+            </span>
+          )}
+          <span className="min-w-0 flex-1 whitespace-nowrap text-[12px] text-muted">{classmates.length ? `${classmates.length} classmate${classmates.length === 1 ? '' : 's'}` : ''}</span>
+          <Link href={href} onClick={e => e.stopPropagation()} className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] bg-[#3F6FE8] px-3.5 text-[12.5px] font-extrabold text-[#FFFFFF]">Open cohort <Icon name="arrowRight" size={15} /></Link>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function FinishedRow({ c }: { c: Card }) {
+  const cohort = c.o.cohort!, st = c.o.stats;
+  const bits = [
+    cohort.examDate ? `Exam was ${new Date(cohort.examDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : null,
+    st?.held ? `attended ${st.attended} of ${st.held}` : null,
+    'recordings stay open',
+  ].filter(Boolean).join(' · ');
+  return (
+    <Link href={`/student/cohorts?id=${cohort.id}`} className="flex items-center gap-3 rounded-[15px] border border-line bg-white p-3 hover:bg-subtle lg:p-3.5">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-subtle text-muted"><Icon name="certificates" size={22} line /></span>
+      <span className="min-w-0 flex-1"><strong className="block truncate text-[13.5px] text-navy">{cohort.name}</strong><span className="block text-[11.5px] text-muted">{bits}</span></span>
+      <Icon name="chevronRight" size={18} className="shrink-0 text-muted" />
+    </Link>
+  );
+}
+
+const sectionLabel = 'text-[11.5px] font-extrabold uppercase tracking-[0.06em] text-muted';
+
+function CohortList() {
+  const [cards, setCards] = useState<Card[] | null>(null);
+  useEffect(() => {
+    api.get<CohortRow[]>('/portals/student/cohorts')
+      .then(r => Promise.all((r.data ?? []).map(row => api.get<Overview>('/portals/student/cohort-overview', { params: { cohortId: row.id } }).then(o => ({ row, o: o.data })).catch(() => null))))
+      .then(list => setCards((list.filter(Boolean) as Card[]).filter(c => c.o.cohort)))
+      .catch(() => setCards([]));
+  }, []);
+
+  // A live class first, then the nearest exam; cohorts without an exam date after those
+  const current = (cards ?? []).filter(c => !finishedOf(c)).sort((a, b) =>
+    Number(!!b.o.next?.live) - Number(!!a.o.next?.live)
+    || (a.o.cohort!.examDate ? new Date(a.o.cohort!.examDate).getTime() : Infinity) - (b.o.cohort!.examDate ? new Date(b.o.cohort!.examDate).getTime() : Infinity));
+  const finished = (cards ?? []).filter(finishedOf).sort((a, b) => new Date(b.o.cohort!.examDate!).getTime() - new Date(a.o.cohort!.examDate!).getTime());
+
+  return (
+    <div className="flex min-h-full flex-col">
+      <div className="hidden lg:block"><Topbar title="My cohorts" subtitle="Your classes, teachers and classmates" /></div>
+      <div className="px-4 pb-1 pt-4 lg:hidden">
+        <h1 className="text-[23px] font-extrabold text-navy">My cohorts</h1>
+        <p className="text-[12.5px] text-muted">Your classes, teachers and classmates</p>
+      </div>
+
+      <div className="flex flex-col gap-3 p-3.5 lg:px-7 lg:py-6">
+        {!cards ? (
+          <div className="grid gap-4 lg:grid-cols-2">{[0, 1].map(i => <div key={i} className="h-[330px] animate-pulse rounded-[18px] border border-line bg-white" />)}</div>
+        ) : !cards.length ? (
+          <div className="mx-auto mt-6 w-full max-w-[440px] rounded-[18px] border border-line bg-white px-5 py-[26px] text-center">
+            <span className="mx-auto grid h-16 w-16 place-items-center rounded-[20px] bg-accent-soft text-azure-strong"><Icon name="mentorship" size={32} line /></span>
+            <p className="mt-3.5 text-[17px] font-extrabold text-navy">You’re not in a cohort yet</p>
+            <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">Packages with live classes put you in a cohort: a teacher, weekly live lessons and classmates sitting the same exam.</p>
+            <Link href="/packages" className="mt-4 inline-flex h-11 items-center rounded-[11px] bg-[#3F6FE8] px-[18px] text-[13px] font-extrabold text-[#FFFFFF]">Browse packages</Link>
+          </div>
+        ) : (
+          <>
+            {current.length > 0 && (
+              <>
+                <p className={sectionLabel}>Current</p>
+                <div className="grid items-start gap-4 lg:grid-cols-2">
+                  {current.map(c => <CurrentCard key={c.row.id} c={c} />)}
+                  <Link href="/packages" className="hidden min-h-[300px] flex-col items-center justify-center gap-2 rounded-[18px] border-2 border-dashed border-line p-5 text-center text-muted hover:bg-white lg:flex">
+                    <Icon name="add" size={30} line className="text-[#9AA8CC]" />
+                    <strong className="text-[13.5px] text-navy">Another exam coming up?</strong>
+                    <span className="max-w-[230px] text-[12px] leading-relaxed">Packages with live classes add a cohort here.</span>
+                    <span className="mt-1 text-[12.5px] font-extrabold text-azure-strong">Browse packages</span>
+                  </Link>
+                </div>
+              </>
+            )}
+            {finished.length > 0 && (
+              <>
+                <p className={clsx(sectionLabel, current.length > 0 && 'mt-2')}>Finished</p>
+                <div className="grid gap-4 lg:grid-cols-2">{finished.map(c => <FinishedRow key={c.row.id} c={c} />)}</div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CohortsPage() {
+  const id = useSearchParams().get('id');
+  return id ? <CohortDetail key={id} id={id} /> : <CohortList />;
+}
+
+export default function StudentCohortsPage() {
+  return <Suspense fallback={null}><CohortsPage /></Suspense>;
 }
