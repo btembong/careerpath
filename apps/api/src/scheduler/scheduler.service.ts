@@ -357,7 +357,11 @@ export class SchedulerService {
 
       for (const cls of classes) {
         const courseTitle = cls.cohort.name;
-        const roomUrl = cls.dailyRoomUrl ?? '';
+        // "Join" opens the class page in the portal: it hands out the pass to the private room
+        // (and before the teacher starts, the room doesn't exist yet)
+        const portal = (process.env.PORTAL_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+        const studentLink = `${portal}/student/live/${cls.id}`;
+        const teacherLink = `${portal}/teacher/live/${cls.id}`;
         const startTimeStr = cls.scheduledAt.toLocaleTimeString('en-GB', {
           hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
         });
@@ -365,13 +369,13 @@ export class SchedulerService {
         // Email teacher
         const teacher = cls.cohort.teacher;
         const teacherName = [teacher.firstName, teacher.lastName].filter(Boolean).join(' ') || teacher.email;
-        this.mail.sendLiveSessionReminder(teacher.email, teacherName, courseTitle, startTimeStr, roomUrl, minutesBefore).catch(() => {});
+        this.mail.sendLiveSessionReminder(teacher.email, teacherName, courseTitle, startTimeStr, teacherLink, minutesBefore).catch(() => {});
 
         // Email enrolled students
         for (const enrol of cls.cohort.students) {
           const s = enrol.student;
           const studentName = [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email;
-          this.mail.sendLiveSessionReminder(s.email, studentName, courseTitle, startTimeStr, roomUrl, minutesBefore).catch(() => {});
+          this.mail.sendLiveSessionReminder(s.email, studentName, courseTitle, startTimeStr, studentLink, minutesBefore).catch(() => {});
         }
 
         // In-app only for the 15-minute reminder, so nobody gets two notifications per class
