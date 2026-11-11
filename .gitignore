@@ -36,3 +36,8 @@ postgres_data
 
 # Git Bash crash dumps
 *.stackdump
+
+# SSH keys: never in this repository
+/careerpath
+/careerpath.pub
+*.pem
