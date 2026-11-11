@@ -1,6 +1,10 @@
 import createNextIntlPlugin from 'next-intl/plugin';
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { writeSolarSubset } from './scripts/solar-subset.mjs';
+
+// Only the Solar icons the code uses go into the portal (see scripts/solar-subset.mjs)
+writeSolarSubset();
 
 // The version people see: the release (beta until payments are on; then 1.0 and a new release per feature),
 // the exact code that's live (its short git id, matching GitHub) and when it was built

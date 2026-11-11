@@ -1,6 +1,7 @@
 'use client';
 import { Icon as Iconify, addCollection } from '@iconify/react';
-import solarIcons from '@iconify-json/solar/icons.json';
+// Only the icons the portal uses: written by scripts/solar-subset.mjs on every build
+import solarIcons from '@/lib/solar-subset.json';
 import { clsx } from 'clsx';
 import { Icons } from '@/lib/icons';
 import type { IconName } from '@/lib/icons';

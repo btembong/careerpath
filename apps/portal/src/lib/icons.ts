@@ -66,7 +66,7 @@ export const Icons = {
   card:         'solar:card-bold',
   dollar:       'solar:dollar-minimalistic-bold',
   trending:     'solar:graph-up-bold',
-  wifi:         'solar:wifi-bold',
+  wifi:         'solar:wi-fi-bold',
   star:         'solar:star-bold',
   spinner:      'solar:refresh-bold',
   file:         'solar:document-bold',
