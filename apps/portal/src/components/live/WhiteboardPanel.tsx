@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+// Excalidraw 0.18 ships its styles separately: without them the toolbar is a raw list and nothing can be drawn
+import '@excalidraw/excalidraw/index.css';
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_ORIGIN } from '@/lib/images';
 import Cookies from 'js-cookie';

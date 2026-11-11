@@ -1,5 +1,7 @@
 'use client';
 import dynamic from 'next/dynamic';
+// Excalidraw 0.18 ships its styles separately: without them the toolbar is a raw list and nothing can be drawn
+import '@excalidraw/excalidraw/index.css';
 
 const Excalidraw = dynamic(
   () => import('@excalidraw/excalidraw').then(m => m.Excalidraw),
