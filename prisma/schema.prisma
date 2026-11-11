@@ -47,6 +47,9 @@ model UserProfile {
   /// { language, textSize, dataSaver, autoplay, downloadOnWifi }
   displayPrefs         Json?
   agreementAcceptedAt  DateTime?
+  /// Terms and Conditions + Privacy Policy, agreed at sign-up: when, and which version
+  termsAcceptedAt      DateTime?
+  termsVersion         String?
   agreementVersion     String?
   agreementIp          String?
   certificates         Certificate[]

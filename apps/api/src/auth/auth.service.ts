@@ -40,6 +40,13 @@ export type SignInResult = { accessToken: string } | { twoStep: true; challenge:
 const loginTriesKey = (email: string) => `cpa:login-code-tries:${email.toLowerCase()}`;
 export const verifiedKey = (email: string) => `cpa:otp-verified:${email.toLowerCase()}`;
 
+/** The Terms and Conditions and Privacy Policy shown at sign-up; change it when the published text changes */
+const TERMS_VERSION = 'draft-2026-11';
+/** Both sign-ups need the tick box: checked first, so nothing (not even the WordPress account) is created without it */
+function assertTermsAccepted(dto: { termsAccepted?: boolean }) {
+  if (dto.termsAccepted !== true) throw new BadRequestException('Please agree to the Terms and Conditions and the Privacy Policy to create your account.');
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -308,6 +315,7 @@ export class AuthService {
   // ── Student registration ─────────────────────────────────
 
   async registerStudent(dto: RegisterStudentDto): Promise<{ accessToken: string }> {
+    assertTermsAccepted(dto);
     dto.email = dto.email.trim().toLowerCase();
     await this.assertEmailVerified(dto.email);
     await this.assertEmailNotTaken(dto.email);
@@ -330,6 +338,8 @@ export class AuthService {
         email:          dto.email,
         role:           UserRole.STUDENT,
         approvalStatus: ApprovalStatus.APPROVED,
+        termsAcceptedAt: new Date(),
+        termsVersion:   dto.termsVersion ?? TERMS_VERSION,
         countryId:      dto.countryId  || null,
         firstName:      dto.firstName  || null,
         lastName:       dto.lastName   || null,
@@ -350,6 +360,7 @@ export class AuthService {
   // ── Teacher registration ─────────────────────────────────
 
   async registerTeacher(dto: RegisterTeacherDto, ip?: string): Promise<{ message: string }> {
+    assertTermsAccepted(dto);
     dto.email = dto.email.trim().toLowerCase();
     await this.assertEmailVerified(dto.email);
     await this.assertEmailNotTaken(dto.email);
@@ -367,7 +378,7 @@ export class AuthService {
 
     await this.prisma.$transaction(async (tx) => {
       const profile = await tx.userProfile.create({
-        data: { wpUserId, email: dto.email, role: UserRole.TEACHER, approvalStatus: ApprovalStatus.PENDING, passwordHash: await bcrypt.hash(dto.password, 12), passwordUpdatedAt: new Date() },
+        data: { wpUserId, email: dto.email, role: UserRole.TEACHER, approvalStatus: ApprovalStatus.PENDING, passwordHash: await bcrypt.hash(dto.password, 12), passwordUpdatedAt: new Date(), termsAcceptedAt: new Date(), termsVersion: dto.termsVersion ?? TERMS_VERSION },
       });
       await this.writeTeacherProfile(tx, profile.id, dto, ip);
     });

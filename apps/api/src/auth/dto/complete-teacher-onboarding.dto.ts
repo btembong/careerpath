@@ -14,7 +14,8 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Qualification, RegisterTeacherDto, TeachingModality } from './register-teacher.dto';
 
 /** Fields shared by portal teacher sign-up and WP-tutor onboarding. */
-export type TeacherProfileInput = Omit<RegisterTeacherDto, 'email' | 'password'>;
+// The sign-up consent belongs to signing up only, not to WordPress teachers finishing their profile
+export type TeacherProfileInput = Omit<RegisterTeacherDto, 'email' | 'password' | 'termsAccepted' | 'termsVersion'>;
 
 /** Same profile as the sign-up wizard, minus credentials (WP tutors already have an account). */
 export class CompleteTeacherOnboardingDto implements TeacherProfileInput {

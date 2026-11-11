@@ -8,7 +8,8 @@ const PUBLIC_PATHS = [
   '/packages/success', '/apply/pending', '/forgot-password', '/reset-password',
 ];
 // Paths accessible without auth
-const OPEN_PATHS = ['/packages', '/courses', '/offline'];
+// The legal pages are linked from sign-up, so visitors must be able to read them
+const OPEN_PATHS = ['/packages', '/courses', '/offline', '/legal'];
 // Logged-in students get sent to in-app equivalents
 const STUDENT_REDIRECT: Record<string, string> = {
   '/courses': '/student/catalogue',

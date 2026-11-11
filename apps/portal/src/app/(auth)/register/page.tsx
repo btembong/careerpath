@@ -327,6 +327,7 @@ function StudentFlow({ countries, nextUrl, school, onBack, setLeft }: { countrie
   const [step, setStep] = useState<'details' | 'code' | 'finish'>('details');
   const [sending, setSending] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [termsOk, setTermsOk] = useState(false);
   const [error, setError] = useState('');
   const [existing, setExisting] = useState<Existing>(null);
 
@@ -371,9 +372,10 @@ function StudentFlow({ countries, nextUrl, school, onBack, setLeft }: { countrie
     setError('');
     if (form.password.length < 8) { setError('Your password needs at least 8 characters.'); return; }
     if (!form.countryId) { setError('Please pick your country.'); return; }
+    if (!termsOk) { setError('Please agree to the Terms and Conditions and the Privacy Policy.'); return; }
     setCreating(true);
     try {
-      const { data } = await api.post('/auth/register/student', { firstName, lastName, ...form, email: form.email.trim(), ...(referralCode && { referralCode }) });
+      const { data } = await api.post('/auth/register/student', { firstName, lastName, ...form, email: form.email.trim(), ...(referralCode && { referralCode }), termsAccepted: true, termsVersion: TERMS_VERSION });
       try { sessionStorage.removeItem('cpa_ref'); } catch { /* storage unavailable */ }
       await setAuthToken(data.accessToken, true);
       router.push(`/student/onboarding${nextUrl ? `?next=${encodeURIComponent(nextUrl)}` : ''}`);
@@ -405,6 +407,7 @@ function StudentFlow({ countries, nextUrl, school, onBack, setLeft }: { countrie
       <Field label="Password" hint={<StrengthHint pw={form.password} />}><PasswordInput value={form.password} onChange={v => setForm(f => ({ ...f, password: v }))} /></Field>
       <Field label="Country" hint={country ? `Prices in ${country.currency}` : 'Sets your currency'}><CountrySelect value={form.countryId} onChange={id => setForm(f => ({ ...f, countryId: id }))} countries={countries} /></Field>
       <Field label="Phone" optional hint="For mobile money and class reminders"><input type="tel" value={form.phone} onChange={set('phone')} autoComplete="tel" placeholder="+237 6 77 12 34 56" className={inputCls} /></Field>
+      <TermsCheckbox checked={termsOk} onChange={setTermsOk} />
       <ErrorBox error={error} />
       <PrimaryButton loading={creating}>Create my account</PrimaryButton>
     </form>
@@ -421,6 +424,19 @@ function StudentFlow({ countries, nextUrl, school, onBack, setLeft }: { countrie
       <PrimaryButton loading={sending}>Send code</PrimaryButton>
       <p className="text-center text-[12.5px] text-muted">By creating an account, you agree to the Terms and Privacy Policy.</p>
     </form>
+  );
+}
+
+/** Which Terms and Privacy Policy people agree to; the API records it with the date */
+const TERMS_VERSION = 'draft-2026-11';
+
+/** The consent tick box both sign-ups show: unticked until the person ticks it themselves */
+function TermsCheckbox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-start gap-2.5 text-[13px] leading-snug text-ink2">
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#5889FA]" />
+      <span>I agree to the <Link href="/legal/terms" target="_blank" className="font-bold text-azure">Terms and Conditions</Link> and the <Link href="/legal/privacy" target="_blank" className="font-bold text-azure">Privacy Policy</Link>.</span>
+    </label>
   );
 }
 
@@ -464,6 +480,7 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
   });
   const [programmes, setProgrammes] = useState<TaxProgramme[]>([]);
   const [agree, setAgree] = useState(false);
+  const [termsOk, setTermsOk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(0);
   const [error, setError] = useState('');
@@ -560,6 +577,7 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
   }
 
   async function submit() {
+    if (!termsOk) { setError('Please agree to the Terms and Conditions and the Privacy Policy.'); return; }
     if (!agree) { setError('Please accept the teacher agreement.'); return; }
     setBusy(true); setError('');
     try {
@@ -572,7 +590,7 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
         qualification: form.qualification || undefined, teachingModality: form.teachingModality || undefined,
         bio: form.bio.trim(), documentUrl: form.documentUrl || undefined,
         linkedinUrl: form.linkedinUrl.trim() || undefined, websiteUrl: form.websiteUrl.trim() || undefined,
-        agreementAccepted: true, agreementVersion: 'v1.0',
+        agreementAccepted: true, agreementVersion: 'v1.0', termsAccepted: true, termsVersion: TERMS_VERSION,
       });
       go(5);
     } catch (err) { setError(apiError(err, 'Could not send your application. Try again.')); }
@@ -698,6 +716,7 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
             </dl>
           </div>
         ))}
+        <TermsCheckbox checked={termsOk} onChange={setTermsOk} />
         <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px] text-royal/80">
           <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#5889FA]" />
           <span>I agree to the <Link href="/legal/tutor-agreement" target="_blank" className="font-bold text-azure">teacher agreement</Link>: I’m paid my share of each sale every month, and I only upload material I have the right to use.</span>

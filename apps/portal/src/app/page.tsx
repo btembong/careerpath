@@ -113,6 +113,8 @@ export default async function HomePage() {
           <span>© {new Date().getFullYear()} CareerPath Africa</span>
           <Link href="/verify" className="hover:text-navy">Check a certificate</Link>
           <Link href="/packages" className="hover:text-navy">Packages</Link>
+          <Link href="/legal/terms" className="hover:text-navy">Terms</Link>
+          <Link href="/legal/privacy" className="hover:text-navy">Privacy</Link>
           <Link href="/legal/tutor-agreement" className="hover:text-navy">Tutor agreement</Link>
         </div>
       </footer>

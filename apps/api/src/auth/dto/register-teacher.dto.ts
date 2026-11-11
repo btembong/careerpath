@@ -1,19 +1,4 @@
-import {
-  IsEmail,
-  IsString,
-  MinLength,
-  IsArray,
-  ArrayMinSize,
-  IsOptional,
-  IsInt,
-  Min,
-  IsUrl,
-  IsUUID,
-  IsEnum,
-  MaxLength,
-  Matches,
-  IsBoolean,
-} from 'class-validator';
+import { IsEmail, IsString, MinLength, IsArray, ArrayMinSize, IsOptional, IsInt, Min, IsUrl, IsUUID, IsEnum, MaxLength, Matches, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum TeachingModality {
@@ -125,4 +110,14 @@ export class RegisterTeacherDto {
   @IsString()
   @IsOptional()
   agreementVersion?: string;
+
+  @ApiProperty({ example: true, description: 'Agreed to the Terms and Conditions and the Privacy Policy' })
+  @IsBoolean()
+  termsAccepted: boolean;
+
+  @ApiPropertyOptional({ example: 'draft-2026-11', description: 'Which version of the Terms and Privacy Policy was shown' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(40)
+  termsVersion?: string;
 }
