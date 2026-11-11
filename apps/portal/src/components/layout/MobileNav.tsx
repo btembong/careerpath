@@ -10,6 +10,7 @@ import type { IconName } from '@/lib/icons';
 import { useMe } from '@/hooks/useMe';
 import { usePush, useInstall, showIosSteps } from '@/components/push/Push';
 import { notify } from '@/lib/notify';
+import { AppVersion } from '@/components/ui/AppVersion';
 
 interface NavItem { label: string; href: string; icon: IconName; also?: string[]; badge?: 'messages' | 'notices' }
 interface NavGroup { items: NavItem[] }
@@ -334,6 +335,7 @@ export function MobileNav() {
           <button onClick={() => { setOpen(false); logout(); }} className="flex w-full items-center gap-4 px-5 py-[15px] text-left text-red-600 active:bg-red-50">
             <Icon name="logout" size={24} line /><span className="flex-1 text-[16.5px] font-semibold">Sign out</span>
           </button>
+          <AppVersion className="px-5 pb-2 pt-1" />
         </div>
       )}
     </>

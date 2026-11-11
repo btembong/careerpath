@@ -8,6 +8,7 @@ import { notify } from '@/lib/notify';
 import { useAuth } from '@/hooks/useAuth';
 import { applyTextSize, TEXT_SIZE_KEY } from '@/components/providers/DisplayPrefsApplier';
 import api from '@/lib/api';
+import { AppVersion } from '@/components/ui/AppVersion';
 import { PushSettings } from '@/components/push/Push';
 
 interface Me {
@@ -383,6 +384,7 @@ function YourDataPanel({ me }: { me: Me }) {
         </section>
       </div>
       <p className="rounded-[10px] border border-line px-4 py-3 text-[13px] text-ink2"><strong className="text-navy">What we keep and why:</strong> profile and progress while your account is open · payments for 6 years, for tax · sign-in codes for 10 minutes.</p>
+      <AppVersion className="text-center" />
     </div>
   );
 }

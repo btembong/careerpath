@@ -6,6 +6,7 @@ import { clsx } from 'clsx';
 import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Topbar } from '@/components/layout/Topbar';
 import { minorToMajor } from '@cpa/shared';
+import { AppVersion } from '@/components/ui/AppVersion';
 import api from '@/lib/api';
 
 type Range = '7d' | 'month' | 'year';
@@ -295,6 +296,7 @@ export default function AdminDashboard() {
           </>
         )}
       </div>
+      <AppVersion className="px-4 pb-6 lg:px-7" />
     </div>
   );
 }
