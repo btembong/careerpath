@@ -358,6 +358,7 @@ function StudentFlow({ countries, nextUrl, school, onBack, setLeft }: { countrie
     e.preventDefault();
     setError('');
     if (!firstName || !lastName) { setError('Write your first and last name.'); return; }
+    if (!termsOk) { setError('Please agree to the Terms and Conditions and the Privacy Policy.'); return; }
     setSending(true);
     const found = await existingAccount(form.email);
     setExisting(found);
@@ -407,7 +408,6 @@ function StudentFlow({ countries, nextUrl, school, onBack, setLeft }: { countrie
       <Field label="Password" hint={<StrengthHint pw={form.password} />}><PasswordInput value={form.password} onChange={v => setForm(f => ({ ...f, password: v }))} /></Field>
       <Field label="Country" hint={country ? `Prices in ${country.currency}` : 'Sets your currency'}><CountrySelect value={form.countryId} onChange={id => setForm(f => ({ ...f, countryId: id }))} countries={countries} /></Field>
       <Field label="Phone" optional hint="For mobile money and class reminders"><input type="tel" value={form.phone} onChange={set('phone')} autoComplete="tel" placeholder="+237 6 77 12 34 56" className={inputCls} /></Field>
-      <TermsCheckbox checked={termsOk} onChange={setTermsOk} />
       <ErrorBox error={error} />
       <PrimaryButton loading={creating}>Create my account</PrimaryButton>
     </form>
@@ -420,9 +420,9 @@ function StudentFlow({ countries, nextUrl, school, onBack, setLeft }: { countrie
       <Field label="Your name"><input value={name} onChange={e => setName(e.target.value)} required autoComplete="name" placeholder="First and last name" className={inputCls} /></Field>
       <Field label="Email address" hint="We’ll send a code to check it’s yours."><input type="email" value={form.email} onChange={e => { setExisting(null); set('email')(e); }} required autoComplete="email" placeholder="you@example.com" className={inputCls} /></Field>
       {existing && <AlreadyHaveAccount where={existing} email={form.email} />}
+      <TermsCheckbox checked={termsOk} onChange={setTermsOk} />
       <ErrorBox error={error} />
       <PrimaryButton loading={sending}>Send code</PrimaryButton>
-      <p className="text-center text-[12.5px] text-muted">By creating an account, you agree to the Terms and Privacy Policy.</p>
     </form>
   );
 }
@@ -538,6 +538,7 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
     if (form.password.length < 8) { setError('Your password needs at least 8 characters.'); return; }
     if (form.password !== form.confirmPassword) { setError('The two passwords don’t match.'); return; }
     if (!form.countryId) { setError('Please pick your country.'); return; }
+    if (!termsOk) { setError('Please agree to the Terms and Conditions and the Privacy Policy.'); return; }
     setBusy(true);
     const found = await existingAccount(form.email);
     setExisting(found);
@@ -620,6 +621,7 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
         <Field label="Phone" optional><input type="tel" value={form.phone} onChange={e => setF('phone', e.target.value)} autoComplete="tel" placeholder="+233 24 123 4567" className={inputCls} /></Field>
       </div>
       {existing && <AlreadyHaveAccount where={existing} email={form.email} />}
+      <TermsCheckbox checked={termsOk} onChange={setTermsOk} />
       <ErrorBox error={error} />
       <PrimaryButton loading={busy}>Send my code</PrimaryButton>
     </form>
@@ -716,7 +718,6 @@ function TeacherFlow({ countries, onBack, setLeft }: { countries: Country[]; onB
             </dl>
           </div>
         ))}
-        <TermsCheckbox checked={termsOk} onChange={setTermsOk} />
         <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px] text-royal/80">
           <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#5889FA]" />
           <span>I agree to the <Link href="/legal/tutor-agreement" target="_blank" className="font-bold text-azure">teacher agreement</Link>: I’m paid my share of each sale every month, and I only upload material I have the right to use.</span>
