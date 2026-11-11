@@ -5,6 +5,7 @@ import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WordPressService, wpCourseImageUrl } from '../wordpress/wordpress.service';
 import { CourseSource } from '@prisma/client';
+import { minorToMajor } from '@cpa/shared';
 
 @Injectable()
 export class SchedulerService {
@@ -222,10 +223,10 @@ export class SchedulerService {
         firstName:     w.user.firstName ?? 'there',
         role:          'teacher',
         weekLabel,
-        totalEarned:   (earned / 100).toLocaleString(),
+        totalEarned:   minorToMajor(earned, w.currency).toLocaleString(),
         currency:      w.currency,
         newItems:      w.transactions.length,
-        pendingPayout: (w.balance / 100).toLocaleString(),
+        pendingPayout: minorToMajor(w.balance, w.currency).toLocaleString(),
         dashboardPath: '/teacher/wallet',
       }).catch(() => {});
     }
@@ -256,10 +257,10 @@ export class SchedulerService {
         firstName:     w.user.firstName ?? 'there',
         role:          'country-rep',
         weekLabel,
-        totalEarned:   (earned / 100).toLocaleString(),
+        totalEarned:   minorToMajor(earned, w.currency).toLocaleString(),
         currency:      w.currency,
         newItems:      newStudents,
-        pendingPayout: (w.balance / 100).toLocaleString(),
+        pendingPayout: minorToMajor(w.balance, w.currency).toLocaleString(),
         dashboardPath: '/country-rep/wallet',
       }).catch(() => {});
     }

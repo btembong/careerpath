@@ -12,6 +12,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { courseChecklist, COURSE_TEMPLATE } from './course-quality';
 import * as crypto from 'crypto';
 import { priceEmail } from '../notifications/price-email';
+import { minorToMajor } from '@cpa/shared';
 
 @Injectable()
 export class PlatformCoursesService {
@@ -1039,7 +1040,7 @@ export class PlatformCoursesService {
     this.notifications.notify(owner!.teacherId, {
       type: 'system', title: 'Course price approved', body: `"${owner!.title}" can now be bought on its own.`,
       href: `/teacher/courses/${courseId}/pricing`,
-    }, priceEmail(owner!.title, true, `${currency} ${(amount / 100).toLocaleString('en-GB')}`));
+    }, priceEmail(owner!.title, true, `${currency} ${minorToMajor(amount, currency).toLocaleString('en-GB')}`));
     return this.prisma.platformCourse.update({
       where: { id: courseId },
       data: { ...clear, priceAmount: amount, priceCurrency: currency, isSoldIndividually: true },

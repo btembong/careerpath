@@ -9,7 +9,7 @@ import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { GeneratePayoutsDto } from './dto/generate-payouts.dto';
 import { UserProfile } from '@prisma/client';
-import { UserRole } from '@cpa/shared';
+import { UserRole, minorToMajor } from '@cpa/shared';
 
 const RECIPIENT_ROLE_MAP: Record<string, string> = {
   [UserRole.TEACHER]: 'TEACHER',
@@ -192,7 +192,7 @@ export class PayoutsService {
 
     this.notifications.notify(statement.recipientId, {
       type: 'system', title: 'Payout sent',
-      body: `${statement.currency} ${(statement.amount / 100).toLocaleString('en-GB')}${paidTo ? ` to ${paidTo}` : ''}${reference ? ` · ref ${reference}` : ''}`,
+      body: `${statement.currency} ${minorToMajor(statement.amount, statement.currency).toLocaleString('en-GB')}${paidTo ? ` to ${paidTo}` : ''}${reference ? ` · ref ${reference}` : ''}`,
       href: statement.recipientType === 'TEACHER' ? '/teacher/wallet' : statement.recipientType === 'SUBJECT_REVIEWER' ? '/reviewer/wallet' : '/country-rep/wallet',
     });
 

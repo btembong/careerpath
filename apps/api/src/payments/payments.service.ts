@@ -14,6 +14,7 @@ import { GamificationService } from '../gamification/gamification.service';
 import { PaystackGateway } from './gateways/paystack.gateway';
 import { TranzakGateway } from './gateways/tranzak.gateway';
 import { StripeGateway } from './gateways/stripe.gateway';
+import { BillingService } from './billing.service';
 import {
   PaymentGateway,
   PurchaseCompletedEvent,
@@ -40,7 +41,17 @@ export class PaymentsService {
     private mail: MailService,
     private notifications: NotificationsService,
     private gamification: GamificationService,
+    private billing: BillingService,
   ) {}
+
+  /** The PDF receipt for a purchase, to attach to the receipt email (null if it can't be made) */
+  private receiptPdf(studentId: string, kind: 'package' | 'course', id?: string) {
+    if (!id) return Promise.resolve(null);
+    return this.billing.receipt(studentId, kind, id).catch(err => {
+      this.logger.warn(`Receipt PDF for ${kind} ${id} failed: ${err?.message}`);
+      return null;
+    });
+  }
 
   // ── Checkout session ─────────────────────────────────────
 
@@ -507,13 +518,13 @@ export class PaymentsService {
     const invoice = await this.prisma.packagePurchase.findFirst({
       where: { studentId: event.studentId, packageId: event.packageId },
       orderBy: { purchasedAt: 'desc' },
-      select: { invoiceNo: true },
+      select: { id: true, invoiceNo: true },
     });
     const pkgStudentName = [student.firstName, student.lastName].filter(Boolean).join(' ') || student.email;
-    this.mail.sendPurchaseReceipt(
+    this.receiptPdf(event.studentId, 'package', invoice?.id).then(pdf => this.mail.sendPurchaseReceipt(
       student.email, pkg.name, event.amountPaid, event.currency,
-      invoice?.invoiceNo ?? undefined, pkgStudentName, 'package',
-    ).catch(() => {});
+      invoice?.invoiceNo ?? undefined, pkgStudentName, 'package', pdf,
+    )).catch(() => {});
     this.notifications.notify(event.studentId, {
       type: 'system',
       title: 'Payment confirmed',
@@ -602,12 +613,12 @@ export class PaymentsService {
     const courseStudentName = [student.firstName, student.lastName].filter(Boolean).join(' ') || student.email;
     const latestCoursePurchase = await this.prisma.coursePurchase.findUnique({
       where: { studentId_courseId: { studentId: event.studentId, courseId } },
-      select: { invoiceNo: true },
+      select: { id: true, invoiceNo: true },
     });
-    this.mail.sendPurchaseReceipt(
+    this.receiptPdf(event.studentId, 'course', latestCoursePurchase?.id).then(pdf => this.mail.sendPurchaseReceipt(
       student.email, course.title, event.amountPaid, event.currency,
-      latestCoursePurchase?.invoiceNo ?? undefined, courseStudentName, 'course',
-    ).catch(() => {});
+      latestCoursePurchase?.invoiceNo ?? undefined, courseStudentName, 'course', pdf,
+    )).catch(() => {});
     this.notifications.notify(event.studentId, {
       type: 'system',
       title: 'Payment confirmed',

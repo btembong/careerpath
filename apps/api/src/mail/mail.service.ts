@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BrevoClient } from '@getbrevo/brevo';
+import { minorToMajor } from '@cpa/shared';
 import {
   otpTemplate,
   teacherApprovedTemplate,
@@ -79,7 +80,7 @@ export class MailService {
     subject: string,
     htmlContent: string,
     senderType: SenderType = 'hello',
-    attachments?: { name: string; content: string }[],
+    attachments?: { name: string; content: string | Uint8Array }[],
   ): Promise<void> {
     if (!this.client) {
       this.logger.warn(`[DEV] Mail skipped — no BREVO_API_KEY (${senderType})`);
@@ -239,8 +240,9 @@ export class MailService {
     invoiceNo?: string,
     studentName?: string,
     itemType: 'package' | 'course' = 'package',
+    receipt?: { filename: string; pdf: Uint8Array } | null,
   ): Promise<void> {
-    const formatted = new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount / 100);
+    const formatted = new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(minorToMajor(amount, currency));
     const subject = invoiceNo
       ? `Receipt ${invoiceNo}: ${itemName} — ${formatted}`
       : `Receipt: ${itemName} — ${formatted}`;
@@ -249,6 +251,7 @@ export class MailService {
       email,
       subject,
       purchaseReceiptTemplate(itemName, formatted, currency, invoiceNo, studentName, purchaseDate, itemType), 'billing',
+      receipt ? [{ name: receipt.filename, content: receipt.pdf }] : undefined,
     );
   }
 
@@ -339,7 +342,7 @@ export class MailService {
     currency: string,
     periodLabel: string,
   ): Promise<void> {
-    const formatted = new Intl.NumberFormat('en-US').format(amount / 100);
+    const formatted = new Intl.NumberFormat('en-US').format(minorToMajor(amount, currency));
     await this.send(
       email,
       `Payout initiated: ${currency} ${formatted} — CareerPath Africa`,
@@ -348,7 +351,7 @@ export class MailService {
   }
 
   async sendPayoutCompleted(email: string, amount: number, currency: string): Promise<void> {
-    const formatted = new Intl.NumberFormat('en-US').format(amount / 100);
+    const formatted = new Intl.NumberFormat('en-US').format(minorToMajor(amount, currency));
     await this.send(
       email,
       `Payment confirmed: ${currency} ${formatted} sent — CareerPath Africa`,

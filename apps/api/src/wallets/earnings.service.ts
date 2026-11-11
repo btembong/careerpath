@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { UserProfile } from '@prisma/client';
-import { UserRole } from '@cpa/shared';
+import { UserRole, minorToMajor } from '@cpa/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
 const DAY = 86_400_000;
@@ -71,7 +71,7 @@ export class EarningsService {
         { name: 'Active-student bonus', amount: sum(bonus), detail: bonus[0]?.description?.replace(/^Per-student bonus:\s*/, '') ?? 'paid on the 1st' },
       ];
       const c = user.countryId ? await this.prisma.country.findUnique({ where: { id: user.countryId }, select: { repCommissionPercent: true, perStudentBonus: true, currency: true } }) : null;
-      share = { label: 'Your terms', value: [c?.repCommissionPercent != null ? `${c.repCommissionPercent}%` : null, c?.perStudentBonus ? `+ ${c.currency} ${c.perStudentBonus / 100} a student` : null].filter(Boolean).join(' ') || 'not set' };
+      share = { label: 'Your terms', value: [c?.repCommissionPercent != null ? `${c.repCommissionPercent}%` : null, c?.perStudentBonus ? `+ ${c.currency} ${minorToMajor(c.perStudentBonus, c.currency)} a student` : null].filter(Boolean).join(' ') || 'not set' };
     } else {
       const byCourse = new Map<string, { amount: number; count: number }>();
       for (const t of periodCredits) {

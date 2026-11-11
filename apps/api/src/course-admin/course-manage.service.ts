@@ -5,6 +5,7 @@ import { WpPullService } from './wp-pull.service';
 import { TutorImportService, ImportSummary } from './tutor-import.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { priceEmail } from '../notifications/price-email';
+import { minorToMajor } from '@cpa/shared';
 
 export interface ListQuery { q?: string; source?: string; status?: string; programmeId?: string; untagged?: string; noTeacher?: string; price?: string; content?: string; page?: string; pageSize?: string }
 export interface BulkInput {
@@ -242,7 +243,7 @@ export class CourseManageService {
           if (!c.teacherPending) this.notifications.notify(c.teacherId, approve
             ? { type: 'system', title: 'Course price approved', body: `"${c.title}" can now be bought on its own.`, href: `/teacher/courses/${c.id}/pricing` }
             : { type: 'system', title: 'Price not approved', body: `Your proposed price for "${c.title}" was not approved.`, href: `/teacher/courses/${c.id}/pricing` },
-            priceEmail(c.title, approve, approve && c.proposedPriceAmount ? `${c.proposedPriceCurrency} ${(c.proposedPriceAmount / 100).toLocaleString('en-GB')}` : undefined));
+            priceEmail(c.title, approve, approve && c.proposedPriceAmount ? `${c.proposedPriceCurrency} ${minorToMajor(c.proposedPriceAmount, c.proposedPriceCurrency).toLocaleString('en-GB')}` : undefined));
         }
         return { updated: rows.length };
       }
