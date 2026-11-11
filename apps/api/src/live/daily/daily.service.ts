@@ -141,6 +141,19 @@ export class DailyService {
     }
   }
 
+  /** How many people are connected to a room right now; null when it can't be told (Daily faked or unreachable). */
+  async roomPresence(roomName: string): Promise<number | null> {
+    if (this.fake) return null;
+    try {
+      const res = await this.client.get(`/rooms/${encodeURIComponent(roomName)}/presence`);
+      return typeof res.data?.total_count === 'number' ? res.data.total_count : (res.data?.data ?? []).length;
+    } catch (err: any) {
+      // A room that's gone has nobody in it
+      if (err.response?.status === 404) return 0;
+      return null;
+    }
+  }
+
   /**
    * Force-close a room when a class ends.
    * Ejects all participants and makes the room inaccessible.
@@ -170,10 +183,10 @@ export class DailyService {
     } catch (err: any) { this.logger.warn(`Could not list recordings for ${roomName}: ${err.response?.status ?? err.message}`); return []; }
   }
 
-  /** A short-lived link to watch or download a recording. */
-  async recordingLink(id: string): Promise<{ url: string; expires: number } | null> {
+  /** A short-lived link to watch or download a recording: by default long enough for one viewing. */
+  async recordingLink(id: string, validForSecs = 3 * 3600): Promise<{ url: string; expires: number } | null> {
     try {
-      const res = await this.client.get(`/recordings/${encodeURIComponent(id)}/access-link`, { params: { valid_for_secs: 3 * 3600 } });
+      const res = await this.client.get(`/recordings/${encodeURIComponent(id)}/access-link`, { params: { valid_for_secs: Math.round(validForSecs) } });
       return res.data?.download_link ? { url: res.data.download_link, expires: res.data.expires } : null;
     } catch (err: any) { this.logger.warn(`No access link for recording ${id}: ${err.response?.status ?? err.message}`); return null; }
   }

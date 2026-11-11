@@ -297,5 +297,22 @@ export class CallsService {
       const call = await this.load(s.id);
       if (call) await this.finish(call, call.status === 'RINGING' ? 'MISSED' : 'ENDED').catch(err => this.logger.warn(`Call sweep: ${err.message}`));
     }
+    // Closing the browser mid-call never says "left": ask Daily who is really connected, and end calls
+    // whose room has been empty for a while, so nobody is put back into a dead call next time they open the portal
+    const open = await this.prisma.call.findMany({
+      where: { status: 'ACTIVE', answeredAt: { lt: new Date(Date.now() - 90_000) }, id: { notIn: stale.map(s => s.id) } },
+      select: { id: true, roomName: true },
+    });
+    for (const o of open) {
+      const here = await this.daily.roomPresence(o.roomName);
+      if (here !== 0) { this.emptySince.delete(o.id); continue; }
+      const since = this.emptySince.get(o.id) ?? Date.now();
+      this.emptySince.set(o.id, since);
+      if (Date.now() - since < 60_000) continue; // empty for a minute in a row, not a dropped connection
+      this.emptySince.delete(o.id);
+      const call = await this.load(o.id);
+      if (call) await this.finish(call, 'ENDED').catch(err => this.logger.warn(`Call sweep: ${err.message}`));
+    }
   }
+  private readonly emptySince = new Map<string, number>();
 }

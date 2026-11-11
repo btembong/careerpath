@@ -136,6 +136,8 @@ export default function CallLayer() {
         setAudio(tracks); setRemoteMuted(mutedNow);
       };
       d.on('participant-joined', sync).on('participant-updated', sync).on('track-started', sync).on('track-stopped', sync);
+      // The other person arriving in the room means they answered, even if the "answered" message never reached us
+      d.on('participant-joined', () => { if (phaseRef.current === 'outgoing') setPhase('live'); });
       // One-to-one: when the other person drops off (closed the tab, lost signal), the call is over
       d.on('participant-left', () => { sync(); if (callRef.current?.kind === 'ONE') { api.post(`/calls/${callRef.current.id}/leave`).catch(() => {}); notify.info('Call ended'); reset(); } });
       d.on('active-speaker-change', e => setSpeaking(sessionToUser.current[e?.activeSpeaker?.peerId ?? ''] ?? null));
@@ -190,6 +192,25 @@ export default function CallLayer() {
     daily.current?.updateParticipants({ '*': { setAudio: false } });
     notify.success('Everyone else is muted');
   }
+
+  // While calling, check the call itself every few seconds too: one missed live message must not leave the
+  // caller on "Calling…" when the other person has answered, declined or the call has ended
+  useEffect(() => {
+    if (phase !== 'outgoing' || !call) return;
+    const id = call.id;
+    const t = setInterval(() => {
+      api.get<CallView>(`/calls/${id}`).then(r => {
+        const c = r.data;
+        if (callRef.current?.id !== id || phaseRef.current !== 'outgoing') return;
+        if (c.status === 'ACTIVE') { setCall(c); setPhase('live'); }
+        else if (c.status !== 'RINGING') {
+          notify.info(c.status === 'DECLINED' ? `${c.title} declined` : c.status === 'MISSED' ? 'No answer' : 'Call ended');
+          reset();
+        }
+      }).catch(() => {});
+    }, 3000);
+    return () => clearInterval(t);
+  }, [phase, call?.id, reset]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Who I am, to tell my tile apart
   const myId = useRef<string>('');
