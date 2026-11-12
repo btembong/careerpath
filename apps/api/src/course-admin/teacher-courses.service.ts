@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { defaultTeacherShare } from './default-share';
 
 /**
  * Who teaches which course. Shared by the admin's "assign teacher" action and the automatic link that
@@ -14,17 +15,24 @@ export class TeacherCoursesService {
 
   /**
    * Sales pay the teacher on the course assignment, so it must follow the course's teacher.
-   * A new assignment gets the default commission; an existing one keeps its percentage.
+   * A course getting its first teacher with no share yet gets the default share (also when an admin had
+   * set it to "no teacher yet" first); a share already set, or emptied on purpose for a teacher, is kept.
    */
   async syncAssignedTeacher(courseIds: string[], teacherId: string | null) {
     if (!courseIds.length) return;
-    const row = await this.prisma.platformSetting.findUnique({ where: { key: 'pricing' } });
-    const pct = ((row?.value ?? {}) as { defaultTeacherCommissionPct?: number | null }).defaultTeacherCommissionPct ?? null;
-    await this.prisma.$transaction(courseIds.map(courseId => this.prisma.courseAssignment.upsert({
-      where: { courseId },
-      update: { teacherId },
-      create: { courseId, teacherId, teacherCommissionPct: teacherId ? pct : null },
-    })));
+    const pct = await defaultTeacherShare(this.prisma);
+    const existing = new Map((await this.prisma.courseAssignment.findMany({
+      where: { courseId: { in: courseIds } }, select: { courseId: true, teacherId: true, teacherCommissionPct: true },
+    })).map(a => [a.courseId, a]));
+    await this.prisma.$transaction(courseIds.map(courseId => {
+      const a = existing.get(courseId);
+      const firstTeacher = !!teacherId && !!a && !a.teacherId && a.teacherCommissionPct == null;
+      return this.prisma.courseAssignment.upsert({
+        where: { courseId },
+        update: { teacherId, ...(firstTeacher && { teacherCommissionPct: pct }) },
+        create: { courseId, teacherId, teacherCommissionPct: teacherId ? pct : null },
+      });
+    }));
   }
 
   /**

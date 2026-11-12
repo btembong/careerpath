@@ -12,6 +12,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { courseChecklist, COURSE_TEMPLATE } from './course-quality';
 import * as crypto from 'crypto';
 import { priceEmail } from '../notifications/price-email';
+import { defaultTeacherShare } from '../course-admin/default-share';
 import { minorToMajor } from '@cpa/shared';
 
 @Injectable()
@@ -243,7 +244,7 @@ export class PlatformCoursesService {
     await this.prisma.courseAssignment.upsert({
       where: { courseId: id },
       update: { reviewStatus: 'PENDING', submittedAt: new Date() },
-      create: { courseId: id, teacherId: course.teacherId, reviewStatus: 'PENDING', submittedAt: new Date() },
+      create: { courseId: id, teacherId: course.teacherId, teacherCommissionPct: await defaultTeacherShare(this.prisma), reviewStatus: 'PENDING', submittedAt: new Date() },
     });
     return this.prisma.platformCourse.update({
       where: { id }, data: { status: CourseStatus.PENDING_REVIEW },
@@ -320,7 +321,7 @@ export class PlatformCoursesService {
       await this.prisma.courseAssignment.upsert({
         where: { courseId: id },
         update: { reviewStatus: 'APPROVED', reviewedAt: new Date(), reviewNotes: 'Approved by CareerPath' },
-        create: { courseId: id, teacherId: course.teacherPending ? null : course.teacherId, reviewStatus: 'APPROVED', reviewedAt: new Date(), reviewNotes: 'Approved by CareerPath' },
+        create: { courseId: id, teacherId: course.teacherPending ? null : course.teacherId, teacherCommissionPct: course.teacherPending ? null : await defaultTeacherShare(this.prisma), reviewStatus: 'APPROVED', reviewedAt: new Date(), reviewNotes: 'Approved by CareerPath' },
       });
     }
     this.notifications.notify(course.teacherId, {
@@ -344,7 +345,7 @@ export class PlatformCoursesService {
     await this.prisma.courseAssignment.upsert({
       where: { courseId: id },
       update: { reviewStatus: 'REJECTED', reviewedAt: new Date(), reviewNotes: reason },
-      create: { courseId: id, teacherId: course.teacherPending ? null : course.teacherId, reviewStatus: 'REJECTED', reviewedAt: new Date(), reviewNotes: reason },
+      create: { courseId: id, teacherId: course.teacherPending ? null : course.teacherId, teacherCommissionPct: course.teacherPending ? null : await defaultTeacherShare(this.prisma), reviewStatus: 'REJECTED', reviewedAt: new Date(), reviewNotes: reason },
     });
     this.notifications.notify(course.teacherId, {
       type: 'system', title: 'Changes needed before publishing', body: `"${course.title}" was sent back: ${reason}`,

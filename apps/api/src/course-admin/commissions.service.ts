@@ -3,6 +3,7 @@ import { UserProfile } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { defaultTeacherShare } from './default-share';
 
 type Who = { name: string | null; firstName: string | null; lastName: string | null; email: string };
 const nameOf = (p: Who) => p.name || [p.firstName, p.lastName].filter(Boolean).join(' ') || p.email;
@@ -78,6 +79,7 @@ export class CommissionsService {
     const courses = await this.prisma.platformCourse.findMany({ where: { id: { in: courseIds } }, select: { id: true, title: true, teacherId: true, teacherPending: true } });
     if (!courses.length) throw new NotFoundException('Course not found');
     const before = await this.prisma.courseAssignment.findMany({ where: { courseId: { in: courses.map(c => c.id) } } });
+    const defaultPct = await defaultTeacherShare(this.prisma);
     await this.prisma.$transaction(courses.map(c => {
       const data = {
         teacherId: c.teacherPending ? null : c.teacherId,
@@ -85,7 +87,9 @@ export class CommissionsService {
         ...(dto.reviewerId !== undefined && { reviewerId: dto.reviewerId }),
         ...(dto.reviewerPct !== undefined && { reviewerCommissionPct: dto.reviewerPct }),
       };
-      return this.prisma.courseAssignment.upsert({ where: { courseId: c.id }, update: data, create: { courseId: c.id, ...data } });
+      // A first assignment for a course with a teacher starts at the default share unless one was given
+      const create = { courseId: c.id, ...(!c.teacherPending && dto.teacherPct === undefined && { teacherCommissionPct: defaultPct }), ...data };
+      return this.prisma.courseAssignment.upsert({ where: { courseId: c.id }, update: data, create });
     }));
     // Tell a newly assigned reviewer what's now theirs
     const newlyTheirs = dto.reviewerId ? courses.filter(c => before.find(b => b.courseId === c.id)?.reviewerId !== dto.reviewerId) : [];
