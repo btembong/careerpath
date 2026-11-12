@@ -37,6 +37,12 @@ export interface CheckoutItem {
   accessUntil: Date | null;
 }
 interface Coupon { code: string; discountType: 'PERCENT' | 'FIXED'; discountValue: number }
+/** Extras the course or package offers at checkout (priced by the server) */
+interface Offers {
+  live: { price: number; cohortName: string; teacher: string | null; next: string[] } | null;
+  mentorship: { price: number; perMonth: number; sessions: number | null } | null;
+}
+type AddOn = 'live' | 'mentorship';
 
 const money = (minor: number, cur: string) => `${cur} ${minorToMajor(minor, cur).toLocaleString()}`;
 const abbr = (t: string) => t.split(/[\s·—-]+/).filter(w => /^[A-Za-z]/.test(w)).slice(0, 2).map(w => w[0]).join('').toUpperCase() || 'C';
@@ -55,15 +61,21 @@ export function CheckoutView({ item, backHref, backLabel }: { item: CheckoutItem
   const [step, setStep] = useState<'choose' | 'waiting'>('choose');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [offers, setOffers] = useState<Offers | null>(null);
+  const [chosen, setChosen] = useState<Set<AddOn>>(new Set());
   const [left, setLeft] = useState(WAIT_SECS);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
   const tick = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stop = () => { if (poll.current) clearInterval(poll.current); if (tick.current) clearInterval(tick.current); };
   useEffect(() => stop, []);
+  useEffect(() => { api.get(`/payments/add-ons/${item.kind}/${item.id}`).then(r => setOffers(r.data)).catch(() => setOffers(null)); }, [item.kind, item.id]);
 
   const discount = !coupon ? 0 : coupon.discountType === 'PERCENT' ? Math.round(item.priceAmount * coupon.discountValue / 100) : Math.min(item.priceAmount, coupon.discountValue);
-  const total = Math.max(0, item.priceAmount - discount);
+  // Coupons discount the course or package only; extras are added after
+  const addOnLines = (['live', 'mentorship'] as AddOn[]).filter(k => chosen.has(k) && offers?.[k]).map(k => ({ k, price: offers![k]!.price }));
+  const total = Math.max(0, item.priceAmount - discount) + addOnLines.reduce((n, l) => n + l.price, 0);
+  const toggle = (k: AddOn) => setChosen(c => { const n = new Set(c); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const digits = phone.replace(/\D/g, '');
   const fullNumber = digits.startsWith(DIAL[cur] ?? '') ? digits : `${DIAL[cur] ?? ''}${digits}`;
   const phoneOk = method !== 'prompt' || fullNumber.length >= 11;
@@ -85,6 +97,7 @@ export function CheckoutView({ item, backHref, backLabel }: { item: CheckoutItem
     try {
       const body: Record<string, unknown> = {};
       if (coupon) body.couponCode = coupon.code;
+      if (addOnLines.length) body.addOns = addOnLines.map(l => l.k);
       if (method === 'prompt') body.mobileWalletNumber = fullNumber;
       const { data } = item.kind === 'course'
         ? await api.post(`/payments/create-course-checkout/${item.id}`, body)
@@ -135,6 +148,31 @@ export function CheckoutView({ item, backHref, backLabel }: { item: CheckoutItem
           </ol>
 
           {step === 'choose' ? <>
+            {(offers?.live || offers?.mentorship) && (
+              <section className="flex flex-col gap-3 rounded-lg border border-line bg-white p-5">
+                <div><h2 className="text-base font-bold text-navy">Add to your {item.kind}</h2><p className="mt-0.5 text-[13px] text-ink2">Optional. Tick what you want; your total updates.</p></div>
+                {offers.live && (
+                  <label className={clsx('flex cursor-pointer gap-3 rounded-lg border p-3.5', chosen.has('live') ? 'border-azure bg-accent-soft' : 'border-line hover:bg-subtle')}>
+                    <input type="checkbox" checked={chosen.has('live')} onChange={() => toggle('live')} className="mt-1 h-4 w-4 accent-[var(--color-azure-strong)]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[14.5px] font-bold text-navy">Live classes · {offers.live.cohortName}</span>
+                      <span className="mt-0.5 block text-[13px] text-ink2">Join {offers.live.teacher ? `${offers.live.teacher}’s` : 'the'} class for this {item.kind}, recorded so you can watch again.{offers.live.next[0] ? ` Next class ${new Date(offers.live.next[0]).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}, ${new Date(offers.live.next[0]).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.` : ''}</span>
+                    </span>
+                    <span className="whitespace-nowrap text-[14.5px] font-extrabold text-navy">+ {money(offers.live.price, cur)}</span>
+                  </label>
+                )}
+                {offers.mentorship && (
+                  <label className={clsx('flex cursor-pointer gap-3 rounded-lg border p-3.5', chosen.has('mentorship') ? 'border-azure bg-accent-soft' : 'border-line hover:bg-subtle')}>
+                    <input type="checkbox" checked={chosen.has('mentorship')} onChange={() => toggle('mentorship')} className="mt-1 h-4 w-4 accent-[var(--color-azure-strong)]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[14.5px] font-bold text-navy">Mentorship · {offers.mentorship.perMonth} session{offers.mentorship.perMonth === 1 ? '' : 's'} a month</span>
+                      <span className="mt-0.5 block text-[13px] text-ink2">A 30-minute 1-to-1 with a mentor you choose{offers.mentorship.sessions ? `, ${offers.mentorship.sessions} sessions over your access` : ''}.</span>
+                    </span>
+                    <span className="whitespace-nowrap text-[14.5px] font-extrabold text-navy">+ {money(offers.mentorship.price, cur)}</span>
+                  </label>
+                )}
+              </section>
+            )}
             <section className="flex flex-col gap-3 rounded-lg border border-line bg-white p-5">
               <h2 className="text-base font-bold text-navy">How do you want to pay?</h2>
               {!methods.length && <p className="text-[13px] text-ink2">Online payment isn’t available for {cur} yet. Please contact support to pay another way.</p>}
@@ -167,7 +205,7 @@ export function CheckoutView({ item, backHref, backLabel }: { item: CheckoutItem
                 <div className="flex flex-1 flex-wrap items-center gap-2">
                   <p className="min-w-0 flex-1 text-[13.5px] text-ink2">
                     Coupon <strong className="tracking-[0.04em] text-navy">{coupon.code}</strong> · <span className="font-semibold text-azure-strong">
-                      {coupon.discountType === 'PERCENT' ? `${coupon.discountValue}% off` : `${money(coupon.discountValue, cur)} off`} · saves {money(discount, cur)}</span>
+                      {coupon.discountType === 'PERCENT' ? `${coupon.discountValue}% off` : `${money(coupon.discountValue, cur)} off`} · saves {money(discount, cur)}</span>{offers?.live || offers?.mentorship ? <span className="text-muted"> · not on add-ons</span> : null}
                   </p>
                   <button type="button" onClick={() => { setCoupon(null); setCouponInput(''); }} className="text-[13px] font-semibold text-muted hover:text-navy">Remove</button>
                 </div>
@@ -220,10 +258,11 @@ export function CheckoutView({ item, backHref, backLabel }: { item: CheckoutItem
           <dl className="flex flex-col gap-2 border-t border-line pt-3 text-[13.5px]">
             <div className="flex justify-between"><dt className="text-ink2">Price</dt><dd className="text-navy">{money(item.priceAmount, cur)}</dd></div>
             {coupon && <div className="flex justify-between"><dt className="text-ink2">Coupon {coupon.code}</dt><dd className="font-semibold text-azure-strong">− {money(discount, cur)}</dd></div>}
+            {addOnLines.map(l => <div key={l.k} className="flex justify-between"><dt className="text-ink2">{l.k === 'live' ? 'Live classes' : 'Mentorship'}</dt><dd className="text-navy">{money(l.price, cur)}</dd></div>)}
             <div className="flex justify-between border-t border-line pt-2 text-base font-extrabold text-navy"><dt>Total</dt><dd>{money(total, cur)}</dd></div>
           </dl>
           <p className="rounded-md bg-subtle px-3 py-2.5 text-[12.5px] text-ink2">
-            Access starts as soon as the payment is confirmed{item.accessUntil
+            {chosen.has('live') && offers?.live ? <>You join {offers.live.cohortName} straight after paying. </> : null}{chosen.has('mentorship') && offers?.mentorship ? <>You can book your first mentor session straight away. </> : null}Access starts as soon as the payment is confirmed{item.accessUntil
               ? <> and runs until <strong className="text-navy">{item.accessUntil.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>.</>
               : <>, with no time limit.</>}
           </p>

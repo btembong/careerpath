@@ -14,7 +14,7 @@ import { CreateCohortDto } from './dto/create-cohort.dto';
 import { AddStudentDto } from './dto/add-student.dto';
 import { ScheduleClassDto } from './dto/schedule-class.dto';
 import { RequestTokenDto } from './dto/request-token.dto';
-import { UserProfile } from '@prisma/client';
+import { UserProfile, Prisma } from '@prisma/client';
 import { UserRole } from '@cpa/shared';
 import { randomUUID, createHmac, timingSafeEqual } from 'crypto';
 
@@ -540,7 +540,12 @@ export class LiveService {
     if (!roster) {
       throw new ForbiddenException('You are not enrolled in this cohort');
     }
-    if (!activePurchase) {
+    // A single course bought with the live-classes add-on for this cohort counts too
+    const viaAddOn = !activePurchase && (await this.prisma.coursePurchase.findMany({
+      where: { studentId, addOns: { not: Prisma.DbNull }, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+      select: { addOns: true },
+    })).some(p => Array.isArray(p.addOns) && (p.addOns as { kind?: string; cohortId?: string }[]).some(x => x.kind === 'live' && x.cohortId === cohortId));
+    if (!activePurchase && !viaAddOn) {
       throw new ForbiddenException(
         'You need an active package to join live classes.',
       );

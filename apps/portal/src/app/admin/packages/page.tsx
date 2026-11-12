@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { AddOnsEditor } from '@/components/admin/AddOnsEditor';
 
 interface Course {
   id: string; title: string; status: string;
@@ -251,6 +252,13 @@ export default function AdminPackagesPage() {
               <input inputMode="numeric" value={form.sessions} onChange={e => set({ sessions: e.target.value })} placeholder="No limit" className="input-base w-32" />
               <span className="text-xs text-muted">How many one-to-one sessions a buyer can book each month. Empty = no limit.</span>
             </label>
+
+            {selId && selId !== 'new' && (
+              <div className="flex flex-col gap-2">
+                <span className={label}>Add-ons at checkout</span>
+                <AddOnsEditor kind="package" id={selId} includesLive={!!form.cohortId} includesMentorship={!!form.mentorship.trim() || Number(form.sessions) > 0} />
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <span className={label}>Questions on the package page</span>

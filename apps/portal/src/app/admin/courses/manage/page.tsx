@@ -10,6 +10,7 @@ import { QuickAdd, TagPickers, useTaxonomy, progName, type TaxOptions } from '@/
 import { PricingSettings } from '@/components/admin/PricingSettings';
 import { majorToMinor, minorToMajor } from '@cpa/shared';
 import { notify } from '@/lib/notify';
+import { AddOnsEditor } from '@/components/admin/AddOnsEditor';
 import { money } from '@/lib/money';
 import api from '@/lib/api';
 
@@ -389,6 +390,11 @@ function CourseDrawer({ id, opts, pkgs, onClose, onSaved, onAdd }: { id: string;
               </p>
             )}
           </DrawerSection>
+          {d.selling === 'paid' && (
+            <DrawerSection title="Add-ons at checkout">
+              <AddOnsEditor kind="course" id={d.id} />
+            </DrawerSection>
+          )}
           <DrawerSection title="In packages" count={d.packages.length}>
             {d.packages.length ? <div className="flex flex-col gap-1">{d.packages.map(p => <p key={p.id} className="flex justify-between text-[13px] text-navy"><span>{p.name}</span><span className="text-muted">{money(p.priceAmount, p.currency)}</span></p>)}</div> : <p className="text-[13px] text-ink2">Not in any package.</p>}
             <select value={addPkg} onChange={e => setAddPkg(e.target.value)} aria-label="Add to package" className="input-base mt-2 h-9 w-full">

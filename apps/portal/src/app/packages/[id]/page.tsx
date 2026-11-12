@@ -47,8 +47,11 @@ export default function PackageDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [d, setD] = useState<Details | null>(null);
   const [error, setError] = useState(false);
+  // Extras offered at checkout (live classes, mentorship) for packages that don't include them
+  const [offers, setOffers] = useState<{ live: { price: number; cohortName: string; teacher: string | null } | null; mentorship: { price: number; perMonth: number } | null } | null>(null);
 
   useEffect(() => { api.get(`/packages/${id}/details`).then(r => setD(r.data)).catch(() => setError(true)); }, [id]);
+  useEffect(() => { api.get(`/payments/add-ons/package/${id}`).then(r => setOffers(r.data)).catch(() => {}); }, [id]);
 
   if (error) return (
     <div className="flex min-h-full flex-col">
@@ -208,6 +211,16 @@ export default function PackageDetailPage() {
                   {d.mentors.count > d.mentors.names.length && <span className="ml-3.5 text-[12.5px] text-muted">and {d.mentors.count - d.mentors.names.length} more mentor{d.mentors.count - d.mentors.names.length === 1 ? '' : 's'}</span>}
                 </div>
               )}
+            </section>
+          )}
+
+          {!owned && (offers?.live || offers?.mentorship) && (
+            <section className="flex flex-col gap-1 rounded-lg border border-dashed border-azure bg-white p-[18px]">
+              <h2 className="text-base font-bold text-navy">Want a teacher too?</h2>
+              <p className="text-[13.5px] text-ink2">At checkout you can add {[
+                offers.live && <><strong key="l" className="text-navy">live classes</strong> ({offers.live.cohortName}{offers.live.teacher ? ` with ${offers.live.teacher}` : ''}, + {money(offers.live.price, d.currency)})</>,
+                offers.mentorship && <><strong key="m" className="text-navy">mentorship</strong> ({offers.mentorship.perMonth} session{offers.mentorship.perMonth === 1 ? '' : 's'} a month, + {money(offers.mentorship.price, d.currency)})</>,
+              ].filter(Boolean).reduce((acc: React.ReactNode[], x, i, arr) => [...acc, x, i < arr.length - 1 ? ' or ' : ''], [])}.</p>
             </section>
           )}
 

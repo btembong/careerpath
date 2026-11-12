@@ -279,6 +279,8 @@ model Package {
   description                String?
   priceAmount                Int
   currency                   String
+  /// Extras offered at checkout: { live?: { cohortId, price }, mentorship?: { perMonth, price } } (prices in minor units)
+  addOns                     Json?
   courseIds                  String[]
   categoryTags               String[]
   validityDays               Int?
@@ -304,6 +306,8 @@ model PackagePurchase {
   expiresAt    DateTime?
   amountPaid   Int?
   currency     String?
+  /// Extras bought with it: [{ kind: live|mentorship, price, cohortId?, perMonth? }]
+  addOns     Json?
   gateway      String?
   gatewayRef   String?
   invoiceNo    String?             @unique
@@ -319,6 +323,8 @@ model CoursePurchase {
   courseId     String
   amountPaid   Int
   currency     String
+  /// Extras bought with it: [{ kind: live|mentorship, price, cohortId?, perMonth? }]
+  addOns     Json?
   purchasedAt  DateTime            @default(now())
   expiresAt    DateTime?
   gateway      String?
@@ -878,6 +884,8 @@ model PaymentAttempt {
   title             String
   amount            Int
   currency          String
+  /// Extras chosen at checkout, applied when it's paid
+  addOns            Json?
   gateway           String
   /// The gateway's reference for this checkout (Paystack reference, Stripe session, Tranzak request)
   sessionId         String?   @unique
@@ -1025,6 +1033,8 @@ model PlatformCourse {
   priceProposedAt       DateTime?
   priceAmount           Int?
   priceCurrency         String?
+  /// Extras offered at checkout: { live?: { cohortId, price }, mentorship?: { perMonth, price } } (prices in minor units)
+  addOns                Json?
   shortDescription      String?
   /// How long a single-course purchase gives access, in months; null = no time limit
   accessMonths          Int?               @default(12)

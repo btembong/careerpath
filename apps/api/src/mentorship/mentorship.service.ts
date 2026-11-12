@@ -69,18 +69,25 @@ export class MentorshipService {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const [purchases, used] = await Promise.all([
+    const [purchases, coursePurchases, used] = await Promise.all([
       this.prisma.packagePurchase.findMany({
         where: { studentId, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-        select: { package: { select: { mentorshipSessionsPerMonth: true } } },
+        select: { addOns: true, package: { select: { mentorshipSessionsPerMonth: true } } },
+      }),
+      this.prisma.coursePurchase.findMany({
+        where: { studentId, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+        select: { addOns: true },
       }),
       this.prisma.mentorBooking.count({
         where: { studentId, status: { not: 'CANCELLED' }, slot: { startsAt: { gte: monthStart, lt: nextMonth } } },
       }),
     ]);
-    const limits = purchases.map(p => p.package.mentorshipSessionsPerMonth).filter((n): n is number => n != null);
+    // Mentorship bought as an add-on (with a course or a package) adds its sessions a month
+    const addOnMonthly = (v: unknown) => (Array.isArray(v) ? (v as { kind?: string; perMonth?: number }[]) : []).filter(x => x.kind === 'mentorship').map(x => x.perMonth ?? 0);
+    const limits = [...purchases.map(p => p.package.mentorshipSessionsPerMonth), ...purchases.flatMap(p => addOnMonthly(p.addOns)), ...coursePurchases.flatMap(p => addOnMonthly(p.addOns))].filter((n): n is number => n != null);
     const perMonth = limits.length ? limits.reduce((a, b) => a + b, 0) : null;
-    return { hasPackage: purchases.length > 0, perMonth, used, left: perMonth == null ? null : Math.max(0, perMonth - used) };
+    const viaAddOn = coursePurchases.some(p => addOnMonthly(p.addOns).length > 0);
+    return { hasPackage: purchases.length > 0 || viaAddOn, perMonth, used, left: perMonth == null ? null : Math.max(0, perMonth - used) };
   }
 
   async getMySlots(teacherId: string) {
@@ -219,10 +226,11 @@ export class MentorshipService {
         OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
       },
     });
-    if (!activePurchase) {
-      throw new ForbiddenException('You need an active package to book mentorship sessions.');
-    }
     const allowance = await this.getAllowance(student.id);
+    // A package, or a course bought with the mentorship add-on
+    if (!activePurchase && !allowance.hasPackage) {
+      throw new ForbiddenException('You need an active package, or mentorship added to a course, to book sessions.');
+    }
     if (allowance.left === 0) {
       throw new ForbiddenException(`You’ve used all ${allowance.perMonth} mentorship sessions in your package this month.`);
     }

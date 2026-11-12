@@ -1,4 +1,4 @@
-import { IsString, IsOptional, Matches } from 'class-validator';
+import { IsArray, IsIn, IsString, IsOptional, Matches } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateCourseCheckoutDto {
@@ -17,4 +17,10 @@ export class CreateCourseCheckoutDto {
   @IsOptional()
   @Matches(/^\d{9,15}$/, { message: 'mobileWalletNumber must be 9–15 digits including country code' })
   mobileWalletNumber?: string;
+
+  @ApiPropertyOptional({ description: 'Extras chosen at checkout: live (a place in the linked cohort) and/or mentorship. Priced by the server.', example: ['live'] })
+  @IsOptional()
+  @IsArray()
+  @IsIn(['live', 'mentorship'], { each: true })
+  addOns?: string[];
 }

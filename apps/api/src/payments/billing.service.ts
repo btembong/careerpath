@@ -2,6 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PDFDocument, rgb } from 'pdf-lib';
 import { embedBrandFonts } from './pdf-fonts';
 import { minorToMajor } from '@cpa/shared';
+import { addOnLabel, asLines } from './add-ons';
+
+/** "GCE Sciences + live classes and mentorship" when extras were bought with it */
+const withAddOns = (title: string, addOns: unknown) => { const l = addOnLabel(asLines(addOns)); return l ? `${title} + ${l}` : title; };
 import { PrismaService } from '../prisma/prisma.service';
 
 const DAY = 86_400_000;
@@ -41,8 +45,8 @@ export class BillingService {
       .sort((a, b) => Number(a.ended) - Number(b.ended) || (a.daysLeft ?? 99_999) - (b.daysLeft ?? 99_999));
 
     const payments = [
-      ...packages.map(p => ({ id: p.id, kind: 'package' as const, title: p.package.name, at: p.purchasedAt, amount: p.amountPaid ?? 0, currency: p.currency ?? 'GHS', gateway: p.gateway, invoiceNo: p.invoiceNo })),
-      ...courses.map(c => ({ id: c.id, kind: 'course' as const, title: c.course.title, at: c.purchasedAt, amount: c.amountPaid, currency: c.currency, gateway: c.gateway, invoiceNo: c.invoiceNo })),
+      ...packages.map(p => ({ id: p.id, kind: 'package' as const, title: withAddOns(p.package.name, p.addOns), at: p.purchasedAt, amount: p.amountPaid ?? 0, currency: p.currency ?? 'GHS', gateway: p.gateway, invoiceNo: p.invoiceNo })),
+      ...courses.map(c => ({ id: c.id, kind: 'course' as const, title: withAddOns(c.course.title, c.addOns), at: c.purchasedAt, amount: c.amountPaid, currency: c.currency, gateway: c.gateway, invoiceNo: c.invoiceNo })),
     ].sort((a, b) => +b.at - +a.at).map(p => ({ ...p, method: p.gateway ? GATEWAY[p.gateway] ?? p.gateway : p.amount ? 'Recorded by CareerPath' : 'Free' }));
 
     const yearStart = new Date(now.getFullYear(), 0, 1);
@@ -57,10 +61,10 @@ export class BillingService {
     let p: { title: string; at: Date; amount: number; currency: string; gateway: string | null; gatewayRef: string | null; invoiceNo: string | null; expiresAt: Date | null } | null = null;
     if (kind === 'package') {
       const x = await this.prisma.packagePurchase.findFirst({ where: { id, studentId }, include: { package: { select: { name: true } } } });
-      if (x) p = { title: x.package.name, at: x.purchasedAt, amount: x.amountPaid ?? 0, currency: x.currency ?? 'GHS', gateway: x.gateway, gatewayRef: x.gatewayRef, invoiceNo: x.invoiceNo, expiresAt: x.expiresAt };
+      if (x) p = { title: withAddOns(x.package.name, x.addOns), at: x.purchasedAt, amount: x.amountPaid ?? 0, currency: x.currency ?? 'GHS', gateway: x.gateway, gatewayRef: x.gatewayRef, invoiceNo: x.invoiceNo, expiresAt: x.expiresAt };
     } else if (kind === 'course') {
       const x = await this.prisma.coursePurchase.findFirst({ where: { id, studentId }, include: { course: { select: { title: true } } } });
-      if (x) p = { title: x.course.title, at: x.purchasedAt, amount: x.amountPaid, currency: x.currency, gateway: x.gateway, gatewayRef: x.gatewayRef, invoiceNo: x.invoiceNo, expiresAt: x.expiresAt };
+      if (x) p = { title: withAddOns(x.course.title, x.addOns), at: x.purchasedAt, amount: x.amountPaid, currency: x.currency, gateway: x.gateway, gatewayRef: x.gatewayRef, invoiceNo: x.invoiceNo, expiresAt: x.expiresAt };
     }
     if (!p || !student) throw new NotFoundException('Receipt not found');
 

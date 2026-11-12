@@ -12,6 +12,7 @@ import {
   HttpCode,
   HttpStatus,
   Res,
+  Put,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiExcludeEndpoint } from '@nestjs/swagger';
@@ -73,7 +74,24 @@ export class PaymentsController {
     @Param('courseId') courseId: string,
     @Body() dto: CreateCourseCheckoutDto,
   ) {
-    return this.paymentsService.createCourseCheckoutSession(user, courseId, dto.couponCode, dto.mobileWalletNumber);
+    return this.paymentsService.createCourseCheckoutSession(user, courseId, dto.couponCode, dto.mobileWalletNumber, dto.addOns);
+  }
+
+  @Get('payments/add-ons/:kind/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Extras a course or package offers at checkout (live classes, mentorship), with prices' })
+  addOns(@Param('kind') kind: string, @Param('id') id: string) {
+    return this.paymentsService.offeredAddOns(kind, id);
+  }
+
+  @Put('payments/admin/add-ons/:kind/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[Admin] Offer or stop offering add-ons on a course or package. live: { cohortId, price } | null; mentorship: { perMonth, price } | null (prices in normal units)' })
+  setAddOns(@Param('kind') kind: string, @Param('id') id: string, @Body() dto: { live?: { cohortId?: string; price?: number } | null; mentorship?: { perMonth?: number; price?: number } | null }) {
+    return this.paymentsService.setAddOns(kind, id, dto);
   }
 
   @Post('payments/webhook/paystack')
