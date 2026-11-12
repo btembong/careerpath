@@ -11,10 +11,11 @@ import { CourseCover } from '@/components/courses/CourseCover';
 interface Details {
   id: string; name: string; description: string | null; priceAmount: number; currency: string;
   validityDays: number | null; categoryTags: string[]; mentorship: string | null;
+  mentorshipPerMonth: number | null; mentors: { count: number; names: string[] } | null;
   faq: { q: string; a: string }[]; separateTotal: number | null; lessons: number;
   courses: { id: string; title: string; teacher: string | null; language: string | null; modules: number; lessons: number; minutes: number; price: { amount: number; currency: string } | null }[];
   cohort: { id: string; name: string; teacher: string | null; students: number; examDate: string | null; sittingLabel: string | null; recordings: boolean; next: { title: string; scheduledAt: string; durationMins: number }[] } | null;
-  mine: { purchasedAt: string; expiresAt: string | null; invoiceNo: string | null; active: boolean; progressPct: number | null } | null;
+  mine: { purchasedAt: string; expiresAt: string | null; invoiceNo: string | null; active: boolean; progressPct: number | null; mentorLeft: number | null } | null;
 }
 
 const DAY = 86_400_000;
@@ -89,32 +90,58 @@ export default function PackageDetailPage() {
     ...(d.cohort?.examDate ? [{ l: 'Exam', v: `${d.cohort.sittingLabel ? `${d.cohort.sittingLabel.split(/[·-]/)[0].trim()} · ` : ''}${new Date(d.cohort.examDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` }] : []),
   ];
 
+  // Set like the sign-in pages' blue panel: navy name with its last word in white
+  const nameWords = d.name.split(' ');
+  const nameLast = nameWords.pop() ?? '';
+  // What the price covers, as equal blocks under the hero
+  const pillars = [
+    { abbr: String(d.courses.length), t: `${d.courses.length} course${d.courses.length === 1 ? '' : 's'}`, d: d.courses.slice(0, 4).map(c => c.title.split(/\s[·—-]\s/)[0]).join(', ') },
+    ...(d.cohort ? [{ abbr: 'LV', t: 'Live classes', d: [d.cohort.name, d.cohort.teacher].filter(Boolean).join(' · ') }] : []),
+    ...(d.mentorship ? [{ abbr: 'MN', t: 'Mentorship', d: d.mentorshipPerMonth ? `${d.mentorshipPerMonth} session${d.mentorshipPerMonth === 1 ? '' : 's'} a month` : d.mentorship }] : []),
+  ];
+  const months = d.validityDays ? Math.round(d.validityDays / 30.44) : null;
+  const momo = ['XAF', 'XOF'].includes(d.currency.toUpperCase());
+  const after = [d.cohort && `you’re added to the ${d.cohort.name} class straight away`, d.mentorship && 'you can book your first mentor session'].filter(Boolean).join(' and ');
+
   return (
     <div className="flex min-h-full flex-col">
       <Topbar backHref="/packages" backLabel="Packages" title={d.name} />
 
+      <section className="keep-light mx-4 mt-4 flex flex-wrap items-end gap-6 rounded-lg bg-[#3F6FE8] p-6 lg:mx-7 lg:mt-6 lg:p-7">
+        <div className="flex min-w-0 flex-[999_1_420px] flex-col gap-2.5">
+          {d.categoryTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {d.categoryTags.slice(0, 4).map((t, i) => (
+                <span key={t} className={clsx('inline-flex h-6 items-center rounded px-2 text-xs font-bold', i === 0 ? 'bg-[#FFFFFF] text-navy' : 'bg-navy text-[#FFFFFF]')}>{t}</span>
+              ))}
+            </div>
+          )}
+          <h1 className="text-[clamp(30px,4vw,40px)] font-extrabold leading-[1.02] tracking-[-0.035em] text-navy [text-wrap:balance]">
+            {nameWords.join(' ')} <span className="text-[#FFFFFF]">{nameLast}</span>
+          </h1>
+          {d.description && <p className="max-w-[640px] text-[15px] leading-relaxed text-navy/85">{d.description}</p>}
+        </div>
+        <dl className="grid min-w-0 flex-[1_1_260px] grid-cols-2 gap-2.5">
+          {facts.map(f => (
+            <div key={f.l} className="rounded-md bg-[#FFFFFF] px-3 py-2.5">
+              <dt className="text-[11.5px] text-muted">{f.l}</dt>
+              <dd className="mt-0.5 text-sm font-bold text-navy">{f.v}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
       <div className="flex flex-wrap items-start gap-6 p-4 lg:px-7 lg:py-6">
         <div className="flex min-w-0 flex-[999_1_540px] flex-col gap-5">
-          <section className="flex flex-col gap-2">
-            {d.categoryTags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {d.categoryTags.slice(0, 4).map((t, i) => (
-                  <span key={t} className={clsx('inline-flex h-6 items-center rounded px-2 text-xs font-semibold', i === 0 ? 'bg-accent-soft text-navy' : 'border border-line bg-white text-ink2')}>{t}</span>
-                ))}
-              </div>
-            )}
-            <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.01em] text-navy">{d.name}</h1>
-            {d.description && <p className="max-w-[680px] text-[14.5px] leading-relaxed text-ink2">{d.description}</p>}
-          </section>
-
-          <dl className="grid rounded-lg border border-line bg-white [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
-            {facts.map(f => (
-              <div key={f.l} className="-mr-px border-r border-line px-4 py-3.5">
-                <dt className="text-[11.5px] text-muted">{f.l}</dt>
-                <dd className="mt-0.5 text-[15px] font-bold text-navy">{f.v}</dd>
+          <section className={clsx('grid gap-2.5', pillars.length === 3 ? 'sm:grid-cols-3' : pillars.length === 2 ? 'sm:grid-cols-2' : '')}>
+            {pillars.map(p => (
+              <div key={p.t} className="rounded-lg border border-line bg-white p-3.5">
+                <span className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-md bg-accent-soft text-xs font-extrabold text-azure-strong">{p.abbr}</span>
+                <p className="mt-2 text-[15px] font-bold text-navy">{p.t}</p>
+                <p className="mt-0.5 line-clamp-2 text-[12.5px] text-ink2" title={p.d}>{p.d}</p>
               </div>
             ))}
-          </dl>
+          </section>
 
           <section className="flex flex-col gap-2.5 rounded-lg border border-line bg-white p-[18px]">
             <h2 className="flex items-center gap-2 text-base font-bold text-navy">
@@ -165,9 +192,22 @@ export default function PackageDetailPage() {
           )}
 
           {d.mentorship && (
-            <section className="flex flex-col gap-2 rounded-lg border border-line bg-white p-[18px]">
-              <h2 className="text-base font-bold text-navy">Mentorship</h2>
-              <p className="text-[13.5px] text-ink2">{d.mentorship}. Book a slot from the Mentorship page once you have the package.</p>
+            <section className="flex flex-wrap items-center gap-3.5 rounded-lg border border-line bg-white p-[18px]">
+              <div className="min-w-0 flex-[999_1_320px]">
+                <h2 className="text-base font-bold text-navy">Mentorship{d.mentorshipPerMonth ? ` · ${d.mentorshipPerMonth} session${d.mentorshipPerMonth === 1 ? '' : 's'} a month` : ''}</h2>
+                <p className="mt-1 text-[13.5px] text-ink2">
+                  {d.mentorship}. A 1-to-1 with a mentor you choose, to go over your results and plan the weeks ahead
+                  {d.mentorshipPerMonth && months ? `: ${d.mentorshipPerMonth * months} sessions over your ${months} months` : ''}. Book from the Mentorship page once you have the package.
+                </p>
+              </div>
+              {d.mentors && d.mentors.names.length > 0 && (
+                <div className="flex flex-[1_1_200px] items-center">
+                  {d.mentors.names.map(n => (
+                    <span key={n} title={n} className="-mr-1.5 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-accent-soft text-xs font-extrabold text-azure-strong">{initials(n)}</span>
+                  ))}
+                  {d.mentors.count > d.mentors.names.length && <span className="ml-3.5 text-[12.5px] text-muted">and {d.mentors.count - d.mentors.names.length} more mentor{d.mentors.count - d.mentors.names.length === 1 ? '' : 's'}</span>}
+                </div>
+              )}
             </section>
           )}
 
@@ -201,8 +241,19 @@ export default function PackageDetailPage() {
                 <span className="mt-1.5 block h-1.5 overflow-hidden rounded-[3px] bg-subtle"><span className="block h-1.5 bg-azure" style={{ width: `${d.mine!.progressPct}%` }} /></span>
               </div>
             )}
+            {(d.cohort?.next[0] || d.mine!.mentorLeft != null) && (
+              <div className="rounded-md bg-subtle px-3 py-2.5 text-[13px] text-ink2">
+                {d.cohort?.next[0] && <strong className="block text-navy">Next live class · {new Date(d.cohort.next[0].scheduledAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}, {time(d.cohort.next[0].scheduledAt)}</strong>}
+                {d.mine!.mentorLeft != null && d.mentorshipPerMonth != null && <>Mentor sessions left this month: {d.mine!.mentorLeft} of {d.mentorshipPerMonth}</>}
+              </div>
+            )}
             <Link href={d.courses[0] ? `/student/learn/${d.courses[0].id}` : '/student/courses'} className="inline-flex h-[42px] items-center justify-center rounded-md bg-azure-strong text-[14.5px] font-semibold text-on-accent">Continue learning</Link>
-            {d.cohort && <Link href={`/student/cohorts?id=${d.cohort.id}`} className="inline-flex h-[38px] items-center justify-center rounded-md border border-line text-[13.5px] font-semibold text-navy hover:bg-subtle">Go to my cohort</Link>}
+            {(d.cohort || d.mentorship) && (
+              <div className="flex gap-2">
+                {d.cohort && <Link href={`/student/cohorts?id=${d.cohort.id}`} className="inline-flex h-[38px] flex-1 items-center justify-center rounded-md border border-line text-[13.5px] font-semibold text-navy hover:bg-subtle">My class</Link>}
+                {d.mentorship && <Link href="/student/mentorship" className="inline-flex h-[38px] flex-1 items-center justify-center rounded-md border border-line text-[13.5px] font-semibold text-navy hover:bg-subtle">Book a mentor</Link>}
+              </div>
+            )}
             {daysLeft != null && daysLeft <= 30
               ? <Link href={`/packages/${d.id}/checkout`} className="inline-flex h-[38px] items-center justify-center rounded-md border border-line text-[13.5px] font-semibold text-navy hover:bg-subtle">Renew for another {access.toLowerCase()}</Link>
               : d.mine!.expiresAt && <p className="text-[12.5px] text-muted">You can renew from here in the last 30 days of your access.</p>}
@@ -227,7 +278,10 @@ export default function PackageDetailPage() {
             <Link href={`/packages/${d.id}/checkout`} className="inline-flex h-[42px] items-center justify-center rounded-md bg-azure-strong text-[14.5px] font-semibold text-on-accent">
               {expired ? 'Buy again' : 'Get this package'}
             </Link>
-            <p className="text-center text-[12.5px] text-muted">Mobile money, card or Paystack · have a coupon? Add it at checkout</p>
+            <p className="rounded-md bg-subtle px-3 py-2.5 text-[12.5px] text-ink2">
+              After paying, {after ? `${after}, and ` : ''}your course{d.courses.length === 1 ? '' : 's'} open{d.courses.length === 1 ? 's' : ''} straight away.
+            </p>
+            <p className="text-center text-[12.5px] text-muted">{momo ? 'MTN MoMo or Orange Money' : 'Card, bank or mobile money'} · have a coupon? Add it at checkout</p>
           </>}
         </aside>
       </div>

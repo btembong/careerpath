@@ -157,6 +157,16 @@ export class PackagesService {
     // Upcoming classes; the page works out the weekly pattern in the student's own time zone
     const upcoming = cohort?.liveClasses.filter(c => c.scheduledAt.getTime() + c.durationMins * 60_000 > now.getTime()) ?? [];
 
+    // Mentorship: who students can book (approved teachers with an intro video), and what the owner has left this month
+    const hasMentorship = !!pkg.mentorship || pkg.mentorshipSessionsPerMonth != null;
+    const [mentorRows, mentorCount, usedThisMonth] = hasMentorship ? await Promise.all([
+      this.prisma.userProfile.findMany({ where: { role: 'TEACHER', approvalStatus: 'APPROVED', videoIntroUrl: { not: null }, deletedAt: null }, select: { name: true, firstName: true, lastName: true }, take: 3 }),
+      this.prisma.userProfile.count({ where: { role: 'TEACHER', approvalStatus: 'APPROVED', videoIntroUrl: { not: null }, deletedAt: null } }),
+      active && pkg.mentorshipSessionsPerMonth != null
+        ? this.prisma.mentorBooking.count({ where: { studentId: viewer.id, status: { not: 'CANCELLED' }, slot: { startsAt: { gte: new Date(now.getFullYear(), now.getMonth(), 1), lt: new Date(now.getFullYear(), now.getMonth() + 1, 1) } } } })
+        : Promise.resolve(null),
+    ]) : [[], 0, null];
+
     const single = ordered.every(c => c.isSoldIndividually && c.priceAmount != null && c.priceCurrency === pkg.currency);
     const separateTotal = ordered.length && single ? ordered.reduce((n, c) => n + (c.priceAmount ?? 0), 0) : null;
     const months = pkg.validityDays ? Math.round(pkg.validityDays / 30.44) : null;
@@ -171,6 +181,8 @@ export class PackagesService {
     return {
       id: pkg.id, name: pkg.name, description: pkg.description, priceAmount: pkg.priceAmount, currency: pkg.currency,
       validityDays: pkg.validityDays, categoryTags: pkg.categoryTags, mentorship: pkg.mentorship,
+      mentorshipPerMonth: pkg.mentorshipSessionsPerMonth,
+      mentors: hasMentorship ? { count: mentorCount, names: mentorRows.map(nameOf).filter(Boolean) as string[] } : null,
       faq: Array.isArray(pkg.faq) && (pkg.faq as unknown[]).length ? pkg.faq : standardFaq,
       separateTotal,
       lessons: lessonIds.length,
@@ -192,6 +204,7 @@ export class PackagesService {
       mine: purchase ? {
         purchasedAt: purchase.purchasedAt, expiresAt: purchase.expiresAt, invoiceNo: purchase.invoiceNo, active: !!active,
         progressPct: active && lessonIds.length ? Math.round((done / lessonIds.length) * 100) : null,
+        mentorLeft: usedThisMonth != null && pkg.mentorshipSessionsPerMonth != null ? Math.max(0, pkg.mentorshipSessionsPerMonth - usedThisMonth) : null,
       } : null,
     };
   }
