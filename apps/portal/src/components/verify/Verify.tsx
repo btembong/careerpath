@@ -61,7 +61,7 @@ export function Verify({ initialKind = 'certificate', initialCode = '' }: { init
           ))}
         </div>
         <form onSubmit={e => { e.preventDefault(); check(); }} className="flex gap-2">
-          <input value={code} onChange={e => setCode(e.target.value)} aria-label={kind === 'certificate' ? 'Certificate code' : 'Receipt number'} placeholder={kind === 'certificate' ? 'e.g. CPA-7F3K9Q' : 'e.g. CPA-2026-00412'}
+          <input value={code} onChange={e => setCode(e.target.value)} aria-label={kind === 'certificate' ? 'Certificate code' : 'Receipt number'} placeholder={kind === 'certificate' ? 'e.g. CPA-7F3K9Q' : 'e.g. INV-202611-00412'}
             className="h-[46px] min-w-0 flex-1 rounded-lg border border-azure bg-white px-3.5 font-mono text-[15px] uppercase text-navy outline-none focus:ring-4 focus:ring-azure/10" />
           <button type="submit" disabled={checking || !code.trim()} className="inline-flex h-[46px] items-center rounded-lg bg-azure-strong px-[18px] text-[14px] font-semibold text-on-accent disabled:opacity-50">{checking ? 'Checking…' : 'Check'}</button>
         </form>

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Topbar } from '@/components/layout/Topbar';
 import { CheckoutView, CheckoutItem } from '@/components/checkout/CheckoutView';
 import api from '@/lib/api';
@@ -25,13 +25,16 @@ export default function PackageCheckoutPage() {
   const router = useRouter();
   const [item, setItem] = useState<CheckoutItem | null>(null);
   const [owned, setOwned] = useState<Details | null>(null);
+  // ?add=live,mentorship: extras only, for a student who already has it
+  const addLater = (useSearchParams().get('add') ?? '').split(',').filter((k): k is 'live' | 'mentorship' => k === 'live' || k === 'mentorship');
 
   useEffect(() => {
     api.get(`/packages/${id}/details`).then(r => {
       const d: Details = r.data;
       // Renewing is allowed in the last 30 days of access
       const daysLeft = d.mine?.expiresAt ? (new Date(d.mine.expiresAt).getTime() - Date.now()) / DAY : null;
-      if (d.mine?.active && (daysLeft == null || daysLeft > 30)) { setOwned(d); return; }
+      const has = !!d.mine?.active;
+      if (has && !addLater.length && (daysLeft == null || daysLeft > 30)) { setOwned(d); return; }
       const lessons = d.courses.reduce((n, c) => n + c.lessons, 0);
       setItem({
         kind: 'package', id: d.id, title: d.name,
@@ -44,8 +47,10 @@ export default function PackageCheckoutPage() {
         ].filter(Boolean) as string[],
         priceAmount: d.priceAmount, currency: d.currency,
         accessUntil: d.validityDays ? new Date(Date.now() + d.validityDays * DAY) : null,
+        ...(has && addLater.length ? { addLater } : {}),
       });
     }).catch(() => router.replace('/packages'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, router]);
 
   if (owned) return (

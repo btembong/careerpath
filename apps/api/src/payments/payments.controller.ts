@@ -20,6 +20,7 @@ import { PaymentsService } from './payments.service';
 import { BillingService } from './billing.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import { CreateCourseCheckoutDto } from './dto/create-course-checkout.dto';
+import { AddOnCheckoutDto } from './dto/add-on-checkout.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -81,8 +82,17 @@ export class PaymentsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Extras a course or package offers at checkout (live classes, mentorship), with prices' })
-  addOns(@Param('kind') kind: string, @Param('id') id: string) {
-    return this.paymentsService.offeredAddOns(kind, id);
+  addOns(@CurrentUser() user: UserProfile, @Param('kind') kind: string, @Param('id') id: string) {
+    return this.paymentsService.offeredAddOns(kind, id, user.id);
+  }
+
+  @Post('payments/create-addon-checkout/:kind/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.STUDENT)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add live classes or mentorship to a course or package the student already has (priced by the server)' })
+  createAddOnCheckout(@CurrentUser() user: UserProfile, @Param('kind') kind: string, @Param('id') id: string, @Body() dto: AddOnCheckoutDto) {
+    return this.paymentsService.createAddOnCheckout(user, kind, id, dto);
   }
 
   @Put('payments/admin/add-ons/:kind/:id')

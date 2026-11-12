@@ -114,7 +114,7 @@ export class PaymentOpsService {
         return {
           id: r.id, kind: r.kind, title: r.title, amount: r.amount, currency: r.currency, gateway: r.gateway, sessionId: r.sessionId, status: r.status,
           failureReason: r.failureReason, createdAt: r.createdAt, paidAt: r.paidAt, checkedAt: r.checkedAt,
-          purchaseId: r.packagePurchaseId ?? r.coursePurchaseId, receipt: purchase?.invoiceNo ?? null,
+          purchaseId: r.packagePurchaseId ?? r.coursePurchaseId, receipt: r.invoiceNo ?? purchase?.invoiceNo ?? null,
           student: { id: r.student.id, name: nameOf(r.student), email: r.student.email },
         };
       }),
@@ -150,7 +150,7 @@ export class PaymentOpsService {
       id: a.id, kind: a.kind, title: a.title, amount: a.amount, currency: a.currency, gateway: a.gateway, sessionId: a.sessionId, status: a.status, failureReason: a.failureReason,
       createdAt: a.createdAt, paidAt: a.paidAt, checkedAt: a.checkedAt,
       student: { id: a.student.id, name: nameOf(a.student), email: a.student.email, phone: a.student.phone },
-      purchase: purchase ? { id: purchase.id, receipt: purchase.invoiceNo, expiresAt: purchase.expiresAt, refundedAt: purchase.refundedAt, active: !purchase.expiresAt || purchase.expiresAt > new Date() } : null,
+      purchase: purchase ? { id: purchase.id, receipt: a.invoiceNo ?? purchase.invoiceNo, expiresAt: purchase.expiresAt, refundedAt: purchase.refundedAt, active: !purchase.expiresAt || purchase.expiresAt > new Date() } : null,
       refunds: refunds.map(r => ({ amount: r.amount, currency: r.currency, reason: r.reason, endedAccess: r.endedAccess, clawedBack: r.clawedBack, at: r.createdAt })),
       refundable: purchase ? Math.max(0, a.amount - refunded) : 0,
       sameDayPayments: others,
@@ -164,6 +164,7 @@ export class PaymentOpsService {
   async refund(admin: UserProfile, attemptId: string, dto: { amount: number; reason: string; endAccess?: boolean }) {
     const d = await this.detail(attemptId);
     if (!d.purchase) throw new BadRequestException('Only a paid payment can be refunded');
+    if (d.kind === 'addon') throw new BadRequestException('An extra added later is refunded by hand for now: send it back through the gateway and adjust the class teacher’s wallet if needed');
     const amount = Math.round(Number(dto.amount));
     if (!Number.isFinite(amount) || amount < 1 || amount > d.refundable) throw new BadRequestException(`Refund between 1 and ${minorToMajor(d.refundable, d.currency).toLocaleString('en-GB')} ${d.currency}`);
     const reason = String(dto.reason ?? '').trim().slice(0, 300);
@@ -194,12 +195,17 @@ export class PaymentOpsService {
 
   async verifyReceipt(number: string) {
     const no = String(number ?? '').trim().toUpperCase();
-    if (!/^CPA-[A-Z0-9-]{4,30}$/.test(no)) return { valid: false as const };
+    if (!/^(INV|CPA)-[A-Z0-9-]{4,30}$/.test(no)) return { valid: false as const };
     const select = { invoiceNo: true, purchasedAt: true, amountPaid: true, currency: true, refundedAt: true, student: { select: { name: true, firstName: true, lastName: true, email: true } } };
     const p = await this.prisma.packagePurchase.findUnique({ where: { invoiceNo: no }, select: { ...select, package: { select: { name: true } } } });
     const c = p ? null : await this.prisma.coursePurchase.findUnique({ where: { invoiceNo: no }, select: { ...select, course: { select: { title: true } } } });
     const x = p ?? c;
-    if (!x) return { valid: false as const };
+    if (!x) {
+      // An extra added later has its own receipt, on the attempt
+      const a = await this.prisma.paymentAttempt.findFirst({ where: { invoiceNo: no, status: { in: ['PAID', 'REFUNDED'] } }, select: { invoiceNo: true, paidAt: true, title: true, amount: true, currency: true, status: true, student: { select: { name: true, firstName: true, lastName: true, email: true } } } });
+      if (!a) return { valid: false as const };
+      return { valid: true as const, receipt: a.invoiceNo, paidOn: a.paidAt, item: a.title, amount: a.amount, currency: a.currency, billedTo: initials(a.student), refunded: a.status === 'REFUNDED' };
+    }
     return {
       valid: true as const, receipt: x.invoiceNo, paidOn: x.purchasedAt, item: p ? p.package.name : c!.course.title,
       amount: x.amountPaid ?? 0, currency: x.currency ?? 'GHS', billedTo: initials(x.student), refunded: !!x.refundedAt,

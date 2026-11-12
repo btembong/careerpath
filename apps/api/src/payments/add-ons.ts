@@ -5,7 +5,8 @@ import { BadRequestException } from '@nestjs/common';
  * mentorship (sessions a month for the access period). Prices are in minor units, in the item's currency.
  */
 export type AddOnConfig = { live?: { cohortId: string; price: number } | null; mentorship?: { perMonth: number; price: number } | null };
-export type AddOnLine = { kind: 'live' | 'mentorship'; price: number; cohortId?: string; perMonth?: number };
+/** later: added after the purchase, paid and receipted on its own (not part of the purchase's price) */
+export type AddOnLine = { kind: 'live' | 'mentorship'; price: number; cohortId?: string; perMonth?: number; later?: boolean };
 
 export const ADD_ON_NAMES: Record<AddOnLine['kind'], string> = { live: 'Live classes', mentorship: 'Mentorship' };
 

@@ -5,7 +5,8 @@ import { minorToMajor } from '@cpa/shared';
 import { addOnLabel, asLines } from './add-ons';
 
 /** "GCE Sciences + live classes and mentorship" when extras were bought with it */
-const withAddOns = (title: string, addOns: unknown) => { const l = addOnLabel(asLines(addOns)); return l ? `${title} + ${l}` : title; };
+// Extras added later have their own payment line, so a purchase's title only names those bought with it
+const withAddOns = (title: string, addOns: unknown) => { const l = addOnLabel(asLines(addOns).filter(x => !x.later)); return l ? `${title} + ${l}` : title; };
 import { PrismaService } from '../prisma/prisma.service';
 
 const DAY = 86_400_000;
@@ -19,10 +20,11 @@ export class BillingService {
 
   async billing(studentId: string) {
     const now = new Date();
-    const [packages, courses, enrollments] = await Promise.all([
+    const [packages, courses, enrollments, extras] = await Promise.all([
       this.prisma.packagePurchase.findMany({ where: { studentId }, include: { package: { select: { id: true, name: true, courseIds: true, validityDays: true, cohort: { select: { name: true, examDate: true } }, mentorship: true } } }, orderBy: { purchasedAt: 'desc' } }),
       this.prisma.coursePurchase.findMany({ where: { studentId }, include: { course: { select: { id: true, title: true } } }, orderBy: { purchasedAt: 'desc' } }),
       this.prisma.courseEnrollment.findMany({ where: { studentId, course: { OR: [{ priceAmount: null }, { priceAmount: 0 }], status: 'PUBLISHED' } }, include: { course: { select: { id: true, title: true, source: true } } } }),
+      this.prisma.paymentAttempt.findMany({ where: { studentId, kind: 'addon', status: { in: ['PAID', 'REFUNDED'] } } }),
     ]);
 
     const span = (from: Date, to: Date | null) => {
@@ -47,6 +49,7 @@ export class BillingService {
     const payments = [
       ...packages.map(p => ({ id: p.id, kind: 'package' as const, title: withAddOns(p.package.name, p.addOns), at: p.purchasedAt, amount: p.amountPaid ?? 0, currency: p.currency ?? 'GHS', gateway: p.gateway, invoiceNo: p.invoiceNo })),
       ...courses.map(c => ({ id: c.id, kind: 'course' as const, title: withAddOns(c.course.title, c.addOns), at: c.purchasedAt, amount: c.amountPaid, currency: c.currency, gateway: c.gateway, invoiceNo: c.invoiceNo })),
+      ...extras.map(a => ({ id: a.id, kind: 'addon' as const, title: a.title, at: a.paidAt ?? a.createdAt, amount: a.amount, currency: a.currency, gateway: a.gateway, invoiceNo: a.invoiceNo })),
     ].sort((a, b) => +b.at - +a.at).map(p => ({ ...p, method: p.gateway ? GATEWAY[p.gateway] ?? p.gateway : p.amount ? 'Recorded by CareerPath' : 'Free' }));
 
     const yearStart = new Date(now.getFullYear(), 0, 1);
@@ -65,6 +68,11 @@ export class BillingService {
     } else if (kind === 'course') {
       const x = await this.prisma.coursePurchase.findFirst({ where: { id, studentId }, include: { course: { select: { title: true } } } });
       if (x) p = { title: withAddOns(x.course.title, x.addOns), at: x.purchasedAt, amount: x.amountPaid, currency: x.currency, gateway: x.gateway, gatewayRef: x.gatewayRef, invoiceNo: x.invoiceNo, expiresAt: x.expiresAt };
+    } else if (kind === 'addon') {
+      const x = await this.prisma.paymentAttempt.findFirst({ where: { id, studentId, kind: 'addon', status: { in: ['PAID', 'REFUNDED'] } } });
+      const until = x?.coursePurchaseId ? await this.prisma.coursePurchase.findUnique({ where: { id: x.coursePurchaseId }, select: { expiresAt: true } })
+        : x?.packagePurchaseId ? await this.prisma.packagePurchase.findUnique({ where: { id: x.packagePurchaseId }, select: { expiresAt: true } }) : null;
+      if (x) p = { title: x.title, at: x.paidAt ?? x.createdAt, amount: x.amount, currency: x.currency, gateway: x.gateway, gatewayRef: x.sessionId, invoiceNo: x.invoiceNo, expiresAt: until?.expiresAt ?? null };
     }
     if (!p || !student) throw new NotFoundException('Receipt not found');
 
@@ -91,7 +99,7 @@ export class BillingService {
     y -= 12;
     page.drawLine({ start: { x: 48, y }, end: { x: 547, y }, thickness: 1, color: rgb(0.89, 0.91, 0.95) });
     y -= 28;
-    text(kind === 'package' ? 'Package' : 'Course', 48, y, 10, font, grey); text('Amount', 470, y, 10, font, grey); y -= 22;
+    text(kind === 'package' ? 'Package' : kind === 'addon' ? 'Added to your access' : 'Course', 48, y, 10, font, grey); text('Amount', 470, y, 10, font, grey); y -= 22;
     text(p.title.length > 60 ? p.title.slice(0, 58) + '…' : p.title, 48, y, 12, bold); text(money(p.amount, p.currency), 470, y, 12, bold); y -= 18;
     if (p.expiresAt) { text(`Access until ${p.expiresAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`, 48, y, 10, font, grey); y -= 18; }
     y -= 16;

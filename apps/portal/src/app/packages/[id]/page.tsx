@@ -7,6 +7,8 @@ import { minorToMajor } from '@cpa/shared';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
 import { CourseCover } from '@/components/courses/CourseCover';
+import { AddExtras } from '@/components/checkout/AddExtras';
+import { notify } from '@/lib/notify';
 
 interface Details {
   id: string; name: string; description: string | null; priceAmount: number; currency: string;
@@ -52,6 +54,12 @@ export default function PackageDetailPage() {
 
   useEffect(() => { api.get(`/packages/${id}/details`).then(r => setD(r.data)).catch(() => setError(true)); }, [id]);
   useEffect(() => { api.get(`/payments/add-ons/package/${id}`).then(r => setOffers(r.data)).catch(() => {}); }, [id]);
+  // Back from adding an extra
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('added') !== '1') return;
+    notify.success('Payment confirmed', { description: 'Your extra is added. You’ll get a receipt by email.' });
+    window.history.replaceState(null, '', `/packages/${id}`);
+  }, [id]);
 
   if (error) return (
     <div className="flex min-h-full flex-col">
@@ -270,6 +278,7 @@ export default function PackageDetailPage() {
             {daysLeft != null && daysLeft <= 30
               ? <Link href={`/packages/${d.id}/checkout`} className="inline-flex h-[38px] items-center justify-center rounded-md border border-line text-[13.5px] font-semibold text-navy hover:bg-subtle">Renew for another {access.toLowerCase()}</Link>
               : d.mine!.expiresAt && <p className="text-[12.5px] text-muted">You can renew from here in the last 30 days of your access.</p>}
+            <AddExtras kind="package" id={d.id} />
           </> : <>
             {expired && <span className="inline-flex h-6 items-center self-start rounded bg-accent-soft px-2 text-xs font-bold text-navy">Your access ended {d.mine!.expiresAt ? longDate(d.mine!.expiresAt) : ''}</span>}
             <div>

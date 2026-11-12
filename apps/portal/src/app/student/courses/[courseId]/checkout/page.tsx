@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Topbar } from '@/components/layout/Topbar';
 import { CheckoutView, CheckoutItem, addMonths } from '@/components/checkout/CheckoutView';
 import api from '@/lib/api';
@@ -17,6 +17,8 @@ export default function CourseCheckoutPage() {
   const router = useRouter();
   const [item, setItem] = useState<CheckoutItem | null>(null);
   const [owned, setOwned] = useState(false);
+  // ?add=live,mentorship: extras only, for a student who already has it
+  const addLater = (useSearchParams().get('add') ?? '').split(',').filter((k): k is 'live' | 'mentorship' => k === 'live' || k === 'mentorship');
 
   useEffect(() => {
     Promise.all([
@@ -25,7 +27,8 @@ export default function CourseCheckoutPage() {
     ]).then(([cr, lr]) => {
       const c: Course = cr.data;
       if (!c.isSoldIndividually || !c.priceAmount || !c.priceCurrency) { router.replace(`/student/courses/${courseId}`); return; }
-      if ((lr.data?.courses ?? []).some((x: { id: string }) => x.id === courseId)) { setOwned(true); return; }
+      const has = (lr.data?.courses ?? []).some((x: { id: string }) => x.id === courseId);
+      if (has && !addLater.length) { setOwned(true); return; }
       const lessons = c.modules.flatMap(m => m.lessons);
       const quizzes = lessons.filter(l => l.type === 'QUIZ').length;
       const teacher = c.teacher ? c.teacher.name || [c.teacher.firstName, c.teacher.lastName].filter(Boolean).join(' ') : '';
@@ -36,8 +39,10 @@ export default function CourseCheckoutPage() {
         includes: [`${lessons.length === 1 ? 'The lesson' : `All ${lessons.length} lessons`}${quizzes ? ` and ${quizzes} quiz${quizzes === 1 ? '' : 'zes'}` : ''}`, 'Certificate when you finish', 'Watch on phone or computer'],
         priceAmount: c.priceAmount, currency: c.priceCurrency,
         accessUntil: c.accessMonths ? addMonths(new Date(), c.accessMonths) : null,
+        ...(has && { addLater }),
       });
     }).catch(() => router.replace('/student/catalogue'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId, router]);
 
   if (owned) return (

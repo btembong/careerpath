@@ -8,7 +8,7 @@ import { money } from '@/lib/money';
 import api from '@/lib/api';
 
 interface Access { kind: 'package' | 'course' | 'free'; id: string; title: string; detail: string; examDate: string | null; expiresAt: string | null; pctUsed: number; daysLeft: number | null; ended: boolean; href: string }
-interface Payment { id: string; kind: 'package' | 'course'; title: string; at: string; amount: number; currency: string; method: string; invoiceNo: string | null }
+interface Payment { id: string; kind: 'package' | 'course' | 'addon'; title: string; at: string; amount: number; currency: string; method: string; invoiceNo: string | null }
 interface Data { access: Access[]; payments: Payment[]; paidThisYear: { currency: string; amount: number }[] }
 
 const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });

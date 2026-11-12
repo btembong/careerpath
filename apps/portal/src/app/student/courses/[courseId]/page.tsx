@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 import { Celebrate } from '@/components/celebrate/Celebrate';
+import { AddExtras } from '@/components/checkout/AddExtras';
 
 interface Lesson { id: string; title: string; type: 'VIDEO' | 'TEXT' | 'QUIZ' | 'LIVE'; durationSecs: number | null; isFree: boolean }
 interface Course {
@@ -52,6 +53,12 @@ export default function CourseDetailPage() {
     setMine((lr.data?.courses ?? []).find((x: LibRow) => x.id === courseId) ?? null);
   }
   useEffect(() => { load().catch(() => router.push('/student/catalogue')); }, [courseId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Back from adding an extra
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('added') !== '1') return;
+    notify.success('Payment confirmed', { description: 'Your extra is added. You’ll get a receipt by email.' });
+    router.replace(`/student/courses/${courseId}`);
+  }, [courseId, router]);
 
   if (!c) return (
     <div className="flex min-h-full flex-col">
@@ -225,6 +232,7 @@ export default function CourseDetailPage() {
               className="inline-flex h-[42px] items-center justify-center rounded-md bg-azure-strong text-[14.5px] font-semibold text-on-accent">
               {mine && mine.done > 0 ? 'Continue learning' : 'Start the course'}
             </Link>
+            {mine?.access.kind === 'single' && <AddExtras kind="course" id={c.id} />}
           </> : free || website ? <>
             <div>
               <p className="text-[30px] font-extrabold tracking-[-0.01em] text-navy">Free</p>

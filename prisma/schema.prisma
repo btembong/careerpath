@@ -886,6 +886,8 @@ model PaymentAttempt {
   currency          String
   /// Extras chosen at checkout, applied when it's paid
   addOns            Json?
+  /// Its own invoice number, for an add-on bought after the course or package
+  invoiceNo         String?
   gateway           String
   /// The gateway's reference for this checkout (Paystack reference, Stripe session, Tranzak request)
   sessionId         String?   @unique

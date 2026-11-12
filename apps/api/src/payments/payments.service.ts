@@ -48,7 +48,7 @@ export class PaymentsService {
   ) {}
 
   /** The PDF receipt for a purchase, to attach to the receipt email (null if it can't be made) */
-  private receiptPdf(studentId: string, kind: 'package' | 'course', id?: string) {
+  private receiptPdf(studentId: string, kind: 'package' | 'course' | 'addon', id?: string) {
     if (!id) return Promise.resolve(null);
     return this.billing.receipt(studentId, kind, id).catch(err => {
       this.logger.warn(`Receipt PDF for ${kind} ${id} failed: ${err?.message}`);
@@ -270,7 +270,11 @@ export class PaymentsService {
       }
     }
 
-    if (purchase.courseId) {
+    // An extra bought after the course or package is added to it; anything else is a purchase
+    const attempt = await this.attemptFor(purchase.sessionId, purchase.tranzakSessionId);
+    if (attempt?.kind === 'addon') {
+      await this.fulfillAddOnLater(purchase, attempt);
+    } else if (purchase.courseId) {
       await this.fulfillCoursePurchase(purchase);
     } else {
       await this.fulfillPurchase(purchase);
@@ -281,7 +285,7 @@ export class PaymentsService {
 
   // ── Payment attempts ─────────────────────────────────────
 
-  private async recordAttempt(a: { studentId: string; kind: 'package' | 'course'; packageId?: string; courseId?: string; title: string; amount: number; currency: string; gateway: string; sessionId?: string | null; tranzakSessionId?: string; couponId?: string; addOns?: AddOnLine[] }) {
+  private async recordAttempt(a: { studentId: string; kind: 'package' | 'course' | 'addon'; packageId?: string; courseId?: string; title: string; amount: number; currency: string; gateway: string; sessionId?: string | null; tranzakSessionId?: string; couponId?: string; addOns?: AddOnLine[] }) {
     const { addOns, ...rest } = a;
     await this.prisma.paymentAttempt.create({
       data: { ...rest, sessionId: a.sessionId || null, tranzakSessionId: a.tranzakSessionId ?? null, couponId: a.couponId ?? null, addOns: addOns?.length ? (addOns as any) : undefined },
@@ -299,7 +303,12 @@ export class PaymentsService {
       this.prisma.packagePurchase.findFirst({ where: { studentId: attempt.studentId, gatewayRef: ref }, select: { id: true } }),
       this.prisma.coursePurchase.findFirst({ where: { studentId: attempt.studentId, gatewayRef: ref }, select: { id: true } }),
     ]);
-    await this.prisma.paymentAttempt.update({ where: { id: attempt.id }, data: { status: 'PAID', paidAt: new Date(), failureReason: null, packagePurchaseId: pp?.id ?? null, coursePurchaseId: cp?.id ?? null } });
+    await this.prisma.paymentAttempt.update({ where: { id: attempt.id }, data: { status: 'PAID', paidAt: new Date(), failureReason: null, packagePurchaseId: pp?.id ?? attempt.packagePurchaseId ?? null, coursePurchaseId: cp?.id ?? attempt.coursePurchaseId ?? null } });
+  }
+
+  private attemptFor(sessionId?: string, tranzakSessionId?: string) {
+    const ors = [sessionId ? { sessionId } : null, tranzakSessionId ? { tranzakSessionId } : null].filter(Boolean) as object[];
+    return ors.length ? this.prisma.paymentAttempt.findFirst({ where: { OR: ors } }) : Promise.resolve(null);
   }
 
   /** The gateway client for a stored attempt */
@@ -350,7 +359,10 @@ export class PaymentsService {
       }),
     ]);
 
-    return { completed: !!(pkg ?? course) };
+    if (pkg ?? course) return { completed: true };
+    // An extra bought later has no purchase of its own: its payment record says
+    const addOn = await this.prisma.paymentAttempt.findFirst({ where: { studentId, sessionId, kind: 'addon', status: 'PAID' }, select: { id: true } });
+    return { completed: !!addOn };
   }
 
   // ── Free enrollment ──────────────────────────────────────
@@ -824,9 +836,90 @@ export class PaymentsService {
     throw new BadRequestException('Add-ons are for courses and packages');
   }
 
-  /** What a course or package offers at checkout, ready to show: price, the class it joins, sessions in all */
-  async offeredAddOns(kind: string, id: string) {
+  /** The student's active purchase of a course or package (the latest, for a package) */
+  private activePurchase(kind: string, id: string, studentId: string) {
+    const active = { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] };
+    return kind === 'course'
+      ? this.prisma.coursePurchase.findFirst({ where: { studentId, courseId: id, ...active }, select: { id: true, addOns: true, expiresAt: true } })
+      : this.prisma.packagePurchase.findFirst({ where: { studentId, packageId: id, ...active }, orderBy: { expiresAt: 'desc' }, select: { id: true, addOns: true, expiresAt: true } });
+  }
+
+  /**
+   * Add an extra to a course or package the student already has: priced as set, lasting until that
+   * access ends. Paid like any checkout; once paid it's added to the purchase (see fulfillAddOnLater).
+   */
+  async createAddOnCheckout(student: UserProfile, kind: string, id: string, dto: { addOns?: string[]; mobileWalletNumber?: string }) {
     const it = await this.addOnItem(kind, id);
+    const active = await this.activePurchase(kind, id, student.id);
+    if (!active) throw new BadRequestException(`Extras are added to a ${kind} you have. Buy it first, with the extras at checkout.`);
+    const have = new Set(asLines(active.addOns).map(l => l.kind));
+    if ((dto.addOns ?? []).some(k => have.has(k as AddOnLine['kind']))) throw new BadRequestException('You already have that');
+    const lines = pickAddOns(it.config, dto.addOns);
+    if (!lines.length) throw new BadRequestException('Choose what to add');
+    const amount = addOnTotal(lines);
+    const title = `${lines.map(l => (l.kind === 'live' ? 'Live classes' : 'Mentorship')).join(' and ')} for ${it.title}`;
+    const gateway = this.gatewayForCurrency(it.currency);
+    const portalUrl = this.config.get<string>('PORTAL_URL', 'http://localhost:3000');
+    const back = kind === 'course' ? `${portalUrl}/student/courses/${id}` : `${portalUrl}/packages/${id}`;
+    const ids = kind === 'course' ? { courseId: id } : { packageId: id };
+
+    let tranzakSessionId: string | undefined;
+    if (TRANZAK_CURRENCIES.has(it.currency.toUpperCase())) {
+      tranzakSessionId = (await this.prisma.tranzakSession.create({ data: { studentId: student.id, ...ids, amount, currency: it.currency } })).id;
+    }
+    const session = await gateway.createCheckoutSession({
+      ...ids, itemName: title, amount, currency: it.currency, studentEmail: student.email, studentId: student.id,
+      successUrl: `${back}?added=1`, cancelUrl: back, mobileWalletNumber: dto.mobileWalletNumber, tranzakSessionId,
+    });
+    if (tranzakSessionId && session.sessionId) {
+      await this.prisma.tranzakSession.update({ where: { id: tranzakSessionId }, data: { requestId: session.sessionId } }).catch(() => {});
+    }
+    await this.recordAttempt({ studentId: student.id, kind: 'addon', ...ids, title, amount, currency: it.currency, gateway: session.gateway, sessionId: session.sessionId, tranzakSessionId, addOns: lines });
+    return { url: session.url, sessionId: session.sessionId, gateway: session.gateway, accessCode: session.accessCode, ussdPush: session.ussdPush ?? false };
+  }
+
+  /** A paid extra joins the purchase it was bought for, with its own invoice and receipt */
+  private async fulfillAddOnLater(event: PurchaseCompletedEvent, attempt: { id: string; title: string; courseId: string | null; packageId: string | null; addOns: unknown }) {
+    const kind: 'course' | 'package' = attempt.courseId ? 'course' : 'package';
+    const id = (attempt.courseId ?? attempt.packageId)!;
+    const lines = asLines(attempt.addOns).map(l => ({ ...l, later: true }));
+    const [active, student] = await Promise.all([
+      this.activePurchase(kind, id, event.studentId),
+      this.prisma.userProfile.findUnique({ where: { id: event.studentId }, select: { email: true, countryId: true, firstName: true, lastName: true } }),
+    ]);
+    if (!active || !student) {
+      this.logger.error(`Add-on paid but there's nothing active to add it to (attempt ${attempt.id}): check it by hand`);
+      return;
+    }
+    const invoiceNo = await this.nextInvoiceNo();
+    const had = asLines(active.addOns);
+    await this.prisma.$transaction(async (tx) => {
+      const merged = [...had, ...lines.filter(l => !had.some(x => x.kind === l.kind))];
+      if (kind === 'course') await tx.coursePurchase.update({ where: { id: active.id }, data: { addOns: merged as any } });
+      else await tx.packagePurchase.update({ where: { id: active.id }, data: { addOns: merged as any } });
+      await this.applyAddOns(tx, lines, event, active.id, kind);
+      if (student.countryId) {
+        if (kind === 'course') await this.creditCountryRepForCourse(tx, student.countryId, event.amountPaid, event.currency, active.id);
+        else await this.creditCountryRep(tx, student.countryId, event.amountPaid, event.currency, active.id);
+      }
+      await tx.paymentAttempt.update({ where: { id: attempt.id }, data: { invoiceNo, ...(kind === 'course' ? { coursePurchaseId: active.id } : { packagePurchaseId: active.id }) } });
+    });
+    const name = [student.firstName, student.lastName].filter(Boolean).join(' ') || student.email;
+    this.receiptPdf(event.studentId, 'addon', attempt.id).then(pdf => this.mail.sendPurchaseReceipt(
+      student.email, attempt.title, event.amountPaid, event.currency, invoiceNo, name, kind, pdf,
+    )).catch(() => {});
+    this.notifications.notify(event.studentId, {
+      type: 'system', title: 'Added to your ' + kind,
+      body: `${attempt.title} is ready.${lines.some(l => l.kind === 'live') ? ' You’re in the class now.' : ''}${lines.some(l => l.kind === 'mentorship') ? ' You can book your first mentor session.' : ''}`,
+      href: kind === 'course' ? `/student/courses/${id}` : `/packages/${id}`,
+    });
+    this.logger.log(`Add-on fulfilled: student=${event.studentId} ${kind}=${id} (${lines.map(l => l.kind).join(', ')})`);
+  }
+
+  /** What a course or package offers at checkout, ready to show: price, the class it joins, sessions in all */
+  async offeredAddOns(kind: string, id: string, viewerId?: string) {
+    const it = await this.addOnItem(kind, id);
+    const active = viewerId ? await this.activePurchase(kind, id, viewerId) : null;
     const live = it.config.live ? await this.prisma.cohort.findUnique({
       where: { id: it.config.live.cohortId },
       select: { id: true, name: true, teacher: { select: { name: true, firstName: true, lastName: true } }, liveClasses: { where: { status: 'SCHEDULED', scheduledAt: { gt: new Date() } }, orderBy: { scheduledAt: 'asc' }, take: 6, select: { scheduledAt: true } } },
@@ -834,6 +927,8 @@ export class PaymentsService {
     const t = live?.teacher;
     return {
       currency: it.currency, months: it.months,
+      // For a student who has it: which extras they already have, and until when
+      owned: !!active, accessUntil: active?.expiresAt ?? null, bought: asLines(active?.addOns).map(l => l.kind),
       live: it.config.live && live ? { price: it.config.live.price, cohortId: live.id, cohortName: live.name, teacher: t ? t.name || [t.firstName, t.lastName].filter(Boolean).join(' ') || null : null, next: live.liveClasses.map(c => c.scheduledAt) } : null,
       mentorship: it.config.mentorship ? { price: it.config.mentorship.price, perMonth: it.config.mentorship.perMonth, sessions: it.months ? it.config.mentorship.perMonth * it.months : null } : null,
     };
