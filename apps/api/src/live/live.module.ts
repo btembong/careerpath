@@ -11,12 +11,16 @@ import { MailModule } from '../mail/mail.module';
 import { ClassToolsController } from './class-tools.controller';
 import { ClassToolsService } from './class-tools.service';
 import { TestCentreModule } from '../test-centre/test-centre.module';
+import { AuditModule } from '../audit/audit.module';
+import { CohortPayController } from './cohort-pay.controller';
+import { CohortPayService } from './cohort-pay.service';
 
 @Module({
   imports: [
     DailyModule,
     MailModule,
     TestCentreModule,
+    AuditModule,
     ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -26,8 +30,8 @@ import { TestCentreModule } from '../test-centre/test-centre.module';
       }),
     }),
   ],
-  controllers: [LiveController, LiveInsightsController, ClassToolsController],
-  providers: [LiveService, LiveInsightsService, WhiteboardGateway, ClassToolsService],
+  controllers: [LiveController, LiveInsightsController, ClassToolsController, CohortPayController],
+  providers: [LiveService, LiveInsightsService, WhiteboardGateway, ClassToolsService, CohortPayService],
   exports: [WhiteboardGateway],
 })
 export class LiveModule {}

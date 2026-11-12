@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import { MentorRates } from '@/components/admin/MentorRates';
+import { CohortRates } from '@/components/admin/CohortRates';
 import api from '@/lib/api';
 
 interface Row {
@@ -24,17 +25,17 @@ interface Data {
 const short = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const pct = (n: number | null) => (n == null ? '—' : `${n}%`);
 
-/** Commissions: who earns what from courses (shares of sales) and from mentoring (a fee per session) */
+/** Commissions: who earns what from courses (shares of sales), cohorts (live classes and a share) and mentoring (per session) */
 export default function CommissionsPage() {
-  const [section, setSection] = useState<'courses' | 'mentors'>('courses');
+  const [section, setSection] = useState<'courses' | 'cohorts' | 'mentors'>('courses');
   const switcher = (
     <span role="group" aria-label="Commissions for" className="flex gap-0.5 rounded-lg border border-line bg-white p-[3px] text-[12.5px]">
-      {([['courses', 'Courses'], ['mentors', 'Mentors']] as const).map(([k, l]) => (
+      {([['courses', 'Courses'], ['cohorts', 'Cohorts'], ['mentors', 'Mentors']] as const).map(([k, l]) => (
         <button key={k} onClick={() => setSection(k)} aria-pressed={section === k} className={clsx('h-7 rounded-md px-2.5 text-navy', section === k ? 'bg-accent-soft font-bold' : 'hover:bg-subtle')}>{l}</button>
       ))}
     </span>
   );
-  return section === 'mentors' ? <MentorRates switcher={switcher} /> : <CourseCommissions switcher={switcher} />;
+  return section === 'mentors' ? <MentorRates switcher={switcher} /> : section === 'cohorts' ? <CohortRates switcher={switcher} /> : <CourseCommissions switcher={switcher} />;
 }
 
 function CourseCommissions({ switcher }: { switcher: React.ReactNode }) {

@@ -15,6 +15,7 @@ import { PaystackGateway } from './gateways/paystack.gateway';
 import { TranzakGateway } from './gateways/tranzak.gateway';
 import { StripeGateway } from './gateways/stripe.gateway';
 import { BillingService } from './billing.service';
+import { cohortRates, shareFor } from '../live/cohort-rates';
 import {
   PaymentGateway,
   PurchaseCompletedEvent,
@@ -475,12 +476,22 @@ export class PaymentsService {
         },
       });
 
-      // 2. Revenue split: courses → teacher + reviewer wallets
+      // 2. Revenue split. A package linked to a cohort pays the cohort teacher's share off the top;
+      //    the rest is split across the courses → teacher + reviewer wallets
+      let forCourses = event.amountPaid;
+      if (pkg.cohortId) {
+        const cohort = await tx.cohort.findUnique({ where: { id: pkg.cohortId }, select: { teacherId: true } });
+        const share = cohort ? Math.floor((event.amountPaid * shareFor(await cohortRates(this.prisma), pkg.cohortId)) / 100) : 0;
+        if (cohort && share > 0) {
+          await this.ensureWalletAndCredit(tx, cohort.teacherId, share, event.currency, purchase.id, null, 'COHORT_SHARE');
+          forCourses -= share;
+        }
+      }
       await this.creditCourseCommissions(
         tx,
         purchase.id,
         pkg.courseIds,
-        event.amountPaid,
+        forCourses,
         event.currency,
       );
 

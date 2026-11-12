@@ -395,6 +395,11 @@ model LiveClass {
   /// Daily cloud recording id; a short-lived watch link is fetched from Daily when someone opens it
   recordingId        String?
   whiteboardSnapshot String?
+  /// Pay for teaching it: null until settled, then PAID or MISSED (the teacher never joined)
+  teacherPay         String?
+  /// Minutes the teacher was paid for, and the amount (minor units)
+  teacherPaidMins    Int?
+  teacherPaidAmount  Int?
   attendance         LiveAttendance[]
   cohort             Cohort           @relation(fields: [cohortId], references: [id])
   polls              ClassPoll[]
