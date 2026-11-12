@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProgrammeType, ProgrammeScope } from '@prisma/client';
+import { teacherForStudents } from '../platform-courses/platform-courses.service';
 
 @Injectable()
 export class CatalogueService {
@@ -115,19 +116,21 @@ export class CatalogueService {
     if (opts.subjectId) where.subjectId = opts.subjectId;
     if (opts.isSoldIndividually) where.isSoldIndividually = true;
 
-    return this.prisma.platformCourse.findMany({
+    const rows = await this.prisma.platformCourse.findMany({
       where,
       select: {
-        id: true, title: true, description: true, coverUrl: true,
+        id: true, title: true, description: true, coverUrl: true, teacherPending: true,
         source: true, priceAmount: true, priceCurrency: true, isSoldIndividually: true,
         programme: { select: { id: true, name: true, shortName: true } },
         subject:   { select: { id: true, name: true } },
         level:     { select: { id: true, name: true } },
-        teacher:   { select: { id: true, email: true, name: true } },
+        teacher:   { select: { id: true, name: true } },
         _count:    { select: { modules: true, enrollments: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
+    // Public list: a course with no teacher yet shows no teacher
+    return rows.map(teacherForStudents);
   }
 
   /** All education systems with their levels */

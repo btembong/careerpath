@@ -276,8 +276,8 @@ export default function StudentCourseLandingPage() {
     ? totalSecs >= 3600 ? `${Math.floor(totalSecs / 3600)} h ${Math.round((totalSecs % 3600) / 60)} min` : `${Math.round(totalSecs / 60)} min`
     : '—';
   const teacherName = course.teacher
-    ? course.teacher.name || [course.teacher.firstName, course.teacher.lastName].filter(Boolean).join(' ') || course.teacher.email
-    : '—';
+    ? course.teacher.name || [course.teacher.firstName, course.teacher.lastName].filter(Boolean).join(' ') || null
+    : null;
   const programme = course.programme ? (course.programme.shortName ?? course.programme.name) : null;
   const subtitleParts = [`${modules.length} module${modules.length === 1 ? '' : 's'}`, `${progress.totalLessons} lesson${progress.totalLessons === 1 ? '' : 's'}`];
   const resumeHref = resumeLesson ? `/student/learn/${courseId}/lesson/${resumeLesson.id}` : undefined;
@@ -419,7 +419,7 @@ export default function StudentCourseLandingPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-3.5 px-6 pt-[22px] pb-7">
-              {[{ label: 'Teacher', value: teacherName, d: P.user }, { label: 'Email', value: course.teacher?.email ?? '—', d: P.mail }].map(f => (
+              {(teacherName ? [{ label: 'Teacher', value: teacherName, d: P.user }] : []).map(f => (
                 <div key={f.label} className="flex items-center gap-3">
                   <span className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-md bg-subtle text-ink2">
                     <Glyph d={f.d} size={16} />
@@ -430,7 +430,12 @@ export default function StudentCourseLandingPage() {
                   </div>
                 </div>
               ))}
-              <Link href="/student/messages" className={clsx(btnSecondary, 'mt-1 self-start')}>Message the teacher</Link>
+              {teacherName
+                ? <Link href="/student/messages" className={clsx(btnSecondary, 'mt-1 self-start')}>Message the teacher</Link>
+                : <>
+                    <p className="text-[13.5px] text-ink2">This course doesn’t have a teacher yet. Questions about it go to CareerPath Africa.</p>
+                    <Link href="/student/support" className={clsx(btnSecondary, 'self-start')}>Ask CareerPath</Link>
+                  </>}
             </div>
           )}
         </aside>

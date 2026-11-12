@@ -125,7 +125,7 @@ export class PackagesService {
       this.prisma.platformCourse.findMany({
         where: { id: { in: pkg.courseIds }, status: 'PUBLISHED' },
         select: {
-          id: true, title: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true, language: true,
+          id: true, title: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true, language: true, teacherPending: true,
           teacher: { select: { name: true, firstName: true, lastName: true } },
           modules: { select: { lessons: { select: { id: true, durationSecs: true } } } },
         },
@@ -189,7 +189,7 @@ export class PackagesService {
       courses: ordered.map(c => {
         const lessons = c.modules.flatMap(m => m.lessons);
         return {
-          id: c.id, title: c.title, teacher: nameOf(c.teacher), language: c.language,
+          id: c.id, title: c.title, teacher: c.teacherPending ? null : nameOf(c.teacher), language: c.language,
           modules: c.modules.length, lessons: lessons.length,
           minutes: Math.round(lessons.reduce((n, l) => n + (l.durationSecs ?? 0), 0) / 60),
           price: c.isSoldIndividually && c.priceAmount != null && c.priceCurrency ? { amount: c.priceAmount, currency: c.priceCurrency } : null,

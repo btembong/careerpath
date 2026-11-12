@@ -284,6 +284,25 @@ export default function PackageDetailPage() {
             <p className="text-center text-[12.5px] text-muted">{momo ? 'MTN MoMo or Orange Money' : 'Card, bank or mobile money'} · have a coupon? Add it at checkout</p>
           </>}
         </aside>
+        {/* Room for the phone buy bar, so it never covers the end of the page */}
+        <div className="h-16 w-full lg:hidden" aria-hidden />
+      </div>
+
+      {/* Phones: the buy card sits at the end of the page, so buying stays one tap away */}
+      <div className="fixed left-2.5 right-2.5 z-[50] flex items-center gap-3 rounded-[14px] border border-line bg-white p-2.5 pl-4 shadow-[0_12px_32px_rgba(7,32,97,0.22)] bottom-[calc(12px+env(safe-area-inset-bottom))] [html[data-tabbar=shown]_&]:bottom-[calc(90px+env(safe-area-inset-bottom))] lg:hidden">
+        {owned ? <>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13.5px] font-bold text-navy">This package is yours</p>
+            <p className="truncate text-xs text-muted">{d.mine!.expiresAt ? `Access until ${longDate(d.mine!.expiresAt)}` : 'No time limit'}</p>
+          </div>
+          <Link href={d.courses[0] ? `/student/learn/${d.courses[0].id}` : '/student/courses'} className="inline-flex h-11 flex-shrink-0 items-center rounded-md bg-azure-strong px-4 text-sm font-semibold text-on-accent">Continue learning</Link>
+        </> : <>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-extrabold text-navy">{money(d.priceAmount, d.currency)}</p>
+            <p className="truncate text-xs text-muted">{saving != null ? `Saves ${money(saving, d.currency)}` : `One payment · ${d.validityDays ? `${access.toLowerCase()} of access` : 'no time limit'}`}</p>
+          </div>
+          <Link href={`/packages/${d.id}/checkout`} className="inline-flex h-11 flex-shrink-0 items-center rounded-md bg-azure-strong px-4 text-sm font-semibold text-on-accent">{expired ? 'Buy again' : 'Get this package'}</Link>
+        </>}
       </div>
     </div>
   );

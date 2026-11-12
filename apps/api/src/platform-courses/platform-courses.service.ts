@@ -73,7 +73,7 @@ export class PlatformCoursesService {
     if (subjectId) where.subjectId = subjectId;
     if (source) where.source = source;
 
-    return this.prisma.platformCourse.findMany({
+    const rows = await this.prisma.platformCourse.findMany({
       where,
       include: {
         programme: { select: { id: true, name: true, shortName: true, type: true } },
@@ -84,6 +84,9 @@ export class PlatformCoursesService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    // Staff see who holds each course; everyone else gets only real teachers, without emails
+    const staff = role === UserRole.ADMIN || role === UserRole.TEACHER || role === UserRole.SUBJECT_REVIEWER;
+    return staff ? rows : rows.map(teacherForStudents);
   }
 
   // ── Bulk Assignment ───────────────────────────────────────
@@ -168,7 +171,7 @@ export class PlatformCoursesService {
     if (await this.isCourseStaff(course, viewer)) return course;
     const hasAccess = isStudent && (await this.studentHasCourseAccess(viewer.id, id));
     return {
-      ...course,
+      ...teacherForStudents(course),
       hasAccess,
       modules: course.modules.map(m => ({
         ...m,
@@ -1286,6 +1289,17 @@ export class PlatformCoursesService {
 
 /** Placeholder sent to students instead of a stored video's address. */
 const STORED_VIDEO = 'stored-video';
+
+/**
+ * The teacher as students may see them: no one when the course has no teacher yet (it's only held by an
+ * admin or the system account), and never their email address.
+ */
+export function teacherForStudents<C extends { teacherPending?: boolean | null; teacher?: object | null }>(c: C): C {
+  if (!c.teacher) return c;
+  if (c.teacherPending) return { ...c, teacher: null };
+  const { email: _hidden, ...teacher } = c.teacher as Record<string, unknown>;
+  return { ...c, teacher } as C;
+}
 
 function courseIncludes() {
   return {
