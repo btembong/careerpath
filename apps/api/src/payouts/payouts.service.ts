@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { payoutMinimums, minimumFor } from './payout-minimum';
 import { MailService } from '../mail/mail.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -46,46 +47,36 @@ export class PayoutsService {
       throw new BadRequestException('periodEnd must be after periodStart');
     }
 
-    // Find all wallets with unsettled credits in the period
+    // Every wallet with credits up to the end of this period. What a statement covers is everything
+    // earned since that person's previous statement, so a run below the minimum rolls over, never lost.
     const wallets = await this.prisma.wallet.findMany({
-      where: {
-        transactions: {
-          some: {
-            type: 'CREDIT',
-            source: { not: 'PAYOUT' },
-            createdAt: { gte: periodStart, lte: periodEnd },
-          },
-        },
-      },
-      include: {
-        user: { select: { role: true } },
-        transactions: {
-          where: {
-            type: 'CREDIT',
-            source: { not: 'PAYOUT' },
-            createdAt: { gte: periodStart, lte: periodEnd },
-          },
-        },
-      },
+      where: { transactions: { some: { type: 'CREDIT', source: { not: 'PAYOUT' }, createdAt: { lte: periodEnd } } } },
+      include: { user: { select: { role: true } } },
     });
+    const minimums = await payoutMinimums(this.prisma);
 
     const statements = [];
+    const rolledOver: { userId: string; amount: number; currency: string }[] = [];
 
     for (const wallet of wallets) {
       const recipientType = RECIPIENT_ROLE_MAP[wallet.user.role];
       if (!recipientType) continue;
 
+      const previous = await this.prisma.payoutStatement.findFirst({ where: { recipientId: wallet.userId }, orderBy: { periodEnd: 'desc' }, select: { periodEnd: true } });
+      const from = previous?.periodEnd && previous.periodEnd < periodEnd ? previous.periodEnd : null;
+      const unsettled = await this.prisma.walletTransaction.findMany({
+        where: { walletId: wallet.id, type: 'CREDIT', source: { not: 'PAYOUT' }, createdAt: { lte: periodEnd, ...(from && { gt: from }) } },
+        select: { amount: true, createdAt: true },
+      });
       // Sum unsettled credits — all in the wallet's single currency (no cross-currency sum)
-      const total = wallet.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+      const total = unsettled.reduce((sum, tx) => sum + tx.amount, 0);
       if (total === 0) continue;
+      if (total < minimumFor(minimums, wallet.currency)) { rolledOver.push({ userId: wallet.userId, amount: total, currency: wallet.currency }); continue; }
+      const coversFrom = from ?? unsettled.reduce((a, t) => (t.createdAt < a ? t.createdAt : a), periodStart);
 
       // Skip if a statement already exists for this wallet + period
       const existing = await this.prisma.payoutStatement.findFirst({
-        where: {
-          recipientId: wallet.userId,
-          periodStart,
-          periodEnd,
-        },
+        where: { recipientId: wallet.userId, periodEnd },
       });
       if (existing) continue;
 
@@ -93,7 +84,7 @@ export class PayoutsService {
         data: {
           recipientId: wallet.userId,
           recipientType: recipientType as any,
-          periodStart,
+          periodStart: coversFrom,
           periodEnd,
           amount: total,
           currency: wallet.currency,
@@ -117,7 +108,7 @@ export class PayoutsService {
         select: { email: true },
       });
       if (recipient) {
-        const periodLabel = `${periodStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} – ${periodEnd.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+        const periodLabel = `${coversFrom.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} – ${periodEnd.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
         this.mail.sendPayoutInitiated(recipient.email, total, wallet.currency, periodLabel).catch(() => {});
       }
     }
@@ -125,6 +116,7 @@ export class PayoutsService {
     return {
       generated: statements.length,
       statements,
+      rolledOver,
     };
   }
 

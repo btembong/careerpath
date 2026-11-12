@@ -731,6 +731,8 @@ model WalletTransaction {
   packagePurchaseId String?
   courseId          String?
   description       String?
+  /// The admin who added a manual credit
+  createdById       String?
   createdAt         DateTime         @default(now())
   coursePurchaseId  String?
   coursePurchase    CoursePurchase?  @relation(fields: [coursePurchaseId], references: [id])
@@ -1679,6 +1681,14 @@ enum WalletTxSource {
   REVIEW_COMMISSION
   PAYOUT
   ADJUSTMENT
+  /// Added by an admin by hand, with the reason in description
+  MANUAL_CREDIT
+  /// A completed 1-to-1 mentorship session
+  MENTOR_SESSION
+  /// A live class taught (paid per class hour)
+  LIVE_CLASS
+  /// The cohort teacher's share of a sale that put a student in their class
+  COHORT_SHARE
 }
 
 enum PayoutRecipientType {

@@ -1,232 +1,196 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import Link from 'next/link';
+import { clsx } from 'clsx';
+import { minorToMajor } from '@cpa/shared';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card, IconBox } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
-import { SkeletonTopbar, SkeletonTable } from '@/components/ui/Skeleton';
-import { Icon } from '@/components/ui/Icon';
+import { KIND_COLOURS, KpiTile, SplitBar, walletMoney } from '@/components/wallet/WalletCharts';
+import { AddCreditDialog } from '@/components/admin/AddCreditDialog';
+import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
-const ROLE_LABEL: Record<string, string> = {
-  TEACHER: 'Teacher',
-  SUBJECT_REVIEWER: 'Reviewer',
-  COUNTRY_REP: 'Country Rep',
-};
+type Status = 'ready' | 'missing' | 'low' | 'nothing';
+interface Earner { walletId: string; userId: string; name: string; email: string; role: string; owed: number; currency: string; series: number[]; status: Status; lastPayout: { amount: number; currency: string; at: string | null } | null }
+interface Overview {
+  currency: string; minimum: number; owed: number; owedPeople: number;
+  owedByRole: { role: string; label: string; amount: number }[]; otherCurrencies: { currency: string; amount: number }[];
+  nextRun: string; run: { ready: number; missing: number; low: number };
+  months: string[]; kpis: { earned: number[]; paid: number[]; sold: number[]; kept: (number | null)[] };
+  earners: Earner[]; byKind: { name: string; amount: number }[];
+  manualCredits: { amount: number; currency: string; reason: string | null; at: string; to: string; by: string | null }[];
+}
 
-const ROLE_VARIANT: Record<string, 'active' | 'muted' | 'default'> = {
-  TEACHER: 'active',
-  SUBJECT_REVIEWER: 'default',
-  COUNTRY_REP: 'muted',
+const ROLE: Record<string, string> = { TEACHER: 'Teacher', SUBJECT_REVIEWER: 'Reviewer', COUNTRY_REP: 'Country rep' };
+const FILTERS: [string, string][] = [['all', 'All'], ['TEACHER', 'Teachers'], ['SUBJECT_REVIEWER', 'Reviewers'], ['COUNTRY_REP', 'Reps']];
+const STATUS: Record<Status, [string, string]> = {
+  ready: ['Ready', 'bg-[#E6F5EE] text-[#1F6B47]'], missing: ['Missing details', 'bg-[#FDECEC] text-[#A23434]'],
+  low: ['Below minimum', 'bg-[#FFF6E5] text-[#8A5A0B]'], nothing: ['Nothing owed', 'bg-subtle text-muted'],
 };
+const SOURCE: Record<string, string> = {
+  COURSE_SALE: 'Course sale', COUNTRY_BONUS: 'Rep commission or bonus', REVIEW_COMMISSION: 'Review share', PAYOUT: 'Payout', ADJUSTMENT: 'Adjustment',
+  MANUAL_CREDIT: 'Added by admin', MENTOR_SESSION: 'Mentorship session', LIVE_CLASS: 'Live class taught', COHORT_SHARE: 'Cohort share',
+};
+const fcfa = (c: string) => (c === 'XAF' || c === 'XOF' ? 'FCFA' : c);
+const initials = (n: string) => n.replace(/^(Dr|Mr|Mrs|Ms|Prof)\.?\s+/i, '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+const change = (s: number[]) => { const a = s[s.length - 1], b = s[s.length - 2]; return b ? Math.round(((a - b) / b) * 100) : null; };
 
-const SOURCE_LABEL: Record<string, string> = {
-  COURSE_SALE:       'Course sale',
-  COUNTRY_BONUS:     'Country bonus',
-  REVIEW_COMMISSION: 'Review commission',
-  PAYOUT:            'Payout',
-  ADJUSTMENT:        'Adjustment',
-};
+function Trend({ series, label }: { series: number[]; label: string }) {
+  const max = Math.max(...series), min = Math.min(...series), r = max - min || 1;
+  const pts = series.map((v, i) => `${Math.round((i * 120) / Math.max(1, series.length - 1))},${Math.round(26 - ((v - min) / r) * 22)}`).join(' ');
+  return <svg role="img" aria-label={label} viewBox="0 0 120 30" preserveAspectRatio="none" className="block h-[30px] w-[120px]"><polyline points={pts} fill="none" stroke="#3F6FE8" strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" /></svg>;
+}
 
 export default function AdminWalletsPage() {
-  const [wallets,  setWallets]  = useState<any[]>([]);
-  const [detail,   setDetail]   = useState<any>(null);
-  const [loading,  setLoading]  = useState(true);
-  const [detailId, setDetailId] = useState<string | null>(null);
-  const [detLoading, setDetLoading] = useState(false);
+  const [d, setD] = useState<Overview | null>(null);
+  const [filter, setFilter] = useState('all');
+  const [q, setQ] = useState('');
+  const [crediting, setCrediting] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
+  const [detail, setDetail] = useState<any>(null);
 
-  useEffect(() => {
-    api.get('/wallets/admin/wallets')
-      .then(r => setWallets(r.data ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const load = () => api.get('/wallets/admin/overview').then(r => setD(r.data)).catch(e => notify.error(e?.response?.data?.message ?? 'Could not load wallets'));
+  useEffect(() => { load(); }, []);
 
-  async function openDetail(wallet: any) {
-    if (detailId === wallet.id) { setDetailId(null); setDetail(null); return; }
-    setDetailId(wallet.id);
-    setDetLoading(true);
-    try {
-      const r = await api.get(`/wallets/admin/wallets/${wallet.id}`);
-      setDetail(r.data);
-    } catch { setDetail(null); }
-    finally { setDetLoading(false); }
+  async function toggle(e: Earner) {
+    if (open === e.walletId) { setOpen(null); setDetail(null); return; }
+    setOpen(e.walletId); setDetail(null);
+    try { setDetail((await api.get(`/wallets/admin/wallets/${e.walletId}`)).data); } catch { setDetail({ transactions: [] }); }
   }
 
-  if (loading) return (
-    <div className="flex flex-col min-h-full">
-      <SkeletonTopbar />
-      <div className="flex-1 p-6 space-y-5 max-w-6xl mx-auto w-full">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[0,1,2,3].map(i => <div key={i} className="h-20 rounded-2xl bg-cloud animate-pulse" />)}
-        </div>
-        <SkeletonTable />
-      </div>
-    </div>
-  );
+  const c = d?.currency ?? 'XAF';
+  const next = d ? new Date(d.nextRun) : null;
+  const daysLeft = next ? Math.max(0, Math.ceil((+next - Date.now()) / 86_400_000)) : null;
+  const owedSeries = d ? d.kpis.earned.map((_, i) => d.kpis.earned.slice(0, i + 1).reduce((a, b) => a + b, 0) - d.kpis.paid.slice(0, i + 1).reduce((a, b) => a + b, 0)) : [];
+  const rows = (d?.earners ?? []).filter(e => (filter === 'all' || e.role === filter) && (!q.trim() || `${e.name} ${e.email}`.toLowerCase().includes(q.trim().toLowerCase())));
+  const topOwed = Math.max(1, ...(d?.earners ?? []).map(e => e.owed));
+  const kept = d?.kpis.kept ?? [];
+  // Only meaningful when sales cover what was earned
+  const keptNow = kept[kept.length - 1] != null && (kept[kept.length - 1] as number) >= 0 ? kept[kept.length - 1] : null;
+  const keptChange = keptNow != null && kept[kept.length - 2] != null ? keptNow - (kept[kept.length - 2] as number) : null;
 
-  const totalBalance = wallets.reduce((s, w) => s + (w.balance ?? 0), 0);
-  const teachers  = wallets.filter(w => w.user?.role === 'TEACHER');
-  const reviewers = wallets.filter(w => w.user?.role === 'SUBJECT_REVIEWER');
-  const reps      = wallets.filter(w => w.user?.role === 'COUNTRY_REP');
+  function download() {
+    if (!d) return;
+    const text = [['Name', 'Email', 'Role', 'Owed', 'Currency', 'Status'], ...d.earners.map(e => [e.name, e.email, ROLE[e.role] ?? e.role, minorToMajor(e.owed, e.currency), e.currency, STATUS[e.status][0]])]
+      .map(r => r.map(x => /[",\n]/.test(String(x)) ? `"${String(x).replace(/"/g, '""')}"` : x).join(',')).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = 'wallets.csv'; a.click(); URL.revokeObjectURL(a.href);
+  }
 
   return (
-    <div className="flex flex-col min-h-full">
-      <Topbar title="Wallets" subtitle="All earner wallet balances and transaction history" />
+    <div className="flex min-h-full flex-col">
+      <Topbar title="Wallets" subtitle="What every teacher, reviewer and rep is owed, and the next payout run" actions={<>
+        <Button size="sm" variant="secondary" onClick={download} disabled={!d}>Download CSV</Button>
+        <Button size="sm" onClick={() => setCrediting(true)}>Add credit</Button>
+      </>} />
+      <AddCreditDialog open={crediting} onClose={() => setCrediting(false)} onDone={() => { load(); setOpen(null); setDetail(null); }} />
 
-      <div className="flex-1 p-6 space-y-6">
+      <div className="flex flex-col gap-[18px] p-4 lg:px-7 lg:py-6">
+        <div className="flex flex-wrap gap-[18px]">
+          <section className="keep-light relative flex min-w-0 flex-[999_1_520px] flex-col gap-3 overflow-hidden rounded-xl bg-[#3F6FE8] px-[26px] py-6 text-navy">
+            {owedSeries.length > 1 && (() => {
+              const s = owedSeries, max = Math.max(...s), min = Math.min(...s), r = max - min || 1;
+              return <svg aria-hidden viewBox="0 0 600 160" preserveAspectRatio="none" className="absolute bottom-0 right-0 h-[120px] w-[70%] opacity-35"><path fill="#FFFFFF" d={`M0,160 ${s.map((v, i) => `L${Math.round((i * 600) / (s.length - 1))},${Math.round(150 - ((v - min) / r) * 110)}`).join(' ')} L600,160 Z`} /></svg>;
+            })()}
+            <p className="relative text-[12.5px] font-bold uppercase tracking-[0.08em]">Owed to earners</p>
+            <p className="relative text-[clamp(36px,6vw,48px)] font-extrabold leading-none tracking-[-0.03em] tabular-nums">
+              <span className="mr-1.5 align-[14px] text-[22px] font-bold">{fcfa(c)}</span><span className="text-[#FFFFFF]">{d ? minorToMajor(d.owed, c).toLocaleString('en-GB') : '—'}</span>
+            </p>
+            <p className="relative text-sm text-navy/85">
+              {d ? `Across ${d.owedPeople} ${d.owedPeople === 1 ? 'person' : 'people'} · paid in the next run on ${next!.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : ' '}
+              {d?.otherCurrencies.length ? ` · plus ${d.otherCurrencies.map(o => walletMoney(o.amount, o.currency)).join(', ')}` : ''}
+            </p>
+            <div className="relative flex flex-wrap gap-2">
+              {d?.owedByRole.map(r => <span key={r.role} className="inline-flex h-[30px] items-center rounded-full bg-[#FFFFFF] px-3 text-[12.5px] font-semibold tabular-nums">{r.label} · {walletMoney(r.amount, c)}</span>)}
+            </div>
+          </section>
 
-        {/* Summary stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: 'Total wallets',    value: wallets.length,   icon: 'wallet' as const },
-            { label: 'Teacher wallets',  value: teachers.length,  icon: 'graduate' as const },
-            { label: 'Reviewer wallets', value: reviewers.length, icon: 'assignments' as const },
-            { label: 'Rep wallets',      value: reps.length,      icon: 'countries' as const },
-          ].map(s => (
-            <Card key={s.label} padding="md">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-royal/50">{s.label}</p>
-                  <p className="mt-1 text-2xl font-bold text-navy">{s.value}</p>
-                </div>
-                <IconBox><Icon name={s.icon} size={16} /></IconBox>
-              </div>
-            </Card>
-          ))}
+          <section className="flex min-w-0 flex-[1_1_320px] flex-col gap-3 rounded-xl border border-azure bg-white p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">Next payout run</p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-[34px] font-extrabold tracking-[-0.02em] text-navy">{next ? next.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</p>
+              {daysLeft != null && <span className="text-[13.5px] text-ink2">in {daysLeft} day{daysLeft === 1 ? '' : 's'}</span>}
+            </div>
+            <ul className="flex flex-col gap-2 text-[13px]">
+              <li className="flex justify-between"><span className="text-ink2">Ready to pay</span><strong className="text-navy">{d?.run.ready ?? '—'} {d?.run.ready === 1 ? 'person' : 'people'}</strong></li>
+              <li className="flex justify-between"><span className="text-ink2">Missing payout details</span><strong className={d?.run.missing ? 'text-[#A23434]' : 'text-navy'}>{d?.run.missing ?? '—'} {d?.run.missing === 1 ? 'person' : 'people'}</strong></li>
+              <li className="flex justify-between"><span className="text-ink2">Below the minimum{d?.minimum ? ` (${fcfa(c)} ${minorToMajor(d.minimum, c).toLocaleString('en-GB')})` : ''}</span><strong className="text-navy">{d?.run.low ?? '—'} {d?.run.low === 1 ? 'person' : 'people'}</strong></li>
+            </ul>
+            <Link href="/admin/payouts" className="inline-flex h-10 items-center justify-center rounded-md bg-azure-strong text-[13.5px] font-bold text-on-accent">Prepare statements</Link>
+          </section>
         </div>
 
-        {/* Wallet list */}
-        {wallets.length === 0 ? (
-          <Card padding="lg">
-            <EmptyState icon="wallet" title="No wallets yet" description="Wallets are created automatically when a first commission is credited." />
-          </Card>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">ALL WALLETS</p>
-            <Card padding="none">
-              <ul className="divide-y divide-cloud">
-                {wallets.map((w: any) => (
-                  <li key={w.id}>
-                    <button
-                      onClick={() => openDetail(w)}
-                      className="w-full flex items-center gap-4 px-5 py-4 hover:bg-cloud/40 transition-colors text-left"
-                    >
-                      <IconBox className="h-10 w-10 rounded-xl flex-shrink-0">
-                        <Icon name="wallet" size={16} />
-                      </IconBox>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-navy truncate">{w.user?.email ?? '—'}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <Badge variant={ROLE_VARIANT[w.user?.role] ?? 'muted'}>
-                            {ROLE_LABEL[w.user?.role] ?? w.user?.role}
-                          </Badge>
-                          <span className="text-[11px] text-royal/40">{w._count?.transactions ?? 0} transactions</span>
-                        </div>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-sm font-bold text-navy">
-                          {w.currency} {Number(w.balance ?? 0).toLocaleString()}
-                        </p>
-                        <p className="text-[11px] text-royal/40">balance</p>
-                      </div>
-                      <Icon
-                        name="chevronDown"
-                        size={14}
-                        className={`text-royal/30 flex-shrink-0 transition-transform ${detailId === w.id ? 'rotate-180' : ''}`}
-                      />
-                    </button>
+        <dl className="-mx-4 flex snap-x gap-3.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:overflow-visible sm:px-0 sm:pb-0 sm:[grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
+          {d ? <>
+            <KpiTile className="min-w-[200px] snap-start sm:min-w-0" label="Earned this month" value={walletMoney(d.kpis.earned[5], c)} change={change(d.kpis.earned)} changeIsPct sub={`by ${d.earners.filter(e => e.series[5] > 0).length} people`} series={d.kpis.earned} />
+            <KpiTile className="min-w-[200px] snap-start sm:min-w-0" label="Paid out this month" value={walletMoney(d.kpis.paid[5], c)} change={change(d.kpis.paid)} changeIsPct sub="to payout accounts" series={d.kpis.paid} />
+            <KpiTile className="min-w-[200px] snap-start sm:min-w-0" label="Sales this month" value={walletMoney(d.kpis.sold[5], c)} change={change(d.kpis.sold)} changeIsPct sub="courses and packages" series={d.kpis.sold} />
+            <KpiTile className="min-w-[200px] snap-start sm:min-w-0" label="CareerPath kept" value={keptNow != null ? `${keptNow}%` : '—'} change={keptChange} changeIsPct={false} sub="of sales, after earnings" series={kept.map(k => (k != null && k >= 0 ? k : 0))} />
+          </> : Array.from({ length: 4 }, (_, i) => <div key={i} className="h-[150px] min-w-[200px] animate-pulse rounded-[10px] border border-line bg-white sm:min-w-0" />)}
+        </dl>
 
-                    {/* Expanded transaction detail */}
-                    <AnimatePresence>
-                    {detailId === w.id && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="overflow-hidden"
-                      >
-                      <div className="border-t border-cloud bg-surface px-5 py-4">
-                        {detLoading ? (
-                          <div className="flex items-center justify-center py-6">
-                            <div className="h-5 w-5 rounded-full border-2 border-azure border-t-transparent animate-spin" />
-                          </div>
-                        ) : !detail ? (
-                          <p className="text-sm text-royal/40 py-2">Failed to load transactions.</p>
-                        ) : (
-                          <div className="space-y-4">
-                            {/* Mini stats */}
-                            <div className="grid grid-cols-3 gap-3">
-                              {[
-                                {
-                                  label: 'Available balance',
-                                  value: `${detail.currency} ${Number(detail.balance ?? 0).toLocaleString()}`,
-                                },
-                                {
-                                  label: 'Total credited',
-                                  value: `${detail.currency} ${
-                                    (detail.transactions ?? [])
-                                      .filter((t: any) => t.type === 'CREDIT')
-                                      .reduce((s: number, t: any) => s + t.amount, 0)
-                                      .toLocaleString()
-                                  }`,
-                                },
-                                {
-                                  label: 'Total debited',
-                                  value: `${detail.currency} ${
-                                    (detail.transactions ?? [])
-                                      .filter((t: any) => t.type === 'DEBIT')
-                                      .reduce((s: number, t: any) => s + t.amount, 0)
-                                      .toLocaleString()
-                                  }`,
-                                },
-                              ].map(s => (
-                                <div key={s.label} className="rounded-xl bg-white border border-cloud px-4 py-3">
-                                  <p className="text-[10px] text-royal/50 mb-0.5">{s.label}</p>
-                                  <p className="text-sm font-bold text-navy">{s.value}</p>
+        <div className="flex flex-wrap items-start gap-[18px]">
+          <section className="min-w-0 flex-[999_1_640px] rounded-xl border border-line bg-white">
+            <div className="flex flex-wrap items-center gap-2.5 px-[18px] py-3.5">
+              <h2 className="flex-1 text-base font-bold text-navy">Earners</h2>
+              <span role="group" aria-label="Who" className="flex gap-0.5 rounded-lg border border-line p-[3px] text-[12.5px]">
+                {FILTERS.map(([k, l]) => <button key={k} onClick={() => setFilter(k)} aria-pressed={filter === k} className={clsx('h-7 rounded-md px-2.5 text-navy', filter === k ? 'bg-accent-soft font-bold' : 'hover:bg-subtle')}>{l}</button>)}
+              </span>
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search people" aria-label="Search people" className="input-base h-[34px] w-full sm:w-[200px]" />
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] border-collapse text-[13.5px]">
+                <thead><tr className="bg-subtle text-left text-[11.5px] uppercase tracking-[0.05em] text-muted">
+                  <th className="px-[18px] py-2.5 font-semibold">Person</th><th className="whitespace-nowrap px-3 py-2.5 font-semibold">Owed now</th><th className="px-3 py-2.5 font-semibold">Last 6 months</th><th className="px-3 py-2.5 font-semibold">Last payout</th><th className="whitespace-nowrap px-[18px] py-2.5 text-right font-semibold">Payout details</th>
+                </tr></thead>
+                <tbody>
+                  {!d ? <tr><td colSpan={5}><div className="m-4 h-32 animate-pulse rounded-md bg-subtle" /></td></tr>
+                    : rows.length === 0 ? <tr><td colSpan={5} className="px-4 py-10 text-center text-[13px] text-ink2">{d.earners.length ? 'No one matches.' : 'No one has a wallet yet. Wallets open with a person’s first earning.'}</td></tr>
+                    : rows.flatMap(e => [
+                      <tr key={e.walletId} onClick={() => toggle(e)} className={clsx('cursor-pointer border-t border-line hover:bg-subtle', open === e.walletId && 'bg-subtle')}>
+                        <td className="px-[18px] py-[11px]"><div className="flex items-center gap-2.5">
+                          <span className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-extrabold text-azure-strong">{initials(e.name)}</span>
+                          <div className="min-w-0" title={e.email}><p className="truncate font-semibold text-navy">{e.name}</p><p className="truncate text-xs text-muted">{ROLE[e.role] ?? e.role}</p></div>
+                        </div></td>
+                        <td className="w-[200px] px-3 py-[11px]"><p className="whitespace-nowrap font-bold text-navy tabular-nums">{walletMoney(e.owed, e.currency)}</p>
+                          <span className="mt-[5px] block h-1.5 rounded-[3px] bg-subtle"><span className="block h-1.5 rounded-[3px] bg-[#3F6FE8]" style={{ width: `${Math.max(e.owed > 0 ? 2 : 0, Math.round((e.owed / topOwed) * 100))}%` }} /></span></td>
+                        <td className="w-[140px] px-3 py-[11px]"><Trend series={e.series} label={`${e.name}: earnings over 6 months`} /></td>
+                        <td className="whitespace-nowrap px-3 py-[11px] text-ink2 tabular-nums">{e.lastPayout ? `${walletMoney(e.lastPayout.amount, e.lastPayout.currency)}${e.lastPayout.at ? ` · ${new Date(e.lastPayout.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}` : '—'}</td>
+                        <td className="px-[18px] py-[11px] text-right"><span className={clsx('inline-flex h-6 items-center whitespace-nowrap rounded-full px-[9px] text-xs font-bold', STATUS[e.status][1])}>{STATUS[e.status][0]}</span></td>
+                      </tr>,
+                      open === e.walletId && (
+                        <tr key={`${e.walletId}-d`} className="bg-subtle"><td colSpan={5} className="px-[18px] pb-3">
+                          {!detail ? <div className="h-16 animate-pulse rounded-md bg-white" /> : detail.transactions?.length ? (
+                            <div className="max-h-72 overflow-y-auto rounded-md border border-line bg-white">
+                              {detail.transactions.slice(0, 50).map((t: any) => (
+                                <div key={t.id} className="flex items-center gap-3 border-b border-line px-3 py-2 text-[13px] last:border-b-0">
+                                  <span className="w-[150px] flex-shrink-0 font-semibold text-navy">{SOURCE[t.source] ?? t.source}</span>
+                                  <span className="min-w-0 flex-1 truncate text-ink2">{t.description ?? ''}</span>
+                                  <span className="flex-shrink-0 text-xs text-muted">{new Date(t.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                  <strong className={clsx('w-[120px] flex-shrink-0 text-right tabular-nums', t.type === 'DEBIT' ? 'text-muted' : 'text-navy')}>{t.type === 'DEBIT' ? '−' : '+'} {walletMoney(t.amount, t.currency)}</strong>
                                 </div>
                               ))}
                             </div>
+                          ) : <p className="py-3 text-[13px] text-ink2">No transactions yet.</p>}
+                        </td></tr>
+                      ),
+                    ])}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
-                            {/* Transaction list */}
-                            {(detail.transactions ?? []).length === 0 ? (
-                              <p className="text-sm text-royal/40 py-2">No transactions yet.</p>
-                            ) : (
-                              <ul className="divide-y divide-cloud rounded-xl border border-cloud bg-white overflow-hidden">
-                                {(detail.transactions as any[]).map((tx: any) => (
-                                  <li key={tx.id} className="flex items-center gap-3 px-4 py-3">
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-xs font-semibold text-navy">
-                                        {SOURCE_LABEL[tx.source] ?? tx.source}
-                                        {tx.description && <span className="font-normal text-royal/50"> · {tx.description}</span>}
-                                      </p>
-                                      <p className="text-[11px] text-royal/40">
-                                        {new Date(tx.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}
-                                        {tx.courseId && <span> · course {tx.courseId.slice(0, 8)}…</span>}
-                                      </p>
-                                    </div>
-                                    <p className={`text-xs font-bold flex-shrink-0 ${tx.type === 'CREDIT' ? 'text-azure' : 'text-red-500'}`}>
-                                      {tx.type === 'CREDIT' ? '+' : '−'}{tx.currency} {Number(tx.amount).toLocaleString()}
-                                    </p>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      </motion.div>
-                    )}
-                    </AnimatePresence>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          </div>
-        )}
+          <section className="flex min-w-0 flex-[1_1_300px] flex-col gap-3 rounded-xl border border-line bg-white p-5">
+            <div><h2 className="text-base font-bold text-navy">Earned this month, by kind</h2>
+              <p className="mt-0.5 text-[12.5px] text-muted">{d ? `${new Date().toLocaleDateString('en-GB', { month: 'long' })} so far · ${walletMoney(d.kpis.earned[5], c)}` : ' '}</p></div>
+            {d ? <SplitBar compact currency={c} items={d.byKind.map((k, i) => ({ name: k.name, amount: k.amount, colour: KIND_COLOURS[i % KIND_COLOURS.length] }))} /> : <div className="h-32 animate-pulse rounded-md bg-subtle" />}
+            <div className="mt-1 rounded-lg bg-subtle p-3">
+              <p className="text-[13px] font-bold text-navy">Recent manual credits</p>
+              {d?.manualCredits.length ? d.manualCredits.map((m, i) => (
+                <p key={i} className="mt-1 text-[12.5px] text-ink2">{walletMoney(m.amount, m.currency)} to {m.to} · {m.reason}{m.by ? ` · by ${m.by}` : ''}, {new Date(m.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p>
+              )) : <p className="mt-1 text-[12.5px] text-ink2">None yet. Use Add credit for work the rules don’t cover.</p>}
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );
