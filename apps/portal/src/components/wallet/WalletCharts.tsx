@@ -13,14 +13,14 @@ export const walletMoney = (amount: number, currency: string) => money(amount, c
 export const KIND_COLOURS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300'];
 
 /** Six (or more) values as a line with a soft area under it and the latest point marked */
-export function Sparkline({ series, label, className, height = 44 }: { series: number[]; label: string; className?: string; height?: number }) {
-  const w = 200, h = height;
+export function Sparkline({ series, label, className }: { series: number[]; label: string; className?: string }) {
+  const w = 200, h = 44;
   const max = Math.max(...series), min = Math.min(...series), r = max - min || 1;
   const pts = series.map((v, i) => [Math.round((i * w) / Math.max(1, series.length - 1)), Math.round(h - 4 - ((v - min) / r) * (h - 10))]);
   const line = pts.map(p => p.join(',')).join(' ');
   const last = pts[pts.length - 1] ?? [w, h];
   return (
-    <svg role="img" aria-label={label} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className={clsx('block w-full', className)} style={{ height }}>
+    <svg role="img" aria-label={label} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className={clsx('block w-full', className ?? 'h-[44px]')}>
       <path d={`M0,${h} L${pts.map(p => p.join(',')).join(' L')} L${w},${h} Z`} className="fill-accent-soft" />
       <polyline points={line} fill="none" stroke="#3F6FE8" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
       <circle cx={last[0]} cy={last[1]} r={3.5} fill="#3F6FE8" className="stroke-white dark:stroke-[#0F1A33]" strokeWidth={2} vectorEffect="non-scaling-stroke" />
@@ -34,18 +34,18 @@ export function KpiTile({ label, value, change, changeIsPct, sub, series, classN
 }) {
   const up = (change ?? 0) >= 0;
   return (
-    <div className={clsx('flex flex-col gap-1.5 rounded-[10px] border border-line bg-white px-4 pb-3 pt-4', className)}>
-      <dt className="flex items-center justify-between gap-2 text-[12.5px] font-semibold text-ink2">
+    <div className={clsx('flex flex-col gap-1 rounded-xl border border-line bg-white px-3 pb-2.5 pt-3 sm:gap-1.5 sm:rounded-[10px] sm:px-4 sm:pb-3 sm:pt-4', className)}>
+      <dt className="flex items-center justify-between gap-2 text-[11.5px] font-semibold text-ink2 sm:text-[12.5px]">
         {label}
         {change != null && change !== 0
-          ? <span className={clsx('inline-flex h-[22px] items-center rounded-full px-[7px] text-[11.5px] font-bold', up ? 'bg-[#E6F5EE] text-[#1F6B47]' : 'bg-[#FDECEC] text-[#A23434]')}>
+          ? <span className={clsx('hidden h-[22px] items-center rounded-full px-[7px] text-[11.5px] font-bold sm:inline-flex', up ? 'bg-[#E6F5EE] text-[#1F6B47]' : 'bg-[#FDECEC] text-[#A23434]')}>
               {up ? '+' : '−'}{Math.abs(change)}{changeIsPct ? '%' : ''}
             </span>
-          : <span className="text-[11.5px] text-muted">—</span>}
+          : <span className="hidden text-[11.5px] text-muted sm:inline">—</span>}
       </dt>
-      <dd className="text-[24px] font-extrabold tracking-[-0.01em] text-navy tabular-nums">{value}</dd>
-      {sub && <dd className="text-xs text-muted">{sub}</dd>}
-      <dd className="mt-1"><Sparkline series={series} label={`${label} over the last 6 months`} /></dd>
+      <dd className="text-[18px] font-extrabold tracking-[-0.01em] text-navy tabular-nums sm:text-[24px]">{value}</dd>
+      {sub && <dd className="hidden text-xs text-muted sm:block">{sub}</dd>}
+      <dd className="mt-1"><Sparkline series={series} label={`${label} over the last 6 months`} className="h-[30px] sm:h-[44px]" /></dd>
     </div>
   );
 }
