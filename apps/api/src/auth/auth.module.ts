@@ -10,6 +10,7 @@ import { MailModule } from '../mail/mail.module';
 import { PlatformCoursesModule } from '../platform-courses/platform-courses.module';
 import { OnboardingVideoModule } from '../onboarding-video/onboarding-video.module';
 import { ReferralsModule } from '../referrals/referrals.module';
+import { CourseAdminModule } from '../course-admin/course-admin.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ReferralsModule } from '../referrals/referrals.module';
     PlatformCoursesModule,
     OnboardingVideoModule,
     ReferralsModule,
+    CourseAdminModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

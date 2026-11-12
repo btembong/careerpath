@@ -4,6 +4,7 @@ import { CourseSource, CourseStatus, Prisma, UserProfile } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service';
 import { WordPressService, WpPullCourse } from '../wordpress/wordpress.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TeacherCoursesService } from './teacher-courses.service';
 import { cleanDescription, cleanTitle, decodeEntities, looksLikeJunk, norm } from './wp-text';
 
 export interface PullSettings { newStatus: 'DRAFT' | 'PUBLISHED'; nightly: boolean }
@@ -30,7 +31,7 @@ export class WpPullService {
   private readonly logger = new Logger(WpPullService.name);
   private last: { at: number; courses: WpPullCourse[]; terms: Term[]; emails: Map<number, string> } | null = null;
 
-  constructor(private prisma: PrismaService, private wp: WordPressService, private notifications: NotificationsService) {}
+  constructor(private prisma: PrismaService, private wp: WordPressService, private notifications: NotificationsService, private teacherCourses: TeacherCoursesService) {}
 
   // ── Settings ─────────────────────────────────────────────
 
@@ -284,7 +285,9 @@ export class WpPullService {
     await this.wp.invalidateCourseCache().catch(() => {});
     const pull = await this.prisma.wpPull.create({ data: { byId: admin.id, kind: 'IMPORT', ...counts } });
     this.last = null;
-    return { ...counts, pullId: pull.id };
+    // Courses whose WordPress author already teaches on the portal go straight to them
+    const linked = await this.teacherCourses.linkAllWaiting().catch(() => 0);
+    return { ...counts, linked, pullId: pull.id };
   }
 
   private snapshot(w: WpPullCourse, emails: Map<number, string>): Prisma.PlatformCourseUncheckedUpdateInput & Prisma.PlatformCourseUncheckedCreateInput {

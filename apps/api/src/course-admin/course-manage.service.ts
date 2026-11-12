@@ -3,6 +3,7 @@ import { CourseSource, CourseStatus, Prisma, UserProfile } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service';
 import { WpPullService } from './wp-pull.service';
 import { TutorImportService, ImportSummary } from './tutor-import.service';
+import { TeacherCoursesService } from './teacher-courses.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { priceEmail } from '../notifications/price-email';
 import { minorToMajor } from '@cpa/shared';
@@ -35,7 +36,7 @@ const UNTAGGED: Prisma.PlatformCourseWhereInput = { OR: [{ programmeId: null }, 
 /** The admin's view of every course: where it sits in the catalogue, who teaches it, and bulk changes */
 @Injectable()
 export class CourseManageService {
-  constructor(private prisma: PrismaService, private pull: WpPullService, private tutor: TutorImportService, private notifications: NotificationsService) {}
+  constructor(private prisma: PrismaService, private pull: WpPullService, private tutor: TutorImportService, private notifications: NotificationsService, private teacherCourses: TeacherCoursesService) {}
 
   /** Course ids that are in at least one package */
   private async packagedIds() {
@@ -194,13 +195,13 @@ export class CourseManageService {
           const t = await this.prisma.userProfile.findFirst({ where: { id: dto.teacherId, role: 'TEACHER' }, select: { id: true } });
           if (!t) throw new BadRequestException('That person isn’t a teacher');
           const r = await this.prisma.platformCourse.updateMany({ where: { id: { in: ids } }, data: { teacherId: t.id, teacherPending: false } });
-          await this.syncAssignedTeacher(ids, t.id);
+          await this.teacherCourses.syncAssignedTeacher(ids, t.id);
           return { updated: r.count };
         }
         // No teacher yet: CareerPath owns it through the admin making the change
         const r = await this.prisma.platformCourse.updateMany({ where: { id: { in: ids } }, data: { teacherId: admin.id, teacherPending: true } });
         // Nobody earns the teacher's share until a real teacher is assigned
-        await this.syncAssignedTeacher(ids, null);
+        await this.teacherCourses.syncAssignedTeacher(ids, null);
         return { updated: r.count };
       }
       case 'publish': {
@@ -309,19 +310,5 @@ export class CourseManageService {
       students: c._count.enrollments + c._count.coursePurchases, modules: c._count.modules,
       wpCategories: categories, suggestion: s && (s.programmeId || s.subjectId || s.levelId) ? s : null,
     };
-  }
-
-  /**
-   * Sales pay the teacher on the course assignment, so it must follow the course's teacher.
-   * A new assignment gets the default commission; an existing one keeps its percentage.
-   */
-  private async syncAssignedTeacher(courseIds: string[], teacherId: string | null) {
-    const row = await this.prisma.platformSetting.findUnique({ where: { key: 'pricing' } });
-    const pct = ((row?.value ?? {}) as { defaultTeacherCommissionPct?: number | null }).defaultTeacherCommissionPct ?? null;
-    await this.prisma.$transaction(courseIds.map(courseId => this.prisma.courseAssignment.upsert({
-      where: { courseId },
-      update: { teacherId },
-      create: { courseId, teacherId, teacherCommissionPct: teacherId ? pct : null },
-    })));
   }
 }

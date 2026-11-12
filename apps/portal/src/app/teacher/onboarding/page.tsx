@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/Select';
 import { VideoEmbed } from '@/components/ui/VideoEmbed';
 import { uploadVideo } from '@/lib/uploadVideo';
 import api, { setAuthToken } from '@/lib/api';
+import { notify } from '@/lib/notify';
 import { parseVideoUrl } from '@cpa/shared';
 
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -15,31 +16,34 @@ interface Subject { id: string; name: string; }
 interface Programme { id: string; name: string; shortName: string | null; subjects?: Subject[]; }
 
 const QUALIFICATIONS = [
-  { value: 'HIGH_SCHOOL',  label: 'High school',  icon: '🎒' },
-  { value: 'BACHELOR',     label: "Bachelor's",   icon: '🎓' },
-  { value: 'MASTER',       label: "Master's",     icon: '📜' },
-  { value: 'PHD',          label: 'PhD',          icon: '🔬' },
-  { value: 'PROFESSIONAL', label: 'Professional', icon: '🏅' },
+  { value: 'HIGH_SCHOOL',  label: 'High school' },
+  { value: 'BACHELOR',     label: "Bachelor's" },
+  { value: 'MASTER',       label: "Master's" },
+  { value: 'PHD',          label: 'PhD' },
+  { value: 'PROFESSIONAL', label: 'Professional' },
 ];
 const MODALITIES = [
-  { value: 'ONLINE',    label: 'Online',    emoji: '💻' },
-  { value: 'IN_PERSON', label: 'In-person', emoji: '🏫' },
-  { value: 'HYBRID',    label: 'Hybrid',    emoji: '🔄' },
+  { value: 'ONLINE',    label: 'Online' },
+  { value: 'IN_PERSON', label: 'In-person' },
+  { value: 'HYBRID',    label: 'Hybrid' },
 ];
 const STEP_COPY: Record<Step, { title: string; sub: string }> = {
   1: { title: 'Welcome to the teacher portal', sub: 'Your CareerPath Africa account is connected. Let’s finish your teacher profile.' },
   2: { title: 'What do you teach?',           sub: 'Students find teachers by programme and subject.' },
   3: { title: 'Tell students about you',       sub: 'Your bio appears on your teacher profile and mentor listing.' },
-  4: { title: 'Add an intro video',            sub: 'Optional now — but students can only book you for mentorship once you have one.' },
+  4: { title: 'Add an intro video',            sub: 'Optional for now. Students can only book you for mentorship once you have one.' },
   5: { title: 'One last thing',                sub: 'Review and accept the tutor agreement to start teaching.' },
 };
 
-const inputCls = 'w-full rounded-xl border border-cloud bg-white px-3.5 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40';
+const inputCls = 'w-full rounded-lg border border-cloud bg-white px-3.5 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40';
+const choiceCls = (on: boolean) => `rounded-lg border px-3 py-2.5 text-center text-[13px] font-semibold transition ${
+  on ? 'border-azure bg-azure/[0.07] text-navy' : 'border-cloud text-royal/70 hover:border-azure/40'
+}`;
 
 function Chip({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button type="button" onClick={onClick}
-      className={`rounded-full border-2 px-3 py-1.5 text-xs font-semibold transition ${
+      className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition ${
         selected ? 'border-azure bg-azure text-white' : 'border-cloud bg-white text-navy hover:border-azure/40'
       }`}>
       {children}
@@ -190,6 +194,13 @@ export default function TeacherOnboardingPage() {
         agreementVersion: 'v1.0',
       });
       if (data?.accessToken) await setAuthToken(data.accessToken, true);
+      // Their courses from careerpathafrica.com were linked to them: show them where they are
+      const linked = Number(data?.linkedCourses ?? 0);
+      if (linked > 0) {
+        notify.success(linked === 1 ? 'Your course from careerpathafrica.com is now in My courses' : `Your ${linked} courses from careerpathafrica.com are now in My courses`);
+        router.replace('/teacher/courses');
+        return;
+      }
       router.replace('/teacher/dashboard');
     } catch (err: any) {
       const m = err.response?.data?.message;
@@ -198,28 +209,29 @@ export default function TeacherOnboardingPage() {
     }
   }
 
+  // Set like the sign-in pages' blue panel and student onboarding: navy headline with its last word in white, no icon above
+  const title = step === 1 && form.firstName ? `Welcome, ${form.firstName}` : STEP_COPY[step].title;
+  const words = title.split(' ');
+  const lastWord = words.pop() ?? '';
+
   return (
-    <div className="min-h-screen bg-navy flex items-center justify-center p-4">
+    <div className="keep-light flex min-h-screen flex-col items-center bg-[#3F6FE8] px-4 py-10">
       <div className="w-full max-w-2xl">
-        <div className="text-center mb-6">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 backdrop-blur mb-4">
-            <Icon name="graduate" size={28} className="text-white" />
-          </div>
-          <h1 className="text-2xl font-black text-white mb-1">
-            {step === 1 && form.firstName ? `Welcome, ${form.firstName}!` : STEP_COPY[step].title}
+        <div className="mb-7 text-center">
+          <h1 className="mx-auto max-w-[760px] text-[clamp(30px,4.2vw,48px)] font-extrabold leading-[1.05] tracking-[-0.035em] text-navy [text-wrap:balance]">
+            {words.join(' ')} <span className="text-[#FFFFFF]">{lastWord}</span>
           </h1>
-          <p className="text-white/50 text-sm">{STEP_COPY[step].sub}</p>
+          <p className="mx-auto mt-3 max-w-[520px] text-[17px] leading-relaxed text-navy/80">{STEP_COPY[step].sub}</p>
+          <div className="mt-5 flex items-center justify-center gap-3">
+            {([1, 2, 3, 4, 5] as const).map(n => (
+              <span key={n} className={`h-2 rounded-full transition-all duration-300 ${
+                step === n ? 'w-8 bg-[#FFFFFF]' : step > n ? 'w-2 bg-navy' : 'w-2 bg-[#FFFFFF]/40'
+              }`} />
+            ))}
+          </div>
         </div>
 
-        <div className="flex items-center justify-center gap-3 mb-6">
-          {([1, 2, 3, 4, 5] as const).map(n => (
-            <div key={n} className={`h-2 rounded-full transition-all duration-300 ${
-              step === n ? 'w-8 bg-white' : step > n ? 'w-2 bg-azure' : 'w-2 bg-white/25'
-            }`} />
-          ))}
-        </div>
-
-        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+        <div className="overflow-hidden rounded-[10px] bg-white shadow-2xl">
           {loading ? (
             <div className="py-16 text-center text-sm text-royal/40">Loading your profile…</div>
           ) : (
@@ -227,6 +239,7 @@ export default function TeacherOnboardingPage() {
 
               {step === 1 && (
                 <>
+                  <p className="rounded-lg bg-azure/[0.07] px-3.5 py-2.5 text-[12.5px] text-royal">Courses you wrote on careerpathafrica.com are added to your portal when you finish.</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label className="space-y-1.5">
                       <span className="text-xs font-semibold text-navy">First name</span>
@@ -279,11 +292,8 @@ export default function TeacherOnboardingPage() {
                     <p className="text-xs font-semibold text-navy">Teaching style</p>
                     <div className="grid grid-cols-3 gap-2">
                       {MODALITIES.map(m => (
-                        <button key={m.value} type="button" onClick={() => set('teachingModality', m.value)}
-                          className={`rounded-xl border-2 p-3 text-center text-xs font-semibold transition ${
-                            form.teachingModality === m.value ? 'border-azure bg-azure/5 text-navy' : 'border-cloud text-royal/60 hover:border-azure/40'
-                          }`}>
-                          <span className="block text-lg mb-1">{m.emoji}</span>{m.label}
+                        <button key={m.value} type="button" onClick={() => set('teachingModality', m.value)} className={choiceCls(form.teachingModality === m.value)}>
+                          {m.label}
                         </button>
                       ))}
                     </div>
@@ -292,11 +302,8 @@ export default function TeacherOnboardingPage() {
                     <p className="text-xs font-semibold text-navy">Highest qualification</p>
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                       {QUALIFICATIONS.map(q => (
-                        <button key={q.value} type="button" onClick={() => set('qualification', q.value)}
-                          className={`rounded-xl border-2 p-2.5 text-center text-[11px] font-semibold transition ${
-                            form.qualification === q.value ? 'border-azure bg-azure/5 text-navy' : 'border-cloud text-royal/60 hover:border-azure/40'
-                          }`}>
-                          <span className="block text-base mb-0.5">{q.icon}</span>{q.label}
+                        <button key={q.value} type="button" onClick={() => set('qualification', q.value)} className={choiceCls(form.qualification === q.value)}>
+                          {q.label}
                         </button>
                       ))}
                     </div>
@@ -325,7 +332,7 @@ export default function TeacherOnboardingPage() {
                     <span className="text-xs font-semibold text-navy">CV <span className="font-normal text-royal/40">(optional · PDF or Word, max 10MB)</span></span>
                     <input ref={fileRef} type="file" accept=".pdf,.doc,.docx" className="sr-only" onChange={handleFile} />
                     <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
-                      className="flex w-full items-center gap-3 rounded-xl border-2 border-dashed border-cloud p-3 text-left text-sm text-royal/60 hover:border-azure/40 transition disabled:opacity-50">
+                      className="flex w-full items-center gap-3 rounded-lg border-2 border-dashed border-cloud p-3 text-left text-sm text-royal/60 hover:border-azure/40 transition disabled:opacity-50">
                       <Icon name={form.documentUrl ? 'check' : 'upload'} size={16} className={form.documentUrl ? 'text-emerald-600' : 'text-azure'} />
                       {uploading ? 'Uploading…' : form.documentName || 'Upload your CV'}
                     </button>
@@ -348,14 +355,14 @@ export default function TeacherOnboardingPage() {
                   {introVideo ? (
                     <VideoEmbed url={introVideo} />
                   ) : (
-                    <div className="rounded-xl bg-surface border border-cloud p-4 text-xs text-royal/60 leading-relaxed">
+                    <div className="rounded-lg bg-surface border border-cloud p-4 text-xs text-royal/60 leading-relaxed">
                       A 60–90 second video introducing yourself, what you teach, and how you help students prepare.
                       Teachers with a video are shown to students on the Mentorship page.
                     </div>
                   )}
                   <input ref={videoFileRef} type="file" accept="video/mp4,video/quicktime,video/webm" className="sr-only" onChange={handleVideoFile} />
                   <button type="button" onClick={() => videoFileRef.current?.click()} disabled={videoProgress !== null}
-                    className="flex w-full items-center gap-3 rounded-xl border-2 border-dashed border-cloud p-3 text-left text-sm text-royal/60 hover:border-azure/40 transition disabled:opacity-60">
+                    className="flex w-full items-center gap-3 rounded-lg border-2 border-dashed border-cloud p-3 text-left text-sm text-royal/60 hover:border-azure/40 transition disabled:opacity-60">
                     <Icon name="upload" size={16} className="text-azure" />
                     {videoProgress !== null
                       ? `Uploading… ${videoProgress}%`
@@ -370,7 +377,7 @@ export default function TeacherOnboardingPage() {
               )}
 
               {step === 5 && (
-                <div className="rounded-2xl border-2 border-azure/30 bg-azure/5 overflow-hidden">
+                <div className="rounded-lg border border-azure/30 bg-azure/5 overflow-hidden">
                   <div className="px-4 py-3 border-b border-azure/20 flex items-center gap-2">
                     <p className="text-xs font-bold text-navy">Tutor Offer Letter &amp; Content Ownership Agreement</p>
                     <span className="ml-auto text-[10px] font-semibold text-azure bg-azure/10 px-2 py-0.5 rounded-md">Required</span>
@@ -397,7 +404,7 @@ export default function TeacherOnboardingPage() {
               )}
 
               {error && (
-                <p role="alert" className="rounded-xl bg-red-50 border border-red-100 px-3.5 py-2.5 text-xs text-red-600">{error}</p>
+                <p role="alert" className="rounded-lg bg-red-50 border border-red-100 px-3.5 py-2.5 text-xs text-red-600">{error}</p>
               )}
 
               <div className="flex gap-2 pt-2 border-t border-cloud">
@@ -420,7 +427,7 @@ export default function TeacherOnboardingPage() {
           )}
         </div>
 
-        <p className="text-center text-white/30 text-xs mt-4">You can update these details later from your profile</p>
+        <p className="mt-4 text-center text-xs text-navy/70">You can update these details later from your profile</p>
       </div>
     </div>
   );

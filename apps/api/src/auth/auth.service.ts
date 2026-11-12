@@ -19,6 +19,7 @@ import { MailService } from '../mail/mail.service';
 import { RedisService } from '../redis/redis.service';
 import { OnboardingVideoService } from '../onboarding-video/onboarding-video.service';
 import { ReferralsService } from '../referrals/referrals.service';
+import { TeacherCoursesService } from '../course-admin/teacher-courses.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterStudentDto } from './dto/register-student.dto';
 import { RegisterTeacherDto } from './dto/register-teacher.dto';
@@ -59,6 +60,7 @@ export class AuthService {
     private redis: RedisService,
     private onboardingVideo: OnboardingVideoService,
     private referrals: ReferralsService,
+    private teacherCourses: TeacherCoursesService,
   ) {}
 
   // ── OTP ──────────────────────────────────────────────────
@@ -398,7 +400,7 @@ export class AuthService {
     userId: string,
     dto: CompleteTeacherOnboardingDto,
     ip?: string,
-  ): Promise<{ accessToken: string }> {
+  ): Promise<{ accessToken: string; linkedCourses: number }> {
     if (!dto.agreementAccepted) {
       throw new BadRequestException('You must accept the tutor agreement to continue.');
     }
@@ -409,7 +411,12 @@ export class AuthService {
       await tx.userProfile.update({ where: { id: userId }, data: { onboardingCompleted: true } });
     });
 
-    return this.issueTokenForUser(userId);
+    // The courses they wrote on careerpathafrica.com become theirs here (a failure never blocks onboarding)
+    const linked = await this.teacherCourses.linkWordPressCourses(userId).catch(err => {
+      this.logger.warn(`Linking WordPress courses for ${userId} failed: ${err?.message}`);
+      return { count: 0 };
+    });
+    return { ...(await this.issueTokenForUser(userId)), linkedCourses: linked.count };
   }
 
   // ── Shared teacher profile helpers ───────────────────────
