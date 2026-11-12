@@ -6,6 +6,7 @@ import { RepTable, td } from '@/components/rep/RepTable';
 import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
+import { MentorRates } from '@/components/admin/MentorRates';
 import api from '@/lib/api';
 
 interface Row {
@@ -23,7 +24,20 @@ interface Data {
 const short = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 const pct = (n: number | null) => (n == null ? '—' : `${n}%`);
 
+/** Commissions: who earns what from courses (shares of sales) and from mentoring (a fee per session) */
 export default function CommissionsPage() {
+  const [section, setSection] = useState<'courses' | 'mentors'>('courses');
+  const switcher = (
+    <span role="group" aria-label="Commissions for" className="flex gap-0.5 rounded-lg border border-line bg-white p-[3px] text-[12.5px]">
+      {([['courses', 'Courses'], ['mentors', 'Mentors']] as const).map(([k, l]) => (
+        <button key={k} onClick={() => setSection(k)} aria-pressed={section === k} className={clsx('h-7 rounded-md px-2.5 text-navy', section === k ? 'bg-accent-soft font-bold' : 'hover:bg-subtle')}>{l}</button>
+      ))}
+    </span>
+  );
+  return section === 'mentors' ? <MentorRates switcher={switcher} /> : <CourseCommissions switcher={switcher} />;
+}
+
+function CourseCommissions({ switcher }: { switcher: React.ReactNode }) {
   const [d, setD] = useState<Data | null>(null);
   const [tab, setTab] = useState('all');
   const [q, setQ] = useState('');
@@ -46,6 +60,7 @@ export default function CommissionsPage() {
     <>
       <RepTable title="Teachers, reviewers & commissions" subtitle="Who teaches and reviews each course, and their share of its sales"
         actions={<div className="flex gap-2">
+          {switcher}
           {picked.size > 0 && <Button size="sm" onClick={() => setEditing((d?.rows ?? []).filter(r => picked.has(r.id)))}>Change {picked.size} selected</Button>}
           <button onClick={() => setDefaults(true)} className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Default share</button>
         </div>}

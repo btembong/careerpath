@@ -141,6 +141,29 @@ export class DailyService {
     }
   }
 
+  /**
+   * Who was in a room, from Daily's meeting history: seconds each person (by the user_id in their token)
+   * spent in it, across every meeting held there. null when it can't be told (Daily faked or unreachable).
+   */
+  async roomAttendance(roomName: string): Promise<Map<string, number> | null> {
+    if (this.fake) return null;
+    try {
+      const res = await this.client.get('/meetings', { params: { room: roomName, limit: 20 } });
+      const seconds = new Map<string, number>();
+      for (const m of res.data?.data ?? []) {
+        for (const p of m.participants ?? []) {
+          if (!p.user_id) continue;
+          seconds.set(p.user_id, (seconds.get(p.user_id) ?? 0) + (Number(p.duration) || 0));
+        }
+      }
+      return seconds;
+    } catch (err: any) {
+      if (err.response?.status === 404) return new Map();
+      this.logger.warn(`Could not read meetings for ${roomName}: ${err.response?.status ?? err.message}`);
+      return null;
+    }
+  }
+
   /** How many people are connected to a room right now; null when it can't be told (Daily faked or unreachable). */
   async roomPresence(roomName: string): Promise<number | null> {
     if (this.fake) return null;

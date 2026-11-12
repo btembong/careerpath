@@ -133,6 +133,10 @@ export default function TeacherMentorshipPage() {
               {past.slice(0, 8).map(b => (
                 <div key={b.id} className="flex items-center gap-2.5 rounded-md border border-line px-3 py-2.5">
                   <span className="min-w-0 flex-1"><span className="block truncate text-[13.5px] font-semibold text-navy">{nameOf(b.student)}</span><span className="text-xs text-muted">{when(b.slot.startsAt)}{b.review ? ` · ${'★'.repeat(b.review.rating)}` : ''}</span></span>
+                  {/* Paid once the session is confirmed as held (you were in the room); missed sessions aren't paid */}
+                  {b.status === 'COMPLETED' && <span className="inline-flex h-[22px] items-center rounded-full bg-[#E6F5EE] px-2 text-[11.5px] font-bold text-[#1F6B47]">Paid</span>}
+                  {b.status === 'MISSED' && <span title="You weren’t in the room, so this session isn’t paid" className="inline-flex h-[22px] items-center rounded-full bg-[#FDECEC] px-2 text-[11.5px] font-bold text-[#A23434]">Missed</span>}
+                  {b.status === 'CONFIRMED' && <span title="Checked within the hour after it ends" className="inline-flex h-[22px] items-center rounded-full bg-subtle px-2 text-[11.5px] font-bold text-muted">Checking</span>}
                   <Link href={`/mentorship/board/${b.id}`} className="text-[12.5px] font-semibold text-azure-strong hover:underline">Board</Link>
                 </div>
               ))}
