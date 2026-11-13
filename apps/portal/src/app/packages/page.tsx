@@ -16,6 +16,7 @@ interface Package {
   courseIds: string[]; validityDays: number | null; categoryTags: string[];
   cohort?: { id: string; name: string } | null;
   mentorship?: string | null;
+  bestValue?: boolean;
 }
 interface Course {
   id: string; title: string; status: string;
@@ -93,7 +94,11 @@ function PackagesInner() {
     })
     .sort((a, b) => (b.saving ?? -1) - (a.saving ?? -1) || a.p.priceAmount - b.p.priceAmount), [packages, byId, prog]);
 
-  const bestId = plans.find(x => x.saving != null)?.p.id ?? null;
+  // Best value: the one the admin chose; else the biggest saving on buying the courses one by one; failing that, the lowest price per course
+  const perCourse = (p: Package) => p.priceAmount / Math.max(1, p.courseIds.length);
+  const bestId = plans.find(x => x.p.bestValue)?.p.id
+    ?? plans.find(x => x.saving != null)?.p.id
+    ?? (plans.length > 1 && new Set(plans.map(x => x.p.currency)).size === 1 ? [...plans].sort((a, b) => perCourse(a.p) - perCourse(b.p))[0].p.id : null);
   const owned = (id: string) => mine.find(m => m.id === id) ?? null;
   const maxSaving = plans.reduce((m, x) => (x.saving && x.saving > m.v ? { v: x.saving, c: x.p.currency } : m), { v: 0, c: 'XAF' });
   // "Under ..." = the middle price, rounded to a tidy figure
@@ -187,7 +192,7 @@ function PackagesInner() {
                     </div>
                     <div>
                       <p className="text-[32px] font-extrabold leading-none tracking-[-0.02em] text-navy">{walletMoney(p.priceAmount, p.currency)}</p>
-                      <p className="mt-1.5 text-[12.5px] text-ink2">{perMonth ? `About ${walletMoney(majorToMinor(perMonth, p.currency), p.currency)} a month` : 'One payment'}{saving != null && <strong className="text-[#1F6B47]"> · saves {walletMoney(saving, p.currency)}</strong>}</p>
+                      <p className="mt-1.5 text-[12.5px] text-ink2">{perMonth ? `About ${walletMoney(majorToMinor(perMonth, p.currency), p.currency)} a month` : 'One payment'}{saving != null ? <strong className="text-[#1F6B47]"> · saves {walletMoney(saving, p.currency)}</strong> : p.courseIds.length > 1 ? <span> · {walletMoney(Math.round(perCourse(p)), p.currency)} a course</span> : null}</p>
                     </div>
                     <ul className="flex flex-col gap-2.5 border-t border-line pt-3">
                       {inside.map(([on, d, t, sub]) => (

@@ -61,6 +61,11 @@ export class CreatePackageDto {
   @IsOptional()
   mentorshipSessionsPerMonth?: number | null;
 
+  @ApiPropertyOptional({ description: 'Show this package as Best value (unmarks any other)' })
+  @IsBoolean()
+  @IsOptional()
+  bestValue?: boolean;
+
   @ApiPropertyOptional({ description: 'Cohort ID to auto-enroll students into on purchase' })
   @IsString()
   @IsOptional()

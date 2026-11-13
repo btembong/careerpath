@@ -49,6 +49,16 @@ export default function BillingPage() {
   }
 
   const year = new Date().getFullYear();
+  async function yearReceipts() {
+    setBusy('year');
+    try {
+      const r = await api.get(`/payments/me/receipts-year/${year}`, { responseType: 'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(r.data); a.download = `careerpath-receipts-${year}.pdf`; a.click();
+      URL.revokeObjectURL(a.href);
+    } catch { notify.error('Could not prepare your receipts'); }
+    finally { setBusy(null); }
+  }
   const paidRows = (d?.payments ?? []).filter(p => p.amount > 0);
   const thisYear = paidRows.filter(p => new Date(p.at).getFullYear() === year);
   // The access that matters most: paid, still running, ending last
@@ -65,7 +75,8 @@ export default function BillingPage() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <Topbar title="Billing" subtitle="What you have, until when, what you’ve paid, and your receipts" />
+      <Topbar title="Billing" subtitle="What you have, until when, what you’ve paid, and your receipts"
+        actions={thisYear.length ? <button type="button" onClick={yearReceipts} disabled={busy === 'year'} className="hidden h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-subtle disabled:opacity-60 sm:inline-flex">{busy === 'year' ? 'Preparing…' : `All ${year} receipts (PDF)`}</button> : undefined} />
       <div className="flex flex-col gap-[18px] p-4 lg:px-7 lg:py-6">
         <div className="flex flex-wrap gap-[18px]">
           {!d ? <div className="h-[230px] min-w-0 flex-[999_1_520px] animate-pulse rounded-xl bg-subtle" /> : main ? (
@@ -102,6 +113,7 @@ export default function BillingPage() {
             <div role="img" aria-label={`Paid by month in ${year}`} className="mt-1.5 flex h-[84px] items-end gap-[5px] border-b border-line">
               {months.map((v, i) => <span key={i} className={clsx('flex-1 rounded-t-[3px]', v ? 'bg-[#3F6FE8]' : 'bg-line')} style={{ height: v ? Math.max(6, Math.round((v / monthMax) * 78)) : 3 }} />)}
             </div>
+            {thisYear.length > 0 && <button type="button" onClick={yearReceipts} disabled={busy === 'year'} className="order-last mt-1 inline-flex h-9 items-center justify-center rounded-md border border-line text-[13px] font-semibold text-navy disabled:opacity-60 sm:hidden">{busy === 'year' ? 'Preparing…' : `All ${year} receipts (PDF)`}</button>}
             <div className="flex gap-[5px] text-[10.5px] text-muted">{'JFMAMJJASOND'.split('').map((l, i) => <span key={i} className={clsx('flex-1 text-center', months[i] && 'font-bold text-navy')}>{l}</span>)}</div>
           </section>
         </div>

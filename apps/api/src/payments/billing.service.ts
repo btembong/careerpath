@@ -63,6 +63,19 @@ export class BillingService {
     return { access, payments, paidThisYear: totals };
   }
 
+  /** Every paid receipt of a year in one PDF, a page each, oldest first */
+  async yearReceipts(studentId: string, year: number): Promise<{ filename: string; pdf: Uint8Array }> {
+    const { payments } = await this.billing(studentId);
+    const paid = payments.filter(p => p.amount > 0 && p.at.getFullYear() === year).reverse();
+    if (!paid.length) throw new NotFoundException(`No payments in ${year}`);
+    const out = await PDFDocument.create();
+    for (const p of paid) {
+      const one = await PDFDocument.load((await this.receipt(studentId, p.kind, p.id)).pdf);
+      (await out.copyPages(one, one.getPageIndices())).forEach(pg => out.addPage(pg));
+    }
+    return { filename: `careerpath-receipts-${year}.pdf`, pdf: await out.save() };
+  }
+
   /** A one-page PDF receipt for one of the student's own purchases */
   async receipt(studentId: string, kind: string, id: string): Promise<{ filename: string; pdf: Uint8Array }> {
     const student = await this.prisma.userProfile.findUnique({ where: { id: studentId }, select: { name: true, firstName: true, lastName: true, email: true, phone: true } });

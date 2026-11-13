@@ -42,6 +42,17 @@ export class PaymentsController {
     return this.billing.billing(user.id);
   }
 
+  @Get('payments/me/receipts-year/:year')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.STUDENT)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Student: all my receipts for a year in one PDF' })
+  async yearReceipts(@CurrentUser() user: UserProfile, @Param('year') year: string, @Res() res: Response) {
+    const { pdf, filename } = await this.billing.yearReceipts(user.id, Number(year) || new Date().getFullYear());
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}"`, 'Cache-Control': 'private, no-store' });
+    res.send(Buffer.from(pdf));
+  }
+
   @Get('payments/me/receipts/:kind/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.STUDENT)

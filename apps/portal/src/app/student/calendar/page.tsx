@@ -45,6 +45,34 @@ function layoutDay(evs: Ev[]) {
   return out;
 }
 
+/**
+ * A nudge from the student's own habits: the days and hour they usually study (from study time ticked off
+ * in the last four weeks), and the next day this week with nothing planned. Nothing to say without a habit yet.
+ */
+function planningTip(past: Ev[], upcoming: Ev[]): { text: string; cta: string; at: Date } | null {
+  if (past.length < 3) return null;
+  const DAYS = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
+  const byDay = Array(7).fill(0), byHour = new Map<number, number>();
+  for (const e of past) { const d = new Date(e.startsAt); byDay[d.getDay()] += e.durationMins; byHour.set(d.getHours(), (byHour.get(d.getHours()) ?? 0) + 1); }
+  const top = byDay.map((m, i) => [m, i]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0]).slice(0, 2).map(x => DAYS[x[1]]);
+  const hour = [...byHour].sort((a, b) => b[1] - a[1])[0][0];
+  // The next day (today if the usual hour hasn't passed, up to Sunday) with no study planned
+  const now = new Date();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(now); d.setDate(now.getDate() + i); d.setHours(hour, 0, 0, 0);
+    if (i === 0 && d <= now) continue;
+    if (i > 0 && d.getDay() === 1) break;
+    if (upcoming.some(e => e.kind === 'study' && sameDay(e.startsAt, d))) continue;
+    const when = i === 0 ? (hour >= 17 ? 'tonight' : 'today') : i === 1 ? 'tomorrow' : 'on ' + d.toLocaleDateString('en-GB', { weekday: 'long' });
+    const hh = String(hour).padStart(2, '0') + ':00';
+    return {
+      text: `You study most on ${top.join(' and ')}, usually around ${hh}. Nothing is planned ${when}: an hour then would keep you going.`,
+      cta: `Plan 1 h ${when}, ${hh}`, at: d,
+    };
+  }
+  return null;
+}
+
 function downloadIcs(events: Ev[]) {
   const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
   const clean = (s: string) => s.replace(/[,;\n]/g, ' ');
@@ -61,6 +89,7 @@ export default function StudyCalendarPage() {
   const [anchor, setAnchor] = useState(() => new Date());
   const [cal, setCal] = useState<Cal | null>(null);
   const [now3, setNow3] = useState<Cal | null>(null);
+  const [past, setPast] = useState<Ev[]>([]);
   const [off, setOff] = useState<Partial<Record<Kind, boolean>>>({});
   const [sel, setSel] = useState<string | null>(null);
   const [day, setDay] = useState(() => new Date().toDateString());
@@ -84,6 +113,11 @@ export default function StudyCalendarPage() {
     ]);
     setCal(r.data); setNow3(w.data);
   }
+  // The last four weeks of study, for the planning tip
+  useEffect(() => {
+    api.get('/portals/student/calendar', { params: { from: new Date(Date.now() - 28 * DAY).toISOString(), to: new Date().toISOString() } })
+      .then(r => setPast((r.data?.events ?? []).filter((e: Ev) => e.kind === 'study' && e.done))).catch(() => {});
+  }, []);
   useEffect(() => { setCal(null); load().catch(() => notify.error('Could not load your calendar')); }, [+from, +to]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const vis = (e: Ev) => !off[e.kind];
@@ -105,6 +139,7 @@ export default function StudyCalendarPage() {
   const today = (now3?.events ?? []).filter(e => sameDay(e.startsAt, new Date()) || (e.kind === 'due' && !e.done && sameDay(e.startsAt, new Date(Date.now() + DAY))));
   const deadlines = (now3?.events ?? []).filter(e => e.kind === 'due' && new Date(e.startsAt).getTime() > Date.now() - 3 * DAY).slice(0, 5);
 
+  const tip = planningTip(past, now3?.events ?? []);
   const days = Array.from({ length: Math.round((+to - +from) / DAY) }, (_, i) => new Date(+from + i * DAY));
   const timed = events.filter(e => e.kind !== 'due');
   const startHour = Math.min(8, ...timed.map(e => new Date(e.startsAt).getHours()));
@@ -309,6 +344,13 @@ export default function StudyCalendarPage() {
                 );
               })}
             </section>
+            {tip && (
+              <section className="flex flex-col gap-1.5 rounded-xl border border-line bg-white p-[18px]">
+                <h3 className="text-[15px] font-bold text-navy">Planning tip</h3>
+                <p className="text-[13px] text-ink2">{tip.text}</p>
+                <button type="button" onClick={() => setPlanning(tip.at)} className="self-start text-[13px] font-bold text-azure-strong hover:underline">{tip.cta}</button>
+              </section>
+            )}
             <button type="button" onClick={() => cal && downloadIcs(cal.events)} className="rounded-xl border border-line bg-white p-[18px] text-left sm:hidden">
               <span className="block text-[15px] font-bold text-navy">Add to my phone calendar</span>
               <span className="mt-0.5 block text-[13px] text-ink2">Your classes, sessions and study time, in your phone’s calendar.</span>

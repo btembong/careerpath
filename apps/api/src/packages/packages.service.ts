@@ -57,6 +57,7 @@ export class PackagesService {
   }
 
   async create(dto: CreatePackageDto) {
+    if (dto.bestValue) await this.prisma.package.updateMany({ where: { bestValue: true }, data: { bestValue: false } });
     const pkg = await this.prisma.package.create({
       data: {
         name: dto.name,
@@ -70,6 +71,7 @@ export class PackagesService {
         mentorship: dto.mentorship?.trim() || null,
         mentorshipSessionsPerMonth: dto.mentorshipSessionsPerMonth ?? null,
         faq: cleanFaq(dto.faq) ?? undefined,
+        bestValue: !!dto.bestValue,
         isPublished: false,
       },
       include: { cohort: { select: { id: true, name: true } } },
@@ -85,6 +87,8 @@ export class PackagesService {
       await this.assertAllCoursesApproved(pkg.courseIds);
     }
 
+    // Only one package is Best value at a time
+    if (dto.bestValue === true) await this.prisma.package.updateMany({ where: { bestValue: true, id: { not: id } }, data: { bestValue: false } });
     const updated = await this.prisma.package.update({
       where: { id },
       data: {
@@ -100,6 +104,7 @@ export class PackagesService {
         ...(dto.mentorship !== undefined && { mentorship: dto.mentorship?.trim() || null }),
         ...(dto.mentorshipSessionsPerMonth !== undefined && { mentorshipSessionsPerMonth: dto.mentorshipSessionsPerMonth }),
         ...(dto.faq !== undefined && { faq: cleanFaq(dto.faq) ?? Prisma.DbNull }),
+        ...(dto.bestValue !== undefined && { bestValue: dto.bestValue }),
       },
       include: { cohort: { select: { id: true, name: true } } },
     });

@@ -1,0 +1,1 @@
+ALTER TABLE "Package" ADD COLUMN "bestValue" BOOLEAN NOT NULL DEFAULT false;

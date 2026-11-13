@@ -275,6 +275,8 @@ model ExchangeRate {
 
 model Package {
   id                         String            @id @default(uuid())
+  /// Shown as "Best value" on the packages page (one at a time). None chosen: the page picks one itself
+  bestValue                  Boolean           @default(false)
   name                       String
   description                String?
   priceAmount                Int
