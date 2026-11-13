@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Topbar } from '@/components/layout/Topbar';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { ReferralsHero } from '@/components/hero/PracticeHeroes';
 
 interface Stats { referralCode: string; totalReferrals: number; friends: { name: string; joinedAt: string; learning: boolean }[] }
 
@@ -26,19 +27,8 @@ export default function ReferralsPage() {
     <div className="flex min-h-full flex-col">
       <Topbar title="Refer a friend" subtitle="Bring classmates to study with you" />
       <div className="flex flex-wrap items-start gap-5 p-4 lg:px-7 lg:py-6">
+        <div className="w-full"><ReferralsHero code={s?.referralCode ?? null} link={link} joined={s?.totalReferrals ?? 0} learning={learning} friends={s?.friends ?? []} onCopy={copy} whatsapp={s ? `https://wa.me/?text=${encodeURIComponent(message)}` : undefined} /></div>
         <div className="flex min-w-0 flex-[999_1_540px] flex-col gap-4">
-          <section className="flex flex-col gap-3 rounded-lg border border-azure bg-white p-5">
-            <p className="text-[20px] font-extrabold text-navy">Study with your friends</p>
-            <p className="text-[13.5px] text-ink2">Send your link to classmates preparing for the same exam. When they join, they’re linked to you — you can message each other and compete on the leaderboard.</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <input readOnly value={link || 'Loading your link…'} aria-label="Your link" onFocus={e => e.currentTarget.select()}
-                className="h-10 min-w-[240px] flex-1 rounded-md border border-line bg-subtle px-3 text-[13.5px] text-navy outline-none" />
-              <button onClick={copy} disabled={!s} className="inline-flex h-10 items-center rounded-md bg-azure-strong px-3.5 text-[13.5px] font-semibold text-on-accent disabled:opacity-50">Copy link</button>
-              <a href={s ? `https://wa.me/?text=${encodeURIComponent(message)}` : undefined} target="_blank" rel="noopener noreferrer" aria-disabled={!s}
-                className="inline-flex h-10 items-center rounded-md border border-line px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Share on WhatsApp</a>
-            </div>
-            <p className="text-[12.5px] text-muted">Or tell them your code: <strong className="text-navy">{s?.referralCode ?? '…'}</strong></p>
-          </section>
 
           <section className="rounded-lg border border-line bg-white">
             <h2 className="border-b border-line px-[18px] py-3.5 text-[16px] font-bold text-navy">Friends who joined</h2>

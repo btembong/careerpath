@@ -6,6 +6,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/Button';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { FlashcardsHero } from '@/components/hero/PracticeHeroes';
 
 interface Deck { id: string; title: string; course: { id: string; title: string }; cards: number; known: number; due: number; knownPct: number; isNew: boolean }
 interface Overview { dueToday: number; dueDecks: number; minutes: number; streak: number; reviewedToday: number; decks: Deck[] }
@@ -67,19 +68,8 @@ export default function FlashcardsPage() {
     <div className="flex min-h-full flex-col">
       <Topbar title="Flashcards" subtitle="Short daily reviews so what you learn sticks" />
       <div className="flex flex-wrap items-start gap-5 p-4 lg:px-7 lg:py-6">
+        <div className="w-full">{d ? <FlashcardsHero d={d} onStart={start} /> : <div className="h-64 animate-pulse rounded-[14px] bg-[#3F6FE8]/30" />}</div>
         <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-4">
-          {!d ? <div className="h-24 rounded-lg bg-subtle animate-pulse" /> : (
-            <section className={clsx('flex flex-wrap items-center gap-4 rounded-lg border bg-white px-5 py-[18px]', d.dueToday ? 'border-azure' : 'border-line')}>
-              <div className="min-w-0 flex-1">
-                <p className="text-lg font-extrabold text-navy">{d.dueToday ? `${d.dueToday} card${d.dueToday === 1 ? '' : 's'} to review today` : d.reviewedToday ? 'All done for today' : 'Nothing due today'}</p>
-                <p className="mt-0.5 text-[13.5px] text-ink2">
-                  {d.dueToday ? `Across ${d.dueDecks} deck${d.dueDecks === 1 ? '' : 's'} · about ${d.minutes} minute${d.minutes === 1 ? '' : 's'}` : 'Start a new deck below, or come back tomorrow'}
-                  {d.streak > 0 ? ` · ${d.streak}-day review streak` : ''}
-                </p>
-              </div>
-              {d.dueToday > 0 && <Button onClick={() => start()}>Start today’s review</Button>}
-            </section>
-          )}
           <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]">
             {!d ? [0, 1, 2].map(k => <div key={k} className="h-32 rounded-lg bg-subtle animate-pulse" />) : !d.decks.length ? (
               <p className="col-span-full rounded-lg border border-line bg-white px-4 py-10 text-center text-[13px] text-ink2">Your courses don’t have flashcards yet. Teachers add them to lessons.</p>

@@ -6,6 +6,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Drawer, DrawerContent, DrawerSection } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { QuizHistoryHero } from '@/components/hero/PracticeHeroes';
 
 type State = 'passed' | 'notyet' | 'marking';
 interface Attempt {
@@ -51,20 +52,7 @@ export default function QuizHistoryPage() {
     <div className="flex min-h-full flex-col">
       <Topbar title="Quiz history" subtitle="Every quiz you’ve taken, and what to practise next" />
       <div className="flex flex-col gap-[18px] p-4 lg:px-7 lg:py-6">
-        <dl className="grid gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
-          {[
-            { l: 'Quizzes taken', v: d ? String(d.stats.taken) : '—', sub: d ? `${d.stats.thisWeek} this week` : '' },
-            { l: 'Average score', v: d?.stats.average != null ? `${d.stats.average}%` : '—', sub: d?.stats.averageChange != null ? `${d.stats.averageChange >= 0 ? 'up' : 'down'} ${Math.abs(d.stats.averageChange)}% this month` : 'of marked quizzes' },
-            { l: 'Passed', v: d ? `${d.stats.passed} of ${d.stats.taken}` : '—', sub: 'pass mark set by each quiz' },
-            { l: 'Being marked', v: d ? String(d.stats.marking) : '—', sub: 'written answers' },
-          ].map(x => (
-            <div key={x.l} className="rounded-lg border border-line bg-white px-4 py-3.5">
-              <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{x.l}</dt>
-              <dd className="mt-1.5 text-[22px] font-extrabold text-navy">{x.v}</dd>
-              <dd className="mt-0.5 text-[12.5px] text-muted">{x.sub}</dd>
-            </div>
-          ))}
-        </dl>
+        {d ? <QuizHistoryHero d={d} /> : <div className="h-64 animate-pulse rounded-[14px] bg-[#3F6FE8]/30" />}
 
         <div className="flex flex-wrap items-start gap-5">
           <section className="min-w-0 flex-[999_1_520px] rounded-lg border border-line bg-white">
