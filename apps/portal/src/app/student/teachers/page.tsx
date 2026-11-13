@@ -6,6 +6,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { walletMoney } from '@/components/wallet/WalletCharts';
 import api from '@/lib/api';
 import { PersonPhoto } from '@/components/ui/PersonPhoto';
+import { VideoThumb } from '@/components/ui/VideoThumb';
 
 interface Teacher {
   id: string; name: string; avatarUrl?: string | null; bio: string | null; subjectAreas: string[]; yearsExperience: number | null;
@@ -35,12 +36,14 @@ export default function StudentTeachersPage() {
   const [cohort, setCohort] = useState<{ teacherId: string; name: string; next: { title: string; scheduledAt: string } | null } | null>(null);
   const [mentors, setMentors] = useState<Map<string, Mentor>>(new Map());
   const [booked, setBooked] = useState<{ teacherId: string; startsAt: string } | null>(null);
+  const [allow, setAllow] = useState<{ hasPackage: boolean; perMonth: number | null; left: number | null } | null>(null);
   const [q, setQ] = useState('');
   const [subject, setSubject] = useState('All');
   const [mentorOnly, setMentorOnly] = useState(false);
   const [pick, setPick] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
 
+  useEffect(() => { api.get('/mentorship/allowance').then(r => setAllow(r.data)).catch(() => {}); }, []);
   useEffect(() => {
     Promise.all([
       api.get('/teachers', { params: { limit: 100 } }).then(r => (r.data?.data ?? r.data ?? []) as Teacher[]).catch(() => []),
@@ -89,14 +92,16 @@ export default function StudentTeachersPage() {
       <Topbar title="Teachers" subtitle="The people who teach your courses, run your class and mentor you" />
       <div className="flex flex-col gap-[18px] p-4 lg:px-7 lg:py-6">
         {yours.length > 0 && (
-          <section className="keep-light flex flex-col gap-3.5 rounded-xl bg-[#3F6FE8] p-4 text-navy sm:px-6 sm:py-[22px]">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-[26px] font-extrabold tracking-[-0.02em]">Your <span className="text-[#FFFFFF]">teachers</span></h2>
-              <p className="text-[13.5px] text-[#0B1F55]">From your courses, your class and your mentor sessions</p>
+          <section className="keep-light flex flex-col gap-4 rounded-xl bg-[#3F6FE8] p-5 text-navy sm:px-[26px] sm:py-6">
+            <div className="flex flex-col gap-1.5">
+              <h2 className="text-[34px] font-extrabold leading-none tracking-[-0.03em] sm:text-[44px]">Your <span className="text-[#FFFFFF]">teachers</span></h2>
+              <p className="text-sm text-[#0B1F55]">From your courses, your class and your mentor sessions</p>
             </div>
-            <div className="flex snap-x gap-3 overflow-x-auto pb-1 sm:grid sm:[grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
+            <div className="flex flex-wrap items-stretch gap-4">
+            {/* Cards keep their size; with only a few, the rest of the row shows what's coming up */}
+            <div className="flex min-w-0 flex-[999_1_560px] snap-x gap-3 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
               {yours.map(y => (
-                <div key={y.t.id + y.role} className="flex min-w-[260px] snap-start flex-col gap-2.5 rounded-lg bg-[#FFFFFF] p-4 sm:min-w-0">
+                <div key={y.t.id + y.role} className="flex w-[280px] flex-shrink-0 snap-start flex-col gap-2.5 rounded-lg bg-[#FFFFFF] p-4">
                   <div className="flex items-center gap-3">
                     <Avatar t={y.t} size={44} />
                     <div className="min-w-0"><p className="truncate text-[15px] font-bold">{y.t.name}</p><p className="mt-px truncate text-[12.5px] font-semibold text-[#2F57C9]">{y.role}</p></div>
@@ -108,6 +113,24 @@ export default function StudentTeachersPage() {
                   </div>
                 </div>
               ))}
+            </div>
+            <aside className="flex min-w-0 flex-[1_1_280px] flex-col gap-2.5 rounded-lg bg-[rgba(255,255,255,0.18)] p-4">
+              <p className="text-[12.5px] font-bold uppercase tracking-[0.08em]">Coming up with your teachers</p>
+              {cohort?.next && (
+                <Link href="/student/cohorts" className="flex items-center gap-3 rounded-md bg-[#FFFFFF] px-3 py-2.5">
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-[#EAF0FF] text-[#2F57C9]"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M15 10l5-3v10l-5-3M3 6h12v12H3z" /></svg></span>
+                  <span className="min-w-0"><span className="block text-[13px] font-bold">Live class · {when(cohort.next.scheduledAt)}</span><span className="block truncate text-xs text-[#637090]">{cohort.next.title}</span></span>
+                </Link>
+              )}
+              <Link href="/student/mentorship" className="flex items-center gap-3 rounded-md bg-[#FFFFFF] px-3 py-2.5">
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-[#EAF0FF] text-[#2F57C9]"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" /></svg></span>
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-bold">{booked ? `Mentor session · ${when(booked.startsAt)}` : allow?.hasPackage ? 'Book a mentor session' : 'Mentorship'}</span>
+                  <span className="block truncate text-xs text-[#637090]">{booked ? 'Join opens 10 minutes before' : allow?.perMonth != null ? `${allow.left} of ${allow.perMonth} left this month` : allow?.hasPackage ? '30 minutes with a teacher you choose' : 'Comes with packages'}</span>
+                </span>
+              </Link>
+              <Link href="/student/messages" className="mt-auto inline-flex h-9 items-center justify-center rounded-md bg-[#072061] text-[13px] font-bold text-[#FFFFFF]">Message your teachers</Link>
+            </aside>
             </div>
           </section>
         )}
@@ -158,11 +181,8 @@ export default function StudentTeachersPage() {
                 <div className="min-w-0"><p className="text-xl font-extrabold text-navy">{selected.name}</p><p className="mt-0.5 text-[13px] text-muted">{[realSubjects(selected.subjectAreas).join(', '), selected.yearsExperience ? `${selected.yearsExperience} years teaching` : null].filter(Boolean).join(' · ')}</p></div>
               </div>
               {selected.videoIntroUrl && (
-                <Link href={`/student/teachers/${selected.id}`} className="relative grid h-[150px] place-items-center overflow-hidden rounded-lg bg-[#072061]">
-                  <svg aria-hidden viewBox="0 0 300 150" preserveAspectRatio="none" className="absolute inset-0 h-full w-full opacity-[0.35]"><path d="M0,120 C60,80 120,140 180,90 C230,50 270,90 300,60 L300,150 L0,150 Z" fill="#3F6FE8" /></svg>
-                  <span className="relative grid h-[52px] w-[52px] place-items-center rounded-full bg-[#FFFFFF]"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden><path d="M8 5v14l11-7z" fill="#2F57C9" /></svg></span>
-                  <span className="absolute bottom-2.5 left-3 text-xs font-bold text-[#FFFFFF]">Meet {selected.name.replace(/\s*\(.*\)\s*$/, '')}</span>
-                </Link>
+                <VideoThumb url={selected.videoIntroUrl} photo={selected.avatarUrl} href={`/student/teachers/${selected.id}`}
+                  label={`Meet ${selected.name.replace(/\s*\(.*\)\s*$/, '')}`} className="h-[170px]" />
               )}
               {selected.bio && <p className="line-clamp-5 text-[13.5px] leading-normal text-ink2">{selected.bio}</p>}
               <dl className="grid grid-cols-3 gap-2">

@@ -140,9 +140,9 @@ export default function StudentMentorshipPage() {
               </div>
             </section>
           ) : (
-            <section className="keep-light flex min-w-0 flex-[999_1_520px] flex-col justify-center gap-2 rounded-xl bg-[#3F6FE8] p-6 text-navy">
+            <section className="keep-light flex min-w-0 flex-[999_1_520px] flex-col justify-center gap-3.5 rounded-xl bg-[#3F6FE8] p-5 text-navy sm:px-[26px] sm:py-6">
               <p className="text-[12.5px] font-bold uppercase tracking-[0.08em]">Mentorship</p>
-              <p className="text-[30px] font-extrabold leading-tight tracking-[-0.02em]">Talk it through <span className="text-[#FFFFFF]">one-to-one</span></p>
+              <p className="text-[34px] font-extrabold leading-none tracking-[-0.03em] sm:text-[44px]">Talk it through <span className="text-[#FFFFFF]">one-to-one</span></p>
               <p className="max-w-[520px] text-sm text-[#0B1F55]">30 minutes with a teacher you choose: a hard topic, a mock result, or how to plan your last weeks.</p>
             </section>
           )}
