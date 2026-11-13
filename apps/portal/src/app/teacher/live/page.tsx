@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent } from '@/co
 import { EditClassDialog, EditableClass } from '@/components/live/EditClassDialog';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { TeacherLiveHero } from '@/components/hero/TeacherHeroes';
 
 interface Row extends EditableClass { description: string | null; cohort: { id: string; name: string }; rosterSize: number; attendedCount: number }
 interface Overview {
@@ -73,25 +74,7 @@ export default function TeacherLivePage() {
             <p className="mx-auto mt-1 max-w-md text-[13px] text-ink2">An admin creates cohorts and assigns them to you. Once you have one, you can schedule its live classes here.</p>
           </div>
         ) : <>
-          {next && (
-            <section className="flex flex-wrap items-center gap-4 rounded-lg border border-azure bg-white px-5 py-[18px]">
-              <div className="min-w-0 flex-[999_1_300px]">
-                <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">
-                  {next.status === 'ACTIVE' ? 'Live now' : `Next · ${when(next.scheduledAt)}${nextIn > 0 && nextIn < 120 ? ` · in ${nextIn} min` : ''}`}
-                </p>
-                <p className="mt-1 text-lg font-extrabold text-navy">{next.title}</p>
-                <p className="mt-0.5 text-[13.5px] text-ink2">{next.cohort.name} · {next.rosterSize} students · {next.durationMins} min</p>
-              </div>
-              {next.status === 'ACTIVE' ? <>
-                <button type="button" disabled={busy === next.id} onClick={() => end(next)} className={clsx(btn(false), 'h-10 px-4 text-sm')}>End class</button>
-                <button type="button" onClick={() => start(next)} className={clsx(btn(true), 'h-10 px-5 text-sm')}>Open class</button>
-              </> : <>
-                <button type="button" onClick={() => setEdit(next)} className={clsx(btn(false), 'h-10 px-4 text-sm')}>Edit</button>
-                <button type="button" disabled={busy === next.id || nextIn > 24 * 60} onClick={() => start(next)} className={clsx(btn(true), 'h-10 px-5 text-sm')}
-                  title={nextIn > 24 * 60 ? 'You can start a class on the day' : undefined}>Start class</button>
-              </>}
-            </section>
-          )}
+          <TeacherLiveHero next={next ?? null} upcoming={d.upcoming} past={d.past} stats={d.stats} busy={!!next && busy === next.id} onStart={c => start(c as Row)} onEnd={c => end(c as Row)} onEdit={c => setEdit(c as Row)} onSchedule={() => setScheduling(true)} />
 
           <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
             {[

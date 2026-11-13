@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Drawer, DrawerContent, DrawerSection, InfoGrid } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { StudentAssignmentsHero } from '@/components/hero/StudentHeroes';
 
 type State = 'todo' | 'overdue' | 'submitted' | 'graded';
 interface Row {
@@ -54,22 +55,9 @@ export default function StudentAssignmentsPage() {
     <div className="flex min-h-full flex-col">
       <Topbar title="Assignments" subtitle="Work from your teachers, what’s due and your grades" />
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
-        <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
-          {[
-            { l: 'Due this week', v: s ? String(s.dueThisWeek) : '…', sub: s?.nextDue ? `${s.nextDue.title} · ${dueIn(s.nextDue.dueDate).toLowerCase()}` : 'Nothing due' },
-            { l: 'Overdue', v: s ? String(s.overdue) : '…', sub: s?.overdue ? 'You can still hand these in' : 'All caught up' },
-            { l: 'Average grade', v: s?.avgGradePct != null ? `${s.avgGradePct}%` : '—', sub: s?.graded ? `Across ${s.graded} graded` : 'Nothing graded yet' },
-            { l: 'Handed in', v: s ? `${s.submitted} of ${s.total}` : '…', sub: 'All your assignments' },
-          ].map(x => (
-            <div key={x.l} className="rounded-lg border border-line bg-white p-4">
-              <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{x.l}</dt>
-              <dd className="mt-1.5 text-[22px] font-extrabold text-navy">{x.v}</dd>
-              <dd className="mt-0.5 truncate text-[12.5px] text-muted">{x.sub}</dd>
-            </div>
-          ))}
-        </dl>
+        <StudentAssignmentsHero stats={s ?? null} rows={d?.assignments ?? []} onOpen={setOpenId} />
 
-        <section className="rounded-lg border border-line bg-white">
+        <section id="list" className="rounded-lg border border-line bg-white">
           <div role="tablist" aria-label="Assignments" className="flex gap-1 border-b border-line px-4">
             {([['todo', 'To do'], ['submitted', 'Handed in'], ['graded', 'Graded']] as [Tab, string][]).map(([k, l]) => (
               <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}

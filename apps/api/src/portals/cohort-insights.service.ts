@@ -137,6 +137,12 @@ export class CohortInsightsService {
     const possible = heldAll.length * cohort.students.length;
     const cohortAttendance = possible ? Math.round((heldAll.reduce((n, c) => n + cohort.students.filter(s => ctx.attended.has(`${c.id}:${s.studentId}`)).length, 0) / possible) * 100) : null;
 
+    // The class's own averages, to set the student's numbers against
+    const classFacts = cohort.students.map(s => this.studentFacts(ctx, s.studentId, (s as { addedAt?: Date }).addedAt ?? roster.addedAt, null, now));
+    const graded = classFacts.map(f => f.avgGrade).filter((g): g is number => g != null);
+    const classAvgGradePct = graded.length ? Math.round(graded.reduce((a, b) => a + b, 0) / graded.length) : null;
+    const classSubmittedAvg = classFacts.length ? Math.round((classFacts.reduce((n, f) => n + f.submitted, 0) / classFacts.length) * 10) / 10 : null;
+
     const { out, courses } = await this.progress([student.id], ctx.courseIds);
     const mine = out.get(student.id);
     const courseProgress = courses.map(c => ({ id: c.id, title: c.title, pct: mine?.get(c.id) ?? 0 }));
@@ -163,7 +169,7 @@ export class CohortInsightsService {
         attended: me.came, held: me.held, cohortAttendancePct: cohortAttendance,
         submitted: me.submitted, assignments: cohort.assignments.length, overdue: me.overdue,
         dueSoon: dueSoon ? { title: dueSoon.a.title, dueDate: dueSoon.a.dueDate } : null,
-        avgGradePct: me.avgGrade, graded: me.subs.filter(x => x.s?.grade != null).length,
+        avgGradePct: me.avgGrade, classAvgGradePct, classSubmittedAvg, graded: me.subs.filter(x => x.s?.grade != null).length,
       },
       courseProgress,
       classes: {

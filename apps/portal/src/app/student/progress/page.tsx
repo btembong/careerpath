@@ -5,6 +5,7 @@ import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
 import { ProgressViz } from '@/components/progress/ProgressViz';
+import { StudentProgressHero } from '@/components/hero/StudentHeroes';
 
 interface Stats { totalCourses: number; completedCourses: number; totalLessons: number; completedLessons: number; avgQuizScore: number | null; studyHours: number; streak: number; certificates: number }
 interface Week { week: string; hours: number; lessons: number }
@@ -29,6 +30,7 @@ export default function ProgressPage() {
   const [act, setAct] = useState<Activity | null>(null);
   const [g, setG] = useState<Gami | null>(null);
   const [scores, setScores] = useState<QuizScore[]>([]);
+  const [nextLesson, setNextLesson] = useState<{ href: string; title: string } | null>(null);
 
   useEffect(() => {
     api.get('/portals/student/stats').then(r => setStats(r.data)).catch(() => {});
@@ -36,6 +38,8 @@ export default function ProgressPage() {
     api.get('/portals/student/study-activity').then(r => setAct(r.data)).catch(() => {});
     api.get('/gamification/me').then(r => setG(r.data)).catch(() => {});
     api.get('/portals/student/quiz-scores').then(r => setScores(r.data ?? [])).catch(() => {});
+    // Where to carry on: the most recently opened course that isn't finished
+    api.get('/portals/student/library').then(r => { const c = (r.data?.courses ?? []).find((x: { next: unknown; pct: number }) => x.next && x.pct < 100); if (c) setNextLesson({ href: `/student/learn/${c.id}/lesson/${c.next.id}`, title: c.next.title }); }).catch(() => {});
   }, []);
 
   const thisWeek = weeks?.[weeks.length - 1];
@@ -47,6 +51,7 @@ export default function ProgressPage() {
     <div className="flex min-h-full flex-col">
       <Topbar title="My progress" subtitle="How much you’ve done, how well, and where your time goes" />
       <div className="flex flex-wrap items-start gap-5 p-4 lg:px-7 lg:py-6">
+        <div className="w-full"><StudentProgressHero stats={stats} weeks={weeks} courses={g?.courses ?? []} nextLesson={nextLesson} /></div>
         <div className="w-full"><ProgressViz /></div>
         <div className="flex min-w-0 flex-[999_1_540px] flex-col gap-4">
           <dl className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">

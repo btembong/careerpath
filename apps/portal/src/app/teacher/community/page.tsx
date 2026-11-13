@@ -6,6 +6,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/Button';
 import { notify } from '@/lib/notify';
 import { StaffRoom } from '@/components/community/StaffRoom';
+import { TeacherCommunityHero } from '@/components/hero/TeacherHeroes';
 import api from '@/lib/api';
 
 type Tab = 'staff' | 'qna';
@@ -20,7 +21,8 @@ export default function TeacherCommunityPage() {
   return (
     <div className="flex min-h-full flex-col">
       <Topbar title="Community" subtitle={tab === 'staff' ? 'Talk with other teachers and CareerPath' : 'Questions students ask in your courses'} />
-      <div role="tablist" className="flex gap-1 border-b border-line bg-white px-4 text-[14px] lg:px-7">
+      <div className="px-4 pt-4 lg:px-7 lg:pt-6"><TeacherCommunityHero onAnswer={() => setTab('qna')} /></div>
+      <div id="staff" role="tablist" className="mt-4 flex gap-1 border-y border-line bg-white px-4 text-[14px] lg:px-7">
         {([['staff', 'Staff room'], ['qna', `Course Q&A${waiting ? ` · ${waiting} waiting` : ''}`]] as [Tab, string][]).map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
             className={clsx('-mb-px border-b-2 px-3 py-[13px]', tab === k ? 'border-azure-strong font-semibold text-navy' : 'border-transparent text-ink2 hover:text-navy')}>{l}</button>

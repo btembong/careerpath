@@ -5,6 +5,7 @@ import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { TeacherStudentsHero } from '@/components/hero/TeacherHeroes';
 
 interface Row { id: string; name: string; cohort: { id: string; name: string }; progress: number; attended: number; held: number; submitted: number; assignments: number; lastActive: string | null; flag: string | null; flagReason: string | null }
 interface Data { cohorts: { id: string; name: string }[]; stats: { students: number; attention: number; avgProgress: number | null; activeThisWeek: number }; students: Row[] }
@@ -47,23 +48,10 @@ export default function TeacherStudentsPage() {
     <div className="flex min-h-full flex-col">
       <Topbar title="My students" subtitle="Everyone in your cohorts, and who needs your attention" />
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
-        <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
-          {[
-            { l: 'Students', v: st ? String(st.students) : '…', sub: d ? `${d.cohorts.length} cohort${d.cohorts.length === 1 ? '' : 's'}` : '' },
-            { l: 'Need attention', v: st ? String(st.attention) : '…', sub: 'By your flag rules' },
-            { l: 'Avg progress', v: st?.avgProgress != null ? `${st.avgProgress}%` : '—', sub: 'Lessons completed' },
-            { l: 'Active this week', v: st ? String(st.activeThisWeek) : '…', sub: st?.students ? `${Math.round((st.activeThisWeek / st.students) * 100)}% of your students` : '' },
-          ].map(x => (
-            <div key={x.l} className="rounded-lg border border-line bg-white p-4">
-              <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{x.l}</dt>
-              <dd className="mt-1.5 text-[22px] font-extrabold text-navy">{x.v}</dd>
-              <dd className="mt-0.5 truncate text-[12.5px] text-muted">{x.sub}</dd>
-            </div>
-          ))}
-        </dl>
+        {d && st ? <TeacherStudentsHero stats={st} students={d.students} cohorts={d.cohorts.length} /> : <div className="h-64 animate-pulse rounded-[14px] bg-[#3F6FE8]/30" />}
 
         <div className="flex flex-wrap items-start gap-5">
-          <section className="min-w-0 flex-[999_1_560px] rounded-lg border border-line bg-white">
+          <section id="students" className="min-w-0 flex-[999_1_560px] rounded-lg border border-line bg-white">
             <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4">
               <div role="tablist" aria-label="Students" className="flex flex-1 gap-1">
                 {([['attention', 'Needs attention', d?.students.filter(s => s.flag).length], ['all', 'All', d?.students.length]] as ['attention' | 'all', string, number | undefined][]).map(([k, l, n]) => (
@@ -109,7 +97,7 @@ export default function TeacherStudentsPage() {
             )}
           </section>
 
-          <aside className="flex min-w-0 flex-[1_1_280px] flex-col gap-2.5 rounded-lg border border-line bg-white p-[18px]">
+          <aside id="rules" className="flex min-w-0 flex-[1_1_280px] flex-col gap-2.5 rounded-lg border border-line bg-white p-[18px]">
             <h3 className="text-[15px] font-semibold text-navy">When to flag a student</h3>
             {d && d.cohorts.length > 1 && <p className="text-[12.5px] text-muted">For {d.cohorts.find(c => c.id === ruleCohort)?.name}. Pick a cohort above to change another.</p>}
             {!ruleCohort ? <p className="text-[13px] text-ink2">You don’t have a cohort yet.</p> : <>

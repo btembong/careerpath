@@ -137,6 +137,16 @@ export class CommunityService {
     return p.name || [p.firstName, p.lastName].filter(Boolean).join(' ') || p.email.split('@')[0];
   }
 
+  /** People seen on the portal in the last 15 minutes: how many, and a few faces (photos first) */
+  async pulse() {
+    const where = { deletedAt: null, wpUserId: { not: 0 }, role: { in: ['STUDENT', 'TEACHER'] as any }, lastSeenAt: { gte: new Date(Date.now() - 15 * 60_000) } };
+    const [count, people] = await Promise.all([
+      this.prisma.userProfile.count({ where }),
+      this.prisma.userProfile.findMany({ where, select: { id: true, name: true, firstName: true, lastName: true, email: true, role: true, avatarUrl: true }, orderBy: [{ avatarUrl: { sort: 'asc', nulls: 'last' } }, { lastSeenAt: 'desc' }], take: 5 }),
+    ]);
+    return { hereNow: count, faces: people.map(p => ({ id: p.id, name: this.nameOf(p), avatarUrl: p.avatarUrl, isTeacher: p.role === 'TEACHER' })) };
+  }
+
   async feed(user: UserProfile, opts: { courseId?: string; show?: string }) {
     const courses = await this.myCourses(user);
     const scope = opts.courseId && courses.some(c => c.id === opts.courseId) ? [opts.courseId] : courses.map(c => c.id);

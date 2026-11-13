@@ -7,6 +7,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/Button';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { TeacherGradingHero } from '@/components/hero/TeacherHeroes';
 
 interface Who { id: string; name: string; avatarUrl: string | null }
 type Item =
@@ -60,7 +61,8 @@ export default function GradingPage() {
     <div className="flex min-h-full flex-col">
       <Topbar title="Grading" subtitle="Written quiz answers and assignment hand-ins, in one queue"
         actions={q && <span className="text-[13px] text-muted">{q.stats.waiting} waiting{q.stats.oldestDays != null ? ` · oldest ${q.stats.oldestDays === 0 ? 'today' : `${q.stats.oldestDays} day${q.stats.oldestDays === 1 ? '' : 's'}`}` : ''}</span>} />
-      <div className="flex flex-1 flex-wrap items-stretch">
+      {q && <div className="px-4 pt-4 lg:px-7 lg:pt-6"><TeacherGradingHero stats={q.stats} items={q.items} onStart={() => { const first = q.items[0]; if (first) { setCurrentId(first.id); document.getElementById('queue')?.scrollIntoView({ behavior: 'smooth' }); } }} /></div>}
+      <div id="queue" className="mt-4 flex flex-1 flex-wrap items-stretch border-t border-line">
         <section className="min-w-[260px] flex-[0_1_330px] border-r border-line bg-white max-md:flex-[1_1_100%] max-md:border-b max-md:border-r-0">
           <div className="flex gap-1 border-b border-line px-3 py-2.5 text-[12.5px]">
             {([['all', `All ${q?.stats.waiting ?? ''}`], ['quiz', `Quiz answers ${q?.stats.quiz ?? ''}`], ['assignment', `Assignments ${q?.stats.assignment ?? ''}`]] as const).map(([k, l]) => (

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
+import { StudentLiveHero } from '@/components/hero/StudentHeroes';
 
 interface Cls {
   id: string; title: string; description: string | null; scheduledAt: string; durationMins: number; status: string;
@@ -99,18 +100,7 @@ export default function StudentLivePage() {
             <Link href="/packages" className="mt-4 inline-flex h-9 items-center rounded-md bg-azure-strong px-4 text-[13.5px] font-semibold text-on-accent">Browse packages</Link>
           </div>
         ) : <>
-          {live && (
-            <section className="flex flex-wrap items-center gap-4 rounded-lg border border-azure bg-white px-5 py-[18px]">
-              <span className="inline-flex h-[26px] items-center gap-1.5 rounded bg-azure-strong px-2.5 text-xs font-bold text-on-accent"><span className="h-[7px] w-[7px] animate-pulse rounded-full bg-white" /> Live now</span>
-              <div className="min-w-0 flex-[999_1_300px]">
-                <p className="text-lg font-extrabold text-navy">{live.title}</p>
-                <p className="mt-0.5 text-[13.5px] text-ink2">
-                  {live.cohort.name} · {live.teacher} · started {Math.max(0, Math.round((now - +new Date(live.scheduledAt)) / 60_000))} min ago{live.inClass ? ` · ${live.inClass} in class` : ''}
-                </p>
-              </div>
-              <Link href={`/student/live/${live.id}`} className="inline-flex h-10 items-center rounded-md bg-azure-strong px-5 text-sm font-semibold text-on-accent">Join class</Link>
-            </section>
-          )}
+          <StudentLiveHero live={live} next={d.upcoming[0]} attendance={d.attendance} week={week} now={now} onAddToCalendar={c => downloadIcs([c as Cls], 'live-class.ics')} />
 
           <section className="grid grid-cols-7 gap-1.5 sm:gap-2" aria-label="This week">
             {week.map(w => (

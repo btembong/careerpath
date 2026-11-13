@@ -49,6 +49,14 @@ export class CommunityController {
     return this.communityService.feed(user, { courseId, show });
   }
 
+  @Get('pulse')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Who is on CareerPath right now (seen in the last 15 minutes), for the Community hero' })
+  pulse() {
+    return this.communityService.pulse();
+  }
+
   @Post('posts')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

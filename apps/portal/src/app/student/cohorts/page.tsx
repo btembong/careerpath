@@ -9,6 +9,7 @@ const Suspense = _Suspense as any;
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
+import { StudentCohortHero } from '@/components/hero/StudentHeroes';
 
 interface ClassItem { id: string; title: string; description: string | null; scheduledAt: string; durationMins: number; status: string; recordingUrl: string | null; live: boolean; attended?: boolean; beforeJoined?: boolean }
 interface Overview {
@@ -16,7 +17,7 @@ interface Overview {
   cohort: { id: string; name: string; sittingLabel: string | null; examDate: string | null; startDate: string | null } | null;
   teacher?: { id: string; name: string; avatarUrl: string | null; bio: string | null; subjects: string[]; yearsExperience: number | null };
   next?: ClassItem | null;
-  stats?: { attended: number; held: number; cohortAttendancePct: number | null; submitted: number; assignments: number; overdue: number; dueSoon: { title: string; dueDate: string } | null; avgGradePct: number | null; graded: number };
+  stats?: { attended: number; held: number; cohortAttendancePct: number | null; classAvgGradePct?: number | null; classSubmittedAvg?: number | null; submitted: number; assignments: number; overdue: number; dueSoon: { title: string; dueDate: string } | null; avgGradePct: number | null; graded: number };
   courseProgress?: { id: string; title: string; pct: number }[];
   classes?: { upcoming: ClassItem[]; past: ClassItem[] };
   assignments?: { id: string; title: string; dueDate: string; maxPoints: number; state: 'todo' | 'overdue' | 'waiting' | 'graded'; grade: number | null; submittedAt: string | null }[];
@@ -113,38 +114,7 @@ function CohortDetail({ id }: { id: string }) {
         ) : undefined} />
 
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
-        <section className={clsx('flex flex-wrap items-stretch gap-5 rounded-lg border bg-white p-5', next ? 'border-azure' : 'border-line')}>
-          <div className="flex min-w-0 flex-[999_1_380px] flex-col gap-1.5">
-            {next ? (
-              <>
-                <span className="inline-flex h-6 items-center gap-1.5 self-start rounded bg-accent-soft px-2 text-xs font-bold text-navy">
-                  <span className={clsx('h-[7px] w-[7px] rounded-full bg-azure-strong', next.live && 'animate-pulse')} />
-                  {next.live ? 'Live now' : `Next live class · ${dayLabel(next.scheduledAt).toLowerCase()}`}
-                </span>
-                <p className="mt-1.5 text-xl font-extrabold text-navy">{next.title}</p>
-                <p className="text-[13.5px] text-ink2">{dayLabel(next.scheduledAt)}, {time(next.scheduledAt)}{teacher ? ` · with ${teacher.name}` : ''} · {next.durationMins} min</p>
-                <div className="mt-2.5 flex flex-wrap gap-2">
-                  {canJoin
-                    ? <Link href={`/student/live/${next.id}`} className={clsx(btn(true), 'h-[38px] px-[18px] text-sm')}>Join class</Link>
-                    : <span className="inline-flex h-[38px] items-center rounded-md border border-line bg-subtle px-3.5 text-sm font-semibold text-muted">Opens 10 min before</span>}
-                  <button type="button" onClick={() => downloadIcs(next, cohort.name)} className={clsx(btn(false), 'h-[38px] px-3.5 text-sm')}>Add to calendar</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-xl font-extrabold text-navy">{cohort.name}</p>
-                <p className="text-[13.5px] text-ink2">No live class is scheduled yet. Your teacher will add the next one here.</p>
-              </>
-            )}
-          </div>
-          {examDays != null && examDays >= 0 && (
-            <div className="flex flex-[1_1_220px] flex-col justify-center gap-1 rounded-md bg-subtle px-4 py-3.5">
-              <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">{cohort.sittingLabel ?? 'Your exam'}</p>
-              <p className="text-[30px] font-extrabold tracking-[-0.01em] text-navy">{examDays === 0 ? 'Today' : `${examDays} day${examDays === 1 ? '' : 's'}`}</p>
-              <p className="text-[13px] text-ink2">{examDays === 0 ? 'Good luck!' : `until your exam on ${new Date(cohort.examDate!).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}`}</p>
-            </div>
-          )}
-        </section>
+        <StudentCohortHero cohort={cohort} teacher={teacher} next={next} stats={stats} members={members} now={now} onAddToCalendar={() => next && downloadIcs(next, cohort.name)} />
 
         {stats && (
           <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">

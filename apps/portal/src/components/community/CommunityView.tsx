@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent, DrawerSection } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
+import { StudentCommunityHero } from '@/components/hero/StudentHeroes';
 
 interface Person { id: string; name: string; avatarUrl: string | null; isTeacher: boolean }
 interface Reply { id: string; body: string; createdAt: string; upvotes: number; myUpvote: boolean; author: Person }
@@ -43,6 +45,7 @@ export function CommunityView({ role }: { role: 'student' | 'teacher' }) {
   const [openId, setOpenId] = useState<string | null>(params.get('thread'));
   const [asking, setAsking] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const { user } = useAuth();
 
   async function load() {
     const r = await api.get('/community/feed', { params: { courseId: courseId || undefined, show } });
@@ -62,7 +65,12 @@ export function CommunityView({ role }: { role: 'student' | 'teacher' }) {
       <Topbar title="Community" subtitle={role === 'teacher' ? 'Questions from students in your courses' : 'Ask questions about your courses and help each other'}
         actions={role === 'student' && <Button size="sm" onClick={() => setAsking(true)} disabled={!d?.courses.length}>Ask a question</Button>} />
 
-      <div className="flex flex-wrap items-start gap-5 p-4 lg:px-7 lg:py-6">
+      {role === 'student' && (
+        <div className="px-4 pt-4 lg:px-7 lg:pt-6">
+          <StudentCommunityHero threads={d?.threads ?? null} me={user?.id} onAsk={() => setAsking(true)} onOpen={setOpenId} />
+        </div>
+      )}
+      <div id="discussions" className="flex flex-wrap items-start gap-5 p-4 lg:px-7 lg:py-6">
         <div className="flex min-w-0 flex-[999_1_520px] flex-col gap-3.5">
           <div className="flex flex-wrap items-center gap-2">
             <div role="tablist" className="flex gap-1 rounded-lg border border-line bg-white p-1 text-[13px]">

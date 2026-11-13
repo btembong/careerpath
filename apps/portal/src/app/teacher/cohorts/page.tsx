@@ -10,6 +10,7 @@ import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
 import { Icon } from '@/components/ui/Icon';
 import { spring } from '@/lib/motion';
 import api from '@/lib/api';
+import { TeacherCohortsHero } from '@/components/hero/TeacherHeroes';
 
 interface Cohort {
   id: string; name: string;
@@ -43,7 +44,8 @@ export default function TeacherCohortsPage() {
   return (
     <div className="flex flex-col min-h-full">
       <Topbar title="My Cohorts" subtitle="Manage your student groups" />
-      <div className="flex-1 p-6 pb-28 lg:pb-6 space-y-5">
+      <div className="flex-1 p-4 pb-28 lg:p-6 lg:pb-6 space-y-5">
+        <TeacherCohortsHero />
         <div className="flex items-center justify-between">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-azure">COHORTS</p>
