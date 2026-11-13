@@ -96,7 +96,7 @@ export class TeachersService {
             student: { select: { firstName: true, lastName: true, avatarUrl: true } },
           },
           orderBy: { createdAt: 'desc' },
-          take: 20,
+          take: 200,
         },
         teacherCohorts: { select: { id: true, name: true } },
         platformCourses: {
@@ -110,6 +110,7 @@ export class TeachersService {
             wpCourseUrl: true,
             programme: { select: { name: true } },
             subject: { select: { name: true } },
+            priceAmount: true, priceCurrency: true, isSoldIndividually: true,
           },
         },
         mentorSlots: {
@@ -137,10 +138,12 @@ export class TeachersService {
       }),
     );
 
+    const studentCount = await this.prisma.courseEnrollment.count({ where: { course: { teacherId } } });
     return {
       ...this.formatTeacher({ ...teacher, platformCourses: teacher.platformCourses }),
+      studentCount,
       courses: coursesWithImages,
-      reviews: teacher.teacherReviews.map((r) => ({
+      reviews: teacher.teacherReviews.slice(0, 20).map((r) => ({
         id: r.id,
         rating: r.rating,
         comment: r.comment,
@@ -282,6 +285,8 @@ export class TeachersService {
       websiteUrl: t.websiteUrl ?? t.teacherApplication?.websiteUrl ?? null,
       avgRating: rounded,
       reviewCount: ratings.length,
+      // How many gave 5, 4, 3, 2 and 1 stars
+      ratingDist: [5, 4, 3, 2, 1].map(n => ratings.filter(r => Math.round(r) === n).length),
       cohortCount: t.teacherCohorts?.length ?? 0,
       courseCount: t.platformCourses?.length ?? 0,
       courseIds: (t.platformCourses ?? []).map((c: any) => c.id),

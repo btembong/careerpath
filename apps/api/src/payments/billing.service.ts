@@ -36,11 +36,16 @@ export class BillingService {
       ...packages.map(p => ({
         kind: 'package' as const, id: p.package.id, title: p.package.name,
         detail: [`Package · ${p.package.courseIds.length} course${p.package.courseIds.length === 1 ? '' : 's'}`, p.package.cohort ? 'live classes' : null, p.package.mentorship ? 'mentorship' : null].filter(Boolean).join(', '),
-        examDate: p.package.cohort?.examDate ?? null, expiresAt: p.expiresAt, ...span(p.purchasedAt, p.expiresAt),
+        examDate: p.package.cohort?.examDate ?? null, startedAt: p.purchasedAt, expiresAt: p.expiresAt, ...span(p.purchasedAt, p.expiresAt),
         href: `/packages/${p.package.id}`,
       })),
-      ...courses.map(c => ({ kind: 'course' as const, id: c.course.id, title: c.course.title, detail: 'Single course', examDate: null, expiresAt: c.expiresAt, ...span(c.purchasedAt, c.expiresAt), href: `/student/courses/${c.course.id}` })),
-      ...enrollments.filter(e => !courses.some(c => c.courseId === e.courseId)).map(e => ({ kind: 'free' as const, id: e.course.id, title: e.course.title, detail: 'Free course', examDate: null, expiresAt: null, pctUsed: 0, daysLeft: null, ended: false, href: `/student/courses/${e.course.id}` })),
+      ...courses.map(c => ({ kind: 'course' as const, id: c.course.id, title: c.course.title, detail: 'Single course', examDate: null, startedAt: c.purchasedAt, expiresAt: c.expiresAt, ...span(c.purchasedAt, c.expiresAt), href: `/student/courses/${c.course.id}` })),
+      ...enrollments.filter(e => !courses.some(c => c.courseId === e.courseId)).map(e => ({ kind: 'free' as const, id: e.course.id, title: e.course.title, detail: 'Free course', examDate: null, startedAt: e.enrolledAt, expiresAt: null, pctUsed: 0, daysLeft: null, ended: false, href: `/student/courses/${e.course.id}` })),
+      ...extras.filter(a => a.status === 'PAID').map(a => {
+        const base = a.packagePurchaseId ? packages.find(p => p.id === a.packagePurchaseId) : courses.find(c => c.id === a.coursePurchaseId);
+        const until = base?.expiresAt ?? null, from = a.paidAt ?? a.createdAt;
+        return { kind: 'extra' as const, id: a.id, title: a.title, detail: 'Added to your ' + (a.packageId ? 'package' : 'course'), examDate: null, startedAt: from, expiresAt: until, ...span(from, until), href: a.packageId ? `/packages/${a.packageId}` : `/student/courses/${a.courseId}` };
+      }),
     ]
       // Keep one row per thing (a renewed package appears once, with its latest access)
       .filter((a, i, all) => all.findIndex(b => b.kind === a.kind && b.id === a.id) === i)

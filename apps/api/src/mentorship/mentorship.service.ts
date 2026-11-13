@@ -157,12 +157,16 @@ export class MentorshipService {
     });
 
     // Deduplicate teachers, collect slot counts
-    const map = new Map<string, { teacher: any; openSlots: number }>();
+    const map = new Map<string, { teacher: any; openSlots: number; nextAt: Date | null; weekSlots: number }>();
+    const weekEnd = Date.now() + 7 * 86_400_000;
     for (const s of slots) {
       if (!map.has(s.teacherId)) {
-        map.set(s.teacherId, { teacher: s.teacher, openSlots: 0 });
+        map.set(s.teacherId, { teacher: s.teacher, openSlots: 0, nextAt: null, weekSlots: 0 });
       }
-      map.get(s.teacherId)!.openSlots += 1;
+      const m = map.get(s.teacherId)!;
+      m.openSlots += 1;
+      if (!m.nextAt || s.startsAt < m.nextAt) m.nextAt = s.startsAt;
+      if (+s.startsAt < weekEnd) m.weekSlots += 1;
     }
 
     // Fetch avg ratings for these teachers
@@ -175,11 +179,11 @@ export class MentorshipService {
     });
     const reviewMap = new Map(reviews.map(r => [r.teacherId, r]));
 
-    return [...map.values()].map(({ teacher, openSlots }) => {
+    return [...map.values()].map(({ teacher, openSlots, nextAt, weekSlots }) => {
       const rev = reviewMap.get(teacher.id);
       return {
         ...teacher,
-        openSlots,
+        openSlots, nextAt, weekSlots,
         avgRating: rev?._avg?.rating ? Math.round(rev._avg.rating * 10) / 10 : null,
         reviewCount: rev?._count?.rating ?? 0,
       };
@@ -426,7 +430,7 @@ export class MentorshipService {
       include: {
         slot: {
           include: {
-            teacher: { select: { id: true, firstName: true, lastName: true, email: true, bio: true } },
+            teacher: { select: { id: true, name: true, firstName: true, lastName: true, email: true, bio: true } },
           },
         },
         review: { select: { rating: true, comment: true } },
@@ -470,7 +474,7 @@ export class MentorshipService {
       include: {
         slot: {
           include: {
-            teacher: { select: { id: true, firstName: true, lastName: true, email: true } },
+            teacher: { select: { id: true, name: true, firstName: true, lastName: true, email: true } },
           },
         },
         student: { select: { id: true, firstName: true, lastName: true, email: true } },

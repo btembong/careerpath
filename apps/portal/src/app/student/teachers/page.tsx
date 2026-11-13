@@ -3,92 +3,209 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
+import { KIND_COLOURS, walletMoney } from '@/components/wallet/WalletCharts';
 import api from '@/lib/api';
 
 interface Teacher {
   id: string; name: string; bio: string | null; subjectAreas: string[]; yearsExperience: number | null;
-  avgRating: number | null; reviewCount: number; courseCount: number; cohortCount: number; courseIds: string[]; videoIntroUrl: string | null;
+  avgRating: number | null; reviewCount: number; ratingDist?: number[]; courseCount: number; cohortCount: number; courseIds: string[]; videoIntroUrl: string | null;
 }
+interface Detail extends Teacher {
+  studentCount?: number;
+  courses: { id: string; title: string; priceAmount: number | null; priceCurrency: string | null; isSoldIndividually: boolean }[];
+  availableSlots: { id: string; startsAt: string }[];
+}
+interface Mentor { id: string; weekSlots?: number; nextAt?: string | null }
+interface LibCourse { id: string; title: string; pct: number; next: { title: string } | null }
+interface Yours { t: Teacher; role: string; next: string; cta: string; href: string }
+
+// Some older profiles store subject ids instead of names
+const realSubjects = (xs: string[]) => xs.filter(x => !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(x));
 const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+const colourOf = (id: string) => KIND_COLOURS[[...id].reduce((n, c) => n + c.charCodeAt(0), 0) % KIND_COLOURS.length];
+const when = (d: string) => `${new Date(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}, ${new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+const short = (d: string) => `${new Date(d).toLocaleDateString('en-GB', { weekday: 'short' })} ${new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+
+function Avatar({ t, size }: { t: { id: string; name: string }; size: number }) {
+  return <span className="flex flex-shrink-0 items-center justify-center rounded-full font-extrabold text-[#FFFFFF]" style={{ width: size, height: size, fontSize: Math.round(size / 3.2), background: colourOf(t.id) }}>{initials(t.name)}</span>;
+}
 
 export default function StudentTeachersPage() {
   const [teachers, setTeachers] = useState<Teacher[] | null>(null);
-  const [mine, setMine] = useState<Set<string>>(new Set());
-  const [mentors, setMentors] = useState<Set<string>>(new Set());
+  const [lib, setLib] = useState<LibCourse[]>([]);
+  const [cohort, setCohort] = useState<{ teacherId: string; name: string; next: { title: string; scheduledAt: string } | null } | null>(null);
+  const [mentors, setMentors] = useState<Map<string, Mentor>>(new Map());
+  const [booked, setBooked] = useState<{ teacherId: string; startsAt: string } | null>(null);
   const [q, setQ] = useState('');
-  const [subject, setSubject] = useState('all');
+  const [subject, setSubject] = useState('All');
   const [mentorOnly, setMentorOnly] = useState(false);
+  const [pick, setPick] = useState<string | null>(null);
+  const [detail, setDetail] = useState<Detail | null>(null);
 
   useEffect(() => {
     Promise.all([
-      api.get('/teachers', { params: { limit: 100 } }).then(r => r.data?.data ?? r.data ?? []).catch(() => []),
-      api.get('/portals/student/library').then(r => (r.data?.courses ?? []).map((c: { id: string }) => c.id) as string[]).catch(() => [] as string[]),
-      api.get('/portals/student/cohort-overview').then(r => r.data?.teacher?.id as string | undefined).catch(() => undefined),
-      api.get('/mentorship/mentors').then(r => (r.data ?? []).map((m: { id: string }) => m.id) as string[]).catch(() => [] as string[]),
-    ]).then(([t, courseIds, cohortTeacher, mentorIds]) => {
-      const owned = new Set(courseIds);
-      const mineIds = new Set<string>((t as Teacher[]).filter(x => x.courseIds?.some(id => owned.has(id))).map(x => x.id));
-      if (cohortTeacher) mineIds.add(cohortTeacher);
-      setTeachers(t); setMine(mineIds); setMentors(new Set(mentorIds));
+      api.get('/teachers', { params: { limit: 100 } }).then(r => (r.data?.data ?? r.data ?? []) as Teacher[]).catch(() => []),
+      api.get('/portals/student/library').then(r => (r.data?.courses ?? []) as LibCourse[]).catch(() => []),
+      api.get('/portals/student/cohort-overview').then(r => r.data?.teacher ? { teacherId: r.data.teacher.id as string, name: r.data.cohort?.name as string, next: r.data.next ?? null } : null).catch(() => null),
+      api.get('/mentorship/mentors').then(r => (r.data ?? []) as Mentor[]).catch(() => []),
+      api.get('/mentorship/bookings/mine').then(r => (r.data ?? []).filter((b: any) => b.status === 'CONFIRMED' && new Date(b.slot.endsAt).getTime() > Date.now())
+        .sort((a: any, b: any) => +new Date(a.slot.startsAt) - +new Date(b.slot.startsAt))[0]).catch(() => null),
+    ]).then(([t, l, c, m, b]) => {
+      setTeachers(t); setLib(l); setCohort(c); setMentors(new Map(m.map(x => [x.id, x])));
+      setBooked(b ? { teacherId: b.slot.teacher.id, startsAt: b.slot.startsAt } : null);
     });
   }, []);
 
-  const subjects = useMemo(() => [...new Set((teachers ?? []).flatMap(t => t.subjectAreas))].sort(), [teachers]);
-  const shown = (teachers ?? []).filter(t => (subject === 'all' || t.subjectAreas.includes(subject)) && (!mentorOnly || mentors.has(t.id))
-    && (!q.trim() || `${t.name} ${t.subjectAreas.join(' ')}`.toLowerCase().includes(q.trim().toLowerCase())));
-  const yours = shown.filter(t => mine.has(t.id));
-  const others = shown.filter(t => !mine.has(t.id));
+  // The student's own teachers, each with how they're connected and what's next
+  const yours = useMemo(() => {
+    const list: Yours[] = [];
+    const byId = new Map((teachers ?? []).map(t => [t.id, t]));
+    if (cohort && byId.get(cohort.teacherId)) list.push({ t: byId.get(cohort.teacherId)!, role: `Your class teacher · ${cohort.name}`, next: cohort.next ? `Next class ${when(cohort.next.scheduledAt)} · ${cohort.next.title}` : 'No class scheduled yet', cta: 'Open my class', href: '/student/cohorts' });
+    if (booked && byId.get(booked.teacherId)) list.push({ t: byId.get(booked.teacherId)!, role: 'Your mentor', next: `Next session ${when(booked.startsAt)}`, cta: 'Open mentorship', href: '/student/mentorship' });
+    for (const c of lib) {
+      const t = (teachers ?? []).find(x => x.courseIds?.includes(c.id));
+      if (!t || list.some(y => y.t.id === t.id && y.role.startsWith('Teaches'))) continue;
+      list.push({ t, role: `Teaches your ${c.title.split(' · ')[0]} course`, next: c.pct >= 100 ? 'Course finished' : c.pct ? `You’re ${c.pct}% through${c.next ? ` · next: ${c.next.title}` : ''}` : c.next ? `Start with: ${c.next.title}` : 'Not started yet', cta: c.pct ? 'Continue the course' : 'Start the course', href: `/student/learn/${c.id}` });
+    }
+    return list.slice(0, 6);
+  }, [teachers, lib, cohort, booked]);
+  const mine = new Set(yours.map(y => y.t.id));
 
-  const card = (t: Teacher) => (
-    <article key={t.id} className={clsx('flex flex-col gap-2.5 rounded-lg border bg-white p-4', mine.has(t.id) ? 'border-azure' : 'border-line')}>
-      <Link href={`/student/teachers/${t.id}`} className="flex items-center gap-3">
-        <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-[15px] font-extrabold text-azure-strong">{initials(t.name)}</span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] font-bold text-navy">{t.name}</span>
-          <span className="block truncate text-[12.5px] text-muted">{t.subjectAreas.slice(0, 3).join(', ') || 'Teacher'}{mine.has(t.id) ? ' · your teacher' : ''}</span>
-        </span>
-        <span className="whitespace-nowrap text-[13px] font-bold text-navy">{t.avgRating ? `${t.avgRating} ★` : 'New'}</span>
-      </Link>
-      {t.bio && <p className="line-clamp-2 text-[13px] text-ink2">{t.bio}</p>}
-      <p className="text-[12.5px] text-muted">
-        {[`${t.courseCount} course${t.courseCount === 1 ? '' : 's'}`, t.yearsExperience ? `${t.yearsExperience} years teaching` : null, t.reviewCount ? `${t.reviewCount} rating${t.reviewCount === 1 ? '' : 's'}` : null, mentors.has(t.id) ? 'free times this week' : null].filter(Boolean).join(' · ')}
-      </p>
-      <div className="mt-auto flex gap-2 border-t border-line pt-2.5">
-        {mentors.has(t.id)
-          ? <Link href="/student/mentorship" className="inline-flex h-8 flex-1 items-center justify-center rounded-md bg-azure-strong text-[13px] font-semibold text-on-accent">Book mentorship</Link>
-          : <Link href={`/student/teachers/${t.id}`} className="inline-flex h-8 flex-1 items-center justify-center rounded-md border border-line text-[13px] font-semibold text-navy hover:bg-subtle">View profile</Link>}
-        <Link href={`/student/messages?to=${t.id}`} className="inline-flex h-8 items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Message</Link>
-      </div>
-    </article>
-  );
+  const subjects = useMemo(() => [...new Set((teachers ?? []).flatMap(t => realSubjects(t.subjectAreas)))].sort(), [teachers]);
+  const shown = (teachers ?? []).filter(t => (subject === 'All' || t.subjectAreas.includes(subject)) && (!mentorOnly || mentors.has(t.id))
+    && (!q.trim() || `${t.name} ${t.subjectAreas.join(' ')}`.toLowerCase().includes(q.trim().toLowerCase())))
+    .sort((a, b) => Number(mine.has(b.id)) - Number(mine.has(a.id)) || (b.avgRating ?? 0) - (a.avgRating ?? 0));
+  const selected = (teachers ?? []).find(t => t.id === pick) ?? shown[0] ?? null;
+
+  useEffect(() => {
+    if (!selected) return;
+    setDetail(null);
+    api.get(`/teachers/${selected.id}`).then(r => setDetail(r.data)).catch(() => {});
+  }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const chip = (on: boolean) => clsx('h-8 flex-shrink-0 rounded-md border px-3 text-[13px] font-semibold', on ? 'border-[#3F6FE8] bg-accent-soft text-navy' : 'border-line bg-white text-ink2 hover:text-navy');
 
   return (
     <div className="flex min-h-full flex-col">
-      <Topbar title="Teachers" subtitle="The people who teach your courses and classes" />
-      <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-6">
+      <Topbar title="Teachers" subtitle="The people who teach your courses, run your class and mentor you" />
+      <div className="flex flex-col gap-[18px] p-4 lg:px-7 lg:py-6">
+        {yours.length > 0 && (
+          <section className="keep-light flex flex-col gap-3.5 rounded-xl bg-[#3F6FE8] p-4 text-navy sm:px-6 sm:py-[22px]">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-[26px] font-extrabold tracking-[-0.02em]">Your <span className="text-[#FFFFFF]">teachers</span></h2>
+              <p className="text-[13.5px] text-[#0B1F55]">From your courses, your class and your mentor sessions</p>
+            </div>
+            <div className="flex snap-x gap-3 overflow-x-auto pb-1 sm:grid sm:[grid-template-columns:repeat(auto-fit,minmax(260px,1fr))]">
+              {yours.map(y => (
+                <div key={y.t.id + y.role} className="flex min-w-[260px] snap-start flex-col gap-2.5 rounded-lg bg-[#FFFFFF] p-4 sm:min-w-0">
+                  <div className="flex items-center gap-3">
+                    <Avatar t={y.t} size={44} />
+                    <div className="min-w-0"><p className="truncate text-[15px] font-bold">{y.t.name}</p><p className="mt-px truncate text-[12.5px] font-semibold text-[#2F57C9]">{y.role}</p></div>
+                  </div>
+                  <p className="rounded-md bg-[#F4F6FB] px-2.5 py-2 text-[12.5px] text-[#3A4A70]">{y.next}</p>
+                  <div className="mt-auto flex gap-2">
+                    <Link href={y.href} className="inline-flex h-8 flex-1 items-center justify-center rounded-md bg-[#2F57C9] text-[12.5px] font-bold text-[#FFFFFF]">{y.cta}</Link>
+                    <Link href={`/student/messages?to=${y.t.id}`} className="inline-flex h-8 items-center rounded-md border border-[#E4E9F3] px-3 text-[12.5px] font-bold">Message</Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         <div className="flex flex-wrap items-center gap-2.5">
-          <label className="flex h-10 min-w-0 flex-[1_1_300px] items-center gap-2 rounded-md border border-line bg-white px-3 focus-within:border-azure">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" aria-hidden className="text-muted"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" /></svg>
+          <label className="flex h-10 min-w-0 flex-[1_1_280px] items-center gap-2 rounded-md border border-line bg-white px-3 focus-within:border-azure">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden className="text-muted"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" /></svg>
             <input type="search" aria-label="Search teachers" value={q} onChange={e => setQ(e.target.value)} placeholder="Search teachers or subjects" className="min-w-0 flex-1 bg-transparent text-sm text-navy outline-none placeholder:text-muted" />
           </label>
-          <select aria-label="Subject" value={subject} onChange={e => setSubject(e.target.value)} className="h-10 rounded-md border border-line bg-white pl-3 pr-8 text-[13.5px] text-navy outline-none">
-            <option value="all">Subject: All</option>{subjects.map(s => <option key={s}>{s}</option>)}
-          </select>
-          <button type="button" aria-pressed={mentorOnly} onClick={() => setMentorOnly(v => !v)}
-            className={clsx('h-10 rounded-md border px-3 text-[13.5px] font-semibold', mentorOnly ? 'border-azure bg-accent-soft text-navy' : 'border-line bg-white text-ink2')}>Takes mentorship bookings</button>
+          <div role="tablist" aria-label="Subject" className="flex max-w-full gap-1.5 overflow-x-auto">
+            {['All', ...subjects].map(s => <button key={s} type="button" role="tab" aria-selected={subject === s} onClick={() => setSubject(s)} className={chip(subject === s)}>{s}</button>)}
+          </div>
+          <button type="button" aria-pressed={mentorOnly} onClick={() => setMentorOnly(v => !v)} className={chip(mentorOnly)}>Takes mentorship bookings</button>
         </div>
-        {!teachers ? <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">{[0, 1, 2].map(i => <div key={i} className="h-48 rounded-lg border border-line bg-white animate-pulse" />)}</div> : !shown.length ? (
-          <p className="rounded-lg border border-line bg-white p-10 text-center text-[13px] text-ink2">No teachers match.</p>
-        ) : <>
-          {yours.length > 0 && <>
-            <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">Your teachers</p>
-            <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">{yours.map(card)}</div>
-          </>}
-          {others.length > 0 && <>
-            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.06em] text-muted">{yours.length ? 'More teachers' : 'All teachers'}</p>
-            <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">{others.map(card)}</div>
-          </>}
-        </>}
+
+        <div className="flex flex-wrap items-start gap-[18px]">
+          <section className="flex min-w-0 flex-[999_1_520px] flex-col gap-2.5">
+            <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">{teachers ? `${shown.length} teacher${shown.length === 1 ? '' : 's'}${subject === 'All' ? '' : ` · ${subject}`}` : 'Teachers'}</p>
+            {!teachers ? <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]">{[0, 1, 2, 3].map(i => <div key={i} className="h-44 animate-pulse rounded-xl border border-line bg-white" />)}</div>
+              : !shown.length ? <p className="rounded-xl border border-line bg-white p-10 text-center text-[13px] text-ink2">No teachers match.</p> : (
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]">
+                {shown.map(t => {
+                  const m = mentors.get(t.id), on = selected?.id === t.id;
+                  return (
+                    <button key={t.id} type="button" onClick={() => setPick(t.id)} aria-pressed={on}
+                      className={clsx('flex flex-col gap-2.5 rounded-xl border-2 bg-white p-4 text-left text-navy', on ? 'border-[#3F6FE8] shadow-[0_8px_20px_rgba(63,111,232,0.15)]' : mine.has(t.id) ? 'border-[#C9D7FB]' : 'border-line hover:border-[#C9D7FB]')}>
+                      <span className="flex w-full items-center gap-3">
+                        <Avatar t={t} size={46} />
+                        <span className="min-w-0 flex-1"><span className="block truncate text-[15px] font-bold">{t.name}</span><span className="block truncate text-[12.5px] text-muted">{[t.yearsExperience ? `${t.yearsExperience} years teaching` : null, mine.has(t.id) ? 'yours' : null].filter(Boolean).join(' · ') || 'Teacher'}</span></span>
+                        <span className="text-right"><span className="block text-[15px] font-extrabold">{t.avgRating ? `${t.avgRating} ★` : 'New'}</span><span className="block text-[11px] text-muted">{t.reviewCount ? `${t.reviewCount} rating${t.reviewCount === 1 ? '' : 's'}` : 'no ratings yet'}</span></span>
+                      </span>
+                      {realSubjects(t.subjectAreas).length > 0 && <span className="flex w-full flex-wrap gap-[5px]">{realSubjects(t.subjectAreas).slice(0, 3).map(s => <span key={s} className="inline-flex h-[22px] items-center rounded bg-subtle px-2 text-xs font-semibold text-ink2">{s}</span>)}</span>}
+                      <span className="mt-auto flex w-full justify-between gap-2 border-t border-line pt-2.5 text-[12.5px]">
+                        <span className="text-ink2">{t.courseCount} course{t.courseCount === 1 ? '' : 's'}{t.cohortCount ? ` · ${t.cohortCount} class${t.cohortCount === 1 ? '' : 'es'}` : ''}</span>
+                        <strong className={m?.weekSlots ? 'text-[#1F6B47]' : 'text-muted'}>{m?.weekSlots ? `${m.weekSlots} free time${m.weekSlots === 1 ? '' : 's'} this week` : m ? 'Mentoring later' : 'No mentoring'}</strong>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {selected && (
+            <aside className="flex min-w-0 flex-[1_1_340px] flex-col gap-3.5 rounded-xl border border-line bg-white p-5 lg:sticky lg:top-6">
+              <div className="flex items-center gap-3.5">
+                <Avatar t={selected} size={64} />
+                <div className="min-w-0"><p className="text-xl font-extrabold text-navy">{selected.name}</p><p className="mt-0.5 text-[13px] text-muted">{[realSubjects(selected.subjectAreas).join(', '), selected.yearsExperience ? `${selected.yearsExperience} years teaching` : null].filter(Boolean).join(' · ')}</p></div>
+              </div>
+              {selected.videoIntroUrl && (
+                <Link href={`/student/teachers/${selected.id}`} className="relative grid h-[150px] place-items-center overflow-hidden rounded-lg bg-[#072061]">
+                  <svg aria-hidden viewBox="0 0 300 150" preserveAspectRatio="none" className="absolute inset-0 h-full w-full opacity-[0.35]"><path d="M0,120 C60,80 120,140 180,90 C230,50 270,90 300,60 L300,150 L0,150 Z" fill="#3F6FE8" /></svg>
+                  <span className="relative grid h-[52px] w-[52px] place-items-center rounded-full bg-[#FFFFFF]"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden><path d="M8 5v14l11-7z" fill="#2F57C9" /></svg></span>
+                  <span className="absolute bottom-2.5 left-3 text-xs font-bold text-[#FFFFFF]">Meet {selected.name.replace(/\s*\(.*\)\s*$/, '')}</span>
+                </Link>
+              )}
+              {selected.bio && <p className="line-clamp-5 text-[13.5px] leading-normal text-ink2">{selected.bio}</p>}
+              <dl className="grid grid-cols-3 gap-2">
+                {[['Courses', selected.courseCount], ['Students', detail?.studentCount ?? '…'], ['Free this week', mentors.get(selected.id)?.weekSlots ?? 0]].map(([l, v]) => (
+                  <div key={l as string} className="rounded-lg bg-subtle p-2.5"><dt className="text-[11.5px] text-muted">{l}</dt><dd className="mt-0.5 text-lg font-extrabold text-navy">{v}</dd></div>
+                ))}
+              </dl>
+              {selected.reviewCount > 0 && selected.ratingDist && (
+                <div>
+                  <p className="mb-1.5 text-[13px] font-bold text-navy">What students say · {selected.avgRating} ★ from {selected.reviewCount}</p>
+                  {[5, 4, 3, 2, 1].map((s, k) => (
+                    <div key={s} className="mb-1 flex items-center gap-2 text-xs text-ink2">
+                      <span className="w-[18px]">{s}★</span>
+                      <span className="h-2 flex-1 overflow-hidden rounded bg-accent-soft"><span className="block h-2 rounded bg-[#3F6FE8]" style={{ width: `${Math.round((selected.ratingDist![k] / selected.reviewCount) * 100)}%` }} /></span>
+                      <span className="w-7 text-right">{selected.ratingDist![k]}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {detail?.courses?.length ? (
+                <div>
+                  <p className="mb-1.5 text-[13px] font-bold text-navy">Courses</p>
+                  {detail.courses.slice(0, 5).map(c => {
+                    const have = lib.some(l => l.id === c.id);
+                    return (
+                      <Link key={c.id} href={`/student/courses/${c.id}`} className="flex justify-between gap-2 border-t border-line py-2 text-[13px] text-navy hover:text-azure-strong">
+                        <span className="min-w-0 truncate">{c.title}</span>
+                        <strong className={clsx('whitespace-nowrap', have ? 'text-[#1F6B47]' : 'text-navy')}>{have ? 'Yours' : c.isSoldIndividually && c.priceAmount && c.priceCurrency ? walletMoney(c.priceAmount, c.priceCurrency) : 'In a package'}</strong>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : null}
+              <div className="flex gap-2">
+                {mentors.has(selected.id)
+                  ? <Link href="/student/mentorship" className="inline-flex h-[38px] flex-1 items-center justify-center rounded-md bg-azure-strong px-3 text-[13.5px] font-bold text-on-accent">{mentors.get(selected.id)?.nextAt ? `Book mentorship · next ${short(mentors.get(selected.id)!.nextAt!)}` : 'Book mentorship'}</Link>
+                  : <Link href={`/student/teachers/${selected.id}`} className="inline-flex h-[38px] flex-1 items-center justify-center rounded-md bg-azure-strong px-3 text-[13.5px] font-bold text-on-accent">View full profile</Link>}
+                <Link href={`/student/messages?to=${selected.id}`} className="inline-flex h-[38px] items-center rounded-md border border-line px-3.5 text-[13.5px] font-bold text-navy hover:bg-subtle">Message</Link>
+              </div>
+            </aside>
+          )}
+        </div>
       </div>
     </div>
   );
