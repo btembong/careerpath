@@ -485,14 +485,14 @@ export class AuthService {
 
   // ── Password reset ───────────────────────────────────────
 
-  /** Our own reset email with a 30-minute, single-use link. Never says whether the email exists. */
+  /** Our own reset email with a one-hour, single-use link. Never says whether the email exists. */
   async forgotPassword(email: string): Promise<{ message: string }> {
     const e = String(email ?? '').trim().toLowerCase();
     const p = e ? await this.findByEmail(e) : null;
     const portal = (process.env.PORTAL_URL ?? 'http://localhost:3000').replace(/\/$/, '');
     if (p && p.approvalStatus !== ApprovalStatus.REJECTED) {
       const token = randomBytes(32).toString('base64url');
-      await this.redis.set(resetKey(token), p.id, 30 * 60);
+      await this.redis.set(resetKey(token), p.id, 60 * 60);
       this.mail.sendPasswordReset(e, p.firstName ?? '', `${portal}/reset-password?token=${token}`).catch(() => {});
     } else if (!p && e) {
       // Someone with a website account who has never signed in to the portal: reset their website password;
@@ -500,7 +500,7 @@ export class AuthService {
       const wpUser = await this.wp.findUserByEmail(e);
       if (wpUser) {
         const token = randomBytes(32).toString('base64url');
-        await this.redis.set(resetKey(token), `wp:${wpUser.id}`, 30 * 60);
+        await this.redis.set(resetKey(token), `wp:${wpUser.id}`, 60 * 60);
         this.mail.sendPasswordReset(e, wpUser.firstName, `${portal}/reset-password?token=${token}`).catch(() => {});
         this.logger.log(`Password reset for a website account not yet on the portal (WordPress user ${wpUser.id})`);
       } else {

@@ -129,7 +129,10 @@ export class MailService {
   }
 
   async sendPasswordReset(email: string, firstName: string, link: string): Promise<void> {
-    await this.send(email, 'Reset your CareerPath Africa password', passwordResetTemplate(firstName, link), 'security');
+    // A code in the subject keeps each request its own email; otherwise Gmail stacks them into one
+    // conversation and hides the newest button, so people open an older, expired link
+    const code = Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
+    await this.send(email, `Reset your CareerPath Africa password · ${code}`, passwordResetTemplate(firstName, link, code), 'security');
   }
 
   async sendAdminCode(email: string, code: string): Promise<void> {

@@ -1012,13 +1012,14 @@ export function liveSessionReminderTemplate(
 
 // ── Password reset (our own, no longer WordPress) ───────────────────────────
 
-export function passwordResetTemplate(firstName: string, link: string): string {
+export function passwordResetTemplate(firstName: string, link: string, code?: string): string {
   const hero = headline('A new password,', 'in one step.');
   const body = `
     <p style="margin:0;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
-      Hi ${escapeHtml(firstName || 'there')}, someone asked to reset the password for this email. If it was you, choose a new one below. The link works for 30 minutes, once.
+      Hi ${escapeHtml(firstName || 'there')}, someone asked to reset the password for this email. If it was you, choose a new one below. The link works for an hour, once.
     </p>
     ${ctaButton('Choose a new password', link)}
+    ${code ? `<p style="margin:10px 0 0;font-size:13px;color:#637090;font-family:${FONT}">Request ${escapeHtml(code)}. If you asked more than once, use the email with the newest code.</p>` : ''}
     <p style="margin:10px 0 0;font-size:13px;color:#637090;font-family:${FONT}">Didn’t ask for this? Ignore it; your password stays the same.</p>`;
   return base(hero, body, 'Account security');
 }
