@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { ReportsOverviewService } from './reports-overview.service';
+import { InsightsService } from './insights.service';
 import { UpsertExchangeRateDto } from './dto/upsert-rate.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -14,7 +15,25 @@ import { UserRole } from '@cpa/shared';
 @Roles(UserRole.ADMIN)
 @Controller('reports')
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService, private readonly overviewService: ReportsOverviewService) {}
+  constructor(private readonly reportsService: ReportsService, private readonly overviewService: ReportsOverviewService, private readonly insights: InsightsService) {}
+
+  @Get('admin/insights')
+  @ApiOperation({ summary: '[Admin] How the platform is doing: people, activity, sign-ups, journeys, learning, and the map by country (days = 7, 30 or 365)' })
+  insightsOverview(@Query('days') days?: string) {
+    return this.insights.overview(days);
+  }
+
+  @Get('admin/insights/countries')
+  @ApiOperation({ summary: '[Admin] Every country side by side for a period (month, last, six)' })
+  insightsCountries(@Query('period') period?: string) {
+    return this.insights.countries(period);
+  }
+
+  @Get('admin/insights/countries/:id')
+  @ApiOperation({ summary: '[Admin] One country: people, sales, where the money went, teachers, best sellers, newest students' })
+  insightsCountry(@Param('id') id: string, @Query('period') period?: string) {
+    return this.insights.country(id, period);
+  }
 
   @Get('admin/reports/overview')
   @ApiOperation({ summary: '[Admin] One month in a chosen currency: totals, sales by day, courses, teachers, countries and purchases' })

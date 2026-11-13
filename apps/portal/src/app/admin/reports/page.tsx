@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { clsx } from 'clsx';
 import { minorToMajor } from '@cpa/shared';
 import { RepTable, td } from '@/components/rep/RepTable';
+import { InsightsTabs } from '@/components/insights/InsightsTabs';
 import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
@@ -75,7 +76,7 @@ export default function AdminReportsPage() {
 
   return (
     <>
-      <RepTable title="Reports" subtitle="Sales, courses, teachers and countries over a month"
+      <RepTable title="Insights" subtitle="A month of sales: courses, teachers and countries" underBar={<InsightsTabs />}
         actions={<button onClick={download} disabled={!d} className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle disabled:opacity-50">Download CSV</button>}
         top={<>
         <div className="flex flex-wrap items-center gap-2 text-[13.5px]">

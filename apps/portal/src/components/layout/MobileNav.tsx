@@ -101,7 +101,7 @@ const ROLES: Record<string, { tabs: NavItem[]; menu: NavGroup[]; profile: string
     ],
     menu: [
       { items: [
-        { label: 'Reports', href: '/admin/reports', icon: 'reports' },
+        { label: 'Insights', href: '/admin/insights', icon: 'reports' },
         { label: 'Question bank', href: '/admin/questions', icon: 'questionLine' },
         { label: 'Mock exams', href: '/admin/mocks', icon: 'docLine' },
         { label: 'Packages', href: '/admin/packages', icon: 'packages' },

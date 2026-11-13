@@ -100,7 +100,7 @@ const TEACHER: Item[] = [
 
 const ADMIN: Item[] = [
   { label: 'Dashboard', icon: 'dashboard', href: '/admin/dashboard' },
-  { label: 'Reports',   icon: 'chart',     href: '/admin/reports' },
+  { label: 'Insights',  icon: 'chart',     href: '/admin/insights', also: ['/admin/reports'] },
   { label: 'Content', icon: 'box', children: [
     { label: 'Courses',         href: '/admin/courses/manage', also: ['/admin/courses'] },
     { label: 'Question bank',   href: '/admin/questions' },

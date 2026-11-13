@@ -684,6 +684,7 @@ export class PortalsService {
       // WP tutors are approved; they complete their teacher profile at first login
       await this.prisma.userProfile.create({
         data: {
+          signupSource: 'import',
           wpUserId: wu.id,
           email: wu.email,
           name: wu.name || null,

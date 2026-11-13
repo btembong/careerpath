@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CountriesService } from './countries.service';
 import { RepInsightsService } from './rep-insights.service';
+import { InsightsService } from '../reports/insights.service';
 import { CreateCountryDto } from './dto/create-country.dto';
 import { UpdateCountryDto } from './dto/update-country.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
@@ -14,7 +15,7 @@ import { UserProfile } from '@prisma/client';
 @ApiTags('countries')
 @Controller('countries')
 export class CountriesController {
-  constructor(private readonly countriesService: CountriesService, private readonly rep: RepInsightsService) {}
+  constructor(private readonly countriesService: CountriesService, private readonly rep: RepInsightsService, private readonly insights: InsightsService) {}
 
   /** Public — used by registration page to populate country selector */
   @Get()
@@ -57,6 +58,16 @@ export class CountriesController {
   @ApiOperation({ summary: "[Country Rep] Own country's revenue, active students, and wallet" })
   getRepDashboard(@CurrentUser() user: UserProfile) {
     return this.countriesService.getRepDashboard(user);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Get('country-rep/insights')
+  @Roles(UserRole.COUNTRY_REP)
+  @ApiOperation({ summary: '[Country Rep] Your country: people, sales by month, best sellers, teachers, newest students and your earnings' })
+  repInsights(@CurrentUser() user: UserProfile, @Query('period') period?: string) {
+    if (!user.countryId) throw new BadRequestException('You are not assigned to a country yet');
+    return this.insights.country(user.countryId, period, { repId: user.id });
   }
 
   @ApiBearerAuth()

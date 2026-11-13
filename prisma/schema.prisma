@@ -35,6 +35,13 @@ model UserProfile {
   deletedAt            DateTime?
   googleId             String?                  @unique
   lastActiveDate       DateTime?
+  /// Last time they used the portal (any signed-in request, at most every few minutes) and on what
+  lastSeenAt           DateTime?
+  /// phone, tablet or computer
+  lastDevice           String?
+  /// How the account began: portal, website, referral, google, import (school seats are on OrgSeat)
+  signupSource         String?
+  activeDays           ActiveDay[]
   /// When the account was created (backfilled for older accounts from their first activity)
   createdAt            DateTime                 @default(now())
   microsoftId          String?                  @unique
@@ -1920,4 +1927,15 @@ model ErrorHit {
   error   ErrorEvent @relation(fields: [errorId], references: [id], onDelete: Cascade)
 
   @@index([at])
+}
+
+/// One row per person per day they used the portal: daily, weekly and monthly active people over time
+model ActiveDay {
+  userId String
+  day    DateTime @db.Date
+  device String?
+  user   UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, day])
+  @@index([day])
 }

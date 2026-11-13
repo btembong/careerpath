@@ -153,6 +153,7 @@ export class AuthService {
       const avatarUrl = wpUser.avatar_urls?.['96'] ?? wpUser.avatar_urls?.['48'] ?? null;
       profile = await this.prisma.userProfile.create({
         data: {
+          signupSource: 'website',
           wpUserId: wpUser.id,
           email: dto.email,
           role: wpDerivedRole,
@@ -336,6 +337,7 @@ export class AuthService {
 
     const profile = await this.prisma.userProfile.create({
       data: {
+          signupSource: referredById ? 'referral' : 'portal',
         wpUserId,
         email:          dto.email,
         role:           UserRole.STUDENT,
@@ -380,7 +382,7 @@ export class AuthService {
 
     await this.prisma.$transaction(async (tx) => {
       const profile = await tx.userProfile.create({
-        data: { wpUserId, email: dto.email, role: UserRole.TEACHER, approvalStatus: ApprovalStatus.PENDING, passwordHash: await bcrypt.hash(dto.password, 12), passwordUpdatedAt: new Date(), termsAcceptedAt: new Date(), termsVersion: dto.termsVersion ?? TERMS_VERSION },
+        data: { signupSource: 'portal', wpUserId, email: dto.email, role: UserRole.TEACHER, approvalStatus: ApprovalStatus.PENDING, passwordHash: await bcrypt.hash(dto.password, 12), passwordUpdatedAt: new Date(), termsAcceptedAt: new Date(), termsVersion: dto.termsVersion ?? TERMS_VERSION },
       });
       await this.writeTeacherProfile(tx, profile.id, dto, ip);
     });
@@ -766,6 +768,7 @@ export class AuthService {
       // Create a new student account — SSO users get wpUserId = -1 (sentinel for SSO-only accounts)
       profile = await this.prisma.userProfile.create({
         data: {
+          signupSource: 'google',
           wpUserId: await portalOnlyWpId(this.prisma), // no WordPress user: negative, unique
           email: dto.email, googleId: dto.googleId,
           name: dto.name ?? null, avatarUrl: dto.avatarUrl ?? null,
