@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
+import { StudentCoursesHero } from '@/components/hero/LearningHeroes';
 import { CourseCover } from '@/components/courses/CourseCover';
 import { HelpfulEmpty } from '@/components/ui/HelpfulEmpty';
 
@@ -77,29 +78,9 @@ export default function MyCoursesPage() {
             <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">{[0, 1, 2].map(i => <div key={i} className="h-56 rounded-lg border border-line bg-white animate-pulse" />)}</div>
           </>
         ) : !lib.courses.length ? (
-          <HelpfulEmpty title="Your courses will live here." body="Join a free course or buy one, and it appears here with your progress."
-            cta={{ label: 'Browse the catalogue', href: '/student/catalogue' }} preview={{ icon: '▶', title: 'Lesson 3 of 11', line: 'Gaseous Exchange' }} />
+          <StudentCoursesHero lib={lib} cover={null} />
         ) : <>
-          {lib.resume && (
-            <section className="flex flex-wrap items-center gap-5 rounded-lg border border-azure bg-white p-5">
-              <CourseCover variant="tile" size="lg" course={{ title: lib.resume.title }} />
-              <div className="min-w-0 flex-[999_1_320px]">
-                <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">Pick up where you left off</p>
-                <p className="mt-1 text-[19px] font-extrabold text-navy">{lib.resume.title}</p>
-                {lib.resume.next && (
-                  <p className="mt-0.5 text-[13.5px] text-ink2">
-                    Next: {lib.resume.next.module} · {lib.resume.next.title}{lib.resume.next.durationSecs ? ` · ${Math.max(1, Math.round(lib.resume.next.durationSecs / 60))} min` : ''}
-                  </p>
-                )}
-                <div className="mt-2.5 flex max-w-[420px] items-center gap-2.5">
-                  <span className="h-1.5 flex-1 overflow-hidden rounded-[3px] bg-subtle"><span className="block h-1.5 bg-azure" style={{ width: `${lib.resume.pct}%` }} /></span>
-                  <strong className="text-[13px] text-navy">{lib.resume.pct}%</strong>
-                </div>
-              </div>
-              <Link href={lib.resume.next ? `/student/learn/${lib.resume.id}/lesson/${lib.resume.next.id}` : `/student/learn/${lib.resume.id}`}
-                className="inline-flex h-10 items-center rounded-md bg-azure-strong px-5 text-sm font-semibold text-on-accent">Continue lesson</Link>
-            </section>
-          )}
+          <StudentCoursesHero lib={lib} cover={lib.resume ? <CourseCover variant="tile" size="lg" course={{ title: lib.resume.title }} /> : null} />
 
           {s && (
             <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
