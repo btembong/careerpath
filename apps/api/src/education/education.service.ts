@@ -311,6 +311,31 @@ export class EducationService {
     return result;
   }
 
+  /** Remind the students in the class who haven't handed an assignment in. Once a day per assignment. */
+  async remindAssignment(teacher: UserProfile, assignmentId: string) {
+    const a = await this.prisma.assignment.findUnique({
+      where: { id: assignmentId },
+      include: { cohort: { select: { teacherId: true, students: { select: { studentId: true } } } }, submissions: { select: { studentId: true } } },
+    });
+    if (!a) throw new NotFoundException('Assignment not found');
+    if (a.cohort.teacherId !== teacher.id) throw new ForbiddenException('Only the class teacher can send reminders');
+    const href = `/student/assignments?a=${a.id}`;
+    const recent = await this.prisma.notification.findFirst({ where: { href, createdAt: { gte: new Date(Date.now() - 20 * 3600_000) } }, select: { id: true } });
+    if (recent) throw new BadRequestException('You already sent a reminder for this one today. Try again tomorrow.');
+    const handedIn = new Set(a.submissions.map(s => s.studentId));
+    const to = a.cohort.students.map(s => s.studentId).filter(id => !handedIn.has(id));
+    if (!to.length) return { reminded: 0 };
+    const due = a.dueDate.getTime() - Date.now();
+    const when = due < 0 ? 'was due' : due < 86_400_000 ? 'is due today' : due < 2 * 86_400_000 ? 'is due tomorrow' : `is due ${a.dueDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}`;
+    this.notifications.notify(to, {
+      type: 'assignment',
+      title: `Reminder: ${a.title}`,
+      body: `${a.title} ${when}. Your teacher is waiting for your work.`,
+      href,
+    });
+    return { reminded: to.length };
+  }
+
   // ── Assignment creation (teacher) ────────────────────────
 
   async createAssignment(

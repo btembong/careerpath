@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { TeacherMentorshipHero } from '@/components/hero/TeacherWorkHeroes';
 
 interface Student { id: string; firstName: string | null; lastName: string | null; email: string }
 interface Slot { id: string; startsAt: string; endsAt: string; durationMins: number; isBooked: boolean; booking: { id: string; notes: string | null; status: string; student: Student } | null }
@@ -14,7 +15,6 @@ interface Booking { id: string; notes: string | null; status: string; slot: { st
 
 const DAY = 86_400_000;
 const nameOf = (s: Student) => [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email.split('@')[0];
-const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
 const time = (d: string) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 const when = (d: string) => {
   const days = Math.round((new Date(new Date(d).toDateString()).getTime() - new Date(new Date().toDateString()).getTime()) / DAY);
@@ -28,6 +28,7 @@ export default function TeacherMentorshipPage() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [adding, setAdding] = useState(false);
   const [cancelling, setCancelling] = useState<Booking | null>(null);
+  const [loads, setLoads] = useState(0);
 
   async function load() {
     const [s, b, p] = await Promise.all([
@@ -37,6 +38,7 @@ export default function TeacherMentorshipPage() {
     ]);
     setSlots(s.data ?? []); setBookings(b.data ?? []);
     setVisible(p.data ? !!p.data.videoIntroUrl : null);
+    setLoads(n => n + 1);
   }
   useEffect(() => { load(); }, []);
 
@@ -49,8 +51,6 @@ export default function TeacherMentorshipPage() {
   const upcoming = bookings.filter(b => b.status !== 'CANCELLED' && new Date(b.slot.endsAt).getTime() > now).sort((a, b) => +new Date(a.slot.startsAt) - +new Date(b.slot.startsAt));
   // Finished sessions, newest first: their whiteboard stays with the booking
   const past = bookings.filter(b => b.status !== 'CANCELLED' && new Date(b.slot.endsAt).getTime() <= now).sort((a, b) => +new Date(b.slot.startsAt) - +new Date(a.slot.startsAt));
-  const next = upcoming[0];
-  const nextOpen = next && new Date(next.slot.startsAt).getTime() - now < 10 * 60_000;
   const rated = bookings.filter(b => b.review);
   const avg = rated.length ? Math.round((rated.reduce((n, b) => n + b.review!.rating, 0) / rated.length) * 10) / 10 : null;
 
@@ -75,20 +75,7 @@ export default function TeacherMentorshipPage() {
           </p>
         )}
 
-        {next && (
-          <section className="flex flex-wrap items-center gap-4 rounded-lg border border-azure bg-white px-5 py-[18px]">
-            <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-[15px] font-extrabold text-azure-strong">{initials(nameOf(next.student))}</span>
-            <div className="min-w-0 flex-[999_1_280px]">
-              <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">Next session · {when(next.slot.startsAt)} · {next.slot.durationMins} min</p>
-              <p className="mt-1 text-lg font-extrabold text-navy">{nameOf(next.student)}</p>
-              {next.notes && <p className="mt-0.5 truncate text-[13.5px] text-ink2">“{next.notes}”</p>}
-            </div>
-            <Button variant="secondary" onClick={() => setCancelling(next)}>Cancel</Button>
-            {nextOpen
-              ? <Link href={`/teacher/mentorship/session/${next.id}`} className="inline-flex h-[38px] items-center rounded-md bg-azure-strong px-[18px] text-[13.5px] font-semibold text-on-accent">Join session</Link>
-              : <span className="inline-flex h-[38px] items-center rounded-md border border-line bg-subtle px-3 text-[13px] font-semibold text-muted">Opens 10 min before</span>}
-          </section>
-        )}
+        <TeacherMentorshipHero reloadKey={loads} onAdd={() => setAdding(true)} onCancel={id => setCancelling(bookings.find(b => b.id === id) ?? null)} />
 
         <div className="flex flex-wrap items-start gap-5">
           <section className="flex min-w-0 flex-[999_1_520px] flex-col gap-3 rounded-lg border border-line bg-white p-[18px]">

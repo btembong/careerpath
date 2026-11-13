@@ -79,10 +79,12 @@ const STUDENT: Item[] = [
 const TEACHER: Item[] = [
   { label: 'Dashboard', icon: 'dashboard', href: '/teacher/dashboard' },
   { label: 'Teaching', icon: 'book', children: [
-    { label: 'My Courses',   href: '/teacher/courses', also: ['/teacher/quiz-builder'] },
+    { label: 'My Courses',   href: '/teacher/courses' },
+    { label: 'Quizzes',      href: '/teacher/quizzes', also: ['/teacher/quiz-builder'] },
     { label: 'Question bank', href: '/teacher/questions' },
     { label: 'Mock exams',    href: '/teacher/mocks' },
     { label: 'Live Classes', href: '/teacher/live' },
+    { label: 'Recordings',   href: '/teacher/recordings' },
   ]},
   { label: 'Classes', icon: 'calendar', children: [
     { label: 'Cohorts',     href: '/teacher/cohorts' },

@@ -52,6 +52,13 @@ export class EducationController {
     return this.educationService.studentAssignmentOverview(user.id);
   }
 
+  @Post('assignments/:assignmentId/remind')
+  @Roles(UserRole.TEACHER)
+  @ApiOperation({ summary: '[Teacher] Remind the students who haven’t handed an assignment in (once a day)' })
+  remind(@CurrentUser() user: UserProfile, @Param('assignmentId') assignmentId: string) {
+    return this.educationService.remindAssignment(user, assignmentId);
+  }
+
   @Get('teacher/assignments-overview')
   @Roles(UserRole.TEACHER)
   @ApiOperation({ summary: '[Teacher] What to grade, assignments set and recent grades across cohorts' })

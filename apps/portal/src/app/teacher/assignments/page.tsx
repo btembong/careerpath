@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent, DrawerSection, InfoGrid } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { TeacherAssignmentsHero } from '@/components/hero/TeacherWorkHeroes';
 
 interface Sub {
   id: string; assignmentId: string; title: string; maxPoints: number; dueDate: string;
@@ -33,7 +34,6 @@ export default function TeacherAssignmentsPage() {
   async function load() { const r = await api.get('/education/teacher/assignments-overview'); setD(r.data); return r.data as Overview; }
   useEffect(() => { load().catch(() => notify.error('Could not load assignments')); }, []);
 
-  const s = d?.stats;
   const btn = (primary: boolean) => clsx('inline-flex h-8 items-center rounded-md border px-3 text-[13px] font-semibold', primary ? 'border-azure-strong bg-azure-strong text-on-accent' : 'border-line bg-white text-navy hover:bg-subtle');
 
   return (
@@ -41,22 +41,10 @@ export default function TeacherAssignmentsPage() {
       <Topbar title="Assignments" subtitle="Set work for your cohorts and grade what comes in"
         actions={<Button size="sm" disabled={!d?.cohorts.length} onClick={() => setCreating(true)}>New assignment</Button>} />
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
-        <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
-          {[
-            { l: 'To grade', v: s ? String(s.toGrade) : '…', sub: s?.oldestWaitDays != null ? `Oldest waiting ${s.oldestWaitDays} day${s.oldestWaitDays === 1 ? '' : 's'}` : 'Nothing waiting' },
-            { l: 'Due this month', v: s ? String(s.setThisMonth) : '…', sub: d ? `${d.cohorts.length} cohort${d.cohorts.length === 1 ? '' : 's'}` : '' },
-            { l: 'On time', v: s?.onTimePct != null ? `${s.onTimePct}%` : '—', sub: 'Handed in before the due date' },
-            { l: 'Average grade', v: s?.avgGradePct != null ? `${s.avgGradePct}%` : '—', sub: 'Last 30 days' },
-          ].map(x => (
-            <div key={x.l} className="rounded-lg border border-line bg-white p-4">
-              <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{x.l}</dt>
-              <dd className="mt-1.5 text-[22px] font-extrabold text-navy">{x.v}</dd>
-              <dd className="mt-0.5 truncate text-[12.5px] text-muted">{x.sub}</dd>
-            </div>
-          ))}
-        </dl>
+        {d ? <TeacherAssignmentsHero d={d} onNew={() => setCreating(true)} onGrade={() => { setTab('grade'); document.getElementById('work')?.scrollIntoView({ behavior: 'smooth' }); }} />
+          : <div className="h-64 animate-pulse rounded-[14px] bg-[#3F6FE8]/30" />}
 
-        <section className="rounded-lg border border-line bg-white">
+        <section id="work" className="scroll-mt-4 rounded-lg border border-line bg-white">
           <div role="tablist" aria-label="Assignments" className="flex gap-1 border-b border-line px-4">
             {([['grade', 'To grade', d?.toGrade.length], ['all', 'All assignments', d?.assignments.length], ['graded', 'Graded', d?.graded.length]] as [Tab, string, number | undefined][]).map(([k, l, n]) => (
               <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}

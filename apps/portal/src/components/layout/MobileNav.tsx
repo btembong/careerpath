@@ -68,18 +68,20 @@ const ROLES: Record<string, { tabs: NavItem[]; menu: NavGroup[]; profile: string
   TEACHER: {
     tabs: [
       { label: 'Home', href: '/teacher/dashboard', icon: 'home' },
-      { label: 'Courses', href: '/teacher/courses', icon: 'courses', also: ['/teacher/quiz-builder'] },
+      { label: 'Courses', href: '/teacher/courses', icon: 'courses' },
       { label: 'Students', href: '/teacher/students', icon: 'student', also: ['/teacher/alerts'] },
       { label: 'Messages', href: '/teacher/messages', icon: 'messages', badge: 'messages' },
     ],
     menu: [
       { items: [
         { label: 'Live classes', href: '/teacher/live', icon: 'live' },
+        { label: 'Recordings', href: '/teacher/recordings', icon: 'play' },
         { label: 'Cohorts', href: '/teacher/cohorts', icon: 'community' },
         { label: 'Assignments', href: '/teacher/assignments', icon: 'assignments', also: ['/teacher/rubrics'] },
         { label: 'Grading', href: '/teacher/grading', icon: 'penLine', also: ['/teacher/quiz-grading', '/teacher/grade'] },
       ] },
       { items: [
+        { label: 'Quizzes', href: '/teacher/quizzes', icon: 'checkLine', also: ['/teacher/quiz-builder'] },
         { label: 'Question bank', href: '/teacher/questions', icon: 'questionLine' },
         { label: 'Mock exams', href: '/teacher/mocks', icon: 'docLine' },
       ] },

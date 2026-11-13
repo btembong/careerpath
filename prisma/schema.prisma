@@ -42,6 +42,7 @@ model UserProfile {
   /// How the account began: portal, website, referral, google, import (school seats are on OrgSeat)
   signupSource         String?
   activeDays           ActiveDay[]
+  recordingViews       RecordingView[]
   /// When the account was created (backfilled for older accounts from their first activity)
   createdAt            DateTime                 @default(now())
   microsoftId          String?                  @unique
@@ -316,7 +317,7 @@ model PackagePurchase {
   amountPaid   Int?
   currency     String?
   /// Extras bought with it: [{ kind: live|mentorship, price, cohortId?, perMonth? }]
-  addOns     Json?
+  addOns       Json?
   gateway      String?
   gatewayRef   String?
   invoiceNo    String?             @unique
@@ -333,7 +334,7 @@ model CoursePurchase {
   amountPaid   Int
   currency     String
   /// Extras bought with it: [{ kind: live|mentorship, price, cohortId?, perMonth? }]
-  addOns     Json?
+  addOns       Json?
   purchasedAt  DateTime            @default(now())
   expiresAt    DateTime?
   gateway      String?
@@ -421,6 +422,7 @@ model LiveClass {
   questions          ClassQuestion[]
   quizzes            ClassQuiz[]
   groups             ClassGroup[]
+  views              RecordingView[]
 }
 
 model LiveAttendance {
@@ -566,23 +568,23 @@ model QuestionBank {
 
 /// A paper set up once and taken by many: a teacher's mock exam, or a real past paper
 model MockExam {
-  id              String       @id @default(uuid())
-  kind            ExamKind     @default(MOCK)
+  id              String        @id @default(uuid())
+  kind            ExamKind      @default(MOCK)
   title           String
   description     String?
   programmeId     String?
   /// Who can take it: anyone with access to one of these courses, or who bought one of these packages
   courseIds       String[]
   packageIds      String[]
-  status          ExamStatus   @default(DRAFT)
+  status          ExamStatus    @default(DRAFT)
   timeLimitSecs   Int
-  passMark        Int          @default(50)
+  passMark        Int           @default(50)
   /// 0 means no limit
-  attemptsAllowed Int          @default(0)
+  attemptsAllowed Int           @default(0)
   /// Whether students see the right answers after submitting
-  showAnswers     Boolean      @default(true)
+  showAnswers     Boolean       @default(true)
   /// true: each student gets a different mix following `sections`; false: everyone gets `questionIds` in order
-  randomised      Boolean      @default(true)
+  randomised      Boolean       @default(true)
   /// [{ title, courseIds, moduleIds, tags, count, easy, medium, hard }]
   sections        Json?
   questionIds     String[]
@@ -596,8 +598,8 @@ model MockExam {
   catMax          Int?
   catStandard     Float?
   createdById     String
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   attempts        TestSession[]
 
   @@index([status, kind])
@@ -605,25 +607,25 @@ model MockExam {
 
 /// One test a student took in the Test Centre. Separate from QuizAttempt, so it never touches course grades or certificates.
 model TestSession {
-  id            String      @id @default(uuid())
+  id            String       @id @default(uuid())
   studentId     String
   mode          TestMode
-  status        TestStatus  @default(IN_PROGRESS)
+  status        TestStatus   @default(IN_PROGRESS)
   title         String
   filters       Json?
   questionIds   String[]
   timeLimitSecs Int?
   /// Set when this is an attempt at a teacher's mock exam or a past paper
   mockExamId    String?
-  mockExam      MockExam?   @relation(fields: [mockExamId], references: [id], onDelete: SetNull)
-  startedAt     DateTime    @default(now())
+  mockExam      MockExam?    @relation(fields: [mockExamId], references: [id], onDelete: SetNull)
+  startedAt     DateTime     @default(now())
   expiresAt     DateTime?
   submittedAt   DateTime?
   score         Float?
-  maxScore      Int         @default(0)
+  maxScore      Int          @default(0)
   /// Adaptive test state: ability estimate, served questions, the item pool and the final decision
   cat           Json?
-  student       UserProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student       UserProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
   answers       TestAnswer[]
 
   @@index([studentId, startedAt])
@@ -783,20 +785,20 @@ model MentorSlot {
 }
 
 model MentorBooking {
-  id           String        @id @default(uuid())
-  slotId       String        @unique
-  studentId    String
-  notes        String?
-  bookedAt     DateTime      @default(now())
-  cancelReason String?
-  cancelledAt  DateTime?
-  meetingUrl   String?
+  id                 String        @id @default(uuid())
+  slotId             String        @unique
+  studentId          String
+  notes              String?
+  bookedAt           DateTime      @default(now())
+  cancelReason       String?
+  cancelledAt        DateTime?
+  meetingUrl         String?
   /// The shared whiteboard from the session, saved as it was drawn
   whiteboardSnapshot String?
-  status       String        @default("CONFIRMED")
-  slot         MentorSlot    @relation(fields: [slotId], references: [id])
-  student      UserProfile   @relation("StudentBookings", fields: [studentId], references: [id])
-  review       MentorReview?
+  status             String        @default("CONFIRMED")
+  slot               MentorSlot    @relation(fields: [slotId], references: [id])
+  student            UserProfile   @relation("StudentBookings", fields: [studentId], references: [id])
+  review             MentorReview?
 }
 
 model MentorReview {
@@ -838,18 +840,18 @@ model Coupon {
 
 /// A school or company that buys seats; its admins (role ORG_ADMIN) manage them in the school portal
 model Organisation {
-  id          String          @id @default(uuid())
-  name        String
-  countryId   String?
+  id           String          @id @default(uuid())
+  name         String
+  countryId    String?
   contactEmail String
   /// Code in the school's join link; anyone signing up with it takes a free seat
-  joinCode    String          @unique
-  joinEnabled Boolean         @default(true)
+  joinCode     String          @unique
+  joinEnabled  Boolean         @default(true)
   /// When set, only emails ending in this domain can use the join link, e.g. "achimota.edu.gh"
-  emailDomain String?
-  createdAt   DateTime        @default(now())
-  enrollments OrgEnrollment[]
-  admins      UserProfile[]   @relation("OrgAdmins")
+  emailDomain  String?
+  createdAt    DateTime        @default(now())
+  enrollments  OrgEnrollment[]
+  admins       UserProfile[]   @relation("OrgAdmins")
 }
 
 model OrgEnrollment {
@@ -884,7 +886,7 @@ model OrgSeat {
 
 /// Every checkout a student starts, so failed, abandoned and paid-but-not-delivered payments can be seen and fixed
 model PaymentAttempt {
-  id                String    @id @default(uuid())
+  id                String      @id @default(uuid())
   studentId         String
   /// package or course
   kind              String
@@ -899,18 +901,18 @@ model PaymentAttempt {
   invoiceNo         String?
   gateway           String
   /// The gateway's reference for this checkout (Paystack reference, Stripe session, Tranzak request)
-  sessionId         String?   @unique
+  sessionId         String?     @unique
   /// Tranzak's merchant reference, when used
   tranzakSessionId  String?
   couponId          String?
   /// PENDING, PAID, FAILED, ABANDONED or REFUNDED
-  status            String    @default("PENDING")
+  status            String      @default("PENDING")
   failureReason     String?
   paidAt            DateTime?
   checkedAt         DateTime?
   packagePurchaseId String?
   coursePurchaseId  String?
-  createdAt         DateTime  @default(now())
+  createdAt         DateTime    @default(now())
   student           UserProfile @relation(fields: [studentId], references: [id])
 
   @@index([status, createdAt])
@@ -1225,31 +1227,31 @@ model AuditLog {
 /// A conversation thread between two users (student↔teacher or teacher↔teacher).
 /// A one-to-one conversation (two participants) or a cohort's group chat (cohortId set, no participants)
 model MessageThread {
-  id             String       @id @default(uuid())
-  participantAId String?
-  participantBId String?
-  cohortId       String?      @unique
+  id              String         @id @default(uuid())
+  participantAId  String?
+  participantBId  String?
+  cohortId        String?        @unique
   /// A group a teacher or admin made (members in ThreadMember). Cohort groups take their members from the cohort.
-  isGroup        Boolean      @default(false)
+  isGroup         Boolean        @default(false)
   /// Group name, description and photo (a cohort group shows the cohort's name until someone renames it)
-  name           String?
-  description    String?
-  photoUrl       String?
-  createdById    String?
+  name            String?
+  description     String?
+  photoUrl        String?
+  createdById     String?
   /// Group settings, changed by group admins
-  onlyAdminsSend Boolean      @default(false)
-  onlyAdminsEdit Boolean      @default(true)
-  membersCanAdd  Boolean      @default(false)
+  onlyAdminsSend  Boolean        @default(false)
+  onlyAdminsEdit  Boolean        @default(true)
+  membersCanAdd   Boolean        @default(false)
   pinnedMessageId String?
-  lastMessageAt  DateTime     @default(now())
-  createdAt      DateTime     @default(now())
-  messages       Message[]
-  reads          ThreadRead[]
-  groupMembers   ThreadMember[]
-  calls          Call[]
-  participantA   UserProfile? @relation("ThreadParticipantA", fields: [participantAId], references: [id])
-  participantB   UserProfile? @relation("ThreadParticipantB", fields: [participantBId], references: [id])
-  cohort         Cohort?      @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  lastMessageAt   DateTime       @default(now())
+  createdAt       DateTime       @default(now())
+  messages        Message[]
+  reads           ThreadRead[]
+  groupMembers    ThreadMember[]
+  calls           Call[]
+  participantA    UserProfile?   @relation("ThreadParticipantA", fields: [participantAId], references: [id])
+  participantB    UserProfile?   @relation("ThreadParticipantB", fields: [participantBId], references: [id])
+  cohort          Cohort?        @relation(fields: [cohortId], references: [id], onDelete: Cascade)
 
   @@unique([participantAId, participantBId])
 }
@@ -1284,59 +1286,59 @@ model ThreadRead {
 }
 
 model Message {
-  id             String        @id @default(uuid())
-  threadId       String
-  senderId       String
-  body           String
-  readAt         DateTime?
-  createdAt      DateTime      @default(now())
+  id                 String            @id @default(uuid())
+  threadId           String
+  senderId           String
+  body               String
+  readAt             DateTime?
+  createdAt          DateTime          @default(now())
   /// A file sent with the message: R2 key (served through a signed link), original name, type and size
-  attachmentKey  String?
-  attachmentName String?
-  attachmentType String?
-  attachmentSize Int?
+  attachmentKey      String?
+  attachmentName     String?
+  attachmentType     String?
+  attachmentSize     Int?
   /// Voice notes: length in seconds, and 40 bar heights (0-9) drawn as its waveform
   attachmentDuration Int?
   attachmentWave     String?
   /// TEXT, SYSTEM for notes like "Kofi added Ama" (sender = who did it), or CALL for a call's entry in the chat
-  kind           String        @default("TEXT")
-  callId         String?       @unique
-  call           Call?         @relation(fields: [callId], references: [id])
+  kind               String            @default("TEXT")
+  callId             String?           @unique
+  call               Call?             @relation(fields: [callId], references: [id])
   /// The message this one replies to (shown quoted)
-  replyToId      String?
+  replyToId          String?
   /// People tagged with @, and whether @everyone was used
-  mentions       String[]      @default([])
-  mentionsAll    Boolean       @default(false)
+  mentions           String[]          @default([])
+  mentionsAll        Boolean           @default(false)
   /// Edited: the latest text is in body; every earlier version is kept in MessageEdit
-  editedAt       DateTime?
+  editedAt           DateTime?
   /// "Delete for everyone" only hides it: the text, file and voice note stay stored, for the record
-  deletedAt      DateTime?
-  deletedById    String?
-  sender         UserProfile   @relation("SentMessages", fields: [senderId], references: [id])
-  replyTo        Message?      @relation("Replies", fields: [replyToId], references: [id])
-  replies        Message[]     @relation("Replies")
-  edits          MessageEdit[]
-  reactions      MessageReaction[]
-  stars          MessageStar[]
-  thread         MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  deletedAt          DateTime?
+  deletedById        String?
+  sender             UserProfile       @relation("SentMessages", fields: [senderId], references: [id])
+  replyTo            Message?          @relation("Replies", fields: [replyToId], references: [id])
+  replies            Message[]         @relation("Replies")
+  edits              MessageEdit[]
+  reactions          MessageReaction[]
+  stars              MessageStar[]
+  thread             MessageThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
 }
 
 /// A voice call in a chat: one-to-one (rings the other person) or a group call (started by a group admin; members join)
 model Call {
-  id          String            @id @default(uuid())
-  threadId    String
-  startedById String
-  kind        String            // ONE | GROUP
-  status      String            @default("RINGING") // RINGING | ACTIVE | ENDED | MISSED | DECLINED
-  roomName    String
-  roomUrl     String
-  startedAt   DateTime          @default(now())
-  answeredAt  DateTime?
-  endedAt     DateTime?
-  thread      MessageThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  startedBy   UserProfile       @relation("CallsStarted", fields: [startedById], references: [id])
+  id           String            @id @default(uuid())
+  threadId     String
+  startedById  String
+  kind         String // ONE | GROUP
+  status       String            @default("RINGING") // RINGING | ACTIVE | ENDED | MISSED | DECLINED
+  roomName     String
+  roomUrl      String
+  startedAt    DateTime          @default(now())
+  answeredAt   DateTime?
+  endedAt      DateTime?
+  thread       MessageThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  startedBy    UserProfile       @relation("CallsStarted", fields: [startedById], references: [id])
   participants CallParticipant[]
-  message     Message?
+  message      Message?
 
   @@index([threadId, status])
 }
@@ -1372,12 +1374,12 @@ model PushSubscription {
 
 /// Every earlier version of an edited message, kept for the record
 model MessageEdit {
-  id          String   @id @default(uuid())
-  messageId   String
-  body        String
-  editedById  String
-  editedAt    DateTime @default(now())
-  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  messageId  String
+  body       String
+  editedById String
+  editedAt   DateTime @default(now())
+  message    Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([messageId])
 }
@@ -1932,10 +1934,24 @@ model ErrorHit {
 /// One row per person per day they used the portal: daily, weekly and monthly active people over time
 model ActiveDay {
   userId String
-  day    DateTime @db.Date
+  day    DateTime    @db.Date
   device String?
   user   UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, day])
   @@index([day])
+}
+
+/// Who has pressed play on a class recording, and how often (counted for students only)
+model RecordingView {
+  liveClassId String
+  userId      String
+  views       Int         @default(1)
+  firstAt     DateTime    @default(now())
+  lastAt      DateTime    @default(now())
+  liveClass   LiveClass   @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  user        UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([liveClassId, userId])
+  @@index([userId])
 }

@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 import { CourseCover } from '@/components/courses/CourseCover';
+import { TeacherCoursesHero } from '@/components/hero/TeacherWorkHeroes';
 
 type Status = 'DRAFT' | 'PENDING_REVIEW' | 'PUBLISHED' | 'ARCHIVED';
 interface Course {
@@ -96,6 +97,7 @@ export default function TeacherCoursesPage() {
         actions={<Button size="sm" onClick={() => setShowNew(true)}>New course</Button>} />
 
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        <TeacherCoursesHero onNew={() => setShowNew(true)} />
         <div role="tablist" aria-label="Filter courses" className="flex self-start gap-1 rounded-lg border border-line bg-white p-1">
           {TABS.map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}

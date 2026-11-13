@@ -411,6 +411,12 @@ export class LiveService {
     if (!isStaff) {
       const roster = await this.prisma.cohortRoster.findUnique({ where: { studentId_cohortId: { studentId: user.id, cohortId: liveClass.cohortId } } });
       if (!roster) throw new ForbiddenException('This recording is for students in the class');
+      // Count the play for the teacher's Recordings page
+      this.prisma.recordingView.upsert({
+        where: { liveClassId_userId: { liveClassId, userId: user.id } },
+        create: { liveClassId, userId: user.id },
+        update: { views: { increment: 1 }, lastAt: new Date() },
+      }).catch(() => {});
     }
     // A link the teacher pasted themselves wins
     if (liveClass.recordingUrl && /^https:\/\//i.test(liveClass.recordingUrl)) return { url: liveClass.recordingUrl, expires: null };
