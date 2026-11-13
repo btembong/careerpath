@@ -332,8 +332,10 @@ export class WordPressService {
   /** Best effort: set a user's WordPress password so signing in on the website still works. */
   async setPassword(wpUserId: number, password: string): Promise<void> {
     if (this.devBypass || wpUserId < 0) return;
-    try { await this.client.post(`/wp/v2/users/${wpUserId}`, { password }, { timeout: 20_000 }); }
-    catch (err: any) { this.logger.warn(`Could not update WordPress password for user ${wpUserId}: ${err.response?.status ?? err.message}`); }
+    // The website can take a while on a password change (it sends its own emails), so it gets a minute
+    const started = Date.now();
+    try { await this.client.post(`/wp/v2/users/${wpUserId}`, { password }, { timeout: 60_000 }); this.logger.log(`Website password updated for user ${wpUserId} in ${Date.now() - started}ms`); }
+    catch (err: any) { this.logger.warn(`Could not update WordPress password for user ${wpUserId}: ${err.response?.status ?? ''} ${err.response?.data?.code ?? err.message} (after ${Date.now() - started}ms)`); }
   }
 
   /** The website account with exactly this email, if any (for people who never signed in to the portal) */
@@ -349,9 +351,10 @@ export class WordPressService {
     }
   }
 
-  /** Set a website password, failing loudly (used by password reset, where it must work) */
-  async setPasswordOrThrow(wpUserId: number, password: string): Promise<void> {
-    await this.client.post(`/wp/v2/users/${wpUserId}`, { password }, { timeout: 20_000 });
+  /** One website account by its id (email, names, roles), or null */
+  async getUser(wpUserId: number): Promise<WpUser | null> {
+    try { return (await this.client.get<WpUser>(`/wp/v2/users/${wpUserId}`, { params: { context: 'edit' }, timeout: 15_000 })).data; }
+    catch (err: any) { this.logger.warn(`Could not read website account ${wpUserId}: ${err.response?.status ?? err.message}`); return null; }
   }
 
   /** Whether the website already has a user with this email. Null when WordPress can't be asked. */

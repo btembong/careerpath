@@ -516,16 +516,33 @@ export class AuthService {
       const userId = await this.redis.get(key);
       if (!userId) throw new BadRequestException('This link has expired or was already used. Ask for a new one.');
       if (userId.startsWith('wp:')) {
-        // A website account not yet on the portal: the new password goes to WordPress, used at the next sign-in
-        try { await this.wp.setPasswordOrThrow(Number(userId.slice(3)), dto.newPassword); }
-        catch { throw new BadRequestException('We couldn’t save your new password just now. Please try again in a minute.'); }
+        // A website account not yet on the portal: make its portal account now and keep the password here,
+        // so signing in works at once; the website gets the same password in the background
+        const wpId = Number(userId.slice(3));
+        const wpUser = await this.wp.getUser(wpId);
+        if (!wpUser?.email) throw new BadRequestException('We couldn’t reach your account just now. Please try again in a minute.');
+        let profile = await this.findByEmail(wpUser.email);
+        if (!profile) {
+          profile = await this.prisma.userProfile.create({
+            data: {
+              signupSource: 'website', wpUserId: wpUser.id, email: wpUser.email.trim().toLowerCase(),
+              role: portalRoleFromWp(wpUser.roles ?? []) as UserRole, approvalStatus: ApprovalStatus.APPROVED,
+              firstName: wpUser.first_name || null, lastName: wpUser.last_name || null, name: wpUser.name || null,
+              avatarUrl: wpUser.avatar_urls?.['96'] ?? wpUser.avatar_urls?.['48'] ?? null,
+            },
+          });
+          this.logger.log(`Portal account made at password reset for WordPress user ${wpId}`);
+        }
+        await this.savePasswordCopy(profile.id, dto.newPassword);
         await this.redis.del(key);
+        this.wp.setPassword(wpId, dto.newPassword).catch(() => {});
         return { message: 'Password reset successfully. You can now log in.' };
       }
       await this.redis.del(key);
       await this.savePasswordCopy(userId, dto.newPassword);
       const p = await this.prisma.userProfile.findUnique({ where: { id: userId }, select: { wpUserId: true } });
-      if (p) await this.wp.setPassword(p.wpUserId, dto.newPassword);
+      // The portal copy is what sign-in checks first; the website follows in the background
+      if (p) this.wp.setPassword(p.wpUserId, dto.newPassword).catch(() => {});
       return { message: 'Password reset successfully. You can now log in.' };
     }
     // Links WordPress sent before the switch still work
