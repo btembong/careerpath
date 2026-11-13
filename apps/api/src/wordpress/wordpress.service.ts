@@ -336,6 +336,24 @@ export class WordPressService {
     catch (err: any) { this.logger.warn(`Could not update WordPress password for user ${wpUserId}: ${err.response?.status ?? err.message}`); }
   }
 
+  /** The website account with exactly this email, if any (for people who never signed in to the portal) */
+  async findUserByEmail(email: string): Promise<{ id: number; firstName: string } | null> {
+    if (this.devBypass || this.demoAccount(email)) return null;
+    try {
+      const res = await this.client.get<{ id: number; email?: string; first_name?: string; name?: string }[]>('/wp/v2/users', { params: { search: email, context: 'edit', per_page: 5 }, timeout: 10_000 });
+      const u = (res.data ?? []).find(x => (x.email ?? '').toLowerCase() === email.toLowerCase());
+      return u ? { id: u.id, firstName: u.first_name || (u.name ?? '').split(' ')[0] || '' } : null;
+    } catch (err: any) {
+      this.logger.warn(`Could not look up a website account by email: ${err.response?.status ?? err.message}`);
+      return null;
+    }
+  }
+
+  /** Set a website password, failing loudly (used by password reset, where it must work) */
+  async setPasswordOrThrow(wpUserId: number, password: string): Promise<void> {
+    await this.client.post(`/wp/v2/users/${wpUserId}`, { password }, { timeout: 20_000 });
+  }
+
   /** Whether the website already has a user with this email. Null when WordPress can't be asked. */
   async emailExists(email: string): Promise<boolean | null> {
     if (this.devBypass || this.demoAccount(email)) return false;

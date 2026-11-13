@@ -487,11 +487,23 @@ export class AuthService {
   async forgotPassword(email: string): Promise<{ message: string }> {
     const e = String(email ?? '').trim().toLowerCase();
     const p = e ? await this.findByEmail(e) : null;
+    const portal = (process.env.PORTAL_URL ?? 'http://localhost:3000').replace(/\/$/, '');
     if (p && p.approvalStatus !== ApprovalStatus.REJECTED) {
       const token = randomBytes(32).toString('base64url');
       await this.redis.set(resetKey(token), p.id, 30 * 60);
-      const portal = (process.env.PORTAL_URL ?? 'http://localhost:3000').replace(/\/$/, '');
       this.mail.sendPasswordReset(e, p.firstName ?? '', `${portal}/reset-password?token=${token}`).catch(() => {});
+    } else if (!p && e) {
+      // Someone with a website account who has never signed in to the portal: reset their website password;
+      // their portal account is made when they then sign in
+      const wpUser = await this.wp.findUserByEmail(e);
+      if (wpUser) {
+        const token = randomBytes(32).toString('base64url');
+        await this.redis.set(resetKey(token), `wp:${wpUser.id}`, 30 * 60);
+        this.mail.sendPasswordReset(e, wpUser.firstName, `${portal}/reset-password?token=${token}`).catch(() => {});
+        this.logger.log(`Password reset for a website account not yet on the portal (WordPress user ${wpUser.id})`);
+      } else {
+        this.logger.log('Password reset asked for an email with no account');
+      }
     }
     return { message: 'If that email is registered, a password reset link has been sent.' };
   }
@@ -501,6 +513,13 @@ export class AuthService {
       const key = resetKey(dto.token);
       const userId = await this.redis.get(key);
       if (!userId) throw new BadRequestException('This link has expired or was already used. Ask for a new one.');
+      if (userId.startsWith('wp:')) {
+        // A website account not yet on the portal: the new password goes to WordPress, used at the next sign-in
+        try { await this.wp.setPasswordOrThrow(Number(userId.slice(3)), dto.newPassword); }
+        catch { throw new BadRequestException('We couldn’t save your new password just now. Please try again in a minute.'); }
+        await this.redis.del(key);
+        return { message: 'Password reset successfully. You can now log in.' };
+      }
       await this.redis.del(key);
       await this.savePasswordCopy(userId, dto.newPassword);
       const p = await this.prisma.userProfile.findUnique({ where: { id: userId }, select: { wpUserId: true } });
