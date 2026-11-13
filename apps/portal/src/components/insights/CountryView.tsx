@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import { majorToMinor } from '@cpa/shared';
+import { PersonPhoto } from '@/components/ui/PersonPhoto';
 import { KIND_COLOURS, KpiTile, MonthStack, SplitBar, walletMoney } from '@/components/wallet/WalletCharts';
 
 export interface CountryInsights {
@@ -12,7 +13,7 @@ export interface CountryInsights {
   trends: { students: number[]; sales: number[] };
   months: { label: string; start: string; package: number; course: number; extra: number }[];
   split: { key: string; label: string; amount: number }[] | null;
-  teachers: { id: string; name: string; subjects: string[]; courses: number; classes: number; students: number; earned: number | null }[];
+  teachers: { id: string; name: string; avatarUrl?: string | null; subjects: string[]; courses: number; classes: number; students: number; earned: number | null }[];
   top: { name: string; kind: 'package' | 'course' | 'extra'; count: number; amount: number }[];
   newest: { name: string; joinedAt: string; bought: boolean }[];
 }
@@ -115,7 +116,7 @@ export function CountryView({ d, forRep, studentsHref, teachersHref }: { d: Coun
           {!d.teachers.length && <p className="border-t border-line px-[18px] py-6 text-center text-[13px] text-ink2">No approved teachers live here yet.</p>}
           {d.teachers.map((t, i) => (
             <div key={t.id} className="flex items-center gap-3 border-t border-line px-[18px] py-2.5 text-[13.5px]">
-              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-extrabold text-[#FFFFFF]" style={{ background: KIND_COLOURS[i % KIND_COLOURS.length] }}>{initials(t.name)}</span>
+              <PersonPhoto src={t.avatarUrl} name={t.name} id={t.id} size={36} />
               <div className="min-w-0 flex-1"><p className="truncate font-bold text-navy">{t.name}</p><p className="mt-px truncate text-xs text-muted">{[t.subjects.join(', '), `${t.courses} course${t.courses === 1 ? '' : 's'}`, t.classes ? `${t.classes} class${t.classes === 1 ? '' : 'es'}` : null].filter(Boolean).join(' · ')}</p></div>
               <strong className="whitespace-nowrap text-navy">{t.earned != null ? m(t.earned) : `${t.students.toLocaleString()} student${t.students === 1 ? '' : 's'}`}</strong>
             </div>

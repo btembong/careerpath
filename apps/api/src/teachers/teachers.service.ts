@@ -19,7 +19,8 @@ export class TeachersService {
 
     const [teachers, total] = await Promise.all([
       this.prisma.userProfile.findMany({
-        where: { role: 'TEACHER', approvalStatus: 'APPROVED' },
+        // The system account (website user 0) only holds courses waiting for a teacher
+        where: { role: 'TEACHER', approvalStatus: 'APPROVED', wpUserId: { not: 0 } },
         select: {
           id: true,
           firstName: true,
@@ -49,7 +50,7 @@ export class TeachersService {
         orderBy: { teacherApplication: { submittedAt: 'asc' } },
       }),
       this.prisma.userProfile.count({
-        where: { role: 'TEACHER', approvalStatus: 'APPROVED' },
+        where: { role: 'TEACHER', approvalStatus: 'APPROVED', wpUserId: { not: 0 } },
       }),
     ]);
 

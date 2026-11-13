@@ -79,7 +79,7 @@ export class PlatformCoursesService {
         programme: { select: { id: true, name: true, shortName: true, type: true } },
         subject:   { select: { id: true, name: true, category: true } },
         level:     { select: { id: true, name: true, tier: true } },
-        teacher:   { select: { id: true, email: true, name: true, firstName: true, lastName: true } },
+        teacher:   { select: { id: true, email: true, name: true, firstName: true, lastName: true, avatarUrl: true } },
         _count:    { select: { modules: true, enrollments: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -1306,7 +1306,7 @@ function courseIncludes() {
     programme:  { select: { id: true, name: true, shortName: true, type: true } },
     subject:    { select: { id: true, name: true, category: true } },
     level:      { select: { id: true, name: true, tier: true } },
-    teacher:    { select: { id: true, email: true, name: true, firstName: true, lastName: true } },
+    teacher:    { select: { id: true, email: true, name: true, firstName: true, lastName: true, avatarUrl: true } },
     _count:     { select: { modules: true, enrollments: true } },
     modules: {
       orderBy: { sortOrder: 'asc' as const },

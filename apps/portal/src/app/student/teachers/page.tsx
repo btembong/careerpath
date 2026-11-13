@@ -3,11 +3,12 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { KIND_COLOURS, walletMoney } from '@/components/wallet/WalletCharts';
+import { walletMoney } from '@/components/wallet/WalletCharts';
 import api from '@/lib/api';
+import { PersonPhoto } from '@/components/ui/PersonPhoto';
 
 interface Teacher {
-  id: string; name: string; bio: string | null; subjectAreas: string[]; yearsExperience: number | null;
+  id: string; name: string; avatarUrl?: string | null; bio: string | null; subjectAreas: string[]; yearsExperience: number | null;
   avgRating: number | null; reviewCount: number; ratingDist?: number[]; courseCount: number; cohortCount: number; courseIds: string[]; videoIntroUrl: string | null;
 }
 interface Detail extends Teacher {
@@ -21,13 +22,11 @@ interface Yours { t: Teacher; role: string; next: string; cta: string; href: str
 
 // Some older profiles store subject ids instead of names
 const realSubjects = (xs: string[]) => xs.filter(x => !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(x));
-const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
-const colourOf = (id: string) => KIND_COLOURS[[...id].reduce((n, c) => n + c.charCodeAt(0), 0) % KIND_COLOURS.length];
 const when = (d: string) => `${new Date(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}, ${new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
 const short = (d: string) => `${new Date(d).toLocaleDateString('en-GB', { weekday: 'short' })} ${new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
 
-function Avatar({ t, size }: { t: { id: string; name: string }; size: number }) {
-  return <span className="flex flex-shrink-0 items-center justify-center rounded-full font-extrabold text-[#FFFFFF]" style={{ width: size, height: size, fontSize: Math.round(size / 3.2), background: colourOf(t.id) }}>{initials(t.name)}</span>;
+function Avatar({ t, size }: { t: { id: string; name: string; avatarUrl?: string | null }; size: number }) {
+  return <PersonPhoto src={t.avatarUrl} name={t.name} id={t.id} size={size} />;
 }
 
 export default function StudentTeachersPage() {
@@ -137,7 +136,7 @@ export default function StudentTeachersPage() {
                       className={clsx('flex flex-col gap-2.5 rounded-xl border-2 bg-white p-4 text-left text-navy', on ? 'border-[#3F6FE8] shadow-[0_8px_20px_rgba(63,111,232,0.15)]' : mine.has(t.id) ? 'border-[#C9D7FB]' : 'border-line hover:border-[#C9D7FB]')}>
                       <span className="flex w-full items-center gap-3">
                         <Avatar t={t} size={46} />
-                        <span className="min-w-0 flex-1"><span className="block truncate text-[15px] font-bold">{t.name}</span><span className="block truncate text-[12.5px] text-muted">{[t.yearsExperience ? `${t.yearsExperience} years teaching` : null, mine.has(t.id) ? 'yours' : null].filter(Boolean).join(' · ') || 'Teacher'}</span></span>
+                        <span className="min-w-0 flex-1"><span className="line-clamp-2 block text-[15px] font-bold leading-tight">{t.name}</span><span className="block truncate text-[12.5px] text-muted">{[t.yearsExperience ? `${t.yearsExperience} years teaching` : null, mine.has(t.id) ? 'yours' : null].filter(Boolean).join(' · ') || 'Teacher'}</span></span>
                         <span className="text-right"><span className="block text-[15px] font-extrabold">{t.avgRating ? `${t.avgRating} ★` : 'New'}</span><span className="block text-[11px] text-muted">{t.reviewCount ? `${t.reviewCount} rating${t.reviewCount === 1 ? '' : 's'}` : 'no ratings yet'}</span></span>
                       </span>
                       {realSubjects(t.subjectAreas).length > 0 && <span className="flex w-full flex-wrap gap-[5px]">{realSubjects(t.subjectAreas).slice(0, 3).map(s => <span key={s} className="inline-flex h-[22px] items-center rounded bg-subtle px-2 text-xs font-semibold text-ink2">{s}</span>)}</span>}

@@ -8,6 +8,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/Button';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { PersonPhoto } from '@/components/ui/PersonPhoto';
 import { Celebrate } from '@/components/celebrate/Celebrate';
 import { AddExtras } from '@/components/checkout/AddExtras';
 
@@ -18,7 +19,7 @@ interface Course {
   language: string | null; outcomes: string[]; hasAccess?: boolean;
   programme: { name: string; shortName: string | null } | null;
   subject: { name: string } | null; level: { name: string } | null;
-  teacher: { name: string | null; firstName: string | null; lastName: string | null } | null;
+  teacher: { id?: string; name: string | null; firstName: string | null; lastName: string | null; avatarUrl?: string | null } | null;
   _count?: { enrollments: number };
   modules: { id: string; title: string; lessons: Lesson[] }[];
 }
@@ -128,7 +129,7 @@ export default function CourseDetailPage() {
             {(c.description || c.shortDescription) && <p className="max-w-[680px] text-[14.5px] leading-relaxed text-ink2">{c.description || c.shortDescription}</p>}
             {teacher && (
               <div className="mt-1.5 flex items-center gap-2.5">
-                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent-soft text-xs font-extrabold text-azure-strong">{initials(teacher)}</span>
+                <PersonPhoto src={c.teacher?.avatarUrl} name={teacher} id={c.teacher?.id} size={36} />
                 <p className="text-[13.5px]"><strong className="font-semibold text-navy">{teacher}</strong>{c.subject && <span className="text-muted"> · {c.subject.name}</span>}</p>
               </div>
             )}

@@ -78,7 +78,8 @@ export class InsightsService {
     const now = new Date(), from = new Date(+now - days * DAY), prevFrom = new Date(+from - days * DAY);
     const base = 'XAF';
     const convert = await this.converter(base);
-    const live = { deletedAt: null };
+    // People only: not deleted, and not the system account that holds courses waiting for a teacher
+    const live = { deletedAt: null, wpUserId: { not: 0 } };
 
     const [roleCounts, countryUsers, newStudents, newStudentsPrev, newTeachers, pending, oldestPending, payingIds, lessons, lessonsPrev, quizzes, certs, watched, classes, mentorHeld, mentorMissed, teacherApps, approved, withCourse, withSales, devicesRaw] = await Promise.all([
       this.prisma.userProfile.groupBy({ by: ['role'], where: live, _count: { _all: true } }),
@@ -265,7 +266,7 @@ export class InsightsService {
       this.prisma.userProfile.count({ where: { deletedAt: null, role: 'STUDENT', countryId: c.id } }),
       this.prisma.userProfile.count({ where: { deletedAt: null, role: 'STUDENT', countryId: c.id, createdAt: { gte: start, lt: end } } }),
       this.prisma.userProfile.count({ where: { deletedAt: null, role: 'STUDENT', countryId: c.id, createdAt: { gte: prevStart, lt: start } } }),
-      this.prisma.userProfile.findMany({ where: { deletedAt: null, role: 'TEACHER', approvalStatus: 'APPROVED', countryId: c.id }, select: { id: true, name: true, firstName: true, lastName: true, email: true, teacherApplication: { select: { subjectAreas: true } }, platformCourses: { where: { status: 'PUBLISHED' }, select: { id: true } }, teacherCohorts: { select: { id: true } } } }),
+      this.prisma.userProfile.findMany({ where: { deletedAt: null, role: 'TEACHER', approvalStatus: 'APPROVED', countryId: c.id }, select: { id: true, name: true, firstName: true, lastName: true, email: true, avatarUrl: true, teacherApplication: { select: { subjectAreas: true } }, platformCourses: { where: { status: 'PUBLISHED' }, select: { id: true } }, teacherCohorts: { select: { id: true } } } }),
       Promise.all(months.map(m => this.prisma.userProfile.count({ where: { deletedAt: null, role: 'STUDENT', countryId: c.id, createdAt: { lt: m.end } } }))),
       this.prisma.userProfile.findMany({ where: { deletedAt: null, role: 'STUDENT', countryId: c.id }, orderBy: { createdAt: 'desc' }, take: 6, select: { id: true, name: true, firstName: true, lastName: true, email: true, createdAt: true, _count: { select: { purchases: true, coursePurchases: true } } } }),
     ]);
@@ -283,7 +284,7 @@ export class InsightsService {
       tIds.length ? this.prisma.courseEnrollment.groupBy({ by: ['courseId'], where: { courseId: { in: teachers.flatMap(t => t.platformCourses.map(x => x.id)) } }, _count: { _all: true } }) : [],
     ]);
     const teacherRows = teachers.map(t => ({
-      id: t.id, name: nameOf(t),
+      id: t.id, name: nameOf(t), avatarUrl: t.avatarUrl,
       subjects: (t.teacherApplication?.subjectAreas ?? []).filter(s => !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(s)).slice(0, 2),
       courses: t.platformCourses.length, classes: t.teacherCohorts.length,
       students: t.platformCourses.reduce((n, x) => n + (enrol.find(e => e.courseId === x.id)?._count._all ?? 0), 0),

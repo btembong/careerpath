@@ -8,12 +8,13 @@ import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import { KIND_COLOURS } from '@/components/wallet/WalletCharts';
 import api from '@/lib/api';
+import { PersonPhoto } from '@/components/ui/PersonPhoto';
 
-interface Mentor { id: string; name: string | null; firstName: string | null; lastName: string | null; email: string; bio: string | null; teachingSubjects?: { id: string; name: string }[]; avgRating: number | null; reviewCount: number; openSlots: number; nextAt?: string | null; weekSlots?: number }
+interface Mentor { id: string; avatarUrl?: string | null; name: string | null; firstName: string | null; lastName: string | null; email: string; bio: string | null; teachingSubjects?: { id: string; name: string }[]; avgRating: number | null; reviewCount: number; openSlots: number; nextAt?: string | null; weekSlots?: number }
 interface Slot { id: string; startsAt: string; endsAt: string; durationMins: number }
 interface Booking {
   id: string; notes: string | null; status: string; cancelReason: string | null;
-  slot: Slot & { teacher: { id: string; name?: string | null; firstName: string | null; lastName: string | null; email: string } };
+  slot: Slot & { teacher: { id: string; name?: string | null; firstName: string | null; lastName: string | null; email: string; avatarUrl?: string | null } };
   review: { rating: number; comment: string | null } | null;
 }
 interface Allowance { hasPackage: boolean; perMonth: number | null; used: number; left: number | null }
@@ -122,7 +123,7 @@ export default function StudentMentorshipPage() {
               </div>
               <p className="text-[34px] font-extrabold leading-none tracking-[-0.03em] sm:text-[44px]">{dayName(next.slot.startsAt)}, <span className="text-[#FFFFFF]">{time(next.slot.startsAt)}</span></p>
               <div className="flex items-center gap-3">
-                <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-[#FFFFFF] text-base font-extrabold text-[#2F57C9]">{initials(nameOf(next.slot.teacher))}</span>
+                <PersonPhoto src={next.slot.teacher.avatarUrl ?? nextMentor?.avatarUrl} name={nameOf(next.slot.teacher)} id={next.slot.teacher.id} size={48} className="ring-2 ring-[#FFFFFF]" />
                 <div className="min-w-0">
                   <p className="text-base font-bold">{nameOf(next.slot.teacher)}</p>
                   <p className="mt-px text-[13px] text-[#0B1F55]">{[nextMentor?.teachingSubjects?.map(s => s.name).slice(0, 2).join(', '), nextMentor?.avgRating ? `${nextMentor.avgRating} ★ from ${nextMentor.reviewCount} student${nextMentor.reviewCount === 1 ? '' : 's'}` : null, `${next.slot.durationMins} min`].filter(Boolean).join(' · ')}</p>
@@ -202,7 +203,7 @@ export default function StudentMentorshipPage() {
                   return (
                     <button key={m.id} type="button" onClick={() => setMentorId(m.id)} aria-pressed={on}
                       className={clsx('flex min-w-[230px] items-center gap-3 rounded-lg border-2 p-3 text-left sm:min-w-0', on ? 'border-[#3F6FE8] bg-accent-soft' : 'border-line bg-white hover:bg-subtle')}>
-                      <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-sm font-extrabold text-[#FFFFFF]" style={{ background: colourOf(m.id) }}>{initials(n)}</span>
+                      <PersonPhoto src={m.avatarUrl} name={n} id={m.id} size={44} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-bold text-navy">{n}</span>
                         <span className="block truncate text-xs text-muted">{m.teachingSubjects?.map(s => s.name).slice(0, 2).join(', ') || 'Mentor'}</span>

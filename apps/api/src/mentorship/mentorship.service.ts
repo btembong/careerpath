@@ -430,7 +430,7 @@ export class MentorshipService {
       include: {
         slot: {
           include: {
-            teacher: { select: { id: true, name: true, firstName: true, lastName: true, email: true, bio: true } },
+            teacher: { select: { id: true, name: true, firstName: true, lastName: true, email: true, bio: true, avatarUrl: true } },
           },
         },
         review: { select: { rating: true, comment: true } },
@@ -474,7 +474,7 @@ export class MentorshipService {
       include: {
         slot: {
           include: {
-            teacher: { select: { id: true, name: true, firstName: true, lastName: true, email: true } },
+            teacher: { select: { id: true, name: true, firstName: true, lastName: true, email: true, avatarUrl: true } },
           },
         },
         student: { select: { id: true, firstName: true, lastName: true, email: true } },
