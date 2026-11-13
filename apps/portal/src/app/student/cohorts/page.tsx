@@ -9,7 +9,7 @@ const Suspense = _Suspense as any;
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
-import { StudentCohortHero } from '@/components/hero/StudentHeroes';
+import { StudentCohortHero, StudentNoClassHero } from '@/components/hero/StudentHeroes';
 
 interface ClassItem { id: string; title: string; description: string | null; scheduledAt: string; durationMins: number; status: string; recordingUrl: string | null; live: boolean; attended?: boolean; beforeJoined?: boolean }
 interface Overview {
@@ -85,11 +85,7 @@ function CohortDetail({ id }: { id: string }) {
   if (!data.cohort) return (
     <div className="flex min-h-full flex-col">
       <Topbar title="My cohort" subtitle="Your class, live lessons and assignments in one place" backHref="/student/cohorts" backLabel="My cohorts" />
-      <div className="m-4 rounded-lg border border-line bg-white p-10 text-center lg:m-7">
-        <p className="text-sm font-semibold text-navy">You’re not in a cohort yet</p>
-        <p className="mx-auto mt-1 max-w-md text-[13px] text-ink2">Packages with live classes put you in a cohort with a teacher and classmates preparing for the same exam.</p>
-        <Link href="/packages" className={clsx(btn(true), 'mt-4 h-9 px-4')}>Browse packages</Link>
-      </div>
+      <div className="p-4 lg:px-7 lg:py-6"><StudentNoClassHero page="cohort" /></div>
     </div>
   );
 
@@ -393,12 +389,7 @@ function CohortList() {
         {!cards ? (
           <div className="grid gap-4 lg:grid-cols-2">{[0, 1].map(i => <div key={i} className="h-[330px] animate-pulse rounded-lg border border-line bg-white" />)}</div>
         ) : !cards.length ? (
-          <div className="mx-auto mt-6 w-full max-w-[440px] rounded-lg border border-line bg-white px-5 py-[26px] text-center">
-            <span className="mx-auto grid h-16 w-16 place-items-center rounded-lg bg-accent-soft text-azure-strong"><Icon name="mentorship" size={32} line /></span>
-            <p className="mt-3.5 text-[17px] font-extrabold text-navy">You’re not in a cohort yet</p>
-            <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">Packages with live classes put you in a cohort: a teacher, weekly live lessons and classmates sitting the same exam.</p>
-            <Link href="/packages" className="mt-4 inline-flex h-11 items-center rounded-md bg-[#3F6FE8] px-[18px] text-[13px] font-extrabold text-[#FFFFFF]">Browse packages</Link>
-          </div>
+          <StudentNoClassHero page="cohort" />
         ) : (
           <>
             {current.length > 0 && (

@@ -269,3 +269,36 @@ export function StudentAssignmentsHero({ stats, rows, onOpen }: {
     />
   );
 }
+
+/* ── Not in a class yet ───────────────────────────────────── */
+
+const WHAT_YOU_GET: [string, string, string][] = [
+  ['M15 10l5-3v10l-5-3M3 6h12v12H3z', 'Live classes every week', 'Recorded, so you can watch again'],
+  ['M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0', 'A teacher who knows your exam', 'Ask questions in class and in chat'],
+  ['M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14a6 6 0 0 1 3.5 6', 'Classmates sitting the same exam', 'A class group to study with'],
+  ['M8 4h8v3H8zM6 5H5v16h14V5h-1M9 12h6M9 16h4', 'Assignments, marked with feedback', 'And a countdown to exam day'],
+];
+
+/** For a student with no class yet: what a class gives them, and where to get one */
+export function StudentNoClassHero({ page }: { page: 'live' | 'cohort' }) {
+  return (
+    <PageHero
+      kicker={page === 'live' ? 'Live classes · not in a class yet' : 'My cohort · not in a class yet'}
+      l1="Learn live," l2="with a teacher and a class."
+      sub="Packages with live classes put you in a cohort: a teacher, weekly lessons and classmates preparing for the same exam. You can also add live classes to a course you already have."
+      actions={<>
+        <Link href="/packages" className={heroBtn}>Browse packages</Link>
+        <Link href="/student/courses" className={heroBtnLine}>Add to a course I have</Link>
+      </>}
+      aside={<>
+        <p className={asideLabel}>What a class gives you</p>
+        {WHAT_YOU_GET.map(([d, t, s]) => (
+          <div key={t} className="flex items-center gap-3">
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-[#2F57C9]"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={d} /></svg></span>
+            <span className="min-w-0"><span className="block text-[13.5px] font-bold">{t}</span><span className="block text-xs text-muted">{s}</span></span>
+          </div>
+        ))}
+      </>}
+    />
+  );
+}

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
-import { StudentLiveHero } from '@/components/hero/StudentHeroes';
+import { StudentLiveHero, StudentNoClassHero } from '@/components/hero/StudentHeroes';
 
 interface Cls {
   id: string; title: string; description: string | null; scheduledAt: string; durationMins: number; status: string;
@@ -94,11 +94,7 @@ export default function StudentLivePage() {
 
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
         {!d ? <div className="h-64 rounded-lg border border-line bg-white animate-pulse" /> : !d.attendance ? (
-          <div className="rounded-lg border border-line bg-white p-10 text-center">
-            <p className="text-sm font-semibold text-navy">You’re not in a cohort yet</p>
-            <p className="mx-auto mt-1 max-w-md text-[13px] text-ink2">Live classes come with packages that include a cohort. You’ll see every class here once you join one.</p>
-            <Link href="/packages" className="mt-4 inline-flex h-9 items-center rounded-md bg-azure-strong px-4 text-[13.5px] font-semibold text-on-accent">Browse packages</Link>
-          </div>
+          <StudentNoClassHero page="live" />
         ) : <>
           <StudentLiveHero live={live} next={d.upcoming[0]} attendance={d.attendance} week={week} now={now} onAddToCalendar={c => downloadIcs([c as Cls], 'live-class.ics')} />
 
