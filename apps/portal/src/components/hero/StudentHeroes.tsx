@@ -193,7 +193,7 @@ export function StudentCohortHero({ cohort, teacher, next, stats, members, onAdd
   ].filter(Boolean) as { l: string; me: number; avg: number | null; v: string }[] : [];
   return (
     <PageHero
-      photo={<HeroPhoto src={teacher?.avatarUrl} initials={initials(teacher?.name ?? cohort.name)} caption={teacher ? teacher.name.replace(/s*(.*)s*$/, '') : undefined} />}
+      photo={<HeroPhoto src={teacher?.avatarUrl} initials={initials(teacher?.name ?? cohort.name)} caption={teacher ? teacher.name.replace(/\s*\(.*\)\s*$/, '') : undefined} />}
       kicker={[cohort.sittingLabel, `${classmates.length + 1} students`].filter(Boolean).join(' · ')}
       l1={`${cohort.name}.`} l2={examDays != null && examDays >= 0 ? (examDays === 0 ? 'Exam day. Good luck!' : `${examDays} day${examDays === 1 ? '' : 's'} to the exam.`) : undefined}
       sub={next ? <>{next.live ? 'Live now: ' : `Next class ${dayWord(next.scheduledAt)}, ${time(next.scheduledAt)}: `}{next.title} · {next.durationMins} min.</> : 'No class is scheduled yet. Your teacher will add the next one here.'}
