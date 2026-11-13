@@ -109,7 +109,8 @@ function PackagesInner() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <Topbar backHref="/student/catalogue" backLabel="Catalogue" title="Packages" />
+      <Topbar title="Packages" subtitle="Courses, live classes and mentorship together, for less"
+        actions={<Link href="/student/catalogue" className="hidden h-9 items-center rounded-md border border-line px-3.5 text-[13px] font-bold text-azure-strong hover:bg-subtle sm:inline-flex">Browse single courses</Link>} />
 
       <div className="flex flex-col gap-[18px] p-4 lg:px-7 lg:py-6">
         <section className="keep-light relative flex flex-col gap-3.5 overflow-hidden rounded-xl bg-[#3F6FE8] p-5 text-navy sm:p-7">
