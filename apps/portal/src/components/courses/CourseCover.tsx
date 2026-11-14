@@ -44,7 +44,7 @@ export interface CoverCourse {
 }
 
 /** A course's cover: its uploaded picture, or one made from its programme and subject. Same course, same cover. */
-export function CourseCover({ course, variant = 'banner', size = 'md', className }: { course: CoverCourse; variant?: 'banner' | 'tile'; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+export function CourseCover({ course, variant = 'banner', size = 'md', className, noTag = false }: { course: CoverCourse; variant?: 'banner' | 'tile'; size?: 'sm' | 'md' | 'lg'; className?: string; /** Leave off the exam label (the catalogue shows it as text) */ noTag?: boolean }) {
   const tileBox = size === 'sm' ? 'h-10 w-10 rounded-md text-[14px]' : size === 'lg' ? 'h-14 w-14 rounded-lg text-[19px]' : 'h-11 w-11 rounded-md text-[15px]';
   if (course.coverUrl) {
     // eslint-disable-next-line @next/next/no-img-element
@@ -65,7 +65,7 @@ export function CourseCover({ course, variant = 'banner', size = 'md', className
   return (
     <div aria-hidden className={clsx('relative h-[130px] w-full overflow-hidden', className)} style={bg}>
       <span className="pointer-events-none absolute -bottom-8 -right-4 select-none text-[150px] font-extrabold leading-none text-white/[0.14]">{glyph}</span>
-      {prog && <span className="absolute left-3.5 top-3 rounded-[5px] bg-white/20 px-2 py-[3px] text-[11px] font-bold text-white">{prog}</span>}
+      {prog && !noTag && <span className="absolute left-3.5 top-3 rounded-[5px] bg-white/20 px-2 py-[3px] text-[11px] font-bold text-white">{prog}</span>}
       <span className="absolute bottom-3 left-3.5 right-3.5 truncate text-[22px] font-extrabold tracking-[-0.02em] text-white">{subject || course.title}</span>
     </div>
   );

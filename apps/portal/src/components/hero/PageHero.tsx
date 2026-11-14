@@ -6,9 +6,11 @@ import { clsx } from 'clsx';
  * two-tone headline (the second part in white), a sentence, chips and buttons. On the right a white card,
  * slightly tilted, with something only this page has; on the left, optionally, a tilted photo card.
  */
-export function PageHero({ kicker, l1, l2, l2First, sub, chips, actions, aside, photo }: {
+export function PageHero({ kicker, l1, l2, l2First, sub, chips, actions, aside, photo, asideClassName }: {
   kicker: string; l1: React.ReactNode; l2?: React.ReactNode; l2First?: boolean; sub?: React.ReactNode;
   chips?: { t: string; strong?: boolean }[]; actions?: React.ReactNode; aside?: React.ReactNode; photo?: React.ReactNode;
+  /** e.g. "hidden lg:flex" to keep the white card off phones */
+  asideClassName?: string;
 }) {
   return (
     <section className={clsx('keep-light relative grid items-center gap-5 overflow-hidden rounded-[14px] bg-[#3F6FE8] p-5 text-navy sm:gap-7 sm:px-[30px] sm:py-7',
@@ -29,7 +31,7 @@ export function PageHero({ kicker, l1, l2, l2First, sub, chips, actions, aside, 
         {actions && <div className="mt-1.5 flex flex-wrap gap-2">{actions}</div>}
       </div>
       {aside && (
-        <div className="relative flex min-w-0 flex-col gap-2.5 rounded-xl bg-[#FFFFFF] p-4 text-navy shadow-[0_14px_30px_rgba(7,32,97,0.22)] lg:-rotate-2">
+        <div className={clsx("relative flex min-w-0 flex-col gap-2.5 rounded-xl bg-[#FFFFFF] p-4 text-navy shadow-[0_14px_30px_rgba(7,32,97,0.22)] lg:-rotate-2", asideClassName)}>
           {aside}
         </div>
       )}

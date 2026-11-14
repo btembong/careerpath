@@ -12,6 +12,7 @@ import { Drawer, DrawerContent, DrawerSection, InfoGrid } from '@/components/ui/
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 import { CourseCover } from '@/components/courses/CourseCover';
+import { PageHero, asideLabel } from '@/components/hero/PageHero';
 
 interface Programme { id: string; name: string; shortName: string | null }
 interface Course {
@@ -79,6 +80,9 @@ function Catalogue() {
   const [sort, setSort] = useState<Sort>('popular');
   const [prog, setProgState] = useState<string>(params.get('tab') ?? '');
   const [openId, setOpenId] = useState<string | null>(null);
+  const [starting, setStarting] = useState<string | null>(null);
+  const [allSubjects, setAllSubjects] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   function setProg(id: string) {
     setProgState(id);
@@ -97,11 +101,14 @@ function Catalogue() {
         api.get('/packages').catch(() => ({ data: [] })),
         api.get('/portals/student/course-purchases').catch(() => ({ data: [] })),
       ]);
+      const lib = await api.get('/portals/student/library').catch(() => ({ data: null }));
       const list: Course[] = (cr.data ?? []).filter((c: Course) => c.status === 'PUBLISHED');
       const pkgs: Package[] = pk.data ?? [];
       const activePkg = new Set<string>((me?.activePackages ?? []).map((p: { id: string }) => p.id));
       const ids = new Set<string>((cp.data ?? []).map((p: { courseId: string }) => p.courseId));
       pkgs.forEach(p => { if (activePkg.has(p.id)) p.courseIds.forEach(id => ids.add(id)); });
+      // Free courses they've joined are theirs too: Continue, not Start
+      ((lib.data?.courses ?? []) as { id: string }[]).forEach(c => ids.add(c.id));
       // Only offer programmes that have something to buy
       const withCourses = (pr.data as Programme[] ?? []).filter(p => list.some(c => c.programme?.id === p.id));
       setProgrammes(withCourses); setCourses(list); setPackages(pkgs); setOwned(ids); setOwnedPkgs(activePkg);
@@ -164,153 +171,221 @@ function Catalogue() {
   }, [progCourses, search, subject, lang, price, sort]);
 
   const open = openId ? byId.get(openId) ?? null : null;
-  const selectBox = 'h-10 rounded-md border border-line bg-white pl-3 pr-8 text-[13.5px] text-navy outline-none focus:border-azure';
+  const selectBox = 'h-9 rounded-md border border-line bg-white pl-3 pr-8 text-[13px] text-navy outline-none focus:border-azure';
+
+  // Counts for the filter options, from the courses in the chosen exam
+  const priceCount = (p: PriceFilter) => progCourses.filter(c => p === 'free' ? isFree(c) : p === 'single' ? c.isSoldIndividually && !!c.priceAmount : p === 'package' ? pkgsFor(c.id).length > 0 : true).length;
+  const subjectCount = (id: string) => progCourses.filter(c => c.subject?.id === id).length;
+  const filtered = !!search.trim() || subject !== 'all' || price !== 'any' || lang !== 'all';
+  const clearAll = () => { setSearch(''); setSubject('all'); setLang('all'); setPrice('any'); };
+  const freeRow = !filtered ? progCourses.filter(c => isFree(c) && !owned.has(c.id)).sort((a, b) => b._count.enrollments - a._count.enrollments).slice(0, 8) : [];
+  const bestPkg = progPackages.find(x => x.saving != null) ?? progPackages[0] ?? null;
+
+  /** Free courses start in one tap: join, then open the first lesson */
+  async function start(c: Course) {
+    setStarting(c.id);
+    try {
+      await api.post(isWebsite(c) ? `/platform-courses/${c.id}/enroll` : `/payments/enroll-free/${c.id}`);
+      setOwned(s => new Set(s).add(c.id));
+      router.push(`/student/learn/${c.id}`);
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not start the course'); setStarting(null); }
+  }
+
+  const PRICES: [PriceFilter, string][] = [['any', 'Any price'], ['free', 'Free to start'], ['single', 'Buy on its own'], ['package', 'In a package']];
+  const filterGroups = (
+    <>
+      <fieldset className="flex flex-col gap-1">
+        <legend className="mb-1.5 text-[11.5px] font-bold uppercase tracking-[0.06em] text-muted">Price</legend>
+        {PRICES.map(([k, l]) => (
+          <label key={k} className="flex cursor-pointer items-center gap-2.5 py-1 text-[13.5px] text-ink2">
+            <input type="radio" name="price" checked={price === k} onChange={() => setPrice(k)} className="accent-[var(--color-azure-strong)]" />
+            <span className="flex-1">{l}</span><span className="text-xs text-muted">{priceCount(k)}</span>
+          </label>
+        ))}
+      </fieldset>
+      {subjects.length > 0 && (
+        <fieldset className="flex flex-col gap-1">
+          <legend className="mb-1.5 text-[11.5px] font-bold uppercase tracking-[0.06em] text-muted">Subject</legend>
+          {[['all', 'All subjects'] as [string, string], ...(allSubjects ? subjects : subjects.slice(0, 6))].map(([id, n]) => (
+            <label key={id} className="flex cursor-pointer items-center gap-2.5 py-1 text-[13.5px] text-ink2">
+              <input type="radio" name="subject" checked={subject === id} onChange={() => setSubject(id)} className="accent-[var(--color-azure-strong)]" />
+              <span className="min-w-0 flex-1 truncate">{n}</span><span className="text-xs text-muted">{id === 'all' ? progCourses.length : subjectCount(id)}</span>
+            </label>
+          ))}
+          {subjects.length > 6 && <button type="button" onClick={() => setAllSubjects(v => !v)} className="self-start py-1 text-[13px] font-semibold text-azure-strong">{allSubjects ? 'Show fewer' : `Show all ${subjects.length}`}</button>}
+        </fieldset>
+      )}
+      {languages.length > 0 && (
+        <fieldset className="flex flex-col gap-1">
+          <legend className="mb-1.5 text-[11.5px] font-bold uppercase tracking-[0.06em] text-muted">Language</legend>
+          {['all', ...languages].map(l => (
+            <label key={l} className="flex cursor-pointer items-center gap-2.5 py-1 text-[13.5px] text-ink2">
+              <input type="radio" name="lang" checked={lang === l} onChange={() => setLang(l)} className="accent-[var(--color-azure-strong)]" />
+              <span className="flex-1">{l === 'all' ? 'Any language' : l}</span><span className="text-xs text-muted">{l === 'all' ? progCourses.length : progCourses.filter(c => c.language === l).length}</span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+    </>
+  );
+
+  /** What a card or row needs to say: the exam and subject, what's inside, and the package it belongs to */
+  const facts = (c: Course) => [c.programme ? short(c.programme) : null, c.subject?.name, `${c._count.modules} module${c._count.modules === 1 ? '' : 's'}`, c._count.enrollments ? `${c._count.enrollments.toLocaleString()} student${c._count.enrollments === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ');
+  const priceOf = (c: Course) => owned.has(c.id) ? 'Yours' : isFree(c) ? 'Free' : c.isSoldIndividually && c.priceCurrency && c.priceAmount ? money(c.priceAmount, c.priceCurrency) : pkgsFor(c.id).length ? 'In a package' : 'Not on sale yet';
+  const PackageLine = ({ c }: { c: Course }) => {
+    const ps = pkgsFor(c.id);
+    if (!ps.length || owned.has(c.id)) return null;
+    return (
+      <Link href={`/packages/${ps[0].id}`} onClick={e => e.stopPropagation()} className="flex items-center gap-1.5 text-[12px] font-semibold text-[#8A5A0B] hover:underline">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 8l-9-5-9 5v8l9 5 9-5z" /><path d="M3 8l9 5 9-5M12 13v8" /></svg>
+        <span className="truncate">Part of {ps[0].name}{ps.length > 1 ? ` + ${ps.length - 1} more` : ''}</span>
+      </Link>
+    );
+  };
+  const Action = ({ c, full }: { c: Course; full?: boolean }) => owned.has(c.id)
+    ? <Link href={`/student/learn/${c.id}`} onClick={e => e.stopPropagation()} className={clsx('inline-flex h-[34px] items-center justify-center rounded-md bg-azure-strong px-3.5 text-[13px] font-semibold text-on-accent', full && 'w-full')}>Continue</Link>
+    : isFree(c)
+      ? <button type="button" disabled={starting === c.id} onClick={e => { e.stopPropagation(); void start(c); }} className={clsx('inline-flex h-[34px] items-center justify-center rounded-md bg-azure-strong px-3.5 text-[13px] font-semibold text-on-accent disabled:opacity-60', full && 'w-full')}>{starting === c.id ? 'Starting…' : 'Start'}</button>
+      : <button type="button" onClick={e => { e.stopPropagation(); setOpenId(c.id); }} className={clsx('inline-flex h-[34px] items-center justify-center rounded-md border border-line bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-subtle', full && 'w-full')}>View</button>;
+
+  const Card = ({ c }: { c: Course }) => (
+    <article role="link" tabIndex={0} onClick={() => setOpenId(c.id)} onKeyDown={e => { if (e.key === 'Enter') setOpenId(c.id); }}
+      className="flex cursor-pointer flex-col overflow-hidden rounded-lg border border-line bg-white transition hover:border-azure/60 hover:shadow-[0_8px_22px_rgba(7,32,97,0.08)]">
+      <div className="aspect-video overflow-hidden bg-subtle"><CourseCover course={c} noTag className="!h-full w-full" /></div>
+      <div className="flex flex-1 flex-col gap-1.5 p-3.5">
+        <p className="line-clamp-2 text-[14.5px] font-bold leading-snug text-navy">{c.title}</p>
+        {teacherOf(c) && <p className="truncate text-[12.5px] text-ink2">{teacherOf(c)}</p>}
+        <p className="truncate text-[12px] text-muted">{facts(c)}</p>
+        <PackageLine c={c} />
+        <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-3">
+          <span className={clsx('text-[15px] font-extrabold', isFree(c) && !owned.has(c.id) ? 'text-[#1A7F4B]' : 'text-navy')}>{priceOf(c)}</span>
+          <Action c={c} />
+        </div>
+      </div>
+    </article>
+  );
+
+  /** Phones: a compact row, the picture on the left; tapping it does what the button would */
+  const Row = ({ c }: { c: Course }) => (
+    <div role="button" tabIndex={0} onClick={() => owned.has(c.id) ? router.push(`/student/learn/${c.id}`) : setOpenId(c.id)} onKeyDown={e => { if (e.key === 'Enter') setOpenId(c.id); }}
+      className="flex w-full cursor-pointer gap-3 rounded-lg border border-line bg-white p-2.5 text-left">
+      <div className="h-[84px] w-[84px] flex-shrink-0 overflow-hidden rounded-md"><CourseCover course={c} variant="tile" noTag className="!h-[84px] !w-[84px] !rounded-md" /></div>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <p className="line-clamp-2 text-[13.5px] font-bold leading-snug text-navy">{c.title}</p>
+        {teacherOf(c) && <p className="truncate text-xs text-ink2">{teacherOf(c)}</p>}
+        <p className="truncate text-[11.5px] text-muted">{facts(c)}</p>
+        <div className="mt-auto flex items-center justify-between gap-2">
+          <span className={clsx('text-[14px] font-extrabold', isFree(c) && !owned.has(c.id) ? 'text-[#1A7F4B]' : 'text-navy')}>{priceOf(c)}</span>
+        </div>
+        <PackageLine c={c} />
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex min-h-full flex-col">
-      <Topbar title="Catalogue" subtitle="Courses and packages for your exam. Buy a single course, or save with a package." />
+      <Topbar title="Catalogue" subtitle="Courses and packages for your exam" />
 
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <label className="flex h-10 min-w-0 flex-[1_1_320px] items-center gap-2.5 rounded-md border border-line bg-white px-3 focus-within:border-azure">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" aria-hidden className="text-muted"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" /></svg>
-            <input type="search" aria-label="Search courses" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search courses, subjects or teachers" className="min-w-0 flex-1 bg-transparent text-sm text-navy outline-none placeholder:text-muted" />
-          </label>
-          <select aria-label="Subject" value={subject} onChange={e => setSubject(e.target.value)} className={selectBox}>
-            <option value="all">Subject: All</option>
-            {subjects.map(([id, n]) => <option key={id} value={id}>{n}</option>)}
-          </select>
-          <select aria-label="Price" value={price} onChange={e => setPrice(e.target.value as PriceFilter)} className={selectBox}>
-            <option value="any">Price: Any</option>
-            <option value="single">Sold on its own</option>
-            <option value="free">Free</option>
-            <option value="package">In a package only</option>
-          </select>
-          {languages.length > 0 && (
-            <select aria-label="Language" value={lang} onChange={e => setLang(e.target.value)} className={selectBox}>
-              <option value="all">Language: Any</option>
-              {languages.map(l => <option key={l}>{l}</option>)}
-            </select>
-          )}
-          <select aria-label="Sort" value={sort} onChange={e => setSort(e.target.value as Sort)} className={selectBox}>
-            <option value="popular">Sort: Most popular</option>
-            <option value="newest">Newest</option>
-            <option value="price">Lowest price</option>
-            <option value="az">A to Z</option>
-          </select>
-        </div>
-
-        {programmes.length > 0 && (
-          <div role="tablist" aria-label="Programme" className="flex max-w-full flex-wrap gap-1 self-start rounded-lg border border-line bg-white p-1">
-            {[{ id: 'all', label: 'All', n: courses.length }, ...programmes.map(p => ({ id: p.id, label: short(p), n: courses.filter(c => c.programme?.id === p.id).length }))].map(t => {
-              const sel = (prog || 'all') === t.id;
-              return (
-                <button key={t.id} type="button" role="tab" aria-selected={sel} onClick={() => setProg(t.id)}
-                  className={clsx('h-8 rounded-md px-3 text-[13px] transition-colors', sel ? 'bg-accent-soft font-semibold text-navy' : 'font-medium text-ink2 hover:text-navy')}>
-                  {t.label} <span className="font-medium text-muted">{t.n}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <PageHero
+          kicker={`Catalogue · ${courses.length} course${courses.length === 1 ? '' : 's'}${packages.length ? ` · ${packages.length} package${packages.length === 1 ? '' : 's'}` : ''}`}
+          l1={<><span className="text-[#FFFFFF]">Find the course</span><br />for your exam.</>}
+          actions={<div className="flex w-full flex-col gap-3">
+            <label className="flex h-12 w-full max-w-[640px] items-center gap-2.5 rounded-lg bg-[#FFFFFF] pl-4 pr-2 shadow-[0_10px_24px_rgba(7,32,97,0.18)]">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden className="text-muted"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4" /></svg>
+              <input type="search" aria-label="Search courses" value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search a subject, topic or teacher" className="min-w-0 flex-1 bg-transparent text-[15px] text-navy outline-none placeholder:text-muted" />
+              <button type="button" onClick={() => setFiltersOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[#072061] px-3 text-[13px] font-bold text-[#FFFFFF] lg:hidden">Filters{filtered ? ' •' : ''}</button>
+            </label>
+            {programmes.length > 0 && (
+              <div role="tablist" aria-label="Exam" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
+                {[{ id: 'all', label: 'All exams', n: courses.length }, ...programmes.map(p => ({ id: p.id, label: short(p), n: courses.filter(c => c.programme?.id === p.id).length }))].map(t => {
+                  const sel = (prog || 'all') === t.id;
+                  return (
+                    <button key={t.id} type="button" role="tab" aria-selected={sel} onClick={() => setProg(t.id)}
+                      className={clsx('inline-flex h-8 flex-shrink-0 items-center gap-1.5 rounded-md px-3 text-[13px] font-bold', sel ? 'bg-[#FFFFFF] text-navy' : 'bg-[rgba(255,255,255,0.25)] text-navy hover:bg-[rgba(255,255,255,0.4)]')}>
+                      {t.label} <span className="font-semibold opacity-70">{t.n}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>}
+          asideClassName="hidden lg:flex"
+          aside={bestPkg ? <>
+            <p className={asideLabel}>Save with a package</p>
+            <p className="text-[15px] font-bold leading-snug">{bestPkg.p.name}</p>
+            <p className="line-clamp-2 text-xs text-muted">{bestPkg.p.courseIds.map(id => byId.get(id)?.title.split(' · ')[0]).filter(Boolean).slice(0, 3).join(', ')}{bestPkg.p.courseIds.length > 3 ? ` and ${bestPkg.p.courseIds.length - 3} more` : ''}{bestPkg.p.cohort ? ' · live classes' : ''}</p>
+            <div className="flex items-center justify-between gap-2">
+              <span><b className="text-xl">{money(bestPkg.p.priceAmount, bestPkg.p.currency)}</b>{bestPkg.saving != null && <span className="ml-1.5 text-xs text-muted line-through">{money(bestPkg.p.priceAmount + bestPkg.saving, bestPkg.p.currency)}</span>}</span>
+              {bestPkg.saving != null && <span className="inline-flex h-6 items-center rounded-md bg-[#E3F5EC] px-2 text-[11.5px] font-bold text-[#1A7F4B]">Save {Math.round((bestPkg.saving / (bestPkg.p.priceAmount + bestPkg.saving)) * 100)}%</span>}
+            </div>
+            <Link href={`/packages/${bestPkg.p.id}`} className="inline-flex h-9 items-center justify-center rounded-md bg-azure-strong text-[13px] font-semibold text-on-accent">See the package</Link>
+            {progPackages.length > 1 && <Link href="/packages" className="text-center text-xs font-semibold text-azure-strong hover:underline">Compare all {progPackages.length} packages</Link>}
+          </> : undefined}
+        />
 
         {loading ? (
-          <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
-            {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-48 rounded-lg border border-line bg-white animate-pulse" />)}
+          <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]">
+            {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-64 rounded-lg border border-line bg-white animate-pulse" />)}
           </div>
         ) : (
-          <>
-            {progPackages.length > 0 && (
-              <section className="flex flex-col gap-3">
-                <div className="flex items-baseline justify-between gap-3">
-                  <h2 className="text-base font-bold text-navy">Packages for {progName}</h2>
-                  <Link href="/packages" className="text-[13px] font-semibold text-azure-strong hover:underline">Compare packages</Link>
-                </div>
-                <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
-                  {progPackages.slice(0, 3).map(({ p, saving }, i) => {
-                    const best = i === 0 && saving != null;
-                    const names = p.courseIds.map(id => byId.get(id)?.title.split(' · ')[0]).filter(Boolean) as string[];
-                    return (
-                      <article key={p.id} className={clsx('flex flex-col gap-2.5 rounded-lg border bg-white p-4', best ? 'border-azure' : 'border-line')}>
-                        <div className="flex justify-between gap-2">
-                          <p className="text-[15px] font-bold text-navy">{p.name}</p>
-                          {ownedPkgs.has(p.id) ? <span className="inline-flex h-[22px] items-center rounded bg-accent-soft px-1.5 text-[11.5px] font-bold text-navy">Yours</span>
-                            : best && <span className="inline-flex h-[22px] items-center rounded bg-accent-soft px-1.5 text-[11.5px] font-bold text-navy">Best value</span>}
-                        </div>
-                        <p className="line-clamp-2 text-[13px] text-muted">
-                          {names.length ? `${names.slice(0, 4).join(', ')}${names.length > 4 ? ` and ${names.length - 4} more` : ''}` : p.description ?? `${p.courseIds.length} courses`}
-                        </p>
-                        <p className="text-xl font-extrabold text-navy">{money(p.priceAmount, p.currency)} <span className="text-[12.5px] font-medium text-muted">/ {term(p.validityDays)}</span></p>
-                        <p className="text-[12.5px] font-semibold text-azure-strong">
-                          {[saving != null ? `Saves ${money(saving, p.currency)} vs buying separately` : `${p.courseIds.length} course${p.courseIds.length === 1 ? '' : 's'}`,
-                            p.cohort ? 'live classes included' : null, p.mentorship ? 'mentorship included' : null].filter(Boolean).join(' · ')}
-                        </p>
-                        <Link href={`/packages/${p.id}`} className="mt-auto inline-flex h-[34px] items-center justify-center rounded-md border border-line text-[13px] font-semibold text-navy hover:bg-subtle">View package</Link>
-                      </article>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
+          <div className="grid items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <aside aria-label="Filters" className="hidden flex-col gap-5 lg:flex">{filterGroups}</aside>
 
-            <section className="flex flex-col gap-3">
-              <h2 className="text-base font-bold text-navy">
-                Courses <span className="text-sm font-medium text-muted">· {shown.length} in {progName}</span>
-              </h2>
-              {!shown.length ? (
-                <div className="rounded-lg border border-line bg-white p-10 text-center">
-                  <p className="text-sm font-semibold text-navy">No courses match</p>
-                  <p className="mt-1 text-[13px] text-ink2">Try another subject or price, or clear the search.</p>
-                  <Button size="sm" variant="secondary" className="mt-4" onClick={() => { setSearch(''); setSubject('all'); setLang('all'); setPrice('any'); }}>Clear filters</Button>
-                </div>
-              ) : (
-                <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
-                  {shown.map(c => {
-                    const has = owned.has(c.id);
-                    const inPkgs = pkgsFor(c.id);
-                    // Package-only is only true when a package has it; otherwise it isn't on sale yet
-                    const priceLabel = has ? 'Yours' : isFree(c) ? 'Free' : c.isSoldIndividually && c.priceCurrency ? money(c.priceAmount!, c.priceCurrency) : inPkgs.length ? 'Package only' : 'Not on sale yet';
-                    const note = has ? 'You have access' : inPkgs.length ? `${c.isSoldIndividually || isFree(c) ? 'Also in' : 'In'} ${inPkgs[0].name}${inPkgs.length > 1 ? ` and ${inPkgs.length - 1} more` : ''}` : isWebsite(c) ? 'Free to join' : isFree(c) ? 'Free course' : c.isSoldIndividually ? 'Single course' : 'Coming soon';
-                    return (
-                      <article key={c.id} className="flex flex-col overflow-hidden rounded-lg border border-line bg-white">
-                        <button type="button" onClick={() => setOpenId(c.id)} className="flex flex-col text-left hover:bg-subtle/50">
-                          <CourseCover course={c} />
-                          <div className="flex flex-col gap-2.5 p-4">
-                          <div className="flex items-center gap-3">
-                            <div className="min-w-0">
-                              <p className="line-clamp-2 text-[14.5px] font-semibold leading-snug text-navy">{c.title}</p>
-                              <p className="mt-0.5 truncate text-[12.5px] text-muted">{[teacherOf(c), c.subject?.name, c.language].filter(Boolean).join(' · ')}</p>
-                            </div>
-                          </div>
-                          <dl className="grid grid-cols-3 gap-1.5">
-                            {[['Modules', String(c._count.modules)], ['Students', c._count.enrollments.toLocaleString()], ['Level', c.level?.name ?? '—']].map(([l, v]) => (
-                              <div key={l} className="min-w-0">
-                                <dt className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{l}</dt>
-                                <dd className="mt-0.5 truncate text-[13px] font-semibold text-navy">{v}</dd>
-                              </div>
-                            ))}
-                          </dl>
-                          </div>
-                        </button>
-                        <div className="mt-auto flex items-center gap-2.5 border-t border-line px-4 py-3">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[15px] font-extrabold text-navy">{priceLabel}</p>
-                            <p className="truncate text-xs text-muted">{note}</p>
-                          </div>
-                          {has
-                            ? <Link href={`/student/learn/${c.id}`} className="inline-flex h-[34px] items-center rounded-md border border-azure-strong bg-azure-strong px-3.5 text-[13px] font-semibold text-on-accent">Continue</Link>
-                            : <button type="button" onClick={() => setOpenId(c.id)} className="inline-flex h-[34px] items-center rounded-md border border-line bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-subtle">View</button>}
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
+            <div className="flex min-w-0 flex-col gap-5">
+              {freeRow.length > 0 && (
+                <section className="flex flex-col gap-3">
+                  <div className="flex items-baseline gap-2">
+                    <h2 className="text-base font-bold text-navy">Free to start</h2>
+                    <span className="hidden text-[13px] text-muted sm:inline">Try a whole course before you pay for anything</span>
+                    <button type="button" onClick={() => setPrice('free')} className="ml-auto text-[13px] font-semibold text-azure-strong hover:underline">See all {priceCount('free')}</button>
+                  </div>
+                  <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 lg:mx-0 lg:grid lg:overflow-visible lg:px-0 lg:grid-cols-3">
+                    {freeRow.slice(0, 6).map((c, i) => <div key={c.id} className={clsx('w-[230px] flex-shrink-0 lg:w-auto', i >= 3 && 'lg:hidden')}><Card c={c} /></div>)}
+                  </div>
+                </section>
               )}
-            </section>
-          </>
+
+              <section className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-bold text-navy">{filtered ? 'Results' : 'All courses'} <span className="text-sm font-medium text-muted">· {shown.length}</span></h2>
+                  {price !== 'any' && <button type="button" onClick={() => setPrice('any')} className="inline-flex h-7 items-center gap-1 rounded-md bg-accent-soft px-2.5 text-xs font-semibold text-navy">{PRICES.find(p => p[0] === price)?.[1]} ✕</button>}
+                  {subject !== 'all' && <button type="button" onClick={() => setSubject('all')} className="inline-flex h-7 items-center gap-1 rounded-md bg-accent-soft px-2.5 text-xs font-semibold text-navy">{subjects.find(s => s[0] === subject)?.[1]} ✕</button>}
+                  {lang !== 'all' && <button type="button" onClick={() => setLang('all')} className="inline-flex h-7 items-center gap-1 rounded-md bg-accent-soft px-2.5 text-xs font-semibold text-navy">{lang} ✕</button>}
+                  <select aria-label="Sort" value={sort} onChange={e => setSort(e.target.value as Sort)} className={clsx(selectBox, 'ml-auto')}>
+                    <option value="popular">Most popular</option>
+                    <option value="newest">Newest</option>
+                    <option value="price">Lowest price</option>
+                    <option value="az">A to Z</option>
+                  </select>
+                </div>
+                {!shown.length ? (
+                  <div className="rounded-lg border border-line bg-white p-10 text-center">
+                    <p className="text-sm font-semibold text-navy">No courses match</p>
+                    <p className="mt-1 text-[13px] text-ink2">Try another subject or price, or clear the search.</p>
+                    <Button size="sm" variant="secondary" className="mt-4" onClick={clearAll}>Clear filters</Button>
+                  </div>
+                ) : <>
+                  <div className="hidden gap-4 sm:grid sm:[grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]">{shown.map(c => <Card key={c.id} c={c} />)}</div>
+                  <div className="flex flex-col gap-2.5 sm:hidden">{shown.map(c => <Row key={c.id} c={c} />)}</div>
+                </>}
+              </section>
+            </div>
+          </div>
         )}
       </div>
+
+      {/* Phones: the filters in a sheet, with how many courses match before closing */}
+      {filtersOpen && (<>
+        <button type="button" aria-label="Close filters" onClick={() => setFiltersOpen(false)} className="fixed inset-0 z-[70] bg-navy/45 lg:hidden" />
+        <div role="dialog" aria-label="Filters" className="fixed inset-x-0 bottom-0 z-[71] flex max-h-[82dvh] flex-col rounded-t-2xl bg-white shadow-[0_-14px_40px_rgba(7,32,97,0.25)] lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <span className="mx-auto mt-2 h-1 w-10 rounded-full bg-line" />
+          <div className="flex items-center px-4 pb-2 pt-3"><b className="text-[17px] text-navy">Filters</b><button type="button" onClick={clearAll} className="ml-auto text-[13px] font-semibold text-azure-strong">Clear</button></div>
+          <div className="flex flex-col gap-5 overflow-y-auto px-4 pb-3">{filterGroups}</div>
+          <div className="border-t border-line p-3"><Button className="h-11 w-full" onClick={() => setFiltersOpen(false)}>Show {shown.length} course{shown.length === 1 ? '' : 's'}</Button></div>
+        </div>
+      </>)}
 
       <Drawer open={!!open} onOpenChange={o => { if (!o) setOpenId(null); }}>
         {open && <CoursePreview course={open} packages={pkgsFor(open.id)} owned={owned.has(open.id)} separateTotal={separateTotal}
