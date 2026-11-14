@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { UserRole } from '@cpa/shared';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { UserProfile } from '@prisma/client';
+import { appDueAt } from '../authenticator.service';
 
 /**
  * Must be used together with JwtAuthGuard.
@@ -26,6 +27,12 @@ export class RolesGuard implements CanActivate {
 
     const hasRole = requiredRoles.includes(user.role as UserRole);
     if (!hasRole) throw new ForbiddenException('Insufficient role');
+
+    // Admins must have an authenticator app once their date has passed; Settings stays open to set it up
+    if (user.role === 'ADMIN' && requiredRoles.includes(UserRole.ADMIN) && !user.totpEnabledAt) {
+      const due = appDueAt(user);
+      if (due && Date.now() > +due) throw new ForbiddenException({ statusCode: 403, code: 'AUTHENTICATOR_REQUIRED', message: 'Set up your authenticator app in Settings → Sign-in and security to use admin pages.' });
+    }
 
     return true;
   }

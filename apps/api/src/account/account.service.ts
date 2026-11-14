@@ -143,6 +143,8 @@ export class AccountService {
       await tx.flashcardReview.deleteMany({ where: { studentId: id } });
       await tx.threadRead.deleteMany({ where: { userId: id } });
       await tx.lessonProgress.deleteMany({ where: { studentId: id } });
+      await tx.userAuthenticator.deleteMany({ where: { userId: id } });
+      await tx.userSession.deleteMany({ where: { userId: id } });
       await tx.testSession.deleteMany({ where: { studentId: id } });
       // Messages they sent stay, for the record; with the name gone below they read as from a deleted account
       await tx.courseDiscussionPost.updateMany({ where: { authorId: id }, data: { body: '(post deleted)' } });
@@ -150,7 +152,7 @@ export class AccountService {
         where: { id },
         data: {
           email: `deleted-${id}@deleted.invalid`, name: null, firstName: null, lastName: null, phone: null, avatarUrl: null, bio: null,
-          linkedinUrl: null, websiteUrl: null, videoIntroUrl: null, passwordHash: null, googleId: null, microsoftId: null, agreementIp: null,
+          linkedinUrl: null, websiteUrl: null, videoIntroUrl: null, passwordHash: null, googleId: null, microsoftId: null, agreementIp: null, totpEnabledAt: null,
           deletedAt: new Date(), deletionDueAt: null,
         },
       });

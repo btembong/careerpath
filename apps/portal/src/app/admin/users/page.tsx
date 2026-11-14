@@ -115,7 +115,7 @@ export default function AdminUsersPage() {
 
 interface Detail {
   id: string; name: string; email: string; phone: string | null; role: Role; approval: string; avatarUrl: string | null; country: string | null;
-  joinedAt: string; lastActive: string | null; referredBy: string | null; paid: { currency: string; amount: number }[]; certificates: number;
+  joinedAt: string; lastActive: string | null; authenticatorOn?: string | null; referredBy: string | null; paid: { currency: string; amount: number }[]; certificates: number;
   access: { title: string; kind: string; expiresAt: string | null; active: boolean }[];
   payments: { id: string; title: string; at: string; amount: number; currency: string }[];
   courses: { id: string; title: string; status: string }[]; subjects: string[];
@@ -206,6 +206,7 @@ function Person({ id, onClose, onChanged }: { id: string | null; onClose: () => 
             </div>
             <p className="mt-1.5 text-[12.5px] text-muted">Changing a role changes what they see the next time they sign in. Their courses and payments stay.</p>
           </DrawerSection>
+          {p.role !== 'STUDENT' && <AppReset person={p} />}
         </>}
       </DrawerContent>
     </Drawer>
@@ -242,5 +243,36 @@ function DeletionRequests() {
         );
       })}
     </section>
+  );
+}
+
+/** People → a person → Sign-in: clear their authenticator app when they've lost their phone */
+function AppReset({ person }: { person: Detail }) {
+  const [on, setOn] = useState(!!person.authenticatorOn);
+  const [sure, setSure] = useState(false);
+  const [busy, setBusy] = useState(false);
+  async function reset() {
+    setBusy(true);
+    try {
+      await api.post(`/auth/admin/users/${person.id}/authenticator/reset`);
+      setOn(false); setSure(false);
+      notify.success('Authenticator app reset', { description: 'They’ve been emailed. Their next sign-in uses an emailed code until they set the app up again.' });
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not reset it'); } finally { setBusy(false); }
+  }
+  const since = person.authenticatorOn ? new Date(person.authenticatorOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  return (
+    <DrawerSection title="Sign-in">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="min-w-0 flex-1 text-[13.5px] text-navy">Authenticator app: <strong>{on ? `on since ${since}` : 'not set up'}</strong></span>
+        {on && !sure && <Button size="sm" variant="secondary" onClick={() => setSure(true)}>Reset</Button>}
+      </div>
+      {sure && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-[#EFC4C0] bg-[#FDF1F0] px-3 py-2.5">
+          <span className="min-w-0 flex-1 text-[13px] text-navy">Only for a lost or new phone, after checking it’s really them. They’ll be emailed.</span>
+          <button onClick={reset} disabled={busy} className="h-8 rounded-md bg-[#C1352B] px-3 text-[13px] font-bold text-white disabled:opacity-50">Reset the app</button>
+          <button onClick={() => setSure(false)} className="h-8 rounded-md border border-line px-3 text-[13px] text-navy">Cancel</button>
+        </div>
+      )}
+    </DrawerSection>
   );
 }

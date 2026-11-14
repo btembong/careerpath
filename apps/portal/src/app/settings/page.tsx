@@ -10,6 +10,7 @@ import { applyTextSize, TEXT_SIZE_KEY } from '@/components/providers/DisplayPref
 import api, { setAuthToken } from '@/lib/api';
 import { AppVersion } from '@/components/ui/AppVersion';
 import { PushSettings } from '@/components/push/Push';
+import { AuthenticatorApp, useAppStatus } from '@/components/settings/AuthenticatorApp';
 
 interface Me {
   id: string; email: string; role: string; firstName?: string; lastName?: string; phone?: string;
@@ -92,7 +93,7 @@ function browserName(ua: string | null, device: string | null) {
 }
 const ago = (iso: string) => {
   const m = Math.round((Date.now() - +new Date(iso)) / 60_000);
-  if (m < 10) return 'active now';
+  if (m < 10) return 'just now';
   if (m < 60) return `${m} minutes ago`;
   const h = Math.round(m / 60);
   if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`;
@@ -326,6 +327,7 @@ function PasswordInput({ value, onChange, auto, label }: { value: string; onChan
 }
 
 function SecurityPanel({ me, sessions, reload }: { me: Me; sessions: Session[] | null; reload: () => void }) {
+  const [app, reloadApp] = useAppStatus();
   const [changing, setChanging] = useState(false);
   const [cur, setCur] = useState(''); const [pw, setPw] = useState(''); const [pw2, setPw2] = useState('');
   const [saving, setSaving] = useState(false);
@@ -368,7 +370,7 @@ function SecurityPanel({ me, sessions, reload }: { me: Me; sessions: Session[] |
       </div>
 
       <div className="flex flex-col gap-3">
-        <Title t="How you sign in" sub="The emailed code always works, even if you forget your password." />
+        <Title t="How you sign in" sub="The emailed code always works, even if you forget your password or lose your phone." />
         <div className={groupBox}>
           <div className={row}>
             <span className="min-w-0 flex-1"><strong className="block text-[14px] text-navy">Password</strong><span className="text-xs text-muted">With your email, on the sign-in page</span></span>
@@ -404,9 +406,10 @@ function SecurityPanel({ me, sessions, reload }: { me: Me; sessions: Session[] |
             <span className="min-w-0 flex-1"><strong className="block text-[14px] text-navy">Emailed code</strong><span className="text-xs text-muted">A 6-digit code to {me.email}, valid 10 minutes</span></span>
             <span className="rounded-md bg-subtle px-2 py-1 text-xs font-bold text-ink2">Always available</span>
           </div>
+          {app?.available && <div className="border-t border-line"><AuthenticatorApp status={app} reload={reloadApp} /></div>}
           {me.role === 'ADMIN' && (
             <div className={row}>
-              <span className="min-w-0 flex-1"><strong className="block text-[14px] text-navy">Two-step sign-in for admins</strong><span className="text-xs text-muted">After your password, a code by email. You can trust a computer for 30 days.</span></span>
+              <span className="min-w-0 flex-1"><strong className="block text-[14px] text-navy">Two-step sign-in for admins</strong><span className="text-xs text-muted">After your password, a code from your authenticator app (or by email). You can trust a computer for 30 days.</span></span>
               <span className="rounded-md bg-accent-soft px-2 py-1 text-xs font-bold text-azure-strong">Required</span>
             </div>
           )}

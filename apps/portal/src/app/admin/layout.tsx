@@ -6,6 +6,7 @@ import { MobileNav } from '@/components/layout/MobileNav';
 import { CommandPalette } from '@/components/ui/CommandPalette';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { OfflineIndicator } from '@/components/ui/OfflineIndicator';
+import { AdminAppGate } from '@/components/settings/AdminAppGate';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -16,7 +17,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <PushPrompt />
       <div className="flex flex-1 flex-col overflow-hidden">
         <main className="flex-1 overflow-y-auto">
-          <ErrorBoundary>{children}</ErrorBoundary>
+          <ErrorBoundary><AdminAppGate>{children}</AdminAppGate></ErrorBoundary>
         </main>
       </div>
       <MobileNav />

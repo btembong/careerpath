@@ -55,6 +55,8 @@ model UserProfile {
   notificationPrefs    Json?
   /// Settings → Sign out everywhere else: sign-ins made before this stop working
   signedOutAt          DateTime?
+  /// Sign-in codes from an authenticator app are on (the secret lives in UserAuthenticator). Required for admins.
+  totpEnabledAt        DateTime?
   /// { language, textSize, dataSaver, autoplay, downloadOnWifi }
   displayPrefs         Json?
   agreementAcceptedAt  DateTime?
@@ -82,6 +84,7 @@ model UserProfile {
   callParticipations   CallParticipant[]
   pushSubscriptions    PushSubscription[]
   sessions             UserSession[]
+  authenticator        UserAuthenticator?
   wpPulls              WpPull[]
   coursePurchases      CoursePurchase[]
   discussionUpvotes    DiscussionUpvote[]
@@ -2042,4 +2045,18 @@ model UserSession {
   user         UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, endedAt])
+}
+
+/// An authenticator app (Google Authenticator, Microsoft Authenticator, Authy). Kept apart from UserProfile
+/// so the secret never travels with a user row.
+model UserAuthenticator {
+  userId      String      @id
+  /// AES-256-GCM with TOTP_KEY: iv.tag.data, base64
+  secret      String
+  /// sha256 of each unused backup code
+  backupCodes String[]    @default([])
+  /// The last 30-second step used, so a code can't be used twice
+  lastStep    Int?
+  createdAt   DateTime    @default(now())
+  user        UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

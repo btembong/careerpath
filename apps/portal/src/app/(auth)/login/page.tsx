@@ -38,8 +38,8 @@ function LoginPageInner() {
   const [lockUntil, setLockUntil] = useState(0);
   const [lockLeft,  setLockLeft]  = useState(0);
   const [resendIn,  setResendIn]  = useState(0);
-  // Admins: after the password, a code we email them
-  const [twoStep,   setTwoStep]   = useState<{ challenge: string; email: string } | null>(null);
+  // Second step (admins, and anyone with an authenticator app): a code from the app, a backup code, or one we email
+  const [twoStep,   setTwoStep]   = useState<{ challenge: string; email: string; method: 'app' | 'email' | 'backup'; admin: boolean; app: boolean } | null>(null);
   const [remember,  setRemember]  = useState(false);
 
   useEffect(() => {
@@ -58,8 +58,12 @@ function LoginPageInner() {
   }, [resendIn]);
 
   /** The sign-in reply is either a token, or (admins) a request for the emailed code */
-  async function handle(data: { accessToken?: string; twoStep?: boolean; challenge?: string; email?: string }) {
-    if (data.twoStep && data.challenge) { setTwoStep({ challenge: data.challenge, email: data.email ?? '' }); setCode(''); setResendIn(60); return; }
+  async function handle(data: { accessToken?: string; twoStep?: boolean; challenge?: string; email?: string; method?: 'app' | 'email'; admin?: boolean }) {
+    if (data.twoStep && data.challenge) {
+      const method = data.method ?? 'email';
+      setTwoStep({ challenge: data.challenge, email: data.email ?? '', method, admin: data.admin !== false, app: method === 'app' });
+      setCode(''); setResendIn(method === 'email' ? 60 : 0); return;
+    }
     if (data.accessToken) await signedIn(data.accessToken);
   }
 
@@ -81,7 +85,7 @@ function LoginPageInner() {
   async function resendTwoStep() {
     if (!twoStep) return;
     setError('');
-    try { await api.post('/auth/2step/resend', { challenge: twoStep.challenge }); setResendIn(60); }
+    try { await api.post('/auth/2step/resend', { challenge: twoStep.challenge }); setResendIn(60); setCode(''); setTwoStep({ ...twoStep, method: 'email' }); }
     catch (err: any) { setError(err?.response?.data?.message ?? 'Couldn’t send a new code.'); }
   }
 
@@ -123,7 +127,7 @@ function LoginPageInner() {
       let trustToken: string | undefined;
       try { trustToken = localStorage.getItem('cpa_admin_trust') ?? undefined; } catch { /* private window */ }
       const { data } = mode === 'code'
-        ? await api.post('/auth/login/code/verify', { email: email.trim(), code })
+        ? await api.post('/auth/login/code/verify', { email: email.trim(), code, ...(trustToken ? { trustToken } : {}) })
         : await api.post('/auth/login', { email: email.trim(), password, ...(trustToken ? { trustToken } : {}) });
       await handle(data);
     } catch (err) { failed(err); }
@@ -132,7 +136,9 @@ function LoginPageInner() {
 
   async function withGoogle(credential: string) {
     setError(''); setLoading(true);
-    try { const { data } = await api.post('/auth/google', { credential }); await handle(data); }
+    let trustToken: string | undefined;
+    try { trustToken = localStorage.getItem('cpa_admin_trust') ?? undefined; } catch { /* private window */ }
+    try { const { data } = await api.post('/auth/google', { credential, ...(trustToken ? { trustToken } : {}) }); await handle(data); }
     catch (err) { failed(err); }
     finally { setLoading(false); }
   }
@@ -142,25 +148,42 @@ function LoginPageInner() {
   const codeStep = mode === 'code' && codeSent;
   const toMode = (m: 'password' | 'code') => { setMode(m); setCodeSent(false); setCode(''); setError(''); };
 
-  if (twoStep) return (
-    <AuthShell back={null} hero={{ lines: ['One more step,', 'just for admins.'], white: 3, sub: 'Admin accounts can move money, so after your password we email you a six-digit code.', cards: [{ icon: 'mail', title: 'CareerPath Africa', body: 'Your admin sign-in code is in your inbox.' }] }}>
-      <p className="text-[13px] font-semibold text-[#3F6FE8]">Admin sign-in · step 2 of 2</p>
-      <AuthTitle>Check your email.</AuthTitle>
-      <p className="-mt-2 text-sm text-ink2">Code sent to <strong className="text-navy">{twoStep.email}</strong></p>
-      <form onSubmit={verifyTwoStep} className="flex flex-col gap-3.5">
-        <CodeBoxes value={code} onChange={setCode} />
-        <label className="flex items-center gap-2 text-[13.5px] text-ink2">
-          <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="h-[18px] w-[18px] accent-[#3F6FE8]" />
-          Don’t ask again on this computer for 30 days
-        </label>
-        <AuthError error={error} />
-        <button type="submit" disabled={loading || code.length < 6} className={authButton}>{loading ? 'One moment…' : 'Sign in'}</button>
-      </form>
-      <p className="text-center text-[13px] text-muted">Didn’t get it? {resendIn > 0 ? `Send again in ${resendIn}s` : <button type="button" onClick={resendTwoStep} className="font-bold text-[#3F6FE8]">Send again</button>}</p>
-      <p className="text-center text-xs text-muted">The code works for 10 minutes. Five wrong tries and you start again from your password.</p>
-      <p className="text-center text-[13px]"><button type="button" onClick={() => { setTwoStep(null); setError(''); setPassword(''); }} className="font-semibold text-[#3F6FE8]">‹ Back to sign in</button></p>
-    </AuthShell>
-  );
+  if (twoStep) {
+    const m = twoStep.method;
+    return (
+      <AuthShell back={null} hero={m === 'email'
+        ? { lines: ['One more step,', twoStep.admin ? 'just for admins.' : 'to keep you safe.'], white: 3, sub: twoStep.admin ? 'Admin accounts can move money, so after your password we check it’s you.' : 'You switched on two-step sign-in, so we check it’s you.', cards: [{ icon: 'mail', title: 'CareerPath Africa', body: 'Your sign-in code is in your inbox.' }] }
+        : { lines: ['One more step,', 'from your phone.'], white: 3, sub: 'Open your authenticator app and type the six-digit code it shows for CareerPath Africa.', cards: [{ icon: 'lock', title: 'CareerPath Africa', body: 'A new code every 30 seconds.' }] }}>
+        <p className="text-[13px] font-semibold text-[#3F6FE8]">{twoStep.admin ? 'Admin sign-in' : 'Sign-in'} · step 2 of 2</p>
+        <AuthTitle>{m === 'app' ? 'Open your authenticator app.' : m === 'backup' ? 'Use a backup code.' : 'Check your email.'}</AuthTitle>
+        <p className="-mt-2 text-sm text-ink2">
+          {m === 'app' ? <>Type the code shown for <strong className="text-navy">CareerPath Africa</strong>.</>
+            : m === 'backup' ? 'One of the ten codes you saved when you set up the app. Each works once.'
+            : <>Code sent to <strong className="text-navy">{twoStep.email}</strong></>}
+        </p>
+        <form onSubmit={verifyTwoStep} className="flex flex-col gap-3.5">
+          {m === 'backup'
+            ? <input autoFocus value={code} onChange={e => setCode(e.target.value)} placeholder="e.g. k7m2-x9qa" aria-label="Backup code" autoComplete="one-time-code"
+                className="h-12 rounded-lg border border-line px-3 text-center text-lg font-bold tracking-[0.15em] text-navy outline-none focus:border-azure" />
+            : <CodeBoxes value={code} onChange={setCode} />}
+          <label className="flex items-center gap-2 text-[13.5px] text-ink2">
+            <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="h-[18px] w-[18px] accent-[#3F6FE8]" />
+            Don’t ask again on this computer for 30 days
+          </label>
+          <AuthError error={error} />
+          <button type="submit" disabled={loading || (m === 'backup' ? code.replace(/[^a-z0-9]/gi, '').length < 8 : code.length < 6)} className={authButton}>{loading ? 'One moment…' : 'Sign in'}</button>
+        </form>
+        <div className="flex flex-col items-center gap-1.5 text-[13px] text-muted">
+          {m === 'email' && <p>Didn’t get it? {resendIn > 0 ? `Send again in ${resendIn}s` : <button type="button" onClick={resendTwoStep} className="font-bold text-[#3F6FE8]">Send again</button>}</p>}
+          {twoStep.app && m !== 'app' && <button type="button" onClick={() => { setTwoStep({ ...twoStep, method: 'app' }); setCode(''); setError(''); }} className="font-bold text-[#3F6FE8]">Use my authenticator app</button>}
+          {twoStep.app && m !== 'backup' && <button type="button" onClick={() => { setTwoStep({ ...twoStep, method: 'backup' }); setCode(''); setError(''); }} className="font-bold text-[#3F6FE8]">Use a backup code</button>}
+          {m !== 'email' && <button type="button" onClick={resendTwoStep} disabled={resendIn > 0} className="font-bold text-[#3F6FE8] disabled:text-muted">{resendIn > 0 ? `Email me a code in ${resendIn}s` : 'Email me a code instead'}</button>}
+        </div>
+        <p className="text-center text-xs text-muted">{m === 'email' ? 'The code works for 10 minutes. ' : ''}Five wrong tries and you start again from the beginning.</p>
+        <p className="text-center text-[13px]"><button type="button" onClick={() => { setTwoStep(null); setError(''); setPassword(''); }} className="font-semibold text-[#3F6FE8]">‹ Back to sign in</button></p>
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell hero={mode === 'code'

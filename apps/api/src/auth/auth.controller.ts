@@ -25,6 +25,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { SessionsService, sidOf } from './sessions.service';
+import { AuthenticatorService } from './authenticator.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterStudentDto } from './dto/register-student.dto';
 import { RegisterTeacherDto } from './dto/register-teacher.dto';
@@ -46,6 +47,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly platformCourses: PlatformCoursesService,
     private readonly sessions: SessionsService,
+    private readonly authenticator: AuthenticatorService,
   ) {}
 
   @Post('login')
@@ -126,8 +128,8 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @ApiOperation({ summary: 'Sign in with the emailed code' })
-  loginWithCode(@Body('email') email: string, @Body('code') code: string) {
-    return this.authService.loginWithCode(email, code);
+  loginWithCode(@Body('email') email: string, @Body('code') code: string, @Body('trustToken') trustToken?: string) {
+    return this.authService.loginWithCode(email, code, trustToken);
   }
 
   @Post('otp/verify')
@@ -156,7 +158,7 @@ export class AuthController {
   @Post('2step/verify')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
-  @ApiOperation({ summary: 'Admins: finish signing in with the code we emailed' })
+  @ApiOperation({ summary: 'Two-step sign-in: a code from the authenticator app, a backup code, or the emailed code' })
   verifyTwoStep(@Body() body: { challenge: string; code: string; remember?: boolean }) {
     return this.authService.verifyTwoStep(body?.challenge, body?.code, !!body?.remember);
   }
@@ -164,7 +166,7 @@ export class AuthController {
   @Post('2step/resend')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 3 } })
-  @ApiOperation({ summary: 'Admins: email the sign-in code again (once a minute)' })
+  @ApiOperation({ summary: 'Two-step sign-in: email a code (again, or instead of the app), once a minute' })
   resendTwoStep(@Body() body: { challenge: string }) {
     return this.authService.resendTwoStep(body?.challenge);
   }
@@ -182,7 +184,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @ApiOperation({ summary: 'Sign in or register with a Google ID token (checked with Google)' })
-  googleLogin(@Body() body: { credential: string }) {
+  googleLogin(@Body() body: { credential: string; trustToken?: string }) {
     return this.authService.googleLogin(body);
   }
 
@@ -313,5 +315,60 @@ export class AuthController {
   @ApiOperation({ summary: 'Forget one sign-in: it stops working, and a trusted computer asks for the code again' })
   endSession(@CurrentUser() user: UserProfile, @Param('id') id: string) {
     return this.sessions.end(user.id, id, sidOf(user));
+  }
+
+  // ── Settings → Authenticator app ────────────────────────
+
+  @Get('me/authenticator')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Whether the authenticator app is on, backup codes left, and (admins) the date it is required from' })
+  authenticatorStatus(@CurrentUser() user: UserProfile) {
+    return this.authenticator.status(user);
+  }
+
+  @Post('me/authenticator/start')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @ApiOperation({ summary: 'A QR code and key to add CareerPath Africa to an authenticator app (nothing changes until confirmed)' })
+  authenticatorStart(@CurrentUser() user: UserProfile) {
+    return this.authenticator.start(user);
+  }
+
+  @Post('me/authenticator/confirm')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({ summary: 'The first code from the app: switches it on (or moves it to a new phone) and returns 10 backup codes, shown once' })
+  authenticatorConfirm(@CurrentUser() user: UserProfile, @Body('code') code: string) {
+    return this.authenticator.confirm(user, code);
+  }
+
+  @Post('me/authenticator/backup-codes')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @ApiOperation({ summary: 'New backup codes (needs a code from the app); the old ones stop working' })
+  authenticatorBackupCodes(@CurrentUser() user: UserProfile, @Body('code') code: string) {
+    return this.authenticator.newBackupCodes(user, code);
+  }
+
+  @Post('me/authenticator/off')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @ApiOperation({ summary: 'Switch the authenticator app off (needs a code; not for admins)' })
+  authenticatorOff(@CurrentUser() user: UserProfile, @Body('code') code: string) {
+    return this.authenticator.disable(user, code);
+  }
+
+  @Post('admin/users/:id/authenticator/reset')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[Admin] Clear someone’s authenticator app (a lost phone); they set it up again' })
+  authenticatorReset(@CurrentUser() user: UserProfile, @Param('id') id: string) {
+    return this.authenticator.reset(user, id);
   }
 }

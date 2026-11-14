@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { resolvePrefs, resolveDisplay, resolveQuiet, kindsFor } from '../notifications/notification-prefs';
 import { SessionsService } from './sessions.service';
+import { AuthenticatorService } from './authenticator.service';
 import {
   Injectable,
   ConflictException,
@@ -38,7 +39,7 @@ const twoStepKey = (challenge: string) => `cpa:2step:${challenge}`;
 const resetKey = (token: string) => `cpa:pwreset:${createHash('sha256').update(token).digest('hex')}`;
 const sixDigits = () => String(randomInt(100000, 1000000));
 const maskEmail = (e: string) => e.replace(/^(.{2})[^@]*(@.*)$/, '$1•••$2');
-export type SignInResult = { accessToken: string } | { twoStep: true; challenge: string; email: string };
+export type SignInResult = { accessToken: string } | { twoStep: true; challenge: string; email: string; method: 'app' | 'email'; admin: boolean };
 const loginTriesKey = (email: string) => `cpa:login-code-tries:${email.toLowerCase()}`;
 export const verifiedKey = (email: string) => `cpa:otp-verified:${email.toLowerCase()}`;
 
@@ -63,6 +64,7 @@ export class AuthService {
     private referrals: ReferralsService,
     private teacherCourses: TeacherCoursesService,
     private sessions: SessionsService,
+    private authenticator: AuthenticatorService,
   ) {}
 
   // ── OTP ──────────────────────────────────────────────────
@@ -240,14 +242,17 @@ export class AuthService {
     await this.prisma.userProfile.update({ where: { id: userId }, data: { passwordHash, passwordUpdatedAt: new Date() } });
   }
 
-  // ── Admin two-step sign-in ───────────────────────────────
+  // ── Two-step sign-in ─────────────────────────────────────
 
   /**
-   * Everyone but admins gets their token now. Admins get a code by email first, unless this computer
-   * was trusted in the last 30 days.
+   * After the first step (password, emailed code or Google): admins, and anyone who switched on an
+   * authenticator app, prove it's them a second time, unless this computer was trusted in the last 30 days.
+   * With the app: a code from it, a backup code, or (on request) a code by email. Without it (admins
+   * who haven't set it up yet): a code by email, sent straight away.
    */
   private async finishSignIn(profile: { id: string; email: string; role: string; wpUserId: number; onboardingCompleted: boolean; firstName?: string | null }, trustToken?: string): Promise<SignInResult> {
-    if (profile.role !== UserRole.ADMIN) {
+    const app = await this.authenticator.hasApp(profile.id);
+    if (profile.role !== UserRole.ADMIN && !app) {
       return { accessToken: this.signToken(profile.id, profile.email, profile.role as UserRole, profile.wpUserId, profile.onboardingCompleted) };
     }
     // A trusted computer keeps its sign-in id, so it stays one row in Settings → Where you're signed in
@@ -256,9 +261,9 @@ export class AuthService {
       return { accessToken: this.signToken(profile.id, profile.email, profile.role as UserRole, profile.wpUserId, profile.onboardingCompleted, trustedSid === true ? undefined : trustedSid) };
     }
     const challenge = randomBytes(24).toString('hex');
-    await this.redis.set(twoStepKey(challenge), JSON.stringify({ userId: profile.id, code: sixDigits(), tries: 0, sentAt: Date.now() }), OTP_TTL);
-    await this.sendTwoStepCode(challenge);
-    return { twoStep: true, challenge, email: maskEmail(profile.email) };
+    await this.redis.set(twoStepKey(challenge), JSON.stringify({ userId: profile.id, code: app ? null : sixDigits(), tries: 0, sentAt: app ? 0 : Date.now() }), OTP_TTL);
+    if (!app) await this.sendTwoStepCode(challenge);
+    return { twoStep: true, challenge, email: maskEmail(profile.email), method: app ? 'app' : 'email', admin: profile.role === UserRole.ADMIN };
   }
 
 /** The trusted computer's sign-in id, true for an older trust without one, or false */
@@ -278,26 +283,30 @@ export class AuthService {
     if (!raw) return;
     const st = JSON.parse(raw) as { userId: string; code: string };
     const user = await this.prisma.userProfile.findUnique({ where: { id: st.userId }, select: { email: true } });
-    if (user) await this.mail.sendAdminCode(user.email, st.code);
+    if (user && st.code) await this.mail.sendAdminCode(user.email, st.code);
   }
 
+  /** Email a code: again, or instead of the authenticator app ("Email me a code instead") */
   async resendTwoStep(challenge: string) {
     const raw = await this.redis.get(twoStepKey(String(challenge ?? '')));
     if (!raw) throw new UnauthorizedException('That sign-in has expired. Start again with your password.');
     const st = JSON.parse(raw);
-    if (Date.now() - st.sentAt < 60_000) throw new BadRequestException('Wait a minute before asking for another code.');
-    st.code = sixDigits(); st.tries = 0; st.sentAt = Date.now();
+    if (st.sentAt && Date.now() - st.sentAt < 60_000) throw new BadRequestException('Wait a minute before asking for another code.');
+    st.code = sixDigits(); st.sentAt = Date.now();
     await this.redis.set(twoStepKey(challenge), JSON.stringify(st), OTP_TTL);
     await this.sendTwoStepCode(challenge);
     return { sent: true };
   }
 
+  /** A code from the app, a backup code, or the emailed code. Five wrong tries and they start again. */
   async verifyTwoStep(challenge: string, code: string, remember?: boolean) {
     const key = twoStepKey(String(challenge ?? ''));
     const raw = await this.redis.get(key);
     if (!raw) throw new UnauthorizedException('That sign-in has expired. Start again with your password.');
-    const st = JSON.parse(raw) as { userId: string; code: string; tries: number; sentAt: number };
-    if (String(code ?? '').trim() !== st.code) {
+    const st = JSON.parse(raw) as { userId: string; code: string | null; tries: number; sentAt: number };
+    const given = String(code ?? '').trim();
+    const ok = (!!st.code && given === st.code) || !!(await this.authenticator.verify(st.userId, given));
+    if (!ok) {
       st.tries++;
       if (st.tries >= 5) { await this.redis.del(key); throw new UnauthorizedException('Too many wrong codes. Start again with your password.'); }
       await this.redis.set(key, JSON.stringify(st), OTP_TTL);
@@ -305,7 +314,7 @@ export class AuthService {
     }
     await this.redis.del(key);
     const p = await this.prisma.userProfile.findUnique({ where: { id: st.userId } });
-    if (!p || p.role !== UserRole.ADMIN) throw new UnauthorizedException('Start again with your password.');
+    if (!p || p.deletedAt) throw new UnauthorizedException('Start again with your password.');
     const sid = this.sessions.newSid();
     const accessToken = this.signToken(p.id, p.email, p.role as UserRole, p.wpUserId, p.onboardingCompleted, sid);
     if (remember) await this.sessions.trust(sid, p.id);
@@ -769,7 +778,7 @@ export class AuthService {
     return { message: 'If that email has a CareerPath account, we’ve sent a code.' };
   }
 
-  async loginWithCode(email: string, code: string): Promise<SignInResult> {
+  async loginWithCode(email: string, code: string, trustToken?: string): Promise<SignInResult> {
     const e = String(email ?? '').trim().toLowerCase();
     const stored = await this.redis.get(loginCodeKey(e));
     if (!stored) throw new UnauthorizedException('That code has expired. Ask for a new one.');
@@ -786,7 +795,7 @@ export class AuthService {
     if (profile.role === UserRole.ADMIN) throw new UnauthorizedException('Admins sign in with their password, then a code.');
     this.assertCanSignIn(profile);
     await this.prisma.userProfile.update({ where: { id: profile.id }, data: { lastActiveDate: new Date() } }).catch(() => {});
-    return this.finishSignIn(profile);
+    return this.finishSignIn(profile, trustToken);
   }
 
   // ── Google SSO ───────────────────────────────────────────
@@ -816,7 +825,7 @@ export class AuthService {
     return { googleId: info.sub, email: info.email.toLowerCase(), name: info.name, avatarUrl: info.picture };
   }
 
-  async googleLogin(body: { credential: string }): Promise<SignInResult> {
+  async googleLogin(body: { credential: string; trustToken?: string }): Promise<SignInResult> {
     const dto = await this.verifyGoogle(body?.credential);
     let profile = await this.prisma.userProfile.findFirst({
       where: { OR: [{ googleId: dto.googleId }, { email: dto.email }] },
@@ -848,7 +857,7 @@ export class AuthService {
       throw new ForbiddenException('Your application is still under review.');
     }
 
-    return this.finishSignIn(profile);
+    return this.finishSignIn(profile, body?.trustToken);
   }
 
   // ── Helpers ──────────────────────────────────────────────

@@ -64,7 +64,7 @@ export class AdminPeopleService {
     const p = await this.prisma.userProfile.findUnique({
       where: { id },
       select: {
-        id: true, name: true, firstName: true, lastName: true, email: true, phone: true, role: true, approvalStatus: true, createdAt: true, lastActiveDate: true, avatarUrl: true,
+        id: true, name: true, firstName: true, lastName: true, email: true, phone: true, role: true, approvalStatus: true, createdAt: true, lastActiveDate: true, avatarUrl: true, totpEnabledAt: true,
         country: { select: { name: true } }, referredBy: { select: { name: true, firstName: true, lastName: true, email: true } },
         purchases: { select: { id: true, purchasedAt: true, expiresAt: true, amountPaid: true, currency: true, package: { select: { name: true } } }, orderBy: { purchasedAt: 'desc' } },
         coursePurchases: { select: { id: true, purchasedAt: true, expiresAt: true, amountPaid: true, currency: true, course: { select: { title: true } } }, orderBy: { purchasedAt: 'desc' } },
@@ -82,7 +82,7 @@ export class AdminPeopleService {
     const bought = new Set(p.coursePurchases.map(c => c.course.title));
     return {
       id: p.id, name: nameOf(p), email: p.email, phone: p.phone, role: p.role, approval: p.approvalStatus, avatarUrl: p.avatarUrl,
-      country: p.country?.name ?? null, joinedAt: p.createdAt, lastActive: p.lastActiveDate,
+      country: p.country?.name ?? null, joinedAt: p.createdAt, lastActive: p.lastActiveDate, authenticatorOn: p.totpEnabledAt,
       referredBy: p.referredBy ? nameOf(p.referredBy) : null,
       paid: Object.entries(paid).map(([currency, amount]) => ({ currency, amount })),
       certificates: p._count.certificates,
