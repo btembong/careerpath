@@ -47,6 +47,18 @@ export class WithdrawalsController {
   @ApiOperation({ summary: 'Withdraw: with the PIN or a code. Sent through Tranzak, or queued for approval' })
   withdraw(@CurrentUser() u: UserProfile, @Body() b: { amount?: number; pin?: string; code?: string }) { return this.w.withdraw(u, b); }
 
+  @Post('me/get-paid/auto')
+  @HttpCode(HttpStatus.OK)
+  @Roles(...EARNERS)
+  @ApiOperation({ summary: 'Automatic payouts: weekly, monthly or at a threshold (turning on needs a code), or off' })
+  auto(@CurrentUser() u: UserProfile, @Body() b: { mode?: string | null; threshold?: number; code?: string }) { return this.w.setAuto(u, b); }
+
+  @Post('me/get-paid/lock')
+  @HttpCode(HttpStatus.OK)
+  @Roles(...EARNERS)
+  @ApiOperation({ summary: 'Lock withdrawals (lost phone), or unlock with a code' })
+  lock(@CurrentUser() u: UserProfile, @Body() b: { locked?: boolean; code?: string }) { return this.w.setLock(u, b); }
+
   // ── Admin: Settlements ──────────────────────────────────
   @Get('admin/settlements')
   @Roles(UserRole.ADMIN)

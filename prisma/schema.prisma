@@ -1219,6 +1219,12 @@ model PayoutAccount {
   pinHash        String?
   pinFailures    Int         @default(0)
   pinLockedUntil DateTime?
+  pinSetAt       DateTime?
+  /// Automatic payouts: weekly (Fridays), monthly (the 1st) or threshold (when the balance reaches autoThreshold)
+  autoMode       String?
+  autoThreshold  Int?
+  /// The earner locked withdrawals (lost phone); unlocking needs a code
+  lockedByUser   Boolean     @default(false)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   user           UserProfile @relation(fields: [userId], references: [id])

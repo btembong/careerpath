@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { Prisma, UserProfile, Withdrawal, WithdrawalStatus } from '@prisma/client';
+import { PayoutAccount, Prisma, UserProfile, Withdrawal, WithdrawalStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomInt, randomBytes } from 'crypto';
 import { minorToMajor } from '@cpa/shared';
@@ -124,7 +124,7 @@ export class WithdrawalsService {
   async balance(userId: string, rules?: PayoutRules) {
     const r = rules ?? (await this.rules());
     const wallet = await this.prisma.wallet.findUnique({ where: { userId } });
-    if (!wallet) return { currency: null as string | null, balance: 0, clearing: 0, available: 0, sending: 0, nextClearsAt: null as Date | null };
+    if (!wallet) return { currency: null as string | null, balance: 0, clearing: 0, available: 0, sending: 0, nextClearsAt: null as Date | null, clearingByDay: [] as { day: string; amount: number }[] };
     const since = new Date(Date.now() - r.clearingDays * DAY);
     const recent = await this.prisma.walletTransaction.findMany({
       where: { walletId: wallet.id, type: 'CREDIT', source: { in: [...CLEARING_SOURCES] }, createdAt: { gt: since } },
@@ -136,6 +136,12 @@ export class WithdrawalsService {
       currency: wallet.currency, balance: wallet.balance, clearing,
       available: Math.max(0, wallet.balance - clearing), sending: sending._sum.amount ?? 0,
       nextClearsAt: recent[0] ? new Date(recent[0].createdAt.getTime() + r.clearingDays * DAY) : null,
+      // What becomes withdrawable on each of the next days, for the week strip
+      clearingByDay: Array.from({ length: Math.max(1, r.clearingDays) }, (_, i) => {
+        const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() + i);
+        const end = new Date(start.getTime() + DAY);
+        return { day: start.toISOString(), amount: recent.filter(t => { const at = t.createdAt.getTime() + r.clearingDays * DAY; return at >= start.getTime() && at < end.getTime(); }).reduce((n, t) => n + t.amount, 0) };
+      }),
     };
   }
 
@@ -162,6 +168,8 @@ export class WithdrawalsService {
         holderName: account.holderName, nameCheck: account.nameCheck ?? (account.isVerified ? 'confirmed' : 'unchecked'), confirmedByAdmin: account.isVerified,
         automatic: auto, hasPin: !!account.pinHash,
         readyAt: this.readyAt(account, rules), lockedUntil: account.pinLockedUntil && account.pinLockedUntil > new Date() ? account.pinLockedUntil : null,
+        pinSetAt: account.pinSetAt, lockedByUser: account.lockedByUser, autoMode: account.autoMode, autoThreshold: account.autoThreshold, nextAutoAt: this.nextAuto(account),
+        since: account.createdAt, changedAt: account.changedAt,
       } : null,
       withdrawals: list.map(w => this.row(w)),
       statements: statements.map(s => ({ id: s.id, amount: s.amount, currency: s.currency, paidAt: s.paidAt, paidTo: s.paidTo, reference: s.reference })),
@@ -177,7 +185,7 @@ export class WithdrawalsService {
   }
   private row(w: Withdrawal) {
     return {
-      id: w.id, amount: w.amount, fee: w.fee, currency: w.currency, status: w.status, method: w.method, paidTo: w.paidTo,
+      id: w.id, amount: w.amount, fee: w.fee, currency: w.currency, status: w.status, method: w.method, paidTo: w.paidTo, sentAt: w.sentAt, payeeName: w.payeeName,
       reference: w.transferId ?? w.reference, failureReason: w.failureReason, requestedAt: w.requestedAt, completedAt: w.completedAt,
       approvals: (w.approvals as Approval[]).length, approvalsNeeded: w.approvalsNeeded,
     };
@@ -222,7 +230,7 @@ export class WithdrawalsService {
     const data = {
       bankName: label, accountNumber: number, country, provider: provider || null,
       ...(changed ? { holderName, nameCheck, isVerified: false, verifiedAt: null, changedAt: before && hadMoneyOut ? new Date() : null } : {}),
-      ...(dto.pin != null ? { pinHash: await bcrypt.hash(dto.pin, 10), pinFailures: 0, pinLockedUntil: null } : {}),
+      ...(dto.pin != null ? { pinHash: await bcrypt.hash(dto.pin, 10), pinFailures: 0, pinLockedUntil: null, pinSetAt: new Date() } : {}),
     };
     const saved = await this.prisma.payoutAccount.upsert({ where: { userId: user.id }, update: data, create: { userId: user.id, ...data } as Prisma.PayoutAccountUncheckedCreateInput });
     this.audit.log(user.id, 'payout.account', 'PayoutAccount', saved.id, before ? { to: `${before.bankName} ·· ${last(before.accountNumber)}` } : undefined, { to: `${label} ·· ${last(number)}`, nameCheck: changed ? nameCheck : saved.nameCheck });
@@ -242,7 +250,7 @@ export class WithdrawalsService {
     this.validPin(dto.pin);
     const a = await this.prisma.payoutAccount.findUnique({ where: { userId: user.id } });
     if (!a) throw new BadRequestException('Add your payout account first');
-    await this.prisma.payoutAccount.update({ where: { id: a.id }, data: { pinHash: await bcrypt.hash(dto.pin!, 10), pinFailures: 0, pinLockedUntil: null } });
+    await this.prisma.payoutAccount.update({ where: { id: a.id }, data: { pinHash: await bcrypt.hash(dto.pin!, 10), pinFailures: 0, pinLockedUntil: null, pinSetAt: new Date() } });
     this.audit.log(user.id, 'payout.pin', 'PayoutAccount', a.id);
     return { saved: true };
   }
@@ -259,6 +267,7 @@ export class WithdrawalsService {
     if (rules.paused) throw new BadRequestException('Withdrawals are paused for a short while. Your balance is safe; try again later.');
     const account = await this.prisma.payoutAccount.findUnique({ where: { userId: user.id } });
     if (!account) throw new BadRequestException('Add your payout account first');
+    if (account.lockedByUser) throw new BadRequestException('You locked withdrawals. Unlock them in Safety with a code from your email.');
     const ready = this.readyAt(account, rules);
     if (ready) throw new BadRequestException(`Your payout account changed recently. Withdrawals to it open ${ready.toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`);
 
@@ -274,11 +283,15 @@ export class WithdrawalsService {
       }
       if (account.pinFailures) await this.prisma.payoutAccount.update({ where: { id: account.id }, data: { pinFailures: 0 } });
     }
+    return this.row(await this.take(user, account, Number(dto.amount), rules, false));
+  }
 
+  /** Take the money out of the balance and send it, or queue it for approval. The caller has checked who's asking. */
+  private async take(user: UserProfile, account: PayoutAccount, requested: number, rules: PayoutRules, scheduled: boolean): Promise<Withdrawal> {
     const bal = await this.balance(user.id, rules);
     const currency = bal.currency ?? 'XAF';
     const auto = this.automatic(account, currency);
-    let amount = Math.floor(Number(dto.amount));
+    let amount = Math.floor(requested);
     if (['XAF', 'XOF'].includes(currency)) amount = Math.floor(amount / 10) * 10;
     const min = minimumFor(await payoutMinimums(this.prisma), currency);
     if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException('Enter an amount');
@@ -300,7 +313,7 @@ export class WithdrawalsService {
       const wallet = await db.wallet.findUnique({ where: { userId: user.id } });
       const took = await db.wallet.updateMany({ where: { id: wallet!.id, balance: { gte: amount } }, data: { balance: { decrement: amount } } });
       if (took.count !== 1) throw new BadRequestException('Your balance changed. Refresh and try again.');
-      const debit = await db.walletTransaction.create({ data: { walletId: wallet!.id, type: 'DEBIT', source: 'PAYOUT', amount, currency, description: `Withdrawal to ${paidTo}` } });
+      const debit = await db.walletTransaction.create({ data: { walletId: wallet!.id, type: 'DEBIT', source: 'PAYOUT', amount, currency, description: `${scheduled ? 'Automatic withdrawal' : 'Withdrawal'} to ${paidTo}` } });
       return db.withdrawal.create({
         data: {
           userId: user.id, amount, currency, status: approvalsNeeded ? 'AWAITING_APPROVAL' : 'SENDING', method: auto ? 'tranzak' : 'manual',
@@ -308,12 +321,78 @@ export class WithdrawalsService {
         },
       });
     });
-    this.audit.log(user.id, 'payout.withdraw', 'Withdrawal', w.id, undefined, { amount, currency, paidTo, flags });
+    this.audit.log(scheduled ? null : user.id, scheduled ? 'payout.auto' : 'payout.withdraw', 'Withdrawal', w.id, undefined, { amount, currency, paidTo, flags });
     if (approvalsNeeded) {
       this.notifyAdmins(`Withdrawal to approve: ${money(amount, currency)}`, `${nm(user)} · ${paidTo}${flags.includes('by-hand') ? ' · to pay by hand' : ''}`);
-      return this.row(w);
+      return w;
     }
-    return this.row(await this.send(w));
+    return this.send(w);
+  }
+
+  // ── Automatic payouts and the earner's own lock ────────
+
+  /** Turn automatic payouts on (needs a code: it's the earner saying yes to every future payment) or off */
+  async setAuto(user: UserProfile, dto: { mode?: string | null; threshold?: number; code?: string }) {
+    const a = await this.prisma.payoutAccount.findUnique({ where: { userId: user.id } });
+    if (!a) throw new BadRequestException('Add your payout account first');
+    const mode = dto.mode && ['weekly', 'monthly', 'threshold'].includes(dto.mode) ? dto.mode : null;
+    if (mode) await this.checkCode(user.id, dto.code);
+    let threshold: number | null = null;
+    if (mode === 'threshold') {
+      const min = minimumFor(await payoutMinimums(this.prisma), 'XAF');
+      threshold = Math.floor(Number(dto.threshold) / 10) * 10;
+      if (!threshold || threshold < min) throw new BadRequestException(`Choose an amount of at least ${money(min, 'XAF')}`);
+    }
+    await this.prisma.payoutAccount.update({ where: { id: a.id }, data: { autoMode: mode, autoThreshold: threshold } });
+    this.audit.log(user.id, 'payout.auto-setting', 'PayoutAccount', a.id, { mode: a.autoMode }, { mode, threshold });
+    return this.mine(user);
+  }
+
+  /** Lost phone: lock straight away; unlocking needs a code from email */
+  async setLock(user: UserProfile, dto: { locked?: boolean; code?: string }) {
+    const a = await this.prisma.payoutAccount.findUnique({ where: { userId: user.id } });
+    if (!a) throw new BadRequestException('Add your payout account first');
+    if (!dto.locked) await this.checkCode(user.id, dto.code);
+    await this.prisma.payoutAccount.update({ where: { id: a.id }, data: { lockedByUser: !!dto.locked } });
+    this.audit.log(user.id, dto.locked ? 'payout.lock' : 'payout.unlock', 'PayoutAccount', a.id);
+    if (dto.locked) this.mail.sendNotice(user.email, 'You locked withdrawals', { badge: 'Payouts', title: 'Withdrawals are locked', firstName: user.firstName, text: 'No one can withdraw from your CareerPath Africa balance until you unlock it with a code from this email address. Your earnings keep adding up as usual.\n\nIf you didn’t do this, reply to this email.', cta: 'Open Get paid', href: homeFor(user.role) }, 'security').catch(() => {});
+    return this.mine(user);
+  }
+
+  /** When the next automatic payout runs, for the earner's page */
+  private nextAuto(a: { autoMode: string | null }) {
+    if (!a.autoMode) return null;
+    const d = new Date(); d.setUTCHours(8, 0, 0, 0);
+    if (a.autoMode === 'threshold') { if (d.getTime() <= Date.now()) d.setUTCDate(d.getUTCDate() + 1); return d; }
+    for (let i = 0; i < 40; i++) {
+      if (d.getTime() > Date.now() && (a.autoMode === 'weekly' ? d.getUTCDay() === 5 : d.getUTCDate() === 1)) return d;
+      d.setUTCDate(d.getUTCDate() + 1);
+    }
+    return null;
+  }
+
+  /** 09:00 in Cameroon: pay out everyone whose automatic payout is due */
+  @Cron('0 8 * * *')
+  async runAutomatic() {
+    const rules = await this.rules();
+    if (rules.paused) return;
+    const now = new Date();
+    const modes = ['threshold', ...(now.getUTCDay() === 5 ? ['weekly'] : []), ...(now.getUTCDate() === 1 ? ['monthly'] : [])];
+    const due = await this.prisma.payoutAccount.findMany({ where: { autoMode: { in: modes }, lockedByUser: false }, include: { user: true } });
+    const min = minimumFor(await payoutMinimums(this.prisma), 'XAF');
+    for (const a of due) {
+      try {
+        if (this.readyAt(a, rules) || !EARNER_ROLES.includes(a.user.role) || a.user.deletedAt) continue;
+        if (await this.prisma.withdrawal.count({ where: { userId: a.userId, status: { in: ['SENDING', 'AWAITING_APPROVAL'] } } })) continue;
+        const bal = await this.balance(a.userId, rules);
+        const floor = a.autoMode === 'threshold' ? Math.max(min, a.autoThreshold ?? 0) : Math.max(min, 1);
+        if (bal.available < floor) continue;
+        const room = this.automatic(a, bal.currency ?? 'XAF') ? rules.dailyMax - (await this.todayTotal(a.userId)) : bal.available;
+        const amount = Math.min(bal.available, room);
+        if (amount < min) continue;
+        await this.take(a.user, a, amount, rules, true);
+      } catch (err: any) { this.logger.warn(`Automatic payout for ${a.userId}: ${err?.message}`); }
+    }
   }
 
   private newRef() { return `CPA-WD-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`; }
@@ -444,8 +523,13 @@ export class WithdrawalsService {
     ]);
     const owed: Record<string, number> = {};
     wallets.forEach(w => { owed[w.currency] = (owed[w.currency] ?? 0) + w.balance; });
+    // How fast money goes out: what was paid in the last 30 days, per day; until there is history, assume a tenth of what's owed
+    const month = await this.prisma.withdrawal.aggregate({ where: { status: 'PAID', currency: 'XAF', completedAt: { gte: new Date(Date.now() - 30 * DAY) } }, _sum: { amount: true } });
+    const perDay = Math.max(Math.round((month._sum.amount ?? 0) / 30), Math.round((owed.XAF ?? 0) / 10));
+    const float = tz.ok ? tz.payout.available : 0;
+    const cover = { perDay, days: perDay ? Math.floor(float / perDay) : null, topUpForTwoWeeks: tz.ok ? Math.max(0, Math.ceil((perDay * 14 + Math.max(0, (owed.XAF ?? 0) - perDay * 14) - float) / 1000) * 1000) : null, basedOnHistory: !!month._sum.amount };
     return {
-      tranzak: tz, owed, rules, unlocked,
+      tranzak: tz, owed, rules, unlocked, cover,
       awaiting: { count: awaiting._count, amount: awaiting._sum.amount ?? 0 },
       today: { count: today._count, amount: today._sum.amount ?? 0, failed: failedToday },
       accountsToCheck: accounts,
@@ -465,15 +549,33 @@ export class WithdrawalsService {
     // What they earned, so an approver can see where the money came from
     const ids = [...new Set(rows.filter(r => r.status === 'AWAITING_APPROVAL').map(r => r.userId))];
     const trail = new Map<string, { source: string; amount: number }[]>();
+    const months = new Map<string, number[]>();
+    const usual = new Map<string, number | null>();
+    const sixAgo = new Date(); sixAgo.setDate(1); sixAgo.setHours(0, 0, 0, 0); sixAgo.setMonth(sixAgo.getMonth() - 5);
     for (const id of ids) {
       const g = await this.prisma.walletTransaction.groupBy({ by: ['source'], where: { wallet: { userId: id }, type: 'CREDIT', createdAt: { gte: new Date(Date.now() - 90 * DAY) } }, _sum: { amount: true } });
       trail.set(id, g.map(x => ({ source: x.source, amount: x._sum.amount ?? 0 })).sort((a, b) => b.amount - a.amount));
+      const credits = await this.prisma.walletTransaction.findMany({ where: { wallet: { userId: id }, type: 'CREDIT', createdAt: { gte: sixAgo } }, select: { amount: true, createdAt: true } });
+      const series = Array(6).fill(0);
+      credits.forEach(c => { const m = (c.createdAt.getFullYear() - sixAgo.getFullYear()) * 12 + c.createdAt.getMonth() - sixAgo.getMonth(); if (m >= 0 && m < 6) series[m] += c.amount; });
+      months.set(id, series);
+      const past = await this.prisma.withdrawal.findMany({ where: { userId: id, status: 'PAID' }, select: { amount: true }, take: 10, orderBy: { requestedAt: 'desc' } });
+      usual.set(id, past.length ? Math.round(past.reduce((n, p) => n + p.amount, 0) / past.length) : null);
     }
+    // A plain risk level, so an approver knows where to look hardest
+    const risk = (w: (typeof rows)[number]) => {
+      const a = w.user.payoutAccount;
+      const recent = !!a?.changedAt && Date.now() - a.changedAt.getTime() < 7 * DAY;
+      if (recent || (a && a.nameCheck === 'mismatch' && !a.isVerified)) return 'high';
+      if (w.flags.includes('unusual') || w.flags.includes('name-unconfirmed') || w.amount > 1_000_000) return 'medium';
+      return 'low';
+    };
     return rows.map(w => ({
       ...this.row(w), flags: w.flags, transferId: w.transferId, ourRef: w.reference, payeeName: w.payeeName, sentAt: w.sentAt,
       approvedBy: (w.approvals as Approval[]).map(a => a.name),
       user: { id: w.user.id, name: nm(w.user), email: w.user.email, role: w.user.role, avatarUrl: w.user.avatarUrl, since: w.user.createdAt },
       account: w.user.payoutAccount, earned90d: trail.get(w.userId) ?? null,
+      months: months.get(w.userId) ?? null, usual: usual.get(w.userId) ?? null, risk: w.status === 'AWAITING_APPROVAL' ? risk(w) : null,
     }));
   }
 
