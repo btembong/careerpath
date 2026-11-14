@@ -126,7 +126,7 @@ export default function CourseDetailPage() {
               </div>
             )}
             <h1 className="mt-1 text-[28px] font-extrabold tracking-[-0.01em] text-navy">{c.title}</h1>
-            {(c.description || c.shortDescription) && <p className="max-w-[680px] text-[14.5px] leading-relaxed text-ink2">{c.description || c.shortDescription}</p>}
+            {(c.description || c.shortDescription) && <p className="max-w-[680px] whitespace-pre-line text-[14.5px] leading-relaxed text-ink2">{c.description || c.shortDescription}</p>}
             {teacher && (
               <div className="mt-1.5 flex items-center gap-2.5">
                 <PersonPhoto src={c.teacher?.avatarUrl} name={teacher} id={c.teacher?.id} size={36} />
