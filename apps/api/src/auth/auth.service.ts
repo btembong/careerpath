@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
-import { resolvePrefs, resolveDisplay, NOTIFICATION_KINDS } from '../notifications/notification-prefs';
+import { resolvePrefs, resolveDisplay, resolveQuiet, kindsFor } from '../notifications/notification-prefs';
+import { SessionsService } from './sessions.service';
 import {
   Injectable,
   ConflictException,
@@ -61,6 +62,7 @@ export class AuthService {
     private onboardingVideo: OnboardingVideoService,
     private referrals: ReferralsService,
     private teacherCourses: TeacherCoursesService,
+    private sessions: SessionsService,
   ) {}
 
   // ── OTP ──────────────────────────────────────────────────
@@ -245,8 +247,13 @@ export class AuthService {
    * was trusted in the last 30 days.
    */
   private async finishSignIn(profile: { id: string; email: string; role: string; wpUserId: number; onboardingCompleted: boolean; firstName?: string | null }, trustToken?: string): Promise<SignInResult> {
-    if (profile.role !== UserRole.ADMIN || this.trusted(profile.id, trustToken)) {
+    if (profile.role !== UserRole.ADMIN) {
       return { accessToken: this.signToken(profile.id, profile.email, profile.role as UserRole, profile.wpUserId, profile.onboardingCompleted) };
+    }
+    // A trusted computer keeps its sign-in id, so it stays one row in Settings → Where you're signed in
+    const trustedSid = await this.trusted(profile.id, trustToken);
+    if (trustedSid) {
+      return { accessToken: this.signToken(profile.id, profile.email, profile.role as UserRole, profile.wpUserId, profile.onboardingCompleted, trustedSid === true ? undefined : trustedSid) };
     }
     const challenge = randomBytes(24).toString('hex');
     await this.redis.set(twoStepKey(challenge), JSON.stringify({ userId: profile.id, code: sixDigits(), tries: 0, sentAt: Date.now() }), OTP_TTL);
@@ -254,12 +261,16 @@ export class AuthService {
     return { twoStep: true, challenge, email: maskEmail(profile.email) };
   }
 
-  private trusted(userId: string, token?: string) {
+/** The trusted computer's sign-in id, true for an older trust without one, or false */
+  private async trusted(userId: string, token?: string): Promise<string | boolean> {
     if (!token) return false;
-    try {
-      const p = this.jwt.verify<{ sub: string; purpose: string }>(token);
-      return p.purpose === 'admin-trust' && p.sub === userId;
-    } catch { return false; }
+    let p: { sub: string; purpose: string; sid?: string; iat: number };
+    try { p = this.jwt.verify(token); } catch { return false; }
+    if (p.purpose !== 'admin-trust' || p.sub !== userId) return false;
+    const u = await this.prisma.userProfile.findUnique({ where: { id: userId }, select: { signedOutAt: true } });
+    if (u?.signedOutAt && p.iat * 1000 < +u.signedOutAt) return false;
+    if (!p.sid) return true;
+    return (await this.sessions.isTrusted(p.sid, userId)) ? p.sid : false;
   }
 
   private async sendTwoStepCode(challenge: string) {
@@ -295,8 +306,10 @@ export class AuthService {
     await this.redis.del(key);
     const p = await this.prisma.userProfile.findUnique({ where: { id: st.userId } });
     if (!p || p.role !== UserRole.ADMIN) throw new UnauthorizedException('Start again with your password.');
-    const accessToken = this.signToken(p.id, p.email, p.role as UserRole, p.wpUserId, p.onboardingCompleted);
-    const trustToken = remember ? this.jwt.sign({ sub: p.id, purpose: 'admin-trust' }, { expiresIn: '30d' }) : undefined;
+    const sid = this.sessions.newSid();
+    const accessToken = this.signToken(p.id, p.email, p.role as UserRole, p.wpUserId, p.onboardingCompleted, sid);
+    if (remember) await this.sessions.trust(sid, p.id);
+    const trustToken = remember ? this.jwt.sign({ sub: p.id, purpose: 'admin-trust', sid }, { expiresIn: '30d' }) : undefined;
     return { accessToken, trustToken };
   }
 
@@ -598,30 +611,47 @@ export class AuthService {
   async getPreferences(userId: string) {
     const p = await this.prisma.userProfile.findUnique({
       where: { id: userId },
-      select: { notificationPrefs: true, displayPrefs: true, leaderboardVisible: true, countryId: true, timezone: true },
+      select: { notificationPrefs: true, displayPrefs: true, leaderboardVisible: true, countryId: true, timezone: true, role: true },
     });
     if (!p) throw new NotFoundException('User profile not found');
     const countries = await this.prisma.country.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
     return {
       notifications: resolvePrefs(p.notificationPrefs),
-      kinds: NOTIFICATION_KINDS,
+      kinds: kindsFor(p.role),
+      quiet: resolveQuiet(p.notificationPrefs),
       display: resolveDisplay(p.displayPrefs),
       leaderboardVisible: p.leaderboardVisible,
       countryId: p.countryId, timezone: p.timezone, countries,
     };
   }
 
-  async updatePreferences(userId: string, dto: { notifications?: unknown; display?: unknown; leaderboardVisible?: boolean; timezone?: string }) {
+  async updatePreferences(userId: string, dto: { notifications?: unknown; display?: unknown; leaderboardVisible?: boolean; timezone?: string; quiet?: { on?: boolean; from?: string; to?: string }; pauseMinutes?: number | null }) {
     const current = await this.prisma.userProfile.findUnique({ where: { id: userId }, select: { notificationPrefs: true, displayPrefs: true } });
     if (!current) throw new NotFoundException('User profile not found');
     const data: Prisma.UserProfileUpdateInput = {};
     if (dto.notifications && typeof dto.notifications === 'object') {
-      const merged = { ...resolvePrefs(current.notificationPrefs) } as Record<string, { inApp: boolean; email: boolean }>;
+      const merged = { ...resolvePrefs(current.notificationPrefs) } as Record<string, { inApp: boolean; email: boolean; push: boolean }>;
       for (const [k, v] of Object.entries(dto.notifications as Record<string, any>)) {
         if (!merged[k] || !v || typeof v !== 'object') continue;
-        merged[k] = { inApp: v.inApp ?? merged[k].inApp, email: v.email ?? merged[k].email };
+        merged[k] = { inApp: v.inApp ?? merged[k].inApp, email: v.email ?? merged[k].email, push: v.push ?? merged[k].push };
       }
-      data.notificationPrefs = resolvePrefs(merged);
+      data.notificationPrefs = { ...this.quietPart(current.notificationPrefs), ...resolvePrefs(merged) };
+    }
+    // Quiet hours and pause live beside the kinds, as _quiet and _pausedUntil
+    if (dto.quiet !== undefined || dto.pauseMinutes !== undefined) {
+      const base = (data.notificationPrefs ?? { ...this.quietPart(current.notificationPrefs), ...resolvePrefs(current.notificationPrefs) }) as Record<string, any>;
+      const q = resolveQuiet(current.notificationPrefs);
+      if (dto.quiet && typeof dto.quiet === 'object') {
+        const next = { on: dto.quiet.on ?? q.on, from: dto.quiet.from ?? q.from, to: dto.quiet.to ?? q.to };
+        const checked = resolveQuiet({ _quiet: next });
+        if (checked.from !== next.from || checked.to !== next.to) throw new BadRequestException('Use times like 21:00');
+        base._quiet = next;
+      }
+      if (dto.pauseMinutes !== undefined) {
+        const m = Number(dto.pauseMinutes);
+        base._pausedUntil = dto.pauseMinutes && m > 0 && m <= 7 * 24 * 60 ? new Date(Date.now() + m * 60_000).toISOString() : null;
+      }
+      data.notificationPrefs = base;
     }
     if (dto.display && typeof dto.display === 'object') {
       data.displayPrefs = resolveDisplay({ ...resolveDisplay(current.displayPrefs), ...(dto.display as object) });
@@ -630,6 +660,17 @@ export class AuthService {
     if (dto.timezone !== undefined) data.timezone = dto.timezone ? String(dto.timezone).slice(0, 64) : null;
     await this.prisma.userProfile.update({ where: { id: userId }, data });
     return this.getPreferences(userId);
+  }
+
+  private quietPart(stored: unknown) {
+    const raw = (stored && typeof stored === 'object' ? stored : {}) as Record<string, any>;
+    return { ...(raw._quiet && { _quiet: raw._quiet }), ...(raw._pausedUntil && { _pausedUntil: raw._pausedUntil }) };
+  }
+
+  /** Settings → Sign out everywhere else: ends the others, and gives this browser a fresh token */
+  async signOutOthers(userId: string, sid?: string) {
+    const ended = await this.sessions.endOthers(userId, sid);
+    return { ended, ...(await this.issueTokenForUser(userId, sid)) };
   }
 
   // ── Me ───────────────────────────────────────────────────
@@ -813,7 +854,7 @@ export class AuthService {
   // ── Helpers ──────────────────────────────────────────────
 
   /** Re-issue a fresh JWT for an existing user (used after onboarding completes). */
-  async issueTokenForUser(userId: string): Promise<{ accessToken: string }> {
+  async issueTokenForUser(userId: string, sid?: string): Promise<{ accessToken: string }> {
     const profile = await this.prisma.userProfile.findUnique({ where: { id: userId } });
     if (!profile) throw new NotFoundException('User profile not found');
     return {
@@ -823,12 +864,14 @@ export class AuthService {
         profile.role as UserRole,
         profile.wpUserId,
         profile.onboardingCompleted,
+        sid,
       ),
     };
   }
 
-  private signToken(sub: string, email: string, role: UserRole, wpUserId: number, onboardingCompleted = false): string {
-    const payload: Omit<JwtPayload, 'iat' | 'exp'> = { sub, email, role, wpUserId, onboardingCompleted };
+  /** sid names this sign-in in Settings → Where you're signed in; re-issued tokens keep the browser's sid */
+  private signToken(sub: string, email: string, role: UserRole, wpUserId: number, onboardingCompleted = false, sid: string = this.sessions.newSid()): string {
+    const payload: Omit<JwtPayload, 'iat' | 'exp'> & { sid: string } = { sub, email, role, wpUserId, onboardingCompleted, sid };
     return this.jwt.sign(payload);
   }
 

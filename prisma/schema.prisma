@@ -51,8 +51,10 @@ model UserProfile {
   xpTotal              Int                      @default(0)
   /// Whether classmates see this student's name on leaderboards (they always see their own)
   leaderboardVisible   Boolean                  @default(true)
-  /// Per notification type: { [type]: { inApp: boolean, email: boolean } }
+  /// Per notification type: { [type]: { inApp, email, push } }, plus _quiet { on, from, to } and _pausedUntil (phone alerts)
   notificationPrefs    Json?
+  /// Settings → Sign out everywhere else: sign-ins made before this stop working
+  signedOutAt          DateTime?
   /// { language, textSize, dataSaver, autoplay, downloadOnWifi }
   displayPrefs         Json?
   agreementAcceptedAt  DateTime?
@@ -79,6 +81,7 @@ model UserProfile {
   callsStarted         Call[]                   @relation("CallsStarted")
   callParticipations   CallParticipant[]
   pushSubscriptions    PushSubscription[]
+  sessions             UserSession[]
   wpPulls              WpPull[]
   coursePurchases      CoursePurchase[]
   discussionUpvotes    DiscussionUpvote[]
@@ -2021,4 +2024,22 @@ model Withdrawal {
 
   @@index([status])
   @@index([userId, requestedAt])
+}
+
+/// A browser or app that signed in: the id is the sid in its token. Shown in Settings → Where you're signed in.
+model UserSession {
+  id           String      @id
+  userId       String
+  userAgent    String?
+  device       String?
+  ip           String?
+  createdAt    DateTime    @default(now())
+  lastSeenAt   DateTime    @default(now())
+  /// Admin two-step: this computer skips the emailed code until then
+  trustedUntil DateTime?
+  /// Forgotten from Settings, or signed out everywhere
+  endedAt      DateTime?
+  user         UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, endedAt])
 }

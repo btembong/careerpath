@@ -185,7 +185,7 @@ export class PayoutsService {
     }
 
     this.notifications.notify(statement.recipientId, {
-      type: 'system', title: 'Payout sent',
+      type: 'earnings', title: 'Payout sent',
       body: `${statement.currency} ${minorToMajor(statement.amount, statement.currency).toLocaleString('en-GB')}${paidTo ? ` to ${paidTo}` : ''}${reference ? ` · ref ${reference}` : ''}`,
       href: statement.recipientType === 'TEACHER' ? '/teacher/wallet' : statement.recipientType === 'SUBJECT_REVIEWER' ? '/reviewer/wallet' : '/country-rep/wallet',
     });

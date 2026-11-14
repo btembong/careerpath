@@ -10,6 +10,8 @@ import {
   UseGuards,
   ForbiddenException,
   Ip,
+  Delete,
+  Param,
 } from '@nestjs/common';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import {
@@ -22,6 +24,7 @@ import {
   ApiConflictResponse,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { SessionsService, sidOf } from './sessions.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterStudentDto } from './dto/register-student.dto';
 import { RegisterTeacherDto } from './dto/register-teacher.dto';
@@ -42,6 +45,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly platformCourses: PlatformCoursesService,
+    private readonly sessions: SessionsService,
   ) {}
 
   @Post('login')
@@ -218,7 +222,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Update notification, display and privacy preferences' })
   updatePreferences(
     @CurrentUser() user: UserProfile,
-    @Body() body: { notifications?: unknown; display?: unknown; leaderboardVisible?: boolean; timezone?: string },
+    @Body() body: { notifications?: unknown; display?: unknown; leaderboardVisible?: boolean; timezone?: string; quiet?: { on?: boolean; from?: string; to?: string }; pauseMinutes?: number | null },
   ) {
     return this.authService.updatePreferences(user.id, body ?? {});
   }
@@ -274,6 +278,40 @@ export class AuthController {
       programmeIds: programmeIds ?? [],
       levelId, firstName, lastName, phone, countryId,
     });
-    return this.authService.issueTokenForUser(user.id);
+    return this.authService.issueTokenForUser(user.id, sidOf(user));
+  }
+
+  // ── Settings → Where you're signed in ───────────────────
+
+  @Get('me/sessions')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Browsers and apps signed in to this account, this one first' })
+  mySessions(@CurrentUser() user: UserProfile) {
+    return this.sessions.list(user.id, sidOf(user));
+  }
+
+  @Post('me/sessions/sign-out-others')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Sign out everywhere else; returns a fresh token for this browser' })
+  signOutOthers(@CurrentUser() user: UserProfile) {
+    return this.authService.signOutOthers(user.id, sidOf(user));
+  }
+
+  @Post('me/sessions/end-current')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Signing out of this browser: ends its sign-in' })
+  endCurrent(@CurrentUser() user: UserProfile) {
+    return this.sessions.endCurrent(sidOf(user));
+  }
+
+  @Delete('me/sessions/:id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Forget one sign-in: it stops working, and a trusted computer asks for the code again' })
+  endSession(@CurrentUser() user: UserProfile, @Param('id') id: string) {
+    return this.sessions.end(user.id, id, sidOf(user));
   }
 }

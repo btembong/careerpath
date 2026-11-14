@@ -213,7 +213,7 @@ export class WalletsService {
     this.audit.log(admin.id, 'wallet.manual_credit', 'WalletTransaction', tx.id, undefined, { userId: person.id, amount, currency, reason });
     const shown = `${currency === 'XAF' ? 'FCFA' : currency} ${minorToMajor(amount, currency).toLocaleString('en-GB')}`;
     this.notifications.notify(person.id, {
-      type: 'system',
+      type: 'earnings',
       title: `${shown} added to your earnings`,
       body: `${reason}. It’s paid with your next payout.`,
       href: person.role === UserRole.COUNTRY_REP ? '/country-rep/wallet' : person.role === UserRole.SUBJECT_REVIEWER ? '/reviewer/wallet' : '/teacher/wallet',

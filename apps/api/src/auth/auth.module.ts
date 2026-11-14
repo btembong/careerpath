@@ -5,6 +5,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { SessionsService } from './sessions.service';
 import { WordPressModule } from '../wordpress/wordpress.module';
 import { MailModule } from '../mail/mail.module';
 import { PlatformCoursesModule } from '../platform-courses/platform-courses.module';
@@ -31,7 +32,7 @@ import { CourseAdminModule } from '../course-admin/course-admin.module';
     CourseAdminModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [JwtModule, PassportModule, JwtStrategy],
+  providers: [AuthService, JwtStrategy, SessionsService],
+  exports: [JwtModule, PassportModule, JwtStrategy, SessionsService],
 })
 export class AuthModule {}

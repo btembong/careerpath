@@ -328,7 +328,7 @@ export class PlatformCoursesService {
       });
     }
     this.notifications.notify(course.teacherId, {
-      type: 'system', title: 'Your course is live', body: `"${course.title}" is now published and visible to students.`,
+      type: 'review', title: 'Your course is live', body: `"${course.title}" is now published and visible to students.`,
       href: `/teacher/courses/${course.id}/builder`,
     }, course.teacherPending ? undefined : {
       subject: `"${course.title}" is live`, badge: 'Courses', title: 'Your course is live',
@@ -351,7 +351,7 @@ export class PlatformCoursesService {
       create: { courseId: id, teacherId: course.teacherPending ? null : course.teacherId, teacherCommissionPct: course.teacherPending ? null : await defaultTeacherShare(this.prisma), reviewStatus: 'REJECTED', reviewedAt: new Date(), reviewNotes: reason },
     });
     this.notifications.notify(course.teacherId, {
-      type: 'system', title: 'Changes needed before publishing', body: `"${course.title}" was sent back: ${reason}`,
+      type: 'review', title: 'Changes needed before publishing', body: `"${course.title}" was sent back: ${reason}`,
       href: `/teacher/courses/${course.id}/builder`,
     }, course.teacherPending ? undefined : {
       subject: `Changes needed: "${course.title}"`, badge: 'Courses', title: 'A few changes before it goes live',
@@ -1070,14 +1070,14 @@ export class PlatformCoursesService {
     const owner = await this.prisma.platformCourse.findUnique({ where: { id: courseId }, select: { teacherId: true, title: true } });
     if (!dto?.approve) {
       this.notifications.notify(owner!.teacherId, {
-        type: 'system', title: 'Price not approved', body: `Your proposed price for "${owner!.title}" was not approved. The course stays in its packages.`,
+        type: 'review', title: 'Price not approved', body: `Your proposed price for "${owner!.title}" was not approved. The course stays in its packages.`,
         href: `/teacher/courses/${courseId}/pricing`,
       }, priceEmail(owner!.title, false));
       return this.prisma.platformCourse.update({ where: { id: courseId }, data: clear, select: { id: true } });
     }
     const { amount, currency } = this.validPrice(dto.amount ?? course.proposedPriceAmount, dto.currency ?? course.proposedPriceCurrency);
     this.notifications.notify(owner!.teacherId, {
-      type: 'system', title: 'Course price approved', body: `"${owner!.title}" can now be bought on its own.`,
+      type: 'review', title: 'Course price approved', body: `"${owner!.title}" can now be bought on its own.`,
       href: `/teacher/courses/${courseId}/pricing`,
     }, priceEmail(owner!.title, true, `${currency} ${minorToMajor(amount, currency).toLocaleString('en-GB')}`));
     return this.prisma.platformCourse.update({

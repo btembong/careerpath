@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Cookies from 'js-cookie';
 import { jwtDecode } from 'jwt-decode';
-import { clearAuthToken, setAuthToken } from '@/lib/api';
+import api, { clearAuthToken, setAuthToken } from '@/lib/api';
 
 interface AuthUser {
   id: string;
@@ -66,6 +66,8 @@ export function useAuth() {
   }, [refreshToken]);
 
   async function logout() {
+    // Ends this sign-in on the server too, so it leaves Settings → Where you’re signed in
+    await api.post('/auth/me/sessions/end-current').catch(() => {});
     await clearAuthToken();
     window.location.href = '/login';
   }

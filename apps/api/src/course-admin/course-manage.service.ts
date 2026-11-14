@@ -242,8 +242,8 @@ export class CourseManageService {
           const approve = dto.action === 'approvePrice';
           await this.prisma.platformCourse.update({ where: { id: c.id }, data: approve ? { ...clear, isSoldIndividually: true, priceAmount: c.proposedPriceAmount, priceCurrency: c.proposedPriceCurrency } : clear });
           if (!c.teacherPending) this.notifications.notify(c.teacherId, approve
-            ? { type: 'system', title: 'Course price approved', body: `"${c.title}" can now be bought on its own.`, href: `/teacher/courses/${c.id}/pricing` }
-            : { type: 'system', title: 'Price not approved', body: `Your proposed price for "${c.title}" was not approved.`, href: `/teacher/courses/${c.id}/pricing` },
+            ? { type: 'review', title: 'Course price approved', body: `"${c.title}" can now be bought on its own.`, href: `/teacher/courses/${c.id}/pricing` }
+            : { type: 'review', title: 'Price not approved', body: `Your proposed price for "${c.title}" was not approved.`, href: `/teacher/courses/${c.id}/pricing` },
             priceEmail(c.title, approve, approve && c.proposedPriceAmount ? `${c.proposedPriceCurrency} ${minorToMajor(c.proposedPriceAmount, c.proposedPriceCurrency).toLocaleString('en-GB')}` : undefined));
         }
         return { updated: rows.length };

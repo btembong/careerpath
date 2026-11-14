@@ -3,13 +3,13 @@ import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SenderType, MailService } from '../mail/mail.service';
 import type { NoticeOpts } from '../mail/mail.templates';
-import { resolvePrefs } from './notification-prefs';
+import { isQuietNow, resolvePrefs } from './notification-prefs';
 import { PushService } from './push.service';
 import { PresenceService } from './presence.service';
 
-export type NotificationType = 'live' | 'assignment' | 'grade' | 'certificate' | 'message' | 'community' | 'system';
+export type NotificationType = 'live' | 'assignment' | 'grade' | 'certificate' | 'message' | 'community' | 'earnings' | 'review' | 'system';
 /** Which sender a notification's email comes from, by its kind */
-const SENDER_FOR_TYPE: Partial<Record<NotificationType, SenderType>> = { live: 'classes', assignment: 'learning', grade: 'learning', certificate: 'learning', message: 'notifications', community: 'notifications', system: 'notifications' };
+const SENDER_FOR_TYPE: Partial<Record<NotificationType, SenderType>> = { live: 'classes', assignment: 'learning', grade: 'learning', certificate: 'learning', message: 'notifications', community: 'notifications', earnings: 'payouts', review: 'notifications', system: 'notifications' };
 const AUDIENCES = ['ALL', 'STUDENT', 'TEACHER', 'COUNTRY_REP', 'SUBJECT_REVIEWER'] as const;
 const CHANNELS = ['IN_APP', 'EMAIL', 'BOTH'] as const;
 
@@ -44,17 +44,19 @@ export class NotificationsService {
     const ids = [...new Set(Array.isArray(userIds) ? userIds : [userIds])];
     if (!ids.length) return;
     if (email) this.emailNotice(ids, n, email).catch(err => this.logger.warn(`Email "${email.subject}" failed: ${err.message}`));
-    // Respect Settings → Notifications; system notices always go through
-    const recipients = n.type === 'system' ? Promise.resolve(ids) : this.prisma.userProfile
-      .findMany({ where: { id: { in: ids } }, select: { id: true, notificationPrefs: true } })
-      .then(users => users.filter(u => resolvePrefs(u.notificationPrefs)[n.type]?.inApp !== false).map(u => u.id));
+    // Respect Settings → Notifications: system notices always reach the app; phone alerts follow each kind's
+    // Phone switch, and wait during quiet hours or a pause (the notice is still in the app)
     const { pushTag, ...row } = n;
-    recipients
-      .then(async to => {
-        if (!to.length) return;
-        await this.prisma.notification.createMany({ data: to.map(userId => ({ userId, ...row })) });
-        // Anyone without the portal open also gets it on their phone or computer
-        this.push.send(to.filter(id => !this.presence.isOnline(id)), { title: n.title, body: n.body, url: n.href || '/', tag: pushTag ?? n.type });
+    this.prisma.userProfile
+      .findMany({ where: { id: { in: ids } }, select: { id: true, notificationPrefs: true, timezone: true } })
+      .then(async users => {
+        const now = new Date();
+        const inApp = users.filter(u => n.type === 'system' || resolvePrefs(u.notificationPrefs)[n.type]?.inApp !== false);
+        if (!inApp.length) return;
+        await this.prisma.notification.createMany({ data: inApp.map(u => ({ userId: u.id, ...row })) });
+        const phone = inApp.filter(u => (n.type === 'system' || resolvePrefs(u.notificationPrefs)[n.type]?.push !== false)
+          && !isQuietNow(u.notificationPrefs, u.timezone, now) && !this.presence.isOnline(u.id));
+        this.push.send(phone.map(u => u.id), { title: n.title, body: n.body, url: n.href || '/', tag: pushTag ?? n.type });
       })
       .catch(err => this.logger.warn(`Notification "${n.title}" failed: ${err.message}`));
   }
@@ -128,7 +130,7 @@ export class NotificationsService {
       ...(audience !== 'ALL' && { role: audience as UserRole }),
       ...(dto.countryId && { countryId: dto.countryId }),
     };
-    const recipients = await this.prisma.userProfile.findMany({ where, select: { id: true, email: true, notificationPrefs: true } });
+    const recipients = await this.prisma.userProfile.findMany({ where, select: { id: true, email: true, notificationPrefs: true, timezone: true } });
 
     const sent = await this.prisma.broadcast.create({
       data: { title, body, audience, channel, countryId: dto.countryId ?? null, sentById: adminId, recipientCount: recipients.length },
@@ -138,7 +140,7 @@ export class NotificationsService {
       await this.prisma.notification.createMany({
         data: recipients.map(r => ({ userId: r.id, type: 'system', title, body, broadcastId: sent.id })),
       });
-      this.push.send(recipients.filter(r => resolvePrefs(r.notificationPrefs).news?.inApp !== false && !this.presence.isOnline(r.id)).map(r => r.id), { title, body, url: '/', tag: `news-${sent.id}` });
+      this.push.send(recipients.filter(r => resolvePrefs(r.notificationPrefs).news?.inApp !== false && resolvePrefs(r.notificationPrefs).news?.push !== false && !isQuietNow(r.notificationPrefs, r.timezone) && !this.presence.isOnline(r.id)).map(r => r.id), { title, body, url: '/', tag: `news-${sent.id}` });
     }
     if (channel !== 'IN_APP') {
       // Sequential on purpose: Brevo rate-limits bursts. Runs after the response is sent.

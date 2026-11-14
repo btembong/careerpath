@@ -463,7 +463,7 @@ export class WithdrawalsService {
     if (!done.count) return fresh;
     const u = await this.prisma.userProfile.findUniqueOrThrow({ where: { id: w.userId } });
     const ref = o.reference ?? o.transferId ?? w.reference;
-    this.notifications.notify(u.id, { type: 'system', title: 'Money sent', body: `${money(w.amount, w.currency)} to ${w.paidTo} · ref ${ref}`, href: homeFor(u.role) });
+    this.notifications.notify(u.id, { type: 'earnings', title: 'Money sent', body: `${money(w.amount, w.currency)} to ${w.paidTo} · ref ${ref}`, href: homeFor(u.role) });
     this.mail.sendNotice(u.email, `${money(w.amount, w.currency)} is on its way to you`, {
       badge: 'Payouts', title: `${money(w.amount, w.currency)} sent`, firstName: u.firstName,
       text: `Your withdrawal has been sent to ${w.paidTo}.${fresh.fee ? ` The operator’s fee was ${money(fresh.fee, w.currency)}.` : ''}`,
@@ -485,7 +485,7 @@ export class WithdrawalsService {
     });
     if (!fresh) return this.prisma.withdrawal.findUniqueOrThrow({ where: { id: w.id } });
     const u = await this.prisma.userProfile.findUniqueOrThrow({ where: { id: w.userId } });
-    this.notifications.notify(u.id, { type: 'system', title: 'Withdrawal returned to your balance', body: `${money(w.amount, w.currency)}: ${reason}`, href: homeFor(u.role) });
+    this.notifications.notify(u.id, { type: 'earnings', title: 'Withdrawal returned to your balance', body: `${money(w.amount, w.currency)}: ${reason}`, href: homeFor(u.role) });
     this.mail.sendNotice(u.email, 'Your withdrawal was returned to your balance', {
       badge: 'Payouts', title: 'Your withdrawal didn’t go through', firstName: u.firstName,
       text: `${money(w.amount, w.currency)} to ${w.paidTo} wasn’t sent, so it’s back in your balance. You can withdraw it again.`,

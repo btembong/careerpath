@@ -5,22 +5,19 @@ import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtPayload } from '@cpa/shared';
+import { deviceOf } from '../device';
+import { SessionsService } from '../sessions.service';
+
+export { deviceOf };
 
 const SEEN_EVERY = 5 * 60_000;
-
-/** phone, tablet or computer, from the browser's user agent */
-export function deviceOf(ua: string | undefined): string {
-  const s = ua ?? '';
-  if (/iPad|Tablet|Nexus (7|9|10)|SM-T|Kindle|Silk/i.test(s) || (/Android/i.test(s) && !/Mobile/i.test(s))) return 'tablet';
-  if (/Mobi|iPhone|iPod|Android|Opera Mini|IEMobile/i.test(s)) return 'phone';
-  return 'computer';
-}
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     config: ConfigService,
     private prisma: PrismaService,
+    private sessions: SessionsService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -30,14 +27,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(req: Request, payload: JwtPayload) {
+  async validate(req: Request, payload: JwtPayload & { sid?: string }) {
     const user = await this.prisma.userProfile.findUnique({
       where: { id: payload.sub },
     });
     // Deleted accounts can’t keep using an old sign-in
     if (!user || user.deletedAt) throw new UnauthorizedException();
+    // Settings → Sign out everywhere else, or Forget on one sign-in
+    if (user.signedOutAt && payload.iat * 1000 < +user.signedOutAt) throw new UnauthorizedException();
+    if (payload.sid && (await this.sessions.isEnded(payload.sid))) throw new UnauthorizedException();
     this.seen(user.id, user.lastSeenAt, req.headers['user-agent']);
-    return user; // attached as request.user
+    if (payload.sid) this.sessions.touch(payload.sid, user.id, req.headers['user-agent'], req.ip);
+    return Object.assign(user, { sid: payload.sid }); // attached as request.user
   }
 
   /** When they last used the portal and on what, and a row for each day they did (never slows the request) */
