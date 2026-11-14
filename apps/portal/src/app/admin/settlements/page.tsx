@@ -188,6 +188,8 @@ export default function AdminSettlementsPage() {
                           <td className="px-3 py-3 text-xs text-ink2">{r.earned90d?.length ? r.earned90d.slice(0, 3).map(e => `${walletMoney(e.amount, r.currency)} ${SOURCE[e.source] ?? e.source.toLowerCase()}`).join(' · ') : 'Nothing in 90 days'}</td>
                           <td className="whitespace-nowrap px-4 py-3 text-right">
                             {r.method === 'manual' ? <Button size="sm" onClick={() => setPaying(r)}>Mark paid</Button> : <Button size="sm" onClick={() => approve(r)}>{r.flags.includes('send-failed') ? 'Send again' : 'Approve'}</Button>}{' '}
+                            {/* Tranzak refused it: pay it by MoMo yourself and record the reference */}
+                            {r.method !== 'manual' && r.flags.includes('send-failed') && <><Button size="sm" variant="secondary" onClick={() => setPaying(r)}>Mark paid</Button>{' '}</>}
                             <Button size="sm" variant="secondary" onClick={() => setRejecting(r)}>Refuse</Button>
                           </td>
                         </> : <>
@@ -200,7 +202,7 @@ export default function AdminSettlementsPage() {
                   </tbody>
                 </table>}
           </section>
-          {tab === 'approvals' && <p className="text-xs text-muted">Approving asks for your code once every 15 minutes. You can’t approve money paid to yourself, and over {o ? walletMoney(o.rules.twoApproversAbove, 'XAF') : '…'} two different admins must approve. Refusing puts the money back in their balance with your reason.</p>}
+          {tab === 'approvals' && <p className="text-xs text-muted">Approving asks for your code once every 15 minutes. You can’t approve money paid to yourself, and over {o ? walletMoney(o.rules.twoApproversAbove, 'XAF') : '…'} two different admins must approve. Refusing puts the money back in their balance with your reason. If Tranzak couldn’t send one, you can pay it by MoMo yourself and use Mark paid with the reference.</p>}
         </>}
 
         {tab === 'history' && (
