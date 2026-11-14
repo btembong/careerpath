@@ -1,6 +1,5 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import Image from 'next/image';
 import { useDropzone } from 'react-dropzone';
 import { useParams, useRouter, usePathname } from 'next/navigation';
 import { clsx } from 'clsx';
@@ -748,7 +747,7 @@ export default function CourseBuilderPage() {
                   <input {...getCoverInputProps()} />
                   {course.coverUrl ? (
                     <>
-                      <Image src={course.coverUrl} alt="Cover" fill className="object-cover rounded-xl" />
+                      <img src={course.coverUrl} alt="" className="absolute inset-0 h-full w-full rounded-xl object-cover" />
                       <div className="absolute inset-0 bg-navy/40 flex items-center justify-center opacity-0 hover:opacity-100 transition rounded-xl">
                         <p className="text-xs font-semibold text-white">Click or drag to replace</p>
                       </div>
