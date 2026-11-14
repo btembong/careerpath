@@ -1,6 +1,6 @@
 {
   "name": "@cpa/portal",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000 --turbopack",
@@ -29,6 +29,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.13",
     "@tiptap/extension-character-count": "^3.31.3",
+    "@tiptap/extension-image": "^3.31.3",
     "@tiptap/extension-link": "^3.31.3",
     "@tiptap/extension-placeholder": "^3.31.3",
     "@tiptap/extension-underline": "^3.31.3",

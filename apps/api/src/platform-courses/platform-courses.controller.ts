@@ -325,15 +325,15 @@ export class PlatformCoursesController {
   @Post(':id/modules/:moduleId/lessons/:lessonId/attachments')
   @Roles(UserRole.ADMIN, UserRole.TEACHER)
   @ApiOperation({ summary: 'Add a file attachment to a lesson' })
-  addAttachment(@Param('lessonId') lessonId: string, @Body() dto: any) {
-    return this.svc.addAttachment(lessonId, dto);
+  addAttachment(@Param('id') courseId: string, @Param('lessonId') lessonId: string, @Body() dto: any, @CurrentUser() user: UserProfile) {
+    return this.svc.addAttachment(courseId, lessonId, dto, user);
   }
 
   @Delete('attachments/:attachmentId')
   @Roles(UserRole.ADMIN, UserRole.TEACHER)
   @ApiOperation({ summary: 'Delete an attachment' })
-  deleteAttachment(@Param('attachmentId') id: string) {
-    return this.svc.deleteAttachment(id);
+  deleteAttachment(@Param('attachmentId') id: string, @CurrentUser() user: UserProfile) {
+    return this.svc.deleteAttachment(id, user);
   }
 
   // ── Signed video URL ──────────────────────────────────────

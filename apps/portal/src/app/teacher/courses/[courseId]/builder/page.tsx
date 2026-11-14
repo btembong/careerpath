@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { SkeletonTopbar } from '@/components/ui/Skeleton';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
+import { LessonFiles } from '@/components/courses/LessonFiles';
 import api from '@/lib/api';
 import { CourseChecklistPanel, useCourseChecklist } from '@/components/learning/CourseChecklist';
 import { LessonVideoUpload } from '@/components/learning/LessonVideoUpload';
@@ -151,7 +152,11 @@ function SortableLesson({
               onChange={html => setEditLesson({ ...editLesson, content: html })}
               placeholder="Lesson content…"
               minHeight={160}
+              media
             />
+          )}
+          {editLesson.type !== 'QUIZ' && (
+            <LessonFiles courseId={courseId} moduleId={modId} lessonId={lesson.id} initial={lesson.attachments ?? []} />
           )}
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-1.5 text-xs text-navy cursor-pointer">
@@ -184,7 +189,7 @@ function SortableLesson({
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-navy truncate">{lesson.title}</p>
             <p className="text-[10px] text-royal/40">
-              {lesson.type}{lesson.isFree ? ' · Free preview' : ''}
+              {lesson.type}{lesson.isFree ? ' · Free preview' : ''}{lesson.attachments?.length ? ` · ${lesson.attachments.length} file${lesson.attachments.length === 1 ? '' : 's'}` : ''}
               {lesson.type === 'QUIZ' && lesson.passMark ? ` · Pass: ${lesson.passMark}%` : ''}
               {lesson.type === 'QUIZ' && lesson.timeLimitSecs ? ` · ${Math.round(lesson.timeLimitSecs/60)}min` : ''}
             </p>
@@ -335,6 +340,7 @@ function SortableModule({
                 onChange={html => setLessonForm((f: any) => ({ ...f, content: html }))}
                 placeholder="Lesson content…"
                 minHeight={120}
+                media
               />
             )}
             <div className="flex items-center justify-between">

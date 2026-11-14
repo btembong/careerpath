@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   S3Client,
@@ -32,12 +32,40 @@ export class FilesService {
   }
 
   /**
+   * A Word document (.docx) as lesson text: headings, bold and lists carry over, and each picture
+   * in it is stored with the lesson files and shown in place. Old .doc files and PDFs can't be read this way.
+   */
+  async importDocx(file: Express.Multer.File): Promise<{ html: string; images: number; warnings: string[] }> {
+    const name = file.originalname.toLowerCase();
+    if (name.endsWith('.pdf')) throw new BadRequestException('A PDF can’t be turned into editable text. Attach it to the lesson instead: students can open and download it.');
+    if (name.endsWith('.doc')) throw new BadRequestException('This is an older Word file (.doc). Open it in Word, choose Save As → Word Document (.docx), then import that.');
+    if (!name.endsWith('.docx')) throw new BadRequestException('Choose a Word document (.docx)');
+    // Loaded only when someone imports, so it adds nothing to start-up
+    const mammoth = await import('mammoth');
+    let images = 0;
+    const result = await mammoth.convertToHtml({ buffer: file.buffer }, {
+      // Word's headings become the lesson's section headings (h2 and h3 build the lesson's contents list)
+      styleMap: ["p[style-name='Title'] => h2:fresh", "p[style-name='Heading 1'] => h2:fresh", "p[style-name='Heading 2'] => h3:fresh", "p[style-name='Heading 3'] => h3:fresh"],
+      convertImage: mammoth.images.imgElement(async (image: { contentType: string; read: () => Promise<Buffer> }) => {
+        const ext = ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp' } as Record<string, string>)[image.contentType] ?? '.png';
+        const buffer = await image.read();
+        const { url } = await this.upload({ buffer, originalname: `image${ext}`, mimetype: image.contentType, size: buffer.length } as Express.Multer.File, 'lesson-files');
+        images++;
+        return { src: url };
+      }),
+    });
+    const html = result.value.trim();
+    if (!html) throw new BadRequestException('That document looks empty');
+    return { html, images, warnings: result.messages.filter(m => m.type === 'warning').slice(0, 5).map(m => m.message) };
+  }
+
+  /**
    * Upload a file buffer to R2 and return its public URL.
-   * Used by: teacher application documents, assignment submission files.
+   * Used by: teacher application documents, assignment submission files, course covers, lesson pictures and files.
    */
   async upload(
     file: Express.Multer.File,
-    folder: 'teacher-docs' | 'submissions' | 'avatars' | 'certificates' | 'messages',
+    folder: 'teacher-docs' | 'submissions' | 'avatars' | 'certificates' | 'messages' | 'covers' | 'lesson-files',
   ): Promise<{ url: string; key: string }> {
     const ext = extname(file.originalname).toLowerCase();
     const key = `${folder}/${randomUUID()}${ext}`;

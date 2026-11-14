@@ -473,11 +473,20 @@ export class PlatformCoursesService {
     return this.prisma.lesson.delete({ where: { id: lessonId } });
   }
 
-  async addAttachment(lessonId: string, dto: { name: string; url: string; fileType?: string }) {
-    return this.prisma.lessonAttachment.create({ data: { lessonId, ...dto } });
+  /** A file students can open or download from the lesson (PDF, Word, image). Only the course's own staff can add one. */
+  async addAttachment(courseId: string, lessonId: string, dto: { name?: string; url?: string; fileType?: string }, actor: UserProfile) {
+    await this.assertCourseAccess(courseId, actor);
+    const lesson = await this.prisma.lesson.findFirst({ where: { id: lessonId, module: { courseId } }, select: { id: true } });
+    if (!lesson) throw new NotFoundException('Lesson not found in this course');
+    if (!dto.url || !/^https:\/\//.test(dto.url)) throw new BadRequestException('Upload the file first');
+    const name = (dto.name ?? '').trim().slice(0, 200) || 'Lesson file';
+    return this.prisma.lessonAttachment.create({ data: { lessonId, name, url: dto.url, fileType: dto.fileType?.slice(0, 100) ?? null } });
   }
 
-  async deleteAttachment(id: string) {
+  async deleteAttachment(id: string, actor: UserProfile) {
+    const a = await this.prisma.lessonAttachment.findUnique({ where: { id }, select: { lesson: { select: { module: { select: { courseId: true } } } } } });
+    if (!a) throw new NotFoundException('File not found');
+    await this.assertCourseAccess(a.lesson.module.courseId, actor);
     return this.prisma.lessonAttachment.delete({ where: { id } });
   }
 

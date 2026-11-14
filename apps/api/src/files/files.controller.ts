@@ -28,7 +28,7 @@ import { UserRole } from '@cpa/shared';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
-const ALLOWED_TYPES = /^(application\/pdf|image\/(jpeg|png|webp)|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)$/;
+const ALLOWED_TYPES = /^(application\/pdf|image\/(jpeg|png|webp|gif)|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)$/;
 /** Voice notes, recorded in the browser: only into chats */
 const VOICE_TYPES = /^audio\/(webm|ogg|mp4|mpeg|aac|x-m4a)(;.*)?$/;
 
@@ -68,18 +68,33 @@ export class FilesController {
   })
   @ApiQuery({
     name: 'folder',
-    enum: ['teacher-docs', 'submissions', 'avatars', 'messages'],
+    enum: ['teacher-docs', 'submissions', 'avatars', 'messages', 'covers', 'lesson-files'],
     required: true,
   })
   async upload(
     @UploadedFile() file: Express.Multer.File,
-    @Query('folder') folder: 'teacher-docs' | 'submissions' | 'avatars' | 'messages',
+    @Query('folder') folder: 'teacher-docs' | 'submissions' | 'avatars' | 'messages' | 'covers' | 'lesson-files',
+    @CurrentUser() user: UserProfile,
   ) {
     if (!file) throw new BadRequestException('No file provided');
-    if (!['teacher-docs', 'submissions', 'avatars', 'messages'].includes(folder)) {
-      throw new BadRequestException('folder must be teacher-docs, submissions, avatars or messages');
+    if (!['teacher-docs', 'submissions', 'avatars', 'messages', 'covers', 'lesson-files'].includes(folder)) {
+      throw new BadRequestException('folder must be teacher-docs, submissions, avatars, messages, covers or lesson-files');
+    }
+    // Course covers, lesson pictures and lesson files: only people who build courses
+    if ((folder === 'covers' || folder === 'lesson-files') && !['TEACHER', 'ADMIN', 'SUBJECT_REVIEWER'].includes(user.role)) {
+      throw new BadRequestException('Only teachers can add course files');
     }
     return this.filesService.upload(file, folder);
+  }
+
+  @Post('import-doc')
+  @Roles(UserRole.TEACHER, UserRole.ADMIN, UserRole.SUBJECT_REVIEWER)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))
+  @ApiOperation({ summary: 'Turn a Word document (.docx) into lesson text, keeping headings, lists and pictures' })
+  @ApiConsumes('multipart/form-data')
+  importDoc(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file provided');
+    return this.filesService.importDocx(file);
   }
 
   @Post('video-upload-url')

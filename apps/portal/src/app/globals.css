@@ -469,6 +469,10 @@ html.dark .cpa-strip-warn .cpa-strip-icon { color: #F0B65A; }
   letter-spacing: -0.01em;
 }
 .lesson-prose p { margin-bottom: 0.5em; }
+/* Pictures teachers add to a lesson: full width at most, never stretched */
+.lesson-prose img { display: block; max-width: 100%; height: auto; margin: 1.2em auto; border-radius: 12px; }
+.lesson-prose table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
+.lesson-prose td, .lesson-prose th { border: 1px solid var(--pl-divider, #E1E7F2); padding: 6px 10px; vertical-align: top; }
 .lesson-prose strong { font-weight: 600; color: rgba(255, 255, 255, 0.92); }
 .lesson-prose em     { font-style: italic; color: rgba(255, 255, 255, 0.7); }
 .lesson-prose a      { color: #5889FA; text-decoration: underline; text-decoration-color: rgba(88,137,250,0.4); }
