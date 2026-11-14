@@ -153,5 +153,5 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Files every visitor needs, signed in or not: the service worker can't be redirected (browsers refuse it)
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|robots.txt|icons/|demo/).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|robots.txt|icons/|demo/|brand/).*)'],
 };

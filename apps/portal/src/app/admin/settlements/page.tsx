@@ -9,6 +9,7 @@ import { PageHero, heroBtnDark, heroBtnLine, asideLabel } from '@/components/her
 import { PersonPhoto } from '@/components/ui/PersonPhoto';
 import { walletMoney } from '@/components/wallet/WalletCharts';
 import { STATUS } from '@/components/payout/GetPaid';
+import { ProviderLogo } from '@/components/payout/ProviderLogo';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
@@ -185,7 +186,7 @@ export default function AdminSettlementsPage() {
                         <td className="px-4 py-3"><div className="flex items-center gap-2.5"><PersonPhoto src={r.user.avatarUrl} name={r.user.name} id={r.user.id} size={32} />
                           <span className="min-w-0"><b className="block text-navy">{r.user.name}</b><span className="text-xs text-muted">{ROLE[r.user.role] ?? r.user.role} · {r.account?.country ?? '—'} · {time(r.requestedAt)}</span></span></div></td>
                         <td className="px-3 py-3"><b className="text-navy">{walletMoney(r.amount, r.currency)}</b>{r.fee ? <span className="block text-xs text-muted">fee {walletMoney(r.fee, r.currency)}</span> : null}</td>
-                        <td className="px-3 py-3">{r.paidTo}{r.payeeName && <span className="block text-xs text-muted">{r.payeeName}</span>}</td>
+                        <td className="px-3 py-3"><span className="flex items-center gap-2"><ProviderLogo label={r.paidTo} size={26} className="rounded-[6px]" /><span>{r.paidTo}{r.payeeName && <span className="block text-xs text-muted">{r.payeeName}</span>}</span></span></td>
                         <td className="px-3 py-3 text-xs text-muted">{r.transferId ?? '—'}<span className="block">{r.ourRef}</span></td>
                         <td className="px-3 py-3"><span className={clsx(tag, STATUS[r.status].cls)}>{STATUS[r.status].label}</span>{r.failureReason && (r.status === 'FAILED' || r.status === 'REJECTED') && <span className="mt-1 block max-w-[220px] text-xs text-muted">{r.failureReason}</span>}</td>
                         <td className="px-4 py-3 text-right">{r.status === 'SENDING' && <Button size="sm" variant="secondary" onClick={() => refresh(r)}>Check now</Button>}</td>
@@ -194,7 +195,7 @@ export default function AdminSettlementsPage() {
                   </tbody>
                 </table>}
           </section>}
-          {tab === 'approvals' && <p className="text-xs text-muted">Approving asks for your code once every 15 minutes. You can’t approve money paid to yourself, and over {o ? walletMoney(o.rules.twoApproversAbove, 'XAF') : '…'} two different admins must approve. Refusing puts the money back in their balance with your reason. If Tranzak couldn’t send one, you can pay it by MoMo yourself and use Mark paid with the reference.</p>}
+          {tab === 'approvals' && <p className="text-xs text-muted">Approving asks for your code once every 15 minutes. You can’t approve money paid to yourself, and over {o ? walletMoney(o.rules.twoApproversAbove, 'XAF') : '…'} two different admins must approve. Refusing puts the money back in their balance with your reason. Every payment can go both ways: Approve and send (through Tranzak), or pay it yourself by MoMo or bank transfer and use Paid by hand with the reference. Bank payments always wait here, because banks don’t check names.</p>}
         </>}
 
         {tab === 'history' && (
@@ -219,6 +220,7 @@ export default function AdminSettlementsPage() {
           <section className="rounded-xl border border-line bg-white">
             {!accounts ? <div className="m-4 h-32 animate-pulse rounded-md bg-subtle" /> : !accounts.length ? <p className="px-4 py-10 text-center text-[13px] text-ink2">Every payout account is confirmed.</p> : accounts.map(a => (
               <div key={a.id} className="flex flex-wrap items-center gap-3 border-t border-line px-[18px] py-3 first:border-t-0">
+                <ProviderLogo label={a.label} size={32} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-navy">{a.user.name} <span className="font-medium text-muted">· {ROLE[a.user.role] ?? a.user.role}</span></p>
                   <p className="mt-0.5 text-[12.5px] text-muted">{a.label} ·· {a.last} · {a.country}{a.holderName ? ` · registered to ${a.holderName}` : ''}</p>
@@ -337,10 +339,10 @@ function ReviewDesk({ rows, twoAbove, onApprove, onPay, onRefuse }: { rows: Row[
   const a = r?.account, changedDays = a?.changedAt ? ageDays(a.changedAt) : null;
   const months = a ? Math.max(1, Math.round(ageDays(a.createdAt) / 30)) : 0;
   const checks: [string, string, 'good' | 'warn' | 'bad'][] = r ? [
-    ['Name', a?.nameCheck === 'match' ? `Matches ${r.paidTo.split(' ')[0]}` : a?.isVerified ? 'Confirmed by an admin' : a?.nameCheck === 'mismatch' ? `Registered to ${r.payeeName ?? 'someone else'}` : 'Not checked', a?.nameCheck === 'match' || a?.isVerified ? 'good' : a?.nameCheck === 'mismatch' ? 'bad' : 'warn'],
+    ['Name', r.flags.includes('bank') && !a?.isVerified ? `${r.payeeName ?? '—'} (banks don’t check)` : a?.nameCheck === 'match' ? `Matches ${r.paidTo.split(' ')[0]}` : a?.isVerified ? 'Confirmed by an admin' : a?.nameCheck === 'mismatch' ? `Registered to ${r.payeeName ?? 'someone else'}` : 'Not checked', a?.nameCheck === 'match' || a?.isVerified ? 'good' : a?.nameCheck === 'mismatch' ? 'bad' : 'warn'],
     ['Account', changedDays != null ? `Number changed ${changedDays === 0 ? 'today' : `${changedDays} day${changedDays === 1 ? '' : 's'} ago`}` : a ? `${months} month${months === 1 ? '' : 's'}, unchanged` : '—', changedDays != null && changedDays < 7 ? 'bad' : 'good'],
     ['Size', r.usual ? `${(r.amount / r.usual).toFixed(1)}× their usual` : 'First withdrawal', !r.usual || r.amount > 2 * r.usual ? 'warn' : 'good'],
-    ['Sending', r.flags.includes('send-failed') ? 'Tranzak couldn’t send it' : r.method === 'manual' ? 'Pay by hand' : 'Through Tranzak', r.flags.includes('send-failed') ? 'bad' : r.method === 'manual' ? 'warn' : 'good'],
+    ['Sending', r.flags.includes('send-failed') ? 'Tranzak couldn’t send it' : r.method === 'manual' ? 'Pay by hand' : r.flags.includes('bank') ? 'Bank: Tranzak or by hand' : 'Tranzak or by hand', r.flags.includes('send-failed') ? 'bad' : r.method === 'manual' ? 'warn' : 'good'],
   ] : [];
   const tone = { good: 'bg-[#E3F5EC] text-[#1A7F4B]', warn: 'bg-[#FFF3DC] text-[#8A5A0B]', bad: 'bg-[#FDE8E8] text-[#A12A2A]' };
   const monthsMax = Math.max(1, ...(r?.months ?? [0]));
@@ -357,7 +359,8 @@ function ReviewDesk({ rows, twoAbove, onApprove, onPay, onRefuse }: { rows: Row[
         </div>
         {list.map(x => (
           <button key={x.id} type="button" onClick={() => setSel(x.id)} className={clsx('flex items-center justify-between gap-3 border-t border-line px-3.5 py-3 text-left', x.id === r?.id ? 'border-l-[3px] border-l-[#3F6FE8] bg-subtle' : 'hover:bg-subtle')}>
-            <span className="min-w-0"><b className="block truncate text-[13.5px] text-navy">{x.user.name}</b><span className="block truncate text-xs text-muted">{ROLE[x.user.role] ?? x.user.role} · {x.paidTo}</span></span>
+            <ProviderLogo label={x.paidTo} size={30} className="rounded-[7px]" />
+            <span className="min-w-0 flex-1"><b className="block truncate text-[13.5px] text-navy">{x.user.name}</b><span className="block truncate text-xs text-muted">{ROLE[x.user.role] ?? x.user.role} · {x.paidTo}</span></span>
             <span className="flex flex-shrink-0 flex-col items-end gap-1"><b className="text-[13.5px] text-navy">{walletMoney(x.amount, x.currency)}</b><span className={clsx(tag, x.method === 'manual' ? 'bg-accent-soft text-[#2F57C9]' : RISK[x.risk ?? 'low'][1])}>{x.method === 'manual' ? 'By hand' : RISK[x.risk ?? 'low'][0]}</span></span>
           </button>
         ))}
@@ -368,7 +371,7 @@ function ReviewDesk({ rows, twoAbove, onApprove, onPay, onRefuse }: { rows: Row[
         <div className="flex flex-wrap items-center gap-3">
           <PersonPhoto src={r.user.avatarUrl} name={r.user.name} id={r.user.id} size={48} />
           <span className="min-w-0 flex-1"><b className="block text-lg text-navy">{r.user.name}</b><span className="text-[13px] text-muted">{ROLE[r.user.role] ?? r.user.role} · {r.account?.country ?? '—'} · on CareerPath since {new Date(r.user.since).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}</span></span>
-          <span className="text-right"><b className="block text-[26px] font-extrabold tracking-[-0.02em] text-navy">{walletMoney(r.amount, r.currency)}</b><span className="text-[13px] text-muted">to {r.paidTo}{r.payeeName ? ` · ${r.payeeName}` : ''}</span></span>
+          <span className="text-right"><b className="block text-[26px] font-extrabold tracking-[-0.02em] text-navy">{walletMoney(r.amount, r.currency)}</b><span className="inline-flex items-center gap-1.5 text-[13px] text-muted"><ProviderLogo label={r.paidTo} size={20} className="rounded-[4px]" />to {r.paidTo}{r.payeeName ? ` · ${r.payeeName}` : ''}</span></span>
         </div>
         <div className="grid gap-2.5 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
           {checks.map(([l, v, t]) => <div key={l} className={clsx('rounded-lg px-3 py-2.5', tone[t])}><p className="text-[11.5px] font-semibold opacity-80">{l}</p><p className="text-[13px] font-bold">{v}</p></div>)}
@@ -386,7 +389,8 @@ function ReviewDesk({ rows, twoAbove, onApprove, onPay, onRefuse }: { rows: Row[
         </div>}
         <div className="flex flex-wrap items-center gap-2">
           {r.method === 'manual' ? <Button onClick={() => onPay(r)}>Mark paid</Button> : <Button onClick={() => onApprove(r)}>{r.flags.includes('send-failed') ? 'Send again' : 'Approve and send'}</Button>}
-          {r.method !== 'manual' && r.flags.includes('send-failed') && <Button variant="secondary" onClick={() => onPay(r)}>Mark paid</Button>}
+          {/* Both ways: send it through Tranzak, or pay it yourself and record the reference */}
+          {r.method !== 'manual' && <Button variant="secondary" onClick={() => onPay(r)}>Paid by hand…</Button>}
           <Button variant="secondary" onClick={() => onRefuse(r)}>Refuse…</Button>
           <span className="ml-auto hidden items-center gap-2 text-xs text-muted sm:flex">
             {[['A', r.method === 'manual' ? 'paid' : 'approve'], ['R', 'refuse'], ['J K', 'next']].map(([k, l]) => <span key={k} className="inline-flex items-center gap-1"><kbd className="rounded border border-line bg-subtle px-1.5 text-[11px] font-bold text-ink2">{k}</kbd>{l}</span>)}

@@ -303,6 +303,14 @@ export class TranzakGateway implements PaymentGateway {
     });
   }
 
+  /** POST /xp021/v1/transfer/to-bank-account — a Cameroonian bank account, by its 23-digit RIB; the holder's name is required */
+  async transferToBankAccount(o: { amount: number; currency: string; rib: string; name: string; ref: string; description: string; payeePaysFee: boolean }) {
+    return this.call<TranzakTransfer>('post', '/xp021/v1/transfer/to-bank-account', {
+      amount: o.amount, currencyCode: o.currency, description: o.description.slice(0, 255), customTransactionRef: o.ref,
+      payeeAccountId: o.rib, payeeAccountName: o.name.slice(0, 100), payeeNote: 'CareerPath Africa earnings', payeeFeePercentage: o.payeePaysFee ? 100 : 0,
+    });
+  }
+
   /** GET /xp021/v1/transfer/details */
   transferDetails(transferId: string) { return this.call<TranzakTransfer>('get', '/xp021/v1/transfer/details', { transferId }); }
 

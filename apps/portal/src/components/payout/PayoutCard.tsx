@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { clsx } from 'clsx';
+import { ProviderLogo } from '@/components/payout/ProviderLogo';
 
 export interface Payout { bankName: string; accountNumber: string; bankCode: string | null; country: string; isVerified: boolean; nameCheck?: string | null; holderName?: string | null }
 
@@ -22,6 +23,7 @@ export function PayoutCard({ payout, highlight = false }: { payout: Payout | nul
       {payout === undefined ? <div className="h-12 animate-pulse rounded-md bg-subtle" />
         : payout ? (
           <div className="flex items-center gap-3 rounded-md border border-line px-3 py-2.5">
+            <ProviderLogo label={payout.bankName} size={32} />
             <div className="min-w-0 flex-1">
               <p className="text-[13.5px] font-semibold text-navy">{payout.bankName} ·· {payout.accountNumber.replace(/\D/g, '').slice(-3)}</p>
               <p className="text-xs text-muted">{payout.nameCheck === 'match' ? `Registered to ${payout.holderName}` : payout.isVerified ? 'Confirmed by our team' : 'Being checked'}</p>

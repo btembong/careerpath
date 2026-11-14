@@ -8,11 +8,13 @@ import { PageHero, heroBtn, heroBtnDark, heroBtnLine, asideLabel } from '@/compo
 import { walletMoney } from '@/components/wallet/WalletCharts';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { ProviderLogo } from '@/components/payout/ProviderLogo';
+import { BankFields, BankValue, bankReady, emptyBank, ribOf } from '@/components/payout/BankFields';
 
 type Status = 'AWAITING_APPROVAL' | 'SENDING' | 'PAID' | 'FAILED' | 'REJECTED';
 interface WRow { id: string; amount: number; fee: number | null; currency: string; status: Status; method: string; paidTo: string; payeeName: string | null; reference: string; failureReason: string | null; requestedAt: string; sentAt: string | null; completedAt: string | null; approvals: number; approvalsNeeded: number }
 interface Account {
-  provider: string | null; label: string; last: string; country: string; holderName: string | null; nameCheck: string; confirmedByAdmin: boolean; automatic: boolean;
+  provider: string | null; bankId: string | null; label: string; last: string; country: string; holderName: string | null; nameCheck: string; confirmedByAdmin: boolean; automatic: boolean;
   hasPin: boolean; readyAt: string | null; lockedUntil: string | null; pinSetAt: string | null; lockedByUser: boolean;
   autoMode: 'weekly' | 'monthly' | 'threshold' | null; autoThreshold: number | null; nextAutoAt: string | null; since: string; changedAt: string | null;
 }
@@ -33,12 +35,10 @@ const short = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'num
 const when = (d: string) => new Date(d).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const clock = (d: string) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const err = (e: any, f: string) => e?.response?.data?.message ?? f;
-const PROVIDER_COLOUR: Record<string, string> = { MTN: 'bg-[#FFCB05] text-[#072061]', ORANGE: 'bg-[#FF7900] text-[#FFFFFF]' };
 const operator = (a: { provider: string | null; label: string }) => (a.provider === 'MTN' ? 'MTN' : a.provider === 'ORANGE' ? 'Orange' : a.label);
+/** How long it takes to arrive, by where it goes */
+const arrives = (a: { provider: string | null; automatic: boolean }) => (a.provider === 'BANK' ? 'in your bank within 1 to 2 working days, after our team checks it' : a.automatic ? 'on your phone in about a minute' : 'by hand from our team, usually within 2 working days');
 
-function ProviderMark({ p, size = 36 }: { p: string | null; size?: number }) {
-  return <span style={{ width: size, height: size }} className={clsx('flex flex-shrink-0 items-center justify-center rounded-lg text-[11px] font-extrabold', PROVIDER_COLOUR[p ?? ''] ?? 'bg-accent-soft text-[#2F57C9]')}>{p === 'ORANGE' ? 'OM' : p === 'MTN' ? 'MTN' : '₣'}</span>;
-}
 
 function CodeField({ value, onChange, purpose, label = 'Code from your email' }: { value: string; onChange: (v: string) => void; purpose: 'account' | 'withdraw'; label?: string }) {
   const [sent, setSent] = useState<string | null>(null);
@@ -89,6 +89,7 @@ function Setup({ onClose, onSaved, start }: { onClose: () => void; onSaved: (p: 
   const [provider, setProvider] = useState(start?.provider ?? 'MTN');
   const [number, setNumber] = useState('');
   const [other, setOther] = useState(''), [country, setCountry] = useState('');
+  const [bank, setBank] = useState<BankValue>({ ...emptyBank, bankId: start?.bankId ?? '' });
   const [pin, setPin] = useState(''), [pin2, setPin2] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -99,15 +100,17 @@ function Setup({ onClose, onSaved, start }: { onClose: () => void; onSaved: (p: 
     if (pin && pin !== pin2) { notify.error('The two PINs don’t match'); setStep(1); return; }
     setBusy(true);
     try {
-      const r = await api.post('/me/get-paid/account', { provider: provider === 'OTHER' ? '' : provider, number, country: mobile ? 'CM' : country, bankName: provider === 'OTHER' ? other : undefined, ...(pin ? { pin } : {}), code });
+      const r = await api.post('/me/get-paid/account', provider === 'BANK'
+        ? { provider: 'BANK', bankId: bank.bankId, holderName: bank.holderName, number: ribOf(bank), country: 'CM', ...(pin ? { pin } : {}), code }
+        : { provider: provider === 'OTHER' ? '' : provider, number, country: mobile ? 'CM' : country, bankName: provider === 'OTHER' ? other : undefined, ...(pin ? { pin } : {}), code });
       const acc = (r.data as Paid).account;
-      notify.success(change ? 'Payout account changed' : 'You’re set up', { description: acc?.nameCheck === 'match' ? `Registered to ${acc.holderName}` : acc?.automatic ? 'Our team will confirm the name on the number before the first payment.' : 'Withdrawals to it are paid by hand by our team.' });
+      notify.success(change ? 'Payout account changed' : 'You’re set up', { description: acc?.nameCheck === 'match' ? `Registered to ${acc.holderName}` : acc?.provider === 'BANK' ? 'Our team checks each bank payment before it’s sent.' : acc?.automatic ? 'Our team will confirm the name on the number before the first payment.' : 'Withdrawals to it are paid by hand by our team.' });
       onSaved(r.data);
     } catch (e) { notify.error(err(e, 'Could not save')); } finally { setBusy(false); }
   }
 
   const steps = change ? ['Your number', 'New PIN (optional)', 'Confirm'] : ['Your number', 'Choose a PIN', 'Confirm'];
-  const ok = [!!number.trim() && (provider !== 'OTHER' || (!!other.trim() && !!country.trim())), change ? (!pin || (pin.length === 4 && pin2.length === 4)) : pin.length === 4 && pin2.length === 4, code.length === 6];
+  const ok = [provider === 'BANK' ? bankReady(bank) : !!number.trim() && (provider !== 'OTHER' || (!!other.trim() && !!country.trim())), change ? (!pin || (pin.length === 4 && pin2.length === 4)) : pin.length === 4 && pin2.length === 4, code.length === 6];
   return (
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
       <DialogContent title={change ? 'Change your payout number' : 'Set up how you get paid'} description="Three short steps. MTN and Orange numbers in Cameroon are paid automatically.">
@@ -120,9 +123,9 @@ function Setup({ onClose, onSaved, start }: { onClose: () => void; onSaved: (p: 
         </ol>
         {step === 0 && <div className="flex flex-col gap-4">
           <div role="radiogroup" aria-label="Where" className="flex flex-wrap gap-2">
-            {[['MTN', 'MTN Mobile Money'], ['ORANGE', 'Orange Money'], ['OTHER', 'Another country or bank']].map(([k, l]) => (
+            {[['MTN', 'MTN Mobile Money'], ['ORANGE', 'Orange Money'], ['BANK', 'Bank account'], ['OTHER', 'Another country']].map(([k, l]) => (
               <button key={k} type="button" role="radio" aria-checked={provider === k} onClick={() => setProvider(k)}
-                className={clsx('inline-flex h-9 items-center rounded-md border px-3 text-[13px] font-semibold', provider === k ? 'border-[#3F6FE8] bg-accent-soft text-navy' : 'border-line text-ink2')}>{l}</button>
+                className={clsx('inline-flex h-10 items-center gap-2 rounded-md border px-2.5 text-[13px] font-semibold', provider === k ? 'border-[#3F6FE8] bg-accent-soft text-navy' : 'border-line text-ink2')}>{k === 'MTN' || k === 'ORANGE' ? <ProviderLogo provider={k} size={24} className="rounded-[5px]" /> : <span aria-hidden className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-subtle text-[13px]">{k === 'BANK' ? '🏦' : '🌍'}</span>}{l}</button>
             ))}
           </div>
           {provider === 'OTHER' && (
@@ -131,12 +134,12 @@ function Setup({ onClose, onSaved, start }: { onClose: () => void; onSaved: (p: 
               <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Country</span><input value={country} onChange={e => setCountry(e.target.value)} placeholder="e.g. Ghana" className="input-base" /></label>
             </div>
           )}
-          <label className="flex flex-col gap-1.5">
+          {provider === 'BANK' ? <BankFields v={bank} onChange={setBank} /> : <label className="flex flex-col gap-1.5">
             <span className="text-[13px] font-semibold text-navy">{mobile ? 'Mobile number' : 'Phone or account number'}</span>
             <input value={number} onChange={e => setNumber(e.target.value)} inputMode="tel" autoFocus placeholder={mobile ? '6 70 00 00 00' : ''} className="input-base" />
             {mobile && <span className="text-xs text-muted">We check the name on it with {provider === 'MTN' ? 'MTN' : 'Orange'}. It should be yours.</span>}
             {change && <span className="text-xs text-muted">For your safety, withdrawals to a new number open 48 hours after the change.</span>}
-          </label>
+          </label>}
         </div>}
         {step === 1 && <div className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-4"><PinField value={pin} onChange={setPin} label={change ? 'New PIN (leave empty to keep yours)' : 'Choose 4 digits'} autoFocus /><PinField value={pin2} onChange={setPin2} label="Again" /></div>
@@ -212,6 +215,7 @@ function ReceiptDialog({ w, account, onClose }: { w: WRow; account: Account; onC
   return (
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
       <DialogContent size="sm" title={walletMoney(w.amount, w.currency)} description={`to ${w.paidTo}${w.payeeName ? ` · ${w.payeeName}` : ''} · ${short(w.requestedAt)}`}>
+        <div className="mb-3 flex items-center gap-3"><ProviderLogo provider={account.provider} label={w.paidTo} bankId={account.bankId} size={40} /><span className="text-[13px] text-ink2">{w.paidTo}{w.payeeName ? <><br />{w.payeeName}</> : null}</span></div>
         <Tracker w={w} operatorName={operator(account)} />
         <DialogFooter>
           <Button size="sm" variant="secondary" onClick={() => { navigator.clipboard?.writeText(w.reference).then(() => notify.success('Reference copied')).catch(() => {}); }}>Copy reference</Button>
@@ -236,7 +240,7 @@ function WithdrawSheet({ d, onClose, onDone }: { d: Paid; onClose: () => void; o
   const fee = a.automatic && d.payeePaysFee ? Math.ceil(minor * 0.013) : 0;
   const lands = Math.max(0, minor - fee);
   const tooSmall = minor < d.minimum, tooBig = minor > cap;
-  const needsApproval = !a.automatic || minor > d.approvalAbove;
+  const needsApproval = !a.automatic || a.provider === 'BANK' || minor > d.approvalAbove;
   const presets = [10_000, 25_000, 50_000, 100_000].filter(v => majorToMinor(v, c) < cap).slice(-3);
   const ready = !tooSmall && !tooBig && (useCode ? code.length === 6 : pin.length === 4);
 
@@ -261,6 +265,7 @@ function WithdrawSheet({ d, onClose, onDone }: { d: Paid; onClose: () => void; o
   if (res) return (
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
       <DialogContent size="sm" title={walletMoney(res.amount, res.currency)} description={`to ${res.paidTo}${a.holderName ? ` · ${a.holderName}` : ''}`}>
+        <div className="mb-3 flex items-center gap-3"><ProviderLogo provider={a.provider} label={a.label} bankId={a.bankId} size={40} /><span className="text-[13px] text-ink2">{res.paidTo}{a.holderName ? <><br />{a.holderName}</> : null}</span></div>
         <Tracker w={res} operatorName={operator(a)} />
         <DialogFooter>
           <Button size="sm" variant="secondary" onClick={() => { navigator.clipboard?.writeText(res.reference).then(() => notify.success('Reference copied')).catch(() => {}); }}>Copy reference</Button>
@@ -285,16 +290,16 @@ function WithdrawSheet({ d, onClose, onDone }: { d: Paid; onClose: () => void; o
             <button type="button" onClick={() => setMajor(Math.floor(minorToMajor(cap, c)))} className={clsx('inline-flex h-8 items-center rounded-md border px-3 text-[13px] font-bold', minor === cap ? 'border-[#3F6FE8] bg-accent-soft text-navy' : 'border-line text-[#2F57C9]')}>All</button>
           </div>
           <div className="flex items-center gap-3 rounded-lg border border-line p-3">
-            <ProviderMark p={a.provider} />
-            <span className="min-w-0 flex-1 text-[13.5px]"><b className="block text-navy">{a.label} ·· {a.last}</b><span className="text-xs text-muted">{[a.holderName, a.automatic ? 'arrives in about a minute' : 'paid by hand by our team'].filter(Boolean).join(' · ')}</span></span>
+            <ProviderLogo provider={a.provider} label={a.label} bankId={a.bankId} />
+            <span className="min-w-0 flex-1 text-[13.5px]"><b className="block text-navy">{a.label} ·· {a.last}</b><span className="text-xs text-muted">{[a.holderName, `arrives ${arrives(a)}`].filter(Boolean).join(' · ')}</span></span>
           </div>
           <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-[13.5px]">
             {fee > 0 && <><dt className="text-ink2">{operator(a)}’s fee (about)</dt><dd className="text-right">{walletMoney(fee, c)}</dd></>}
-            <dt className="font-bold text-navy">{a.automatic ? 'Lands on your phone' : 'You receive'}</dt><dd className="text-right font-bold text-navy">{walletMoney(lands, c)}</dd>
+            <dt className="font-bold text-navy">{a.provider === 'BANK' ? 'Lands in your account' : a.automatic ? 'Lands on your phone' : 'You receive'}</dt><dd className="text-right font-bold text-navy">{walletMoney(lands, c)}</dd>
           </dl>
           {tooSmall && minor > 0 && <p className="text-[13px] text-[#A12A2A]">The smallest withdrawal is {walletMoney(d.minimum, c)}.</p>}
           {tooBig && <p className="text-[13px] text-[#A12A2A]">That’s more than the {walletMoney(cap, c)} you can withdraw now.</p>}
-          {!tooSmall && !tooBig && needsApproval && <p className="rounded-lg bg-[#FFF3DC] px-3 py-2 text-[13px] text-[#8A5A0B]">{a.automatic ? `Over ${walletMoney(d.approvalAbove, c)}, an admin checks it first, usually the same day.` : 'Our team pays it by hand, usually within 2 working days.'}</p>}
+          {!tooSmall && !tooBig && needsApproval && <p className="rounded-lg bg-[#FFF3DC] px-3 py-2 text-[13px] text-[#8A5A0B]">{a.provider === 'BANK' ? 'Our team checks every bank payment first, then it reaches your bank within 1 to 2 working days.' : a.automatic ? `Over ${walletMoney(d.approvalAbove, c)}, an admin checks it first, usually the same day.` : 'Our team pays it by hand, usually within 2 working days.'}</p>}
           <div className="flex flex-wrap items-center gap-3 rounded-lg bg-subtle px-3.5 py-3">
             {!useCode ? <>
               <span className="text-[13px] font-bold text-navy">PIN</span>
@@ -360,7 +365,7 @@ function SafetyCard({ d, onSaved, onPin, onChangeNumber }: { d: Paid; onSaved: (
       <h2 className="mb-1 text-base font-bold text-navy">Safety</h2>
       <div className="flex items-center justify-between gap-3 border-b border-line py-2.5 text-[13.5px]"><span className="text-ink2">Withdrawal PIN</span>
         <button type="button" onClick={onPin} className={clsx(tag, a.hasPin ? 'bg-[#E3F5EC] text-[#1A7F4B]' : 'bg-[#FFF3DC] text-[#8A5A0B]')}>{a.hasPin ? `Set${a.pinSetAt ? ` · ${short(a.pinSetAt)}` : ''} · change` : 'Not set · set it'}</button></div>
-      <div className="flex items-center justify-between gap-3 border-b border-line py-2.5 text-[13.5px]"><span className="text-ink2">Payout number</span>
+      <div className="flex items-center justify-between gap-3 border-b border-line py-2.5 text-[13.5px]"><span className="flex items-center gap-2 text-ink2"><ProviderLogo provider={a.provider} label={a.label} bankId={a.bankId} size={22} className="rounded-[5px]" />{a.label} ·· {a.last}</span>
         <button type="button" onClick={onChangeNumber} className={clsx(tag, a.nameCheck === 'match' || a.confirmedByAdmin ? 'bg-[#E3F5EC] text-[#1A7F4B]' : 'bg-[#FFF3DC] text-[#8A5A0B]')}>{a.nameCheck === 'match' ? `Yours, checked by ${operator(a)}` : a.confirmedByAdmin ? 'Confirmed by our team' : 'Being checked'}</button></div>
       <div className="flex items-center justify-between gap-3 border-b border-line py-2.5 text-[13.5px]"><span className="text-ink2">Last withdrawal</span><span className="text-navy">{last ? `${walletMoney(last.amount, last.currency)} · ${short(last.requestedAt)}` : 'None yet'}</span></div>
       <div className="flex items-start justify-between gap-3 py-2.5">
@@ -449,7 +454,7 @@ export function GetPaid() {
           sub={d.paused ? 'Withdrawals are paused for a short while. Your balance is safe.'
             : a.lockedByUser ? 'You locked withdrawals. Unlock them in Safety, below, with a code from your email.'
             : a.readyAt ? `Your payout number changed recently, so withdrawals to it open ${when(a.readyAt)}. If you didn’t change it, tell us straight away.`
-            : <>{a.automatic ? `On your phone in about a minute.` : 'Our team pays it by hand, usually within 2 working days.'}{d.clearing ? ` Another ${walletMoney(d.clearing, c)} is on the way: it becomes yours over the next ${strip.filter(x => x.amount).length ? Math.max(1, strip.reduce((n, x, i) => (x.amount ? i + 1 : n), 0)) : 7} days, as each sale clears.` : ''}{d.available < d.minimum && d.available > 0 ? ` The smallest withdrawal is ${walletMoney(d.minimum, c)}.` : ''}</>}
+            : <>{`It arrives ${arrives(a)}.`}{d.clearing ? ` Another ${walletMoney(d.clearing, c)} is on the way: it becomes yours over the next ${strip.filter(x => x.amount).length ? Math.max(1, strip.reduce((n, x, i) => (x.amount ? i + 1 : n), 0)) : 7} days, as each sale clears.` : ''}{d.available < d.minimum && d.available > 0 ? ` The smallest withdrawal is ${walletMoney(d.minimum, c)}.` : ''}</>}
           chips={[
             ...(d.sending ? [{ t: `${walletMoney(d.sending, c)} on its way`, strong: true }] : []),
             ...(!a.hasPin ? [{ t: 'Set your PIN', strong: true }] : []),
@@ -476,6 +481,7 @@ export function GetPaid() {
               <dt className="text-ink2">Yours now</dt><dd className="text-right font-bold">{walletMoney(d.available, c)}</dd>
               <dt className="text-ink2">Clearing</dt><dd className="text-right font-bold">{walletMoney(d.clearing, c)}</dd>
             </dl>
+            <div className="flex items-center gap-2.5 border-t border-line pt-2.5"><ProviderLogo provider={a.provider} label={a.label} bankId={a.bankId} size={32} /><span className="min-w-0 text-xs text-muted"><b className="block text-[13px] text-navy">{a.label} ·· {a.last}</b>{a.nameCheck === 'match' ? `✓ ${a.holderName}` : a.confirmedByAdmin ? '✓ Confirmed by our team' : `Arrives ${arrives(a)}`}</span></div>
           </>}
         />
       )}

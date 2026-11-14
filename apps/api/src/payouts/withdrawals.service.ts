@@ -22,6 +22,21 @@ export const DEFAULT_RULES: PayoutRules = { autoLimit: 250_000, twoApproversAbov
 /** Earnings that can still be refunded wait before they can be withdrawn */
 const CLEARING_SOURCES = ['COURSE_SALE', 'COHORT_SHARE', 'COUNTRY_BONUS', 'REVIEW_COMMISSION'] as const;
 const PROVIDERS: Record<string, string> = { MTN: 'MTN Mobile Money', ORANGE: 'Orange Money' };
+/** Banks in Cameroon an earner can be paid into. code = the first 5 digits of their RIB, where we know it for sure. */
+export const CM_BANKS: { id: string; name: string; code?: string }[] = [
+  { id: 'afriland', name: 'Afriland First Bank', code: '10005' }, { id: 'gbc', name: 'General Bank of Cameroon' }, { id: 'afg', name: 'AFG Bank Cameroun' },
+  { id: 'cca', name: 'CCA-Bank' }, { id: 'scb', name: 'SCB Cameroun', code: '10002' }, { id: 'bicec', name: 'BICEC', code: '10001' },
+  { id: 'ecobank', name: 'Ecobank Cameroun' }, { id: 'uba', name: 'UBA Cameroon' }, { id: 'access', name: 'Access Bank Cameroon' },
+  { id: 'bgfi', name: 'BGFIBank Cameroun' }, { id: 'cbc', name: 'Commercial Bank Cameroon (CBC)' }, { id: 'ubc', name: 'Union Bank of Cameroon (UBC)' },
+  { id: 'stanchart', name: 'Standard Chartered Cameroon' }, { id: 'citi', name: 'Citibank Cameroon' }, { id: 'nfc', name: 'NFC Bank' },
+  { id: 'bcpme', name: 'BC-PME' }, { id: 'regionale', name: 'La Régionale Bank' }, { id: 'bange', name: 'BANGE Bank Cameroun' }, { id: 'agb', name: 'Africa Golden Bank' },
+];
+/** A CEMAC RIB: bank (5) + branch (5) + account (11) + key (2); key = 97 − ((89·bank + 15·branch + 3·account) mod 97) */
+export const ribOk = (rib: string) => {
+  if (!/^\d{23}$/.test(rib)) return false;
+  const key = 97n - ((89n * BigInt(rib.slice(0, 5)) + 15n * BigInt(rib.slice(5, 10)) + 3n * BigInt(rib.slice(10, 21))) % 97n);
+  return Number(key) === Number(rib.slice(21));
+};
 const EARNER_ROLES = ['TEACHER', 'SUBJECT_REVIEWER', 'COUNTRY_REP'];
 const homeFor = (role: string) => (role === 'SUBJECT_REVIEWER' ? '/reviewer/wallet' : role === 'COUNTRY_REP' ? '/country-rep/wallet' : '/teacher/wallet');
 const nm = (p: { name: string | null; firstName: string | null; lastName: string | null; email: string }) => p.name || [p.firstName, p.lastName].filter(Boolean).join(' ') || p.email.split('@')[0];
@@ -164,7 +179,7 @@ export class WithdrawalsService {
       dailyLeft: auto ? Math.max(0, rules.dailyMax - today) : null,
       approvalAbove: rules.autoLimit, paused: rules.paused, payeePaysFee: rules.payeePaysFee,
       account: account ? {
-        provider: account.provider, label: account.bankName, last: last(account.accountNumber), country: account.country,
+        provider: account.provider, bankId: account.provider === 'BANK' ? account.bankCode : null, label: account.bankName, last: last(account.accountNumber), country: account.country,
         holderName: account.holderName, nameCheck: account.nameCheck ?? (account.isVerified ? 'confirmed' : 'unchecked'), confirmedByAdmin: account.isVerified,
         automatic: auto, hasPin: !!account.pinHash,
         readyAt: this.readyAt(account, rules), lockedUntil: account.pinLockedUntil && account.pinLockedUntil > new Date() ? account.pinLockedUntil : null,
@@ -177,7 +192,8 @@ export class WithdrawalsService {
   }
 
   private automatic(a: { provider: string | null; country: string }, currency: string) {
-    return (a.provider === 'MTN' || a.provider === 'ORANGE') && /^(cm|cameroon)$/i.test(a.country.trim()) && currency === 'XAF';
+    // Tranzak pays MTN and Orange numbers and Cameroonian bank accounts
+    return (a.provider === 'MTN' || a.provider === 'ORANGE' || a.provider === 'BANK') && /^(cm|cameroon)$/i.test(a.country.trim()) && currency === 'XAF';
   }
   private readyAt(a: { changedAt: Date | null }, r: PayoutRules) {
     const t = a.changedAt ? a.changedAt.getTime() + r.coolingHours * 3600_000 : 0;
@@ -197,7 +213,7 @@ export class WithdrawalsService {
   }
 
   /** Save where money goes, with a one-time code; check the name with the operator where we can */
-  async setAccount(user: UserProfile, dto: { provider?: string; number?: string; country?: string; bankName?: string; pin?: string; code?: string }) {
+  async setAccount(user: UserProfile, dto: { provider?: string; number?: string; country?: string; bankName?: string; bankId?: string; holderName?: string; pin?: string; code?: string }) {
     if (!EARNER_ROLES.includes(user.role)) throw new ForbiddenException();
     await this.checkCode(user.id, dto.code);
     const provider = String(dto.provider ?? '').toUpperCase();
@@ -206,12 +222,19 @@ export class WithdrawalsService {
     if (provider === 'MTN' || provider === 'ORANGE') {
       if (/^6\d{8}$/.test(number)) number = `237${number}`;
       if (!/^2376\d{8}$/.test(number)) throw new BadRequestException('Enter a Cameroon mobile number, for example 6 70 00 00 00');
+    } else if (provider === 'BANK') {
+      const bank = CM_BANKS.find(b => b.id === dto.bankId);
+      if (!bank) throw new BadRequestException('Choose your bank');
+      if (!ribOk(number)) throw new BadRequestException('That account number doesn’t check out. Copy all 23 digits from your RIB: bank code, branch code, account number and key.');
+      if (bank.code && !number.startsWith(bank.code)) throw new BadRequestException(`A ${bank.name} RIB starts with ${bank.code}. Check the bank or the number.`);
+      if (!dto.holderName?.trim() || dto.holderName.trim().length < 3) throw new BadRequestException('Enter the account holder’s name, as the bank has it');
     } else if (number.length < 6) throw new BadRequestException('Enter the account or phone number');
-    const label = PROVIDERS[provider] ?? (dto.bankName?.trim() || 'Mobile money');
+    const bankRow = provider === 'BANK' ? CM_BANKS.find(b => b.id === dto.bankId)! : null;
+    const label = PROVIDERS[provider] ?? bankRow?.name ?? (dto.bankName?.trim() || 'Mobile money');
     if (dto.pin != null) this.validPin(dto.pin);
 
     // The name the operator has on the number, when Tranzak lets us ask
-    let holderName: string | null = null, nameCheck = 'unchecked';
+    let holderName: string | null = bankRow ? dto.holderName!.trim().toUpperCase().slice(0, 100) : null, nameCheck = 'unchecked';
     if (provider === 'MTN' || provider === 'ORANGE') {
       try {
         const r = await this.tranzak.checkName(number);
@@ -228,7 +251,7 @@ export class WithdrawalsService {
     // A brand-new account can be paid straight away; a changed one waits, in case someone else changed it
     const hadMoneyOut = before ? await this.prisma.withdrawal.count({ where: { userId: user.id, status: 'PAID' } }) + await this.prisma.payoutStatement.count({ where: { recipientId: user.id, status: 'PAID' } }) : 0;
     const data = {
-      bankName: label, accountNumber: number, country, provider: provider || null,
+      bankName: label, accountNumber: number, country: bankRow ? 'CM' : country, provider: provider || null, bankCode: bankRow?.id ?? null,
       ...(changed ? { holderName, nameCheck, isVerified: false, verifiedAt: null, changedAt: before && hadMoneyOut ? new Date() : null } : {}),
       ...(dto.pin != null ? { pinHash: await bcrypt.hash(dto.pin, 10), pinFailures: 0, pinLockedUntil: null, pinSetAt: new Date() } : {}),
     };
@@ -302,6 +325,8 @@ export class WithdrawalsService {
     // Why a person should look first
     const flags: string[] = [];
     if (!auto) flags.push('by-hand');
+    // Tranzak can't check names on bank accounts: an admin looks at every bank payment, then sends it through Tranzak or pays it by hand
+    if (account.provider === 'BANK') flags.push('bank');
     if (auto && amount > rules.autoLimit) flags.push('over-limit');
     if (account.nameCheck !== 'match' && !account.isVerified) flags.push('name-unconfirmed');
     const past = await this.prisma.withdrawal.findMany({ where: { userId: user.id, status: 'PAID' }, select: { amount: true }, take: 10, orderBy: { requestedAt: 'desc' } });
@@ -403,11 +428,13 @@ export class WithdrawalsService {
     const account = await this.prisma.payoutAccount.findUnique({ where: { userId: w.userId } });
     w = await this.prisma.withdrawal.update({ where: { id: w.id }, data: { status: 'SENDING', sentAt: new Date(), failureReason: null } });
     try {
-      const t = await this.tranzak.transferToMobileWallet({
-        amount: w.amount, currency: w.currency, number: w.payeeNumber, ref: w.reference,
-        name: account?.nameCheck === 'match' ? account.holderName : null, verifyName: account?.nameCheck === 'match',
-        description: `CareerPath Africa earnings ${w.reference}`, payeePaysFee: rules.payeePaysFee,
-      });
+      const t = account?.provider === 'BANK'
+        ? await this.tranzak.transferToBankAccount({ amount: w.amount, currency: w.currency, rib: w.payeeNumber, name: w.payeeName ?? account.holderName ?? '', ref: w.reference, description: `CareerPath Africa earnings ${w.reference}`, payeePaysFee: rules.payeePaysFee })
+        : await this.tranzak.transferToMobileWallet({
+          amount: w.amount, currency: w.currency, number: w.payeeNumber, ref: w.reference,
+          name: account?.nameCheck === 'match' ? account.holderName : null, verifyName: account?.nameCheck === 'match',
+          description: `CareerPath Africa earnings ${w.reference}`, payeePaysFee: rules.payeePaysFee,
+        });
       w = await this.prisma.withdrawal.update({ where: { id: w.id }, data: { transferId: t.transferId, fee: t.fee ?? null } });
       return this.settle(w, t);
     } catch (err: any) {
