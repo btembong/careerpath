@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
+import { AdminLiveHero } from '@/components/hero/AdminContentHeroes';
 import { Button } from '@/components/ui/Button';
 import { Drawer, DrawerContent, DrawerSection, InfoGrid } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
@@ -70,6 +71,7 @@ export default function AdminLivePage() {
       <Topbar title="Live classes" subtitle="Every class on the platform, what’s live now and how well they’re attended" />
 
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
+        <AdminLiveHero />
         <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
           {[
             { l: 'Live now', v: s ? String(s.liveNow) : '…', sub: s ? (s.liveNow ? `${s.inClassNow} student${s.inClassNow === 1 ? '' : 's'} in class` : 'No class running') : '' },

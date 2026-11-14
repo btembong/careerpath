@@ -4,6 +4,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 import { TeacherBankHero } from '@/components/hero/TeacherWorkHeroes';
+import { AdminQuestionsHero } from '@/components/hero/AdminContentHeroes';
 import { useAiEnabled } from '@/lib/ai';
 import { HelpfulEmpty } from '@/components/ui/HelpfulEmpty';
 
@@ -210,6 +211,7 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
     <div className="flex min-h-full flex-col">
       <Topbar />
       <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-6">
+        {role === 'ADMIN' && <AdminQuestionsHero aiOn={aiOn} onDraftAI={draftExplanations} onNoWhy={() => set('missing', 'explanation')} onAiDrafts={() => set('ai', 'drafts')} reloadKey={job?.status} />}
         {role === 'TEACHER' && <TeacherBankHero page="questions" onNew={() => setDraft(blank(f.courseId || (courses.length === 1 ? courses[0].id : '')))} />}
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">

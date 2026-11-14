@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
+import { AdminCoursesHero } from '@/components/hero/AdminContentHeroes';
 import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent, DrawerSection } from '@/components/ui/Dialog';
 import { QuickAdd, TagPickers, useTaxonomy, progName, type TaxOptions } from '@/components/admin/taxonomy';
@@ -91,6 +92,7 @@ export default function CourseManagementPage() {
       <Topbar title="Course management" subtitle="Every course: where it sits, who teaches it, how it’s sold and what’s in it"
         actions={<Button size="sm" onClick={() => setCreating(true)} disabled={!opts}>New course</Button>} />
       <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-[22px]">
+        <AdminCoursesHero onNew={() => setCreating(true)} />
         <div className="-mb-1 flex flex-wrap justify-end gap-2">
           <button onClick={() => setSettings(true)} className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Pricing settings</button>
           <Link href="/admin/courses/taxonomy" className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle">Taxonomy</Link>

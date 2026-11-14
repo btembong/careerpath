@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
+import { AdminCommissionsHero } from '@/components/hero/AdminContentHeroes';
 import { RepTable, td } from '@/components/rep/RepTable';
 import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
@@ -60,6 +61,7 @@ function CourseCommissions({ switcher }: { switcher: React.ReactNode }) {
   return (
     <>
       <RepTable title="Teachers, reviewers & commissions" subtitle="Who teaches and reviews each course, and their share of its sales"
+        top={<AdminCommissionsHero reloadKey={d} onDefaults={() => setDefaults(true)} onNoReviewer={() => { setTab('noReviewer'); setPicked(new Set()); const none = (d?.rows ?? []).filter(r => !r.reviewer); if (none.length) setEditing(none); }} />}
         actions={<div className="flex gap-2">
           {switcher}
           {picked.size > 0 && <Button size="sm" onClick={() => setEditing((d?.rows ?? []).filter(r => picked.has(r.id)))}>Change {picked.size} selected</Button>}

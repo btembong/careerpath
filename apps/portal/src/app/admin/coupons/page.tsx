@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { clsx } from 'clsx';
 import { majorToMinor } from '@cpa/shared';
+import { AdminCouponsHero } from '@/components/hero/AdminContentHeroes';
 import { RepTable, td } from '@/components/rep/RepTable';
 import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
@@ -45,6 +46,7 @@ export default function AdminCouponsPage() {
     <>
       <RepTable title="Coupons" subtitle="Discount codes for packages"
         actions={<Button size="sm" onClick={() => setAdding(true)}>New coupon</Button>}
+        top={<AdminCouponsHero onNew={() => setAdding(true)} reloadKey={d} />}
         stats={[
           { l: 'Active codes', v: s ? String(s.active) : '—', sub: s?.endingThisMonth ? `${s.endingThisMonth} end this month` : 'none ending this month' },
           { l: 'Used this month', v: s ? String(s.usedThisMonth) : '—', sub: 'times' },

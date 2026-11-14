@@ -12,6 +12,7 @@ import { TaxonomyService } from './taxonomy.service';
 import { TutorImportService } from './tutor-import.service';
 import { CommissionsService } from './commissions.service';
 import { ClassifyService } from './classify.service';
+import { ContentHeroesService } from './content-heroes.service';
 
 @ApiTags('admin course management')
 @ApiBearerAuth()
@@ -19,7 +20,11 @@ import { ClassifyService } from './classify.service';
 @Roles(UserRole.ADMIN)
 @Controller('admin')
 export class CourseAdminController {
-  constructor(private courses: CourseManageService, private pull: WpPullService, private taxonomy: TaxonomyService, private tutor: TutorImportService, private commissions: CommissionsService, private classify: ClassifyService) {}
+  constructor(private courses: CourseManageService, private pull: WpPullService, private taxonomy: TaxonomyService, private tutor: TutorImportService, private commissions: CommissionsService, private classify: ClassifyService, private heroes: ContentHeroesService) {}
+
+  @Get('content-hero/:section')
+  @ApiOperation({ summary: 'The numbers at the top of an Admin → Content page: courses, questions, mocks, packages, coupons, live or commissions' })
+  contentHero(@Param('section') section: string) { return this.heroes.get(section); }
 
   // ── Exam and subject for untagged courses ────────────────
 

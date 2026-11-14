@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { clsx } from 'clsx';
 import { minorToMajor, majorToMinor } from '@cpa/shared';
 import { Topbar } from '@/components/layout/Topbar';
+import { AdminPackagesHero } from '@/components/hero/AdminContentHeroes';
 import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
@@ -132,6 +133,7 @@ export default function AdminPackagesPage() {
       <Topbar title="Packages" subtitle="Bundle courses with live classes, and set the price"
         actions={<Button size="sm" onClick={() => pick('new')}>New package</Button>} />
 
+      <div className="px-4 pt-4 lg:px-7 lg:pt-6"><AdminPackagesHero reloadKey={packages} onNew={() => pick('new')} onPick={id => { const p = packages.find(x => x.id === id); if (p) pick(p); }} /></div>
       <div className="flex flex-wrap items-start gap-5 p-4 lg:px-7 lg:py-6">
         <section aria-label="Packages" className="min-w-0 flex-[1_1_340px] overflow-hidden rounded-lg border border-line bg-white">
           {loading ? <p className="p-5 text-sm text-muted">Loading packages…</p>

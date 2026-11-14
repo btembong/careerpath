@@ -5,6 +5,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 import { TeacherBankHero } from '@/components/hero/TeacherWorkHeroes';
+import { AdminMocksHero } from '@/components/hero/AdminContentHeroes';
 import { HelpfulEmpty } from '@/components/ui/HelpfulEmpty';
 
 type Kind = 'MOCK' | 'PAST_PAPER' | 'CAT';
@@ -128,6 +129,7 @@ export function MockExams({ role }: { role: 'ADMIN' | 'TEACHER' }) {
     <div className="flex min-h-full flex-col">
       <Topbar />
       <div className="flex flex-col gap-4 p-4 lg:px-7 lg:py-6">
+        {role === 'ADMIN' && <AdminMocksHero onNew={() => newExam('MOCK')} />}
         {role === 'TEACHER' && <TeacherBankHero page="mocks" onNew={() => newExam('MOCK')} />}
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">
