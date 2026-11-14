@@ -112,7 +112,7 @@ export class ClassifyService {
       programmes: programmes.map(p => ({ id: p.id, name: p.shortName ?? p.name, full: p.name })),
       subjects,
       courses: rows,
-      stats: { total: rows.length, withExam: rows.filter(r => r.exam).length, withSubject: rows.filter(r => r.subject).length, placeholders: rows.filter(r => r.placeholder).length },
+      stats: { allCourses: await this.prisma.platformCourse.count({ where: { status: { not: 'ARCHIVED' } } }), total: rows.length, withExam: rows.filter(r => r.exam).length, withSubject: rows.filter(r => r.subject).length, placeholders: rows.filter(r => r.placeholder).length },
     };
   }
 

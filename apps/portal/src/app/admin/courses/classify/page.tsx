@@ -5,6 +5,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Button } from '@/components/ui/Button';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { PageHero, heroBtnDark, heroBtnLine, asideLabel } from '@/components/hero/PageHero';
 
 interface Suggestion { id: string; name: string; confidence: 'high' | 'medium'; why: string }
 interface Row {
@@ -12,7 +13,7 @@ interface Row {
   current: { exam: { id: string; name: string } | null; subject: { id: string; name: string } | null };
   exam: Suggestion | null; subject: Suggestion | null;
 }
-interface Data { programmes: { id: string; name: string; full: string }[]; subjects: { id: string; name: string }[]; courses: Row[]; stats: { total: number; withExam: number; withSubject: number; placeholders: number } }
+interface Data { programmes: { id: string; name: string; full: string }[]; subjects: { id: string; name: string }[]; courses: Row[]; stats: { allCourses: number; total: number; withExam: number; withSubject: number; placeholders: number } }
 type Tab = 'title' | 'maybe' | 'none' | 'placeholder';
 interface Choice { exam: string; subject: string; on: boolean }
 
@@ -76,12 +77,48 @@ export default function ClassifyCoursesPage() {
       <Topbar title="Exam and subject" subtitle="So students find each course under its exam and subject in the catalogue" backHref="/admin/courses/manage" backLabel="Course management" />
       <div className="flex flex-col gap-4 p-4 pb-28 lg:px-7 lg:py-6 lg:pb-28">
         {!d ? <div className="h-40 animate-pulse rounded-lg border border-line bg-white" /> : <>
-          <section className="rounded-lg border border-azure bg-white px-[18px] py-4">
-            <p className="text-base font-extrabold text-navy">{d.stats.total} course{d.stats.total === 1 ? '' : 's'} without an exam or subject</p>
-            <p className="mt-0.5 text-[13px] text-ink2">We suggested an exam for {d.stats.withExam} and a subject for {d.stats.withSubject}, from their titles, descriptions and modules. Each dropdown has the suggestion chosen: change any you disagree with, tick the courses, then apply.</p>
-          </section>
+          {(() => {
+            const all = Math.max(d.stats.allCourses, d.stats.total), tagged = all - d.stats.total;
+            const after = tagged + counts.title;
+            const pct = (n: number) => (all ? Math.round((n / all) * 100) : 0);
+            return (
+              <PageHero
+                kicker={`Exam and subject · ${all} course${all === 1 ? '' : 's'} in the catalogue`}
+                l1={<><span className="text-[#FFFFFF]">{d.stats.total} course{d.stats.total === 1 ? '' : 's'}</span><br />without an exam or subject.</>}
+                sub={<>Students browse by exam first, so these courses never show under GCE, IELTS or any other exam. We suggested an exam for {d.stats.withExam} and a subject for {d.stats.withSubject} from their titles, descriptions and modules. Check them, tick, and apply in one go.</>}
+                chips={[
+                  { t: `${counts.title} from the title`, strong: true },
+                  ...(counts.maybe ? [{ t: `${counts.maybe} maybe` }] : []),
+                  ...(counts.none ? [{ t: `${counts.none} with no suggestion` }] : []),
+                  ...(counts.placeholder ? [{ t: `${counts.placeholder} placeholder titles` }] : []),
+                ]}
+                actions={<>
+                  <button type="button" onClick={() => { setTab('title'); document.getElementById('courses')?.scrollIntoView({ behavior: 'smooth' }); }} className={heroBtnDark}>Review the {counts.title} from the title</button>
+                  <button type="button" disabled={!picked.length || saving} onClick={apply} className={clsx(heroBtnLine, 'disabled:opacity-60')}>{saving ? 'Applying…' : `Apply ${picked.length} now`}</button>
+                </>}
+                aside={<>
+                  <p className={asideLabel}>Courses students can find by exam</p>
+                  <div>
+                    <span className="relative block h-3 overflow-hidden rounded-full bg-accent-soft">
+                      <span className="absolute inset-y-0 left-0 bg-[#BFD0FA]" style={{ width: `${pct(after)}%` }} />
+                      <span className="absolute inset-y-0 left-0 bg-[#3F6FE8]" style={{ width: `${pct(tagged)}%` }} />
+                    </span>
+                    <p className="mt-1.5 flex justify-between text-[12px] text-muted"><span><b className="text-navy">{pct(tagged)}%</b> today</span><span><b className="text-navy">{pct(after)}%</b> after applying the title matches</span></p>
+                  </div>
+                  <div className="flex flex-col gap-2 border-t border-line pt-2.5">
+                    {[['Check the dropdowns', 'The suggestion is already chosen'], ['Tick the courses', 'Title matches are ticked for you'], ['Apply in one go', 'They show under their exam straight away']].map(([t, s], i) => (
+                      <div key={t} className="flex items-start gap-3">
+                        <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-[12px] font-extrabold text-[#2F57C9]">{i + 1}</span>
+                        <span><span className="block text-[13px] font-bold">{t}</span><span className="block text-xs text-muted">{s}</span></span>
+                      </div>
+                    ))}
+                  </div>
+                </>}
+              />
+            );
+          })()}
 
-          <div role="tablist" aria-label="Suggestions" className="flex flex-wrap gap-1 self-start rounded-lg border border-line bg-white p-1">
+          <div id="courses" role="tablist" aria-label="Suggestions" className="scroll-mt-4 flex flex-wrap gap-1 self-start rounded-lg border border-line bg-white p-1">
             {TABS.map(([k, l]) => (
               <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
                 className={clsx('h-8 rounded-md px-3 text-[13px]', tab === k ? 'bg-accent-soft font-semibold text-navy' : 'font-medium text-ink2 hover:text-navy')}>
