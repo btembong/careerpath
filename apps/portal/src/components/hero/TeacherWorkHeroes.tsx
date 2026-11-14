@@ -61,7 +61,7 @@ export function TeacherCoursesHero({ onNew }: { onNew: () => void }) {
   if (!d.courses.length) return (
     <PageHero kicker="My courses" l1="Your first course" l2="starts here."
       sub="Start from the template: it sets up modules, lessons and quizzes for you to fill in. A reviewer checks it, then it goes live for students."
-      actions={<button type="button" onClick={onNew} className={heroBtn}>New course</button>}
+      actions={<><button type="button" onClick={onNew} className={heroBtn}>New course</button><Link href="/teacher/courses/sample" className={heroBtnLine}>See a sample course</Link></>}
       aside={<Explainer title="How a course goes live" rows={[['Build it from the template', 'Modules, lessons, videos and quizzes'], ['Submit it for review', 'A subject reviewer checks it, an admin publishes it'], ['Students join and learn', 'You see their progress and earn from each sale']]} />} />
   );
   const earned = st.earnedThisMonth && st.currency ? walletMoney(st.earnedThisMonth, st.currency) : null;
@@ -79,7 +79,7 @@ export function TeacherCoursesHero({ onNew }: { onNew: () => void }) {
       ]}
       actions={<>
         <button type="button" onClick={onNew} className={heroBtnDark}>New course</button>
-        <Link href="/teacher/wallet" className={heroBtnLine}>Earnings</Link>
+        <Link href="/teacher/courses/sample" className={heroBtnLine}>See a sample course</Link>
       </>}
       aside={<>
         <p className={asideLabel}>Your courses</p>

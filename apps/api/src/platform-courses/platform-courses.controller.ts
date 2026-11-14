@@ -164,6 +164,13 @@ export class PlatformCoursesController {
     return this.svc.teacherShare(id, user);
   }
 
+  @Get('sample')
+  @Roles(UserRole.ADMIN, UserRole.TEACHER, UserRole.SUBJECT_REVIEWER)
+  @ApiOperation({ summary: '[Teacher] The sample course, in full (lesson content, quiz questions with answers), to copy the format' })
+  sample() {
+    return this.svc.sampleCourse();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get full course with modules and lessons' })
   getCourse(@CurrentUser() user: UserProfile, @Param('id') id: string) {

@@ -473,6 +473,32 @@ export class PlatformCoursesService {
     return this.prisma.lesson.delete({ where: { id: lessonId } });
   }
 
+  /**
+   * The course teachers are shown as an example of how to set one up (set in the `sampleCourse` platform
+   * setting): every lesson's content and every quiz question with its answer and explanation.
+   */
+  async sampleCourse() {
+    const row = await this.prisma.platformSetting.findUnique({ where: { key: 'sampleCourse' } });
+    const id = ((row?.value ?? {}) as { courseId?: string }).courseId;
+    if (!id) throw new NotFoundException('There’s no sample course yet');
+    const course = await this.prisma.platformCourse.findUnique({
+      where: { id },
+      select: {
+        id: true, title: true, description: true, shortDescription: true, outcomes: true, coverUrl: true, status: true,
+        modules: { orderBy: { sortOrder: 'asc' }, select: { id: true, title: true, lessons: { orderBy: { sortOrder: 'asc' }, select: { id: true, title: true, type: true, content: true, videoUrl: true, durationSecs: true, isFree: true, passMark: true, timeLimitSecs: true, attachments: true } } } },
+        _count: { select: { enrollments: true } },
+      },
+    });
+    if (!course) throw new NotFoundException('There’s no sample course yet');
+    const quizIds = course.modules.flatMap(m => m.lessons.filter(l => l.type === 'QUIZ').map(l => l.id));
+    const questions = await this.prisma.questionBank.findMany({
+      where: { lessonId: { in: quizIds }, bankOnly: false },
+      orderBy: { sortOrder: 'asc' },
+      select: { id: true, lessonId: true, questionText: true, type: true, difficulty: true, options: true, correctAnswer: true, explanation: true },
+    });
+    return { ...course, questions };
+  }
+
   /** A file students can open or download from the lesson (PDF, Word, image). Only the course's own staff can add one. */
   async addAttachment(courseId: string, lessonId: string, dto: { name?: string; url?: string; fileType?: string }, actor: UserProfile) {
     await this.assertCourseAccess(courseId, actor);
