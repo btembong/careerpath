@@ -101,7 +101,7 @@ export const FOOTER_NOTE_SLOT = '<!--cpa-footer-note-->';
 // ── Base shell ───────────────────────────────────────────────────────────────
 
 /** Every email: logo and label above a white card on a light page; title, body, then a quiet footer inside the card. */
-function base(heroHtml: string, bodyHtml: string, badge?: string): string {
+function base(heroHtml: string, bodyHtml: string, badge?: string, topBlock?: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -118,6 +118,7 @@ function base(heroHtml: string, bodyHtml: string, badge?: string): string {
     <tr><td style="padding:0 4px 16px">${logo(badge)}</td></tr>
     <tr><td style="background:${C.card};border:1px solid ${C.border};border-radius:14px;overflow:hidden">
       <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        ${topBlock ? `<tr><td style="padding:0">${topBlock}</td></tr>` : ''}
         <tr><td class="cpa-body" style="padding:32px 32px 28px;font-family:${FONT};font-size:14px;line-height:1.65;color:${C.sec}">
           ${heroHtml}
           ${bodyHtml}
@@ -329,64 +330,151 @@ export function repAssignedTemplate(countryName: string, currency: string): stri
   return base(hero, body, 'Welcome');
 }
 
-// ── 5a. Welcome — Student ────────────────────────────────────────────────────
+// ── Welcome emails: the portal's blue hero, then a fuller body ───────────────
 
-export function welcomeStudentTemplate(firstName: string, studentNo?: string): string {
-  const name = firstName || 'there';
-  const hero = headline('Welcome,', `${escapeHtml(name)}.`);
-
-  const idBox = studentNo ? `
-    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px">
-      <tr>
-        <td style="background:#F0F4FF;border:1.5px dashed #5889FA;border-radius:8px;padding:14px 18px">
-          <p style="margin:0 0 3px;font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#5889FA;font-family:${FONT}">Your Student ID</p>
-          <p style="margin:0;font-size:20px;font-weight:900;color:#072061;font-family:${FONT};letter-spacing:2px">${studentNo}</p>
-          <p style="margin:4px 0 0;font-size:11px;color:#3A4A70;opacity:0.7;font-family:${FONT}">Keep this for reference in all support queries.</p>
-        </td>
-      </tr>
-    </table>` : '';
-
-  const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
-      Your <strong style="color:#072061">CareerPath Africa</strong> account is ready. Browse available packages and start learning at your own pace.
-    </p>
-    ${idBox}
-    ${ctaButton('Explore packages', `${portalUrl()}/packages`)}
-    ${divider()}
-    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
-      Need help getting started? Email us at <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
-    </p>`;
-
-  return base(hero, body, 'Welcome');
+const NAVY = '#072061';
+/** The portal's page hero, as an email block: kicker, two-tone headline, a sentence, buttons, and a white card inside */
+function blueHero(o: { kicker: string; l1: string; l2: string; sub: string; primary: [string, string]; secondary?: [string, string]; card: string }): string {
+  return `
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BLUE}" bgcolor="${BLUE}">
+      <tr><td style="padding:30px 30px 28px;font-family:${FONT}">
+        <p style="margin:0 0 10px;font-size:11.5px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:${NAVY};font-family:${FONT}">${o.kicker}</p>
+        <p style="margin:0;font-size:36px;font-weight:800;line-height:1.05;letter-spacing:-0.03em;color:${NAVY};font-family:${FONT}">${o.l1}<br/><span style="color:#FFFFFF">${o.l2}</span></p>
+        <p style="margin:14px 0 0;font-size:15px;line-height:1.55;color:#0B1F55;font-family:${FONT}">${o.sub}</p>
+        <table cellpadding="0" cellspacing="0" border="0" style="margin:20px 0 0"><tr>
+          <td style="background:#FFFFFF;border-radius:6px"><a href="${o.primary[1]}" style="display:inline-block;padding:12px 18px;font-size:14px;font-weight:800;color:#2F57C9;text-decoration:none;font-family:${FONT}">${o.primary[0]}</a></td>
+          ${o.secondary ? `<td width="8" style="width:8px">&nbsp;</td><td style="background:${NAVY};border-radius:6px"><a href="${o.secondary[1]}" style="display:inline-block;padding:12px 18px;font-size:14px;font-weight:700;color:#FFFFFF;text-decoration:none;font-family:${FONT}">${o.secondary[0]}</a></td>` : ''}
+        </tr></table>
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 0;transform:rotate(-1.5deg)"><tr>
+          <td style="background:#FFFFFF;border-radius:12px;padding:16px 18px;box-shadow:0 14px 30px rgba(7,32,97,0.22);font-family:${FONT}">${o.card}</td>
+        </tr></table>
+      </td></tr>
+    </table>`;
 }
 
-// ── 5b. Welcome — Teacher (pending review) ───────────────────────────────────
+/** A label in small capitals, for the white card and section heads */
+const smallCaps = (t: string, colour = C.mut) => `<p style="margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:${colour};font-family:${FONT}">${t}</p>`;
+const para = (html: string, last = false) => `<p style="margin:0 0 ${last ? 0 : 14}px;font-size:14.5px;line-height:1.65;color:${C.sec};font-family:${FONT}">${html}</p>`;
+const sectionHead = (t: string) => `<p style="margin:26px 0 10px;font-size:17px;font-weight:800;letter-spacing:-0.01em;color:${C.pri};font-family:${FONT}">${t}</p>`;
 
-export function welcomeTeacherTemplate(firstName: string): string {
-  const name = firstName || 'there';
-  const hero = headline(`Thanks, ${escapeHtml(name)}.`, 'We’ve got it.');
+/** Numbered steps: a blue number tile, a bold line and a sentence */
+function steps(rows: [string, string, string?][]): string {
+  return `<table width="100%" cellpadding="0" cellspacing="0" border="0">${rows.map(([t, d, href], i) => `
+    <tr>
+      <td width="30" valign="top" style="width:30px;padding:0 12px 14px 0">
+        <table cellpadding="0" cellspacing="0" border="0"><tr><td width="28" height="28" align="center" style="width:28px;height:28px;background:#EAF0FF;border-radius:8px;font-size:13px;font-weight:800;color:#2F57C9;font-family:${FONT}">${i + 1}</td></tr></table>
+      </td>
+      <td valign="top" style="padding:0 0 14px;font-family:${FONT}">
+        <p style="margin:3px 0 2px;font-size:14.5px;font-weight:700;color:${C.pri};font-family:${FONT}">${href ? `<a href="${href}" style="color:${C.pri};text-decoration:none">${t}</a>` : t}</p>
+        <p style="margin:0;font-size:13.5px;line-height:1.55;color:${C.sec};font-family:${FONT}">${d}</p>
+      </td>
+    </tr>`).join('')}</table>`;
+}
+
+/** Two-by-two tiles: what's included */
+function tiles(rows: [string, string][]): string {
+  const cell = ([t, d]: [string, string]) => `<td width="50%" valign="top" style="width:50%;padding:5px"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${C.surface};border:1px solid ${C.border};border-radius:10px;padding:13px 14px;font-family:${FONT}">
+    <p style="margin:0 0 3px;font-size:14px;font-weight:800;color:${C.pri};font-family:${FONT}">${t}</p>
+    <p style="margin:0;font-size:12.5px;line-height:1.5;color:${C.sec};font-family:${FONT}">${d}</p></td></tr></table></td>`;
+  const out: string[] = [];
+  for (let i = 0; i < rows.length; i += 2) out.push(`<tr>${cell(rows[i])}${rows[i + 1] ? cell(rows[i + 1]) : '<td width="50%"></td>'}</tr>`);
+  return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 -5px">${out.join('')}</table>`;
+}
+
+const signOff = (team: string) => `
+  ${divider()}
+  ${para(`If anything is unclear, reply to this email or write to <a href="mailto:support@careerpathafrica.com" style="color:#2F57C9;text-decoration:none;font-weight:600">support@careerpathafrica.com</a>. A real person on our team reads every message, usually within a working day.`)}
+  ${para(`Welcome aboard,<br/><strong style="color:${C.pri}">${team}</strong><br/><span style="color:${C.mut}">CareerPath Africa – Online College &amp; University</span>`, true)}`;
+
+// ── 5. Welcome — Student ─────────────────────────────────────────────────────
+
+export function welcomeStudentTemplate(firstName: string, studentNo?: string): string {
+  const name = escapeHtml(firstName || 'there');
+  const url = portalUrl();
+  const card = `
+    ${smallCaps('Your first week')}
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      ${[['Set your exam date', 'Your roadmap plans every week up to it'], ['Start a course', 'Or try the free lessons first'], ['Join a live class', 'Ask your questions in real time']].map(([t, d], i) => `
+      <tr><td width="26" valign="top" style="width:26px;padding:0 10px 9px 0"><table cellpadding="0" cellspacing="0" border="0"><tr><td width="24" height="24" align="center" style="width:24px;height:24px;background:#EAF0FF;border-radius:7px;font-size:12px;font-weight:800;color:#2F57C9;font-family:${FONT}">${i + 1}</td></tr></table></td>
+      <td valign="top" style="padding:0 0 9px;font-family:${FONT}"><p style="margin:2px 0 0;font-size:13.5px;font-weight:700;color:${NAVY};font-family:${FONT}">${t}</p><p style="margin:0;font-size:12px;color:${C.mut};font-family:${FONT}">${d}</p></td></tr>`).join('')}
+    </table>
+    ${studentNo ? `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 0"><tr><td style="border-top:1px solid ${C.border};padding-top:10px;font-family:${FONT}">
+      <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${C.mut};font-family:${FONT}">Your student ID</p>
+      <p style="margin:2px 0 0;font-size:19px;font-weight:800;letter-spacing:0.06em;color:${NAVY};font-family:${FONT}">${escapeHtml(studentNo)}</p></td></tr></table>` : ''}`;
+
+  const hero = blueHero({
+    kicker: 'Welcome to CareerPath Africa', l1: 'Welcome,', l2: `${name}.`,
+    sub: 'Your account is ready. Everything you need to prepare for your exams, courses, live classes, practice tests and mentors, is now in one place.',
+    primary: ['Open my dashboard', `${url}/student/dashboard`], secondary: ['See packages', `${url}/packages`], card,
+  });
 
   const body = `
-    <p style="margin:0 0 20px;font-size:15px;color:#3A4A70;line-height:1.6;font-family:${FONT}">
-      We've received your teacher application on <strong style="color:#072061">CareerPath Africa</strong>.
-      Our team will review it and notify you by email — typically within 2–3 business days.
-    </p>
-    <table cellpadding="0" cellspacing="0" border="0" width="100%">
-      <tr>
-        <td style="background:#F8FAFF;border:1px solid #E6ECFD;border-radius:8px;padding:14px 18px">
-          <p style="margin:0;font-size:12px;color:#3A4A70;line-height:1.5;font-family:${FONT}">
-            <strong style="color:#072061">What happens next?</strong>
-            Once approved, you'll receive a second email with a link to your teacher dashboard where you can create cohorts, schedule live classes, and upload course materials.
-          </p>
-        </td>
-      </tr>
-    </table>
-    ${divider()}
-    <p style="margin:0;font-size:12px;color:#3A4A70;opacity:0.6;font-family:${FONT}">
-      Questions? Contact us at <a href="mailto:support@careerpathafrica.com" style="color:#5889FA;text-decoration:none">support@careerpathafrica.com</a>.
-    </p>`;
+    ${para(`Hi ${name},`)}
+    ${para(`Thank you for joining <strong style="color:${C.pri}">CareerPath Africa</strong>. We help students across Africa prepare for the exams that open doors: GCE, BAC, professional and university entrance exams, and international tests. You learn with experienced teachers, at your own pace, on your phone or your computer.`)}
+    ${para(`Here is how to make the most of your first week.`)}
+    ${sectionHead('Get started in four steps')}
+    ${steps([
+      ['Complete your profile', 'Add your exam and its date. Your roadmap then plans every module, live class and revision week up to it, and tells you each week whether you’re on track.', `${url}/student/profile`],
+      ['Choose a course or a package', 'Many courses have free lessons, so you can try before you buy. A package brings several courses together, often with live classes and mentoring.', `${url}/packages`],
+      ['Plan your study time', 'Put study blocks in your calendar. A little every day beats a long session once a week, and we’ll remind you when it’s time.', `${url}/student/calendar`],
+      ['Practise in the Test Centre', 'Past papers, mock exams and practice tests, marked straight away, so you see exactly what to work on next.', `${url}/student/tests`],
+    ])}
+    ${sectionHead('What you get with CareerPath Africa')}
+    ${tiles([
+      ['Courses', 'Video lessons, notes and quizzes written by teachers who know your exam.'],
+      ['Live classes', 'Join your class online, ask questions, and watch the recording later.'],
+      ['Test Centre', 'Past papers and timed mock exams, with answers explained.'],
+      ['Mentors', 'Book a one-to-one session when you’re stuck or need a plan.'],
+      ['Flashcards', 'Short daily reviews so what you learn stays with you.'],
+      ['Certificates', 'Earn one for every course you finish, verifiable online.'],
+    ])}
+    ${sectionHead('Learn on your phone')}
+    ${para(`Open <a href="${url}" style="color:#2F57C9;text-decoration:none;font-weight:600">app.careerpathafrica.com</a> on your phone and tap <strong style="color:${C.pri}">Install app</strong>. CareerPath Africa then opens from your home screen like any other app, and lessons work well even on a slow connection.`)}
+    ${studentNo ? para(`Keep your student ID, <strong style="color:${C.pri}">${escapeHtml(studentNo)}</strong>, for any question to our team. It helps us find your account straight away.`) : ''}
+    ${signOff('The CareerPath Africa team')}`;
 
-  return base(hero, body, 'Teaching');
+  return base('', body, 'Welcome', hero);
+}
+
+// ── 5b. Welcome — Teacher (application received) ─────────────────────────────
+
+export function welcomeTeacherTemplate(firstName: string): string {
+  const name = escapeHtml(firstName || 'there');
+  const url = portalUrl();
+  const card = `
+    ${smallCaps('What happens next')}
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      ${[['We review your application', 'Usually within 2 to 3 working days'], ['You get an email from us', 'With your teacher number when you’re approved'], ['You start teaching', 'Courses, live classes, mentoring and earnings']].map(([t, d], i) => `
+      <tr><td width="26" valign="top" style="width:26px;padding:0 10px 9px 0"><table cellpadding="0" cellspacing="0" border="0"><tr><td width="24" height="24" align="center" style="width:24px;height:24px;background:${i === 0 ? '#E3F5EC' : '#EAF0FF'};border-radius:7px;font-size:12px;font-weight:800;color:${i === 0 ? '#1A7F4B' : '#2F57C9'};font-family:${FONT}">${i === 0 ? '✓' : i + 1}</td></tr></table></td>
+      <td valign="top" style="padding:0 0 9px;font-family:${FONT}"><p style="margin:2px 0 0;font-size:13.5px;font-weight:700;color:${NAVY};font-family:${FONT}">${t}</p><p style="margin:0;font-size:12px;color:${C.mut};font-family:${FONT}">${d}</p></td></tr>`).join('')}
+    </table>`;
+
+  const hero = blueHero({
+    kicker: 'Teaching with CareerPath Africa', l1: `Thank you, ${name}.`, l2: 'We’ve got your application.',
+    sub: 'Our team is reviewing it now. While you wait, you can get your teacher profile ready so students can find you the day you’re approved.',
+    primary: ['Complete my profile', `${url}/teacher/profile`], card,
+  });
+
+  const body = `
+    ${para(`Hi ${name},`)}
+    ${para(`Thank you for applying to teach with <strong style="color:${C.pri}">CareerPath Africa</strong>. Our teachers help students across Africa prepare for the exams that shape their future, and we’re glad you want to be one of them.`)}
+    ${para(`We read every application ourselves. We look at your subjects, your experience and how you explain things, and we’ll write to you within 2 to 3 working days.`)}
+    ${sectionHead('Get ready while you wait')}
+    ${steps([
+      ['Add a photo and a short bio', 'Students choose teachers they can see and trust. A clear photo and two or three sentences about how you teach make the difference.', `${url}/teacher/profile`],
+      ['Record a short intro video', 'One minute on your phone is enough: who you are, what you teach and how you help students pass. It appears on your profile and your mentoring page.', `${url}/teacher/profile`],
+      ['Think about your first course', 'Once you’re approved, the course builder gives you a template with modules, lessons and quizzes to fill in. A reviewer checks it before it goes live.'],
+    ])}
+    ${sectionHead('How you earn')}
+    ${tiles([
+      ['Course sales', 'A share of every sale of your courses, alone or in a package.'],
+      ['Live classes', 'Paid for every class hour you teach your cohorts.'],
+      ['Mentoring', 'Paid for every one-to-one session you hold.'],
+      ['Get paid your way', 'Withdraw to MTN MoMo, Orange Money or your bank, when you like.'],
+    ])}
+    ${signOff('The CareerPath Africa teachers team')}`;
+
+  return base('', body, 'Teaching', hero);
 }
 
 // ── 5b. Admin announcement (broadcast) ───────────────────────────────────────

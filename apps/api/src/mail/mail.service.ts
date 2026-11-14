@@ -165,7 +165,7 @@ export class MailService {
   async sendWelcomeStudent(email: string, firstName: string, studentNo?: string): Promise<void> {
     await this.send(
       email,
-      'Welcome to CareerPath Africa — your account is ready',
+      'Welcome to CareerPath Africa, your account is ready',
       welcomeStudentTemplate(firstName, studentNo), 'hello',
     );
   }
@@ -173,7 +173,7 @@ export class MailService {
   async sendWelcomeTeacher(email: string, firstName: string): Promise<void> {
     await this.send(
       email,
-      'Application received — CareerPath Africa',
+      'We’ve received your teacher application · CareerPath Africa',
       welcomeTeacherTemplate(firstName), 'hello',
     );
   }
