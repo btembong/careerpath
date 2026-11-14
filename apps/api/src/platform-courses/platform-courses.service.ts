@@ -3,7 +3,6 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, UserProfile, CourseStatus, CourseSource, UserRole } from '@prisma/client';
-import { cleanDescription, cleanTitle } from '../course-admin/wp-text';
 import { WordPressService } from '../wordpress/wordpress.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { FilesService } from '../files/files.service';
@@ -111,50 +110,6 @@ export class PlatformCoursesService {
     return { updated: result.count };
   }
 
-  // ── WordPress Sync ────────────────────────────────────────
-
-  async syncWpCourses(wp: WordPressService, adminId: string): Promise<{ created: number; updated: number; total: number }> {
-    const wpCourses = await wp.getCourses();
-    let created = 0;
-    let updated = 0;
-
-    for (const wc of wpCourses) {
-      const title = cleanTitle(wc.title?.rendered ?? '');
-      const description = cleanDescription(wc.content?.rendered ?? '');
-      const wpCourseUrl = wc.link ?? null;
-
-      const existing = await this.prisma.platformCourse.findUnique({
-        where: { wpCourseId: wc.id },
-      });
-
-      if (existing) {
-        await this.prisma.platformCourse.update({
-          where: { id: existing.id },
-          data: { title, description, wpCourseUrl },
-        });
-        updated++;
-      } else {
-        await this.prisma.platformCourse.create({
-          data: {
-            title,
-            description,
-            source: CourseSource.WORDPRESS,
-            wpCourseId: wc.id,
-            wpCourseUrl,
-            // CareerPath owns it (through the admin) until a teacher is assigned in Course management
-            teacherId: adminId,
-            teacherPending: true,
-            status: CourseStatus.PUBLISHED,
-          },
-        });
-        created++;
-      }
-    }
-
-    await wp.invalidateCourseCache();
-    return { created, updated, total: wpCourses.length };
-  }
-
   async getCourse(id: string, viewer: UserProfile) {
     const isStudent = (viewer.role as UserRole) === UserRole.STUDENT;
     const course = await this.prisma.platformCourse.findUniqueOrThrow({
@@ -200,6 +155,9 @@ export class PlatformCoursesService {
     if (!isAdmin && adminOnly) {
       throw new ForbiddenException('Only admins can change a course’s status, teacher or source. Submit the course for review instead.');
     }
+    if (dto.title !== undefined && (typeof dto.title !== 'string' || !dto.title.trim() || dto.title.length > 200)) throw new BadRequestException('A title needs 1 to 200 characters');
+    if (dto.description !== undefined && dto.description !== null && (typeof dto.description !== 'string' || dto.description.length > 5000)) throw new BadRequestException('The description can be up to 5,000 characters');
+    if (dto.shortDescription && dto.shortDescription.length > 200) throw new BadRequestException('The short description can be up to 200 characters');
     // Prices are set by admins; teachers propose one through /price-proposal
     const pricing = [dto.priceAmount, dto.priceCurrency, dto.isSoldIndividually, dto.accessMonths].some(v => v !== undefined);
     if (dto.accessMonths != null && (!Number.isInteger(dto.accessMonths) || dto.accessMonths < 1 || dto.accessMonths > 120)) {
@@ -209,7 +167,7 @@ export class PlatformCoursesService {
       throw new ForbiddenException('Propose a price for approval instead of setting it directly.');
     }
     const data: Prisma.PlatformCourseUncheckedUpdateInput = {
-      ...(dto.title !== undefined && { title: dto.title }),
+      ...(dto.title !== undefined && { title: dto.title.trim() }),
       ...(dto.description !== undefined && { description: dto.description }),
       ...(dto.shortDescription !== undefined && { shortDescription: dto.shortDescription }),
       ...(isAdmin && dto.source !== undefined && { source: dto.source }),
@@ -484,7 +442,7 @@ export class PlatformCoursesService {
     const course = await this.prisma.platformCourse.findUnique({
       where: { id },
       select: {
-        id: true, title: true, description: true, shortDescription: true, outcomes: true, coverUrl: true, status: true,
+        id: true, title: true, description: true, shortDescription: true, outcomes: true, coverUrl: true, status: true, source: true,
         modules: { orderBy: { sortOrder: 'asc' }, select: { id: true, title: true, lessons: { orderBy: { sortOrder: 'asc' }, select: { id: true, title: true, type: true, content: true, videoUrl: true, durationSecs: true, isFree: true, passMark: true, timeLimitSecs: true, attachments: true } } } },
         _count: { select: { enrollments: true } },
       },

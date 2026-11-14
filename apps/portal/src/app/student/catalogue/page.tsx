@@ -452,7 +452,7 @@ function CoursePreview({ course, packages, owned, separateTotal, onEnrolled }: {
         ...(course.language ? [{ label: 'Language', value: course.language }] : []),
       ]} />
 
-      {course.description && <p className="text-[13.5px] leading-relaxed text-ink2">{course.description}</p>}
+      {course.description && <p className="whitespace-pre-line text-[13.5px] leading-relaxed text-ink2">{course.description}</p>}
 
       {!owned && !free && (
         <DrawerSection title="Choose how to get it">

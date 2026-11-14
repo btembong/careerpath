@@ -256,7 +256,7 @@ export default function CourseManagementPage() {
 }
 
 interface Detail {
-  id: string; title: string; source: string; status: Row['status']; catalogueHidden: boolean; wpCourseUrl: string | null; wpCategories: string[]; wpAuthorEmail: string | null;
+  id: string; title: string; description: string | null; shortDescription: string | null; source: string; status: Row['status']; catalogueHidden: boolean; wpCourseUrl: string | null; wpCategories: string[]; wpAuthorEmail: string | null;
   programmeId: string | null; subjectId: string | null; levelId: string | null; teacher: { id: string; name: string } | null; students: number; modules: number;
   suggestion: (Tags & { from: string | null }) | null;
   language: string | null;
@@ -296,6 +296,7 @@ function CourseDrawer({ id, opts, pkgs, onClose, onSaved, onAdd }: { id: string;
   const [amount, setAmount] = useState(''), [currency, setCurrency] = useState('GHS'), [months, setMonths] = useState('12');
   const [addPkg, setAddPkg] = useState('');
   const [language, setLanguage] = useState('');
+  const [text, setText] = useState({ title: '', short: '', description: '' });
   useEffect(() => {
     api.get(`/admin/course-manage/${id}`).then(r => {
       const x: Detail = r.data; setD(x);
@@ -305,6 +306,7 @@ function CourseDrawer({ id, opts, pkgs, onClose, onSaved, onAdd }: { id: string;
       if (x.price) { setAmount(String(minorToMajor(x.price.amount, x.price.currency))); setCurrency(x.price.currency); }
       setMonths(x.accessMonths == null ? '' : String(x.accessMonths));
       setLanguage(x.language ?? '');
+      setText({ title: x.title, short: x.shortDescription ?? '', description: x.description ?? '' });
     }).catch(() => notify.error('Could not open this course'));
   }, [id]);
 
@@ -326,6 +328,12 @@ function CourseDrawer({ id, opts, pkgs, onClose, onSaved, onAdd }: { id: string;
       if (mode === 'none' && wasMode !== 'none') await one('unsell');
       if (addPkg) await one('addToPackage', { packageId: addPkg });
       if ((language || null) !== d.language) await api.patch(`/platform-courses/${d.id}`, { language: language || null });
+      // What students read: only what changed, so an untouched WordPress text stays as it came
+      const words: Record<string, string | null> = {};
+      if (text.title.trim() !== d.title) words.title = text.title.trim();
+      if ((text.short.trim() || null) !== (d.shortDescription ?? null)) words.shortDescription = text.short.trim() || null;
+      if (text.description.trim() !== (d.description ?? '').trim()) words.description = text.description.trim();
+      if (Object.keys(words).length) await api.patch(`/platform-courses/${d.id}`, words);
       notify.success('Course saved'); await onSaved(); onClose();
     } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not save'); } finally { setSaving(false); }
   }
@@ -348,6 +356,20 @@ function CourseDrawer({ id, opts, pkgs, onClose, onSaved, onAdd }: { id: string;
               <button onClick={() => setTags({ programmeId: tags.programmeId ?? s.programmeId, subjectId: tags.subjectId ?? s.subjectId, levelId: tags.levelId ?? s.levelId })} className="font-semibold text-azure-strong underline">Use this</button>
             </p>
           )}
+          <div className="flex flex-col gap-3 rounded-lg border border-line p-3.5">
+            <p className="text-[11.5px] font-bold uppercase tracking-[0.06em] text-muted">What students read</p>
+            <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Title</span>
+              <input className="input-base" value={text.title} maxLength={200} onChange={e => setText({ ...text, title: e.target.value })} />
+            </label>
+            <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Short description <span className="font-normal text-muted">· on course cards</span></span>
+              <textarea className="input-base h-auto resize-none py-2" rows={2} maxLength={200} value={text.short} onChange={e => setText({ ...text, short: e.target.value })} placeholder="One or two sentences" />
+              <span className="text-right text-[11px] text-muted">{text.short.length}/200</span>
+            </label>
+            <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Description <span className="font-normal text-muted">· on the course page</span></span>
+              <textarea className="input-base h-auto resize-y py-2 leading-relaxed" rows={7} maxLength={5000} value={text.description} onChange={e => setText({ ...text, description: e.target.value })} placeholder="What the course covers, who it’s for, how it’s organised" />
+              <span className="flex justify-between gap-3 text-[11px] text-muted"><span>{d.source === 'WORDPRESS' ? 'From careerpathafrica.com. Your edit stays unless the website’s text changes again.' : 'Line breaks are kept.'}</span><span className="flex-shrink-0">{text.description.length}/5000</span></span>
+            </label>
+          </div>
           <TagPickers opts={opts} value={tags} onChange={setTags} onAdd={kind => onAdd(kind, tags.programmeId, id => setTags(t => kind === 'programme' ? { ...t, programmeId: id } : { ...t, subjectId: id }))} />
           <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Teacher</span>
             <select className="input-base" value={teacher} onChange={e => setTeacher(e.target.value)}>

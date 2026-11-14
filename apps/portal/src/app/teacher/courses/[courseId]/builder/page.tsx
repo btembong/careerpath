@@ -60,7 +60,7 @@ function parseChapters(text: string): { chapters: { startSec: number; title: str
 }
 interface Course {
   id: string; title: string; description: string | null;
-  shortDescription: string | null; coverUrl: string | null; status: string; outcomes?: string[];
+  shortDescription: string | null; coverUrl: string | null; status: string; outcomes?: string[]; source?: string;
   programme: { name: string; shortName: string | null } | null;
   subject: { name: string } | null;
   modules: Module[];
@@ -380,6 +380,7 @@ export default function CourseBuilderPage() {
 
   // Cover image + short description
   const [shortDesc, setShortDesc] = useState('');
+  const [fullDesc, setFullDesc] = useState('');
   const [outcomes, setOutcomes] = useState<string[]>([]);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [savingMeta, setSavingMeta] = useState(false);
@@ -411,8 +412,9 @@ export default function CourseBuilderPage() {
     setSavingMeta(true);
     try {
       const clean = outcomes.map(o => o.trim()).filter(Boolean);
-      await api.patch(`/platform-courses/${courseId}`, { shortDescription: shortDesc || null, outcomes: clean });
-      setCourse(c => c ? { ...c, shortDescription: shortDesc || null, outcomes: clean } : c);
+      const description = fullDesc.trim();
+      await api.patch(`/platform-courses/${courseId}`, { shortDescription: shortDesc || null, description, outcomes: clean });
+      setCourse(c => c ? { ...c, shortDescription: shortDesc || null, description, outcomes: clean } : c);
       setOutcomes(clean);
       notify.success('Course details saved');
     } catch { notify.error('Failed to save'); }
@@ -450,6 +452,7 @@ export default function CourseBuilderPage() {
     setCourse(r.data);
     api.get(`/platform-courses/${courseId}/review-status`).then(x => setReview(x.data || null)).catch(() => setReview(null));
     setShortDesc(r.data.shortDescription ?? '');
+    setFullDesc(r.data.description ?? '');
     setOutcomes(r.data.outcomes ?? []);
   }
 
@@ -779,6 +782,22 @@ export default function CourseBuilderPage() {
                     className="w-full rounded-xl border border-cloud bg-white px-3 py-2 text-sm text-navy outline-none focus:border-azure placeholder:text-royal/40 resize-none"
                   />
                   <p className="text-[10px] text-royal/30 text-right">{shortDesc.length}/200</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-navy">Description</p>
+                  <p className="mb-2 text-[11px] text-muted">The full text on the course page: what the course covers, who it’s for, how it’s organised. Line breaks are kept.</p>
+                  <textarea
+                    value={fullDesc}
+                    onChange={e => setFullDesc(e.target.value)}
+                    rows={8}
+                    maxLength={5000}
+                    placeholder="What this course covers, who it’s for, and how it’s organised…"
+                    className="w-full resize-y rounded-xl border border-cloud bg-white px-3 py-2 text-sm leading-relaxed text-navy outline-none placeholder:text-royal/40 focus:border-azure"
+                  />
+                  <div className="flex justify-between gap-3 text-[10px]">
+                    <span className="text-muted">{course.source === 'WORDPRESS' ? 'Came from careerpathafrica.com. Your edit stays; the WordPress check only proposes a change if the website’s text changes again.' : ''}</span>
+                    <span className="flex-shrink-0 text-royal/30">{fullDesc.length}/5000</span>
+                  </div>
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-navy">What students will be able to do</p>

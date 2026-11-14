@@ -49,14 +49,6 @@ export class PlatformCoursesController {
     });
   }
 
-  @Post('wp-sync')
-  @Roles(UserRole.ADMIN)
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '[Admin] Pull published courses from WordPress and upsert into PlatformCourse' })
-  syncWpCourses(@CurrentUser() user: UserProfile) {
-    return this.svc.syncWpCourses(this.wp, user.id);
-  }
-
   @Patch('bulk-assign')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)

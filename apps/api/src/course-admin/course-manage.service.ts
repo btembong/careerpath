@@ -275,7 +275,7 @@ export class CourseManageService {
     const c = await this.prisma.platformCourse.findUnique({
       where: { id },
       select: {
-        id: true, title: true, source: true, status: true, catalogueHidden: true, teacherPending: true, wpCourseUrl: true, wpCategoryIds: true, wpPulledAt: true, wpAuthorEmail: true,
+        id: true, title: true, description: true, shortDescription: true, source: true, status: true, catalogueHidden: true, teacherPending: true, wpCourseUrl: true, wpCategoryIds: true, wpPulledAt: true, wpAuthorEmail: true,
         programmeId: true, subjectId: true, levelId: true, teacher: { select: { id: true, name: true, firstName: true, lastName: true, email: true } },
         language: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true, accessMonths: true, proposedPriceAmount: true, proposedPriceCurrency: true, priceProposedAt: true, contentImportedAt: true,
         _count: { select: { enrollments: true, coursePurchases: true, modules: true } },

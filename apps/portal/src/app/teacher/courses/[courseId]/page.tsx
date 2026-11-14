@@ -142,7 +142,7 @@ export default function TeacherCourseDetailPage() {
                 </div>
                 <h1 className="text-xl font-black text-white leading-snug">{course.title}</h1>
                 {course.description && (
-                  <p className="text-sm text-white/50 mt-2 max-w-2xl">{course.description}</p>
+                  <p className="mt-2 max-w-2xl whitespace-pre-line text-sm text-white/50 line-clamp-4">{course.description}</p>
                 )}
               </div>
 
