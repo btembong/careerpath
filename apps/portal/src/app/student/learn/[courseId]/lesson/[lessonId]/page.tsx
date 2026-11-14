@@ -61,8 +61,19 @@ export default function StudentLessonPlayerPage() {
   const router = useRouter();
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Phones and small tablets: the outline is a drawer, Notes a bottom sheet, Ask AI full screen
+  const isCompact = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches;
+  const [compact, setCompact] = useState(isCompact);
+  const [sidebarOpen, setSidebarOpen] = useState(() => !isCompact());
   const [rightPanel, setRightPanel] = useState<RightPanel>('none');
+  const [sheetFull, setSheetFull] = useState(false);
+  const sheetTouch = useRef<number | null>(null);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)');
+    const apply = () => { setCompact(mq.matches); if (mq.matches) setSidebarOpen(false); };
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
 
   // Dark / light player theme
   const [playerTheme, setPlayerTheme] = useState<'dark' | 'light'>(() => {
@@ -253,9 +264,13 @@ export default function StudentLessonPlayerPage() {
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--pl-bg-root)]" data-player-theme={playerTheme}>
 
-      {/* Sidebar */}
-      <Scroll className={`flex-shrink-0 transition-all duration-300 bg-[var(--pl-bg2)] border-r border-white/5 ${sidebarOpen ? 'w-72' : 'w-0'}`}>
-        {sidebarOpen && (
+      {/* Sidebar: beside the lesson on desktop, a drawer over it on phones */}
+      {compact && sidebarOpen && <button type="button" aria-label="Close the lesson list" onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-40 bg-black/55" />}
+      <div className={`overflow-hidden bg-[var(--pl-bg2)] border-r border-white/5 ${compact
+        ? `fixed inset-y-0 left-0 z-50 w-[86%] max-w-[320px] shadow-[14px_0_40px_rgba(0,0,0,0.45)] transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`
+        : `flex-shrink-0 transition-all duration-300 ${sidebarOpen ? 'w-72' : 'w-0'}`}`}>
+        <Scroll className="h-full w-full">
+        {(sidebarOpen || compact) && (
           <div className="p-4 space-y-4">
             <div className="space-y-3">
               <Link href={`/student/learn/${courseId}`}
@@ -297,7 +312,7 @@ export default function StudentLessonPlayerPage() {
                         const typeIcon = lesson.type === 'VIDEO' ? 'play' : lesson.type === 'QUIZ' ? 'assignments' : 'file';
                         return (
                           <button key={lesson.id}
-                            onClick={() => !locked && router.push(`/student/learn/${courseId}/lesson/${lesson.id}`)}
+                            onClick={() => { if (locked) return; if (compact) setSidebarOpen(false); router.push(`/student/learn/${courseId}/lesson/${lesson.id}`); }}
                             disabled={locked}
                             className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition ${
                               locked ? 'opacity-40 cursor-not-allowed' :
@@ -327,7 +342,8 @@ export default function StudentLessonPlayerPage() {
             </div>
           </div>
         )}
-      </Scroll>
+        </Scroll>
+      </div>
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -338,7 +354,7 @@ export default function StudentLessonPlayerPage() {
           <button onClick={() => setSidebarOpen(s => !s)}
             title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] text-white/70 transition hover:bg-white/[0.12] hover:border-white/20 hover:text-white active:scale-95">
-            <Icon name={sidebarOpen ? 'chevronRight' : 'list'} size={16} />
+            <Icon name={sidebarOpen && !compact ? 'chevronRight' : 'list'} size={16} />
           </button>
 
           {/* Lesson title */}
@@ -353,7 +369,7 @@ export default function StudentLessonPlayerPage() {
 
             {/* Notes pill */}
             <button onClick={() => setRightPanel(p => p === 'notes' ? 'none' : 'notes')}
-              className={`flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition active:scale-95 ${
+              className={`hidden lg:flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition active:scale-95 ${
                 rightPanel === 'notes'
                   ? 'bg-azure border border-azure text-white shadow-[0_0_12px_rgba(88,137,250,0.35)]'
                   : 'border border-white/10 bg-white/[0.06] text-white/70 hover:bg-white/[0.12] hover:border-white/20 hover:text-white'
@@ -363,7 +379,7 @@ export default function StudentLessonPlayerPage() {
 
             {/* AI pill */}
             <button onClick={() => setRightPanel(p => p === 'ai' ? 'none' : 'ai')}
-              className={`flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition active:scale-95 ${
+              className={`hidden lg:flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition active:scale-95 ${
                 rightPanel === 'ai'
                   ? 'bg-azure border border-azure text-white shadow-[0_0_12px_rgba(88,137,250,0.35)]'
                   : 'border border-white/10 bg-white/[0.06] text-white/70 hover:bg-white/[0.12] hover:border-white/20 hover:text-white'
@@ -372,7 +388,7 @@ export default function StudentLessonPlayerPage() {
             </button>
 
             {/* Divider */}
-            <div className="h-5 w-px bg-white/10 mx-0.5" />
+            <div className="hidden lg:block h-5 w-px bg-white/10 mx-0.5" />
 
             {/* Theme toggle */}
             <button onClick={toggleTheme}
@@ -430,14 +446,72 @@ export default function StudentLessonPlayerPage() {
           </div>
 
           {/* Right panel — intentionally outside contentRef so notes/AI remain copyable */}
-          {rightPanel === 'notes' && (
+          {!compact && rightPanel === 'notes' && (
             <NotesPanel courseId={courseId} lessonId={lessonId} progress={progress} />
           )}
-          {rightPanel === 'ai' && (
+          {!compact && rightPanel === 'ai' && (
             <AIAssistantPanel courseId={courseId} lessonId={lessonId} lessonTitle={activeLesson?.title ?? ''} />
           )}
         </div>
+
+        {/* Phones: one bar at the bottom, where thumbs reach */}
+        {compact && (() => {
+          const idx = allLessons.findIndex(l => l.id === lessonId);
+          const next = idx >= 0 ? allLessons[idx + 1] : undefined;
+          const nextOpen = !!next && !isLocked(next);
+          const item = 'flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-semibold transition active:scale-95';
+          return (
+            <nav aria-label="Lesson tools" className="grid flex-shrink-0 grid-cols-4 border-t border-white/10 bg-[var(--pl-bg2)]" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+              <button type="button" onClick={() => setSidebarOpen(true)} className={`${item} text-white/70`}><Icon name="list" size={18} />Lessons</button>
+              <button type="button" onClick={() => { setSheetFull(false); setRightPanel('notes'); }} className={`${item} ${rightPanel === 'notes' ? 'text-azure' : 'text-white/70'}`}><Icon name="docLine" size={18} />Notes</button>
+              <button type="button" onClick={() => setRightPanel('ai')} className={`${item} ${rightPanel === 'ai' ? 'text-azure' : 'text-white/70'}`}><Icon name="sparkles" size={18} />Ask AI</button>
+              <button type="button" disabled={!nextOpen} onClick={() => next && router.push(`/student/learn/${courseId}/lesson/${next.id}`)}
+                title={!next ? 'This is the last lesson' : nextOpen ? next.title : 'Finish this lesson to open the next one'}
+                className={`${item} ${nextOpen ? 'text-white' : 'text-white/30'}`}><Icon name="arrowRight" size={18} />{next ? 'Next' : 'Last lesson'}</button>
+            </nav>
+          );
+        })()}
       </div>
+
+      {/* Phones: Notes as a sheet over the lesson, so students can note what they're reading */}
+      {compact && rightPanel === 'notes' && (<>
+        <button type="button" aria-label="Close notes" onClick={() => setRightPanel('none')} className="fixed inset-0 z-40 bg-black/55" />
+        <div role="dialog" aria-label="Notes"
+          className={`fixed inset-x-0 bottom-0 z-50 flex flex-col overflow-hidden bg-[var(--pl-bg)] shadow-[0_-14px_40px_rgba(0,0,0,0.45)] transition-[height] duration-200 ${sheetFull ? 'h-[100dvh]' : 'h-[72dvh] rounded-t-2xl'}`}
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <div className="flex flex-shrink-0 items-center px-3 pt-2"
+            onTouchStart={e => { sheetTouch.current = e.touches[0].clientY; }}
+            onTouchEnd={e => {
+              const start = sheetTouch.current; sheetTouch.current = null;
+              if (start == null) return;
+              const dy = e.changedTouches[0].clientY - start;
+              if (dy > 60) { if (sheetFull) setSheetFull(false); else setRightPanel('none'); }
+              else if (dy < -60) setSheetFull(true);
+            }}>
+            <button type="button" onClick={() => setSheetFull(f => !f)} aria-label={sheetFull ? 'Make the notes smaller' : 'Make the notes full screen'} className="mx-auto flex h-6 w-16 items-center justify-center">
+              <span className="h-1 w-10 rounded-full bg-white/30" />
+            </button>
+          </div>
+          <div className="flex flex-shrink-0 justify-end px-3">
+            <button type="button" onClick={() => setRightPanel('none')} className="rounded-lg px-2.5 py-1 text-xs font-bold text-azure">Done</button>
+          </div>
+          <NotesPanel courseId={courseId} lessonId={lessonId} progress={progress} fill />
+        </div>
+      </>)}
+
+      {/* Phones: Ask AI full screen, since typing needs the keyboard's half of the screen */}
+      {compact && rightPanel === 'ai' && (
+        <div role="dialog" aria-label="AI tutor" className="fixed inset-x-0 top-0 z-50 flex h-[100dvh] flex-col bg-[var(--pl-bg)]"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <div className="flex flex-shrink-0 items-center gap-2 border-b border-white/10 px-3 py-2">
+            <button type="button" onClick={() => setRightPanel('none')} className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold text-white/80 hover:bg-white/10">
+              <Icon name="arrowLeft" size={14} /> Back to the lesson
+            </button>
+            <span className="ml-auto truncate text-[11px] text-white/40">{activeLesson?.title}</span>
+          </div>
+          <AIAssistantPanel courseId={courseId} lessonId={lessonId} lessonTitle={activeLesson?.title ?? ''} fill />
+        </div>
+      )}
     </div>
   );
 }
@@ -1240,7 +1314,7 @@ function LessonNav({ allLessons, activeId, courseId }: { allLessons: Lesson[]; a
 // ── Notes Panel ───────────────────────────────────────────
 interface LessonNote { id: string; body: string; lessonId: string; timestamp: number | null; createdAt: string; }
 
-function NotesPanel({ courseId, lessonId, progress }: { courseId: string; lessonId: string; progress: ProgressData | null }) {
+function NotesPanel({ courseId, lessonId, progress, fill = false }: { courseId: string; lessonId: string; progress: ProgressData | null; fill?: boolean }) {
   const [tab, setTab] = useState<'lesson' | 'all'>('lesson');
   const [notes, setNotes] = useState<LessonNote[]>([]);
   const [allNotes, setAllNotes] = useState<LessonNote[]>([]);
@@ -1448,7 +1522,7 @@ function NotesPanel({ courseId, lessonId, progress }: { courseId: string; lesson
   }
 
   return (
-    <div className="w-80 flex-shrink-0 border-l border-[var(--pl-divider)] bg-[var(--pl-bg)] flex flex-col overflow-hidden">
+    <div className={`${fill ? "min-h-0 w-full flex-1" : "w-80 flex-shrink-0 border-l border-[var(--pl-divider)]"} bg-[var(--pl-bg)] flex flex-col overflow-hidden`}>
 
       {/* ── Panel header ── */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--pl-divider)] flex-shrink-0">
@@ -1671,7 +1745,7 @@ const AI_PROMPTS: { icon: IconName; label: string; q: string }[] = [
   { icon: 'lightbulbLine',label: 'Explain simply',         q: "Explain the main concept of this lesson as simply as possible, like I'm a beginner." },
 ];
 
-function AIAssistantPanel({ courseId, lessonId, lessonTitle }: { courseId: string; lessonId: string; lessonTitle: string }) {
+function AIAssistantPanel({ courseId, lessonId, lessonTitle, fill = false }: { courseId: string; lessonId: string; lessonTitle: string; fill?: boolean }) {
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [aiOn, setAiOn] = useState(true);
   useEffect(() => { api.get('/ai/status').then(r => setAiOn(!!r.data?.enabled)).catch(() => {}); }, []);
@@ -1717,7 +1791,7 @@ function AIAssistantPanel({ courseId, lessonId, lessonTitle }: { courseId: strin
   }
 
   return (
-    <div className="w-80 flex-shrink-0 border-l border-white/10 bg-[var(--pl-bg)] flex flex-col overflow-hidden">
+    <div className={`${fill ? "min-h-0 w-full flex-1" : "w-80 flex-shrink-0 border-l border-white/10"} bg-[var(--pl-bg)] flex flex-col overflow-hidden`}>
 
       {/* ── Header ── */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 flex-shrink-0">
