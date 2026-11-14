@@ -148,6 +148,8 @@ export class PayoutsService {
       where: { userId: statement.recipientId },
     });
     if (!wallet) throw new NotFoundException('Wallet not found for this recipient');
+    // Earners can now withdraw themselves: never pay a statement for money they've already taken out
+    if (wallet.balance < statement.amount) throw new BadRequestException(`They've withdrawn some of this themselves; only ${wallet.currency} ${minorToMajor(Math.max(0, wallet.balance), wallet.currency).toLocaleString('en-GB')} is still owed. Make a new statement instead.`);
 
     await this.prisma.$transaction([
       // Write the DEBIT transaction — this is what reduces the balance

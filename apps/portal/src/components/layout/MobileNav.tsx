@@ -128,7 +128,7 @@ const ROLES: Record<string, { tabs: NavItem[]; menu: NavGroup[]; profile: string
       ] },
       { items: [
         { label: 'Payments', href: '/admin/payments', icon: 'card' },
-        { label: 'Payouts', href: '/admin/payouts', icon: 'payouts' },
+        { label: 'Settlements', href: '/admin/settlements', icon: 'payouts', also: ['/admin/payouts'] },
         { label: 'Wallets', href: '/admin/wallets', icon: 'wallet' },
       ] },
     ],

@@ -1,12 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { clsx } from 'clsx';
 import { minorToMajor } from '@cpa/shared';
 import { Topbar } from '@/components/layout/Topbar';
 import { KIND_COLOURS, KpiTile, MonthStack, SplitBar, walletMoney } from '@/components/wallet/WalletCharts';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
+import { GetPaid } from '@/components/payout/GetPaid';
 
 type Range = 'month' | 'last' | 'year';
 interface Tx { id: string; at: string; type: 'CREDIT' | 'DEBIT'; amount: number; currency: string; title: string; detail: string; kind: string }
@@ -58,11 +58,7 @@ export function Earnings({ subtitle, accountHref }: { subtitle: string; accountH
   }, [range]);
 
   const c = d?.currency ?? 'XAF';
-  const next = d ? new Date(d.nextPayout) : null;
   const now = new Date();
-  const daysLeft = next ? Math.max(0, Math.ceil((+next - +now) / 86_400_000)) : null;
-  const monthDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const below = !!d && d.minimum > 0 && d.owed > 0 && d.owed < d.minimum;
   const lastPaid = d?.payouts.find(p => p.status === 'PAID');
   const colourOf = (kind: string) => { const i = d?.kinds.findIndex(k => k.key === kind) ?? -1; return i >= 0 ? KIND_COLOURS[i] : '#637090'; };
 
@@ -90,54 +86,8 @@ export function Earnings({ subtitle, accountHref }: { subtitle: string; accountH
             {RANGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </div>
-        {/* What's owed, and the next payout */}
-        <div className="flex flex-wrap gap-[18px]">
-          <section className="keep-light relative flex min-w-0 flex-[999_1_520px] flex-col gap-2 overflow-hidden rounded-2xl bg-[#3F6FE8] p-[18px] text-navy sm:gap-3.5 sm:rounded-xl sm:px-[26px] sm:py-6">
-            {d && d.months.length > 1 && (() => {
-              const s = d.months.map(m => m.amount), max = Math.max(...s), min = Math.min(...s), r = max - min || 1;
-              return <svg aria-hidden viewBox="0 0 600 160" preserveAspectRatio="none" className="absolute bottom-0 right-0 h-[120px] w-[70%] opacity-35"><path fill="#FFFFFF" d={`M0,160 ${s.map((v, i) => `L${Math.round((i * 600) / (s.length - 1))},${Math.round(150 - ((v - min) / r) * 110)}`).join(' ')} L600,160 Z`} /></svg>;
-            })()}
-            <div className="relative flex items-start justify-between gap-3">
-              <p className="text-[11.5px] font-bold uppercase tracking-[0.08em] sm:text-[12.5px]">Owed to you</p>
-              {d && (d.account
-                ? <span className="hidden h-[26px] items-center gap-1.5 rounded-full sm:inline-flex bg-[#FFFFFF] px-2.5 text-[12.5px] font-bold"><span className={clsx('h-[7px] w-[7px] rounded-full', d.account.verified ? 'bg-[#1F8A5B]' : 'bg-[#D99A2B]')} />{d.account.verified ? 'Payout account verified' : 'Payout account being checked'}</span>
-                : <Link href={accountHref} className="inline-flex h-[26px] items-center rounded-full bg-[#FFFFFF] px-2.5 text-[12.5px] font-bold">Add a payout account</Link>)}
-            </div>
-            <p className="relative text-[36px] font-extrabold leading-none tracking-[-0.03em] tabular-nums sm:text-[clamp(36px,6vw,48px)]">
-              <span className="mr-1 align-[10px] text-base font-bold sm:mr-1.5 sm:align-[14px] sm:text-[22px]">{fcfa(c)}</span><span className="text-[#FFFFFF]">{d ? amountOnly(d.owed, c) : '—'}</span>
-            </p>
-            <p className="relative text-[13px] text-navy/85 sm:hidden">
-              {!d ? ' ' : below ? `Below the ${fcfa(c)} ${amountOnly(d.minimum, c)} minimum · rolls over` : d.owed > 0 ? `Paid ${next!.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}${d.account ? ` to ${d.account.label}` : ''} · in ${daysLeft} day${daysLeft === 1 ? '' : 's'}` : 'Nothing owed right now'}
-            </p>
-            {d?.kpis[0]?.change != null && range !== 'year' && <span className="relative inline-flex h-[26px] items-center self-start rounded-full bg-[#FFFFFF] px-2.5 text-xs font-bold sm:hidden">{d.kpis[0].change >= 0 ? '+' : '−'}{Math.abs(d.kpis[0].change)}% on {new Date(now.getFullYear(), now.getMonth() - (range === 'last' ? 2 : 1), 1).toLocaleDateString('en-GB', { month: 'long' })}</span>}
-            <p className="relative hidden text-sm text-navy/85 sm:block">
-              {!d ? ' ' : below ? `Below the ${fcfa(c)} ${amountOnly(d.minimum, c)} minimum, so it rolls over to the next payout.`
-                : d.owed > 0 ? `Earned since your last payout. It’s all paid on ${next!.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}.`
-                : 'Nothing owed right now. Earnings show here as soon as something sells.'}
-            </p>
-            <div className="relative hidden flex-wrap gap-2 sm:flex">
-              <a href="#payouts" className="inline-flex h-[34px] items-center rounded-md bg-navy px-3.5 text-[13px] font-bold text-[#FFFFFF]">See payouts</a>
-              <Link href={accountHref} className="inline-flex h-[34px] items-center rounded-md bg-[#FFFFFF] px-3.5 text-[13px] font-bold text-navy">Payout account</Link>
-            </div>
-          </section>
-
-          <section className="hidden min-w-0 flex-[1_1_300px] flex-col gap-3 rounded-xl border border-line bg-white p-5 sm:flex">
-            <p className="text-xs font-semibold uppercase tracking-[0.06em] text-muted">Next payout</p>
-            <div className="flex items-baseline gap-2">
-              <p className="text-[34px] font-extrabold tracking-[-0.02em] text-navy">{next ? next.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}</p>
-              {daysLeft != null && <span className="text-[13.5px] text-ink2">in {daysLeft} day{daysLeft === 1 ? '' : 's'}</span>}
-            </div>
-            <div>
-              <div className="h-2 overflow-hidden rounded bg-accent-soft"><span className="block h-2 rounded bg-[#3F6FE8]" style={{ width: `${Math.round((now.getDate() / monthDays) * 100)}%` }} /></div>
-              <p className="mt-1.5 text-xs text-muted">{now.getDate()} of {monthDays} days of {now.toLocaleDateString('en-GB', { month: 'long' })} earned so far</p>
-            </div>
-            <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-[13px]">
-              <dt className="text-ink2">To</dt><dd className="text-right font-semibold text-navy">{d?.account?.label ?? 'No payout account yet'}</dd>
-              <dt className="text-ink2">Last payout</dt><dd className="text-right font-semibold text-navy">{lastPaid ? `${walletMoney(lastPaid.amount, lastPaid.currency)} · ${lastPaid.paidAt ? longDay(lastPaid.paidAt) : ''}` : 'None yet'}</dd>
-              {!!d?.minimum && <><dt className="text-ink2">Minimum payout</dt><dd className="text-right font-semibold text-navy">{walletMoney(d.minimum, c)}</dd></>}
-            </dl>
-          </section>
-        </div>
+        {/* Ready to withdraw, the Withdraw button, the payout account and PIN, and withdrawals */}
+        <GetPaid />
 
         {/* KPIs with their six-month trend: a swipeable row on phones */}
         <dl className="-mx-3.5 flex snap-x gap-2.5 overflow-x-auto px-3.5 pb-1 sm:gap-3.5 sm:mx-0 sm:grid sm:overflow-visible sm:px-0 sm:pb-0 sm:[grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
@@ -187,16 +137,7 @@ export function Earnings({ subtitle, accountHref }: { subtitle: string; accountH
           </section>
 
           <section id="payouts" className="hidden min-w-0 flex-[1_1_300px] flex-col rounded-xl sm:flex border border-line bg-white px-5 py-[18px]">
-            <h2 className="mb-2.5 text-base font-bold text-navy">Payouts</h2>
-            {d && d.owed > 0 && (
-              <div className="flex gap-3 pb-3.5">
-                <div className="flex flex-col items-center"><span className="mt-[3px] h-3 w-3 rounded-full border-2 border-[#3F6FE8] bg-white" /><span className="mt-1 w-[2px] flex-1 bg-line" /></div>
-                <div className="min-w-0 flex-1">
-                  <p className="flex justify-between gap-2 text-[13.5px] text-navy"><strong>{now.toLocaleDateString('en-GB', { month: 'long' })}</strong><strong className="tabular-nums">{walletMoney(d.owed, c)}</strong></p>
-                  <p className="mt-0.5 text-xs text-muted">{below ? 'Below the minimum · rolls over' : `Scheduled · ${next!.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`}</p>
-                </div>
-              </div>
-            )}
+            <h2 className="mb-2.5 text-base font-bold text-navy">Paid by our team</h2>
             {d?.payouts.map(p => (
               <div key={p.id} className="flex gap-3 pb-3.5">
                 <div className="flex flex-col items-center"><span className={clsx('mt-[3px] h-3 w-3 rounded-full', p.status === 'PAID' ? 'bg-[#1F8A5B]' : 'border-2 border-[#D99A2B] bg-white')} /><span className="mt-1 w-[2px] flex-1 bg-line" /></div>
@@ -206,7 +147,7 @@ export function Earnings({ subtitle, accountHref }: { subtitle: string; accountH
                 </div>
               </div>
             ))}
-            {d && !d.payouts.length && d.owed <= 0 && <p className="text-[13px] text-ink2">No payouts yet. The first is made on the 1st after you earn.</p>}
+            {d && !d.payouts.length && <p className="text-[13px] text-ink2">Nothing paid by hand yet. Withdraw from the top of this page whenever you like.</p>}
           </section>
         </div>
       </div>

@@ -21,7 +21,7 @@ const ADMIN_COMMANDS: CommandItem[] = [
   { id: 'a-teachers', label: 'Teachers',            group: 'Admin',    href: '/admin/teachers',     icon: '🎓' },
   { id: 'a-insights', label: 'Insights',            group: 'Admin',    href: '/admin/insights',     icon: '📊' },
   { id: 'a-reports',  label: 'Sales report',        group: 'Admin',    href: '/admin/reports',      icon: '📈' },
-  { id: 'a-payouts',  label: 'Payouts',             group: 'Admin',    href: '/admin/payouts',      icon: '💸' },
+  { id: 'a-payouts',  label: 'Settlements',         group: 'Admin',    href: '/admin/settlements',  icon: '💸' },
   { id: 'a-countries',label: 'Countries',           group: 'Admin',    href: '/admin/countries',    icon: '🌍' },
   { id: 'a-org',      label: 'Org Enrollments',     group: 'Admin',    href: '/admin/org',          icon: '🏢' },
   { id: 'a-reviews',  label: 'WP Reviews',          group: 'Admin',    href: '/admin/reviews',      icon: '✅' },

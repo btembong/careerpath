@@ -129,7 +129,7 @@ const ADMIN: Item[] = [
   ]},
   { label: 'Finance', icon: 'wallet', children: [
     { label: 'Payments', href: '/admin/payments' },
-    { label: 'Payouts', href: '/admin/payouts' },
+    { label: 'Settlements', href: '/admin/settlements', also: ['/admin/payouts'] },
     { label: 'Wallets', href: '/admin/wallets' },
   ]},
 ];

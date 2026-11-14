@@ -49,6 +49,7 @@ const SENDERS = {
   notifications: { name: 'CareerPath Notifications', from: 'MAIL_FROM_NOTIFICATIONS', reply: 'MAIL_FROM_NOTIFICATIONS', note: 'You’re receiving this because of activity on your CareerPath Africa account. Choose which emails you get in Email settings.' },
   teachers:      { name: 'CareerPath Teachers',      from: 'MAIL_FROM_TEACHERS',      reply: 'MAIL_FROM_TEACHERS',      note: 'You’re receiving this because you teach with CareerPath Africa. Reply to reach our teachers team.' },
   billing:       { name: 'CareerPath Billing',       from: 'MAIL_FROM_BILLING',       reply: 'MAIL_FROM_BILLING',       note: 'You’re receiving this because of a payment or payout on your CareerPath Africa account. Reply with any billing questions.' },
+  payouts:       { name: 'CareerPath Africa Payouts', from: 'MAIL_FROM_PAYOUTS',     reply: 'MAIL_FROM_PAYOUTS',       note: 'You’re receiving this because of money paid out from your CareerPath Africa earnings. Reply with any payout questions.' },
   partnerships:  { name: 'CareerPath Partnerships',  from: 'MAIL_FROM_PARTNERS',      reply: 'MAIL_FROM_PARTNERS',      note: 'You’re receiving this because you partner with CareerPath Africa. Reply to reach our partnerships team.' },
   support:       { name: 'CareerPath Support',       from: 'MAIL_FROM_SUPPORT',       reply: 'MAIL_FROM_SUPPORT',       note: 'You’re receiving this about your CareerPath Africa account. Reply to reach our support team.' },
   reports:       { name: 'CareerPath Reports',       from: 'MAIL_FROM_NOREPLY',       reply: 'MAIL_FROM_HELLO',         note: 'Sent to CareerPath Africa administrators.' },
@@ -73,7 +74,8 @@ export class MailService {
   // ── Core send helper ─────────────────────────────────────
 
   /** A sender's address: its own setting, else the main sender (hello@) */
-  private address(key: string) { return this.config.get<string>(key) || this.senderEmail; }
+  // Payouts use their own address when one is set up, and the billing address until then
+  private address(key: string) { return this.config.get<string>(key) || (key === 'MAIL_FROM_PAYOUTS' ? this.config.get<string>('MAIL_FROM_BILLING') : null) || this.senderEmail; }
 
   private async send(
     to: string,
@@ -82,6 +84,8 @@ export class MailService {
     senderType: SenderType = 'hello',
     attachments?: { name: string; content: string | Uint8Array }[],
   ): Promise<void> {
+    // Reserved domains can never receive mail (test accounts, deleted accounts): sending only bounces
+    if (/\.(test|invalid|example)$/i.test(to.trim())) { this.logger.log(`Mail to a reserved domain skipped: ${subject}`); return; }
     if (!this.client) {
       this.logger.warn(`[DEV] Mail skipped — no BREVO_API_KEY (${senderType})`);
       this.logger.debug(`  To:      ${to}`);
@@ -349,7 +353,7 @@ export class MailService {
     await this.send(
       email,
       `Payout initiated: ${currency} ${formatted} — CareerPath Africa`,
-      payoutInitiatedTemplate(formatted, currency, periodLabel), 'billing',
+      payoutInitiatedTemplate(formatted, currency, periodLabel), 'payouts',
     );
   }
 
@@ -358,7 +362,7 @@ export class MailService {
     await this.send(
       email,
       `Payment confirmed: ${currency} ${formatted} sent — CareerPath Africa`,
-      payoutCompletedTemplate(formatted, currency), 'billing',
+      payoutCompletedTemplate(formatted, currency), 'payouts',
     );
   }
 

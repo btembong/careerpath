@@ -1,3 +1,5 @@
+import { ModuleRef } from '@nestjs/core';
+import { WithdrawalsService } from '../payouts/withdrawals.service';
 import {
   Injectable,
   Logger,
@@ -34,6 +36,7 @@ export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
+    private moduleRef: ModuleRef,
     private prisma: PrismaService,
     private config: ConfigService,
     private wp: WordPressService,
@@ -207,6 +210,12 @@ export class PaymentsService {
 
   async handleTranzakWebhook(rawBody: Buffer): Promise<void> {
     const event = this.tranzak.verifyWebhookSignature(rawBody);
+    // A payout to an earner finished: the withdrawals service settles it (looked up lazily to keep the modules apart)
+    if (event.type === 'TRANSFER.COMPLETED') {
+      const resource = (event.payload as any).resource;
+      if (resource) await this.moduleRef.get(WithdrawalsService, { strict: false }).onTransferEvent(resource);
+      return;
+    }
     await this.processWebhookEvent(event, this.tranzak);
   }
 

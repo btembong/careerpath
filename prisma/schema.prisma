@@ -43,6 +43,7 @@ model UserProfile {
   signupSource         String?
   activeDays           ActiveDay[]
   recordingViews       RecordingView[]
+  withdrawals          Withdrawal[]
   /// When the account was created (backfilled for older accounts from their first activity)
   createdAt            DateTime                 @default(now())
   microsoftId          String?                  @unique
@@ -1198,17 +1199,29 @@ model InvoiceCounter {
 
 /// Bank account details submitted by earners for payout processing.
 model PayoutAccount {
-  id            String      @id @default(uuid())
-  userId        String      @unique
-  bankName      String
-  accountNumber String
-  bankCode      String?
-  country       String
-  isVerified    Boolean     @default(false)
-  verifiedAt    DateTime?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  user          UserProfile @relation(fields: [userId], references: [id])
+  id             String      @id @default(uuid())
+  userId         String      @unique
+  bankName       String
+  accountNumber  String
+  bankCode       String?
+  country        String
+  isVerified     Boolean     @default(false)
+  verifiedAt     DateTime?
+  /// MTN or ORANGE: these are paid straight through Tranzak; anything else is paid by hand
+  provider       String?
+  /// The name the operator has on the number, when it could be checked
+  holderName     String?
+  /// match, mismatch or unchecked
+  nameCheck      String?
+  /// When the number last changed: money waits a while before it can go to a new number
+  changedAt      DateTime?
+  /// The withdrawal PIN, hashed
+  pinHash        String?
+  pinFailures    Int         @default(0)
+  pinLockedUntil DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  user           UserProfile @relation(fields: [userId], references: [id])
 }
 
 /// Immutable audit trail for compliance — records every admin action that touches money or roles.
@@ -1954,4 +1967,52 @@ model RecordingView {
 
   @@id([liveClassId, userId])
   @@index([userId])
+}
+
+enum WithdrawalStatus {
+  /// Over the limit, or paid by hand: waiting for an admin
+  AWAITING_APPROVAL
+  /// Sent to Tranzak, waiting for the operator
+  SENDING
+  PAID
+  /// The operator refused it; the money went back to the balance
+  FAILED
+  /// An admin refused it; the money went back to the balance
+  REJECTED
+}
+
+/// Money an earner takes out of their balance, sent to their mobile money through Tranzak or paid by hand
+model Withdrawal {
+  id              String           @id @default(uuid())
+  userId          String
+  amount          Int
+  /// What the operator charged, once known
+  fee             Int?
+  currency        String
+  status          WithdrawalStatus
+  /// tranzak or manual
+  method          String
+  /// e.g. "MTN Mobile Money ·· 182", as it was at the time
+  paidTo          String
+  payeeNumber     String
+  payeeName       String?
+  /// Our reference, sent to Tranzak so a retry can never pay twice
+  reference       String           @unique
+  transferId      String?
+  /// The wallet debit that took the money out of the balance; removed if the withdrawal fails or is refused
+  debitTxId       String?
+  /// Who approved it, as [{ adminId, name, at }]
+  approvals       Json             @default("[]")
+  approvalsNeeded Int              @default(0)
+  /// Why it waits for approval: over the limit, paid by hand, unusual
+  flags           String[]
+  failureReason   String?
+  rejectedById    String?
+  requestedAt     DateTime         @default(now())
+  sentAt          DateTime?
+  completedAt     DateTime?
+  user            UserProfile      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([userId, requestedAt])
 }

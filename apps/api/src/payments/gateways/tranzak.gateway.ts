@@ -38,6 +38,9 @@ import {
  * Amounts for these currencies are integers — no /100 division.
  * TZS and MZN have 2 decimal places and use the standard /100 convention.
  */
+export interface TranzakTransfer { transferId: string; status: string; amount: number; fee?: number; currencyCode: string; customTransactionRef?: string; errorMessage?: string; payeeAccountName?: string; destinationServiceName?: string; transactionId?: string }
+export interface TranzakAccount { accountId: string; currencyCode: string; totalBalance?: number; availableBalance?: number }
+
 @Injectable()
 export class TranzakGateway implements PaymentGateway {
   private readonly logger = new Logger(TranzakGateway.name);
@@ -271,6 +274,69 @@ export class TranzakGateway implements PaymentGateway {
         'Tranzak authentication failed — check TRANZAK_APP_ID / TRANZAK_APP_KEY',
       );
     }
+  }
+
+  // ── Payouts (disbursement scope) ────────────────────────────────────────
+
+  private async call<T = any>(method: 'get' | 'post', path: string, body?: Record<string, unknown>): Promise<T> {
+    const token = await this.getAccessToken();
+    const res = method === 'get'
+      ? await this.client.get(path, { params: body, headers: { Authorization: `Bearer ${token}` } })
+      : await this.client.post(path, body ?? {}, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.data?.success) {
+      const err: any = new Error(res.data?.errorMsg ?? res.data?.message ?? 'Tranzak refused the request');
+      err.code = res.data?.errorCode;
+      throw err;
+    }
+    return res.data.data as T;
+  }
+
+  /**
+   * POST /xp021/v1/transfer/to-mobile-wallet — MTN Mobile Money or Orange Money in Cameroon, from the payout account.
+   * customTransactionRef stops a retry from paying twice (unique for 30 days at Tranzak).
+   */
+  async transferToMobileWallet(o: { amount: number; currency: string; number: string; name?: string | null; verifyName: boolean; ref: string; description: string; note?: string; payeePaysFee: boolean }) {
+    return this.call<TranzakTransfer>('post', '/xp021/v1/transfer/to-mobile-wallet', {
+      amount: o.amount, currencyCode: o.currency, description: o.description.slice(0, 255), customTransactionRef: o.ref,
+      payeeAccountId: o.number, ...(o.name ? { payeeAccountName: o.name } : {}), verifyPayeeName: o.verifyName && !!o.name,
+      payeeNote: (o.note ?? 'CareerPath Africa earnings').slice(0, 100), payeeFeePercentage: o.payeePaysFee ? 100 : 0,
+    });
+  }
+
+  /** GET /xp021/v1/transfer/details */
+  transferDetails(transferId: string) { return this.call<TranzakTransfer>('get', '/xp021/v1/transfer/details', { transferId }); }
+
+  /** GET /xp021/v1/transfer/history, filtered by our reference: finds a transfer whose reply never reached us */
+  async transferByRef(ref: string): Promise<TranzakTransfer | null> {
+    const d = await this.call<{ data?: TranzakTransfer[] } | TranzakTransfer[]>('get', '/xp021/v1/transfer/history', { customTransactionRef: ref });
+    const list = Array.isArray(d) ? d : d?.data ?? [];
+    return list.find(t => t.customTransactionRef === ref) ?? null;
+  }
+
+  /** Balances of the payout account (what transfers are paid from) and the collection account (what students paid) */
+  async balances() {
+    const [payout, collection] = await Promise.all([
+      this.call<TranzakAccount>('post', '/xp021/v1/account/payout-account-details'),
+      this.call<TranzakAccount>('post', '/xp021/v1/account/collection-account-details'),
+    ]);
+    const pick = (a: TranzakAccount) => ({ currency: a.currencyCode, total: a.totalBalance ?? 0, available: a.availableBalance ?? a.totalBalance ?? 0 });
+    return { payout: pick(payout), collection: pick(collection) };
+  }
+
+  /** POST /xp021/v1/transfer/payout-account-topup — move money from the collection account into the payout account */
+  topUpPayoutAccount(amount: number, currency: string, ref: string) {
+    return this.call('post', '/xp021/v1/transfer/payout-account-topup', { amount, currencyCode: currency, description: 'Top up for earner payouts', customTransactionRef: ref });
+  }
+
+  /** POST /xp021/v1/name-verification/create — the name on an MTN or Orange number (restricted in production until Tranzak turns it on) */
+  async checkName(number: string): Promise<{ status: 'match-ready' | 'pending' | 'failed'; name: string | null; requestId: string | null }> {
+    const d = await this.call<{ requestId: string; status: string; verifiedName?: string }>('post', '/xp021/v1/name-verification/create', { accountHolderId: `+${number.replace(/^\+/, '')}` });
+    let r = d;
+    for (let i = 0; i < 4 && r.status === 'PENDING'; i++) {
+      await new Promise(res => setTimeout(res, 1500));
+      r = await this.call('get', '/xp021/v1/name-verification/details', { requestId: d.requestId });
+    }
+    return { status: r.status === 'COMPLETED' ? 'match-ready' : r.status === 'PENDING' ? 'pending' : 'failed', name: r.verifiedName ?? null, requestId: d.requestId };
   }
 
   /** GET /xp021/v1/request/details — Tranzak's record of a payment request */
