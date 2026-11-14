@@ -1,3 +1,4 @@
+import { IsRecordId } from '../../common/validators/is-record-id';
 import {
   IsString,
   MinLength,
@@ -25,7 +26,7 @@ export class CompleteTeacherOnboardingDto implements TeacherProfileInput {
   @ApiPropertyOptional() @IsString() @IsOptional() phone?: string;
 
   @ApiProperty({ description: 'Required — drives country attribution' })
-  @IsUUID()
+  @IsRecordId('country')
   countryId: string;
 
   @ApiPropertyOptional({ isArray: true }) @IsArray() @IsString({ each: true }) @IsOptional()

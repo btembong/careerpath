@@ -1,3 +1,4 @@
+import { IsRecordId } from '../../common/validators/is-record-id';
 import { IsEmail, IsString, MinLength, IsArray, ArrayMinSize, IsOptional, IsInt, Min, IsUrl, IsUUID, IsEnum, MaxLength, Matches, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -97,7 +98,7 @@ export class RegisterTeacherDto {
   websiteUrl?: string;
 
   @ApiPropertyOptional({ example: 'uuid-of-country' })
-  @IsUUID()
+  @IsRecordId('country')
   @IsOptional()
   countryId?: string;
 

@@ -1,3 +1,4 @@
+import { IsRecordId } from '../../common/validators/is-record-id';
 import { IsEmail, IsString, MinLength, MaxLength, IsOptional, IsPhoneNumber, IsUUID, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -28,7 +29,7 @@ export class RegisterStudentDto {
    * and the country rep's commission. Never inferred from phone/IP.
    */
   @ApiProperty({ example: 'uuid-of-ghana-country-record' })
-  @IsUUID()
+  @IsRecordId('country')
   countryId: string;
 
   @ApiPropertyOptional({ example: 'university' })
