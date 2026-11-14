@@ -106,9 +106,8 @@ export default function CourseManagementPage() {
                 {stats.untaggedWithSuggestion ? ` We’ve suggested tags for ${stats.untaggedWithSuggestion} from their WordPress categories.` : ' Pull from WordPress to get suggested tags from their categories.'}
               </p>
             </div>
-            {stats.untaggedWithSuggestion > 0
-              ? <Button size="sm" onClick={() => setF({ ...f, untagged: true })}>Review suggested tags</Button>
-              : <Link href="/admin/courses/wordpress" className="inline-flex h-9 items-center rounded-md bg-azure-strong px-3.5 text-[13.5px] font-semibold text-on-accent">Pull from WordPress</Link>}
+            <Link href="/admin/courses/classify" className="inline-flex h-9 items-center rounded-md bg-azure-strong px-3.5 text-[13.5px] font-semibold text-on-accent">Set exam and subject</Link>
+            {stats.untaggedWithSuggestion > 0 && <Button size="sm" variant="secondary" onClick={() => setF({ ...f, untagged: true })}>Tags from WordPress</Button>}
           </section>
         )}
 

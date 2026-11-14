@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ClassifyService } from './classify.service';
 import { CourseAdminController } from './course-admin.controller';
 import { CourseManageService } from './course-manage.service';
 import { WpPullService } from './wp-pull.service';
@@ -14,7 +15,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
   imports: [WordPressModule, NotificationsModule, AuditModule],
   controllers: [CourseAdminController],
-  providers: [CourseManageService, WpPullService, TaxonomyService, TutorClient, TutorImportService, CommissionsService, TeacherCoursesService],
+  providers: [ClassifyService, CourseManageService, WpPullService, TaxonomyService, TutorClient, TutorImportService, CommissionsService, TeacherCoursesService],
   exports: [TeacherCoursesService],
 })
 export class CourseAdminModule {}

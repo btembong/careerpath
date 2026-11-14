@@ -11,6 +11,7 @@ import { WpPullService, ApplyInput, PullSettings } from './wp-pull.service';
 import { TaxonomyService } from './taxonomy.service';
 import { TutorImportService } from './tutor-import.service';
 import { CommissionsService } from './commissions.service';
+import { ClassifyService } from './classify.service';
 
 @ApiTags('admin course management')
 @ApiBearerAuth()
@@ -18,7 +19,19 @@ import { CommissionsService } from './commissions.service';
 @Roles(UserRole.ADMIN)
 @Controller('admin')
 export class CourseAdminController {
-  constructor(private courses: CourseManageService, private pull: WpPullService, private taxonomy: TaxonomyService, private tutor: TutorImportService, private commissions: CommissionsService) {}
+  constructor(private courses: CourseManageService, private pull: WpPullService, private taxonomy: TaxonomyService, private tutor: TutorImportService, private commissions: CommissionsService, private classify: ClassifyService) {}
+
+  // ── Exam and subject for untagged courses ────────────────
+
+  @Get('course-classify')
+  @ApiOperation({ summary: 'Suggested exam and subject for every course that has none, from its title, description and modules' })
+  classifySuggestions() { return this.classify.suggestions(); }
+
+  @Post('course-classify')
+  @ApiOperation({ summary: 'Save the chosen exam and subject for many courses at once' })
+  classifyApply(@CurrentUser() user: UserProfile, @Body() body: { items?: { courseId: string; programmeId?: string | null; subjectId?: string | null }[] }) {
+    return this.classify.apply(user, body?.items ?? []);
+  }
 
   // ── Teachers, reviewers and commissions ──────────────────
 
