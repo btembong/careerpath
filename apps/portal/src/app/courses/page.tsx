@@ -15,9 +15,10 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   const d = await load();
   const exam = sp.exam && d ? d.courses.find(c => c.exam?.id === sp.exam)?.exam?.name : null;
+  const country = sp.country && d ? d.countries.find(c => c.code === sp.country!.toUpperCase())?.name : null;
   const n = d?.courses.length ?? 0;
   return {
-    title: exam ? `${exam} courses online · CareerPath Africa` : `${n || ''} exam prep courses, free to start · CareerPath Africa`.trim(),
+    title: exam ? `${exam} courses online${country ? ` in ${country}` : ''}` : country ? `Exam prep courses in ${country}` : `${n || ''} exam prep courses, free to start`.trim(),
     description: `Lessons, notes, quizzes and practice questions${exam ? ` for ${exam}` : ' for GCE, WASSCE, IELTS, TOEFL and more'}, from teachers across Africa. Start free; pay by mobile money or card.`,
   };
 }

@@ -6,7 +6,7 @@ import { Cover, PayWith, PublicFooter, PublicHeader, perMonth, price } from '@/c
 
 export const revalidate = 300;
 export const metadata: Metadata = {
-  title: 'Packages · CareerPath Africa',
+  title: 'Packages',
   description: 'Bundles of exam courses at one price, with practice, mock exams and optional live classes. Pay by mobile money or card.',
 };
 

@@ -141,7 +141,7 @@ export class PublicPagesService {
         where: { status: 'PUBLISHED', catalogueHidden: false },
         select: {
           id: true, title: true, shortDescription: true, coverUrl: true, source: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true, teacherPending: true, createdAt: true,
-          programme: { select: { id: true, name: true, shortName: true } }, subject: { select: { id: true, name: true } },
+          programme: { select: { id: true, name: true, shortName: true, countries: { select: { code: true, name: true } } } }, subject: { select: { id: true, name: true } },
           teacher: { select: { id: true, name: true, firstName: true, lastName: true, avatarUrl: true } },
           modules: { select: { _count: { select: { lessons: true } } } },
           _count: { select: { enrollments: true } },
@@ -160,6 +160,8 @@ export class PublicPagesService {
       return {
         id: c.id, slug: slugOf(c.title, c.id), title: c.title, summary: c.shortDescription, coverUrl: c.coverUrl,
         exam: c.programme ? { id: c.programme.id, name: c.programme.shortName ?? c.programme.name } : null,
+        // Where the course's exam is taken; an exam with no country (IELTS, ACCA) is international; no exam yet = unknown
+        countries: c.programme ? c.programme.countries.map(x => x.code) : null,
         subject: c.subject, teacher: c.teacherPending ? null : { id: c.teacher.id, name: nameOf(c.teacher), avatarUrl: c.teacher.avatarUrl },
         modules: c.modules.filter(m => m._count.lessons).length, lessons, questions: qs.get(c.id) ?? 0,
         selling, price: selling === 'paid' ? { amount: c.priceAmount!, currency: c.priceCurrency! } : null,
@@ -167,6 +169,9 @@ export class PublicPagesService {
         website: lessons === 0, joinedThisMonth: month.get(c.id) ?? 0, students: c._count.enrollments, added: c.createdAt,
       };
     }).sort((a, b) => b.joinedThisMonth - a.joinedThisMonth || b.students - a.students || b.lessons - a.lessons);
+    // Countries that have courses of their own, most first
+    const byCode = new Map<string, { code: string; name: string; n: number }>();
+    for (const c of rows) for (const x of c.programme?.countries ?? []) { const e = byCode.get(x.code) ?? { ...x, n: 0 }; e.n++; byCode.set(x.code, e); }
     const sampleId = ((sample?.value ?? {}) as { courseId?: string }).courseId;
     const best = packages.find(p => p.bestValue) ?? packages[0] ?? null;
     return {
@@ -174,6 +179,8 @@ export class PublicPagesService {
       start: courses.find(c => c.id === sampleId) ?? courses.find(c => c.selling === 'free' && !c.website) ?? null,
       package: best ? { id: best.id, name: best.name, priceAmount: best.priceAmount, currency: best.currency, courses: best.courseIds.length } : null,
       packages: packages.length,
+      countries: [...byCode.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)),
+      international: courses.filter(c => c.countries && !c.countries.length).length,
     };
   }
 

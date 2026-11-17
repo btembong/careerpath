@@ -26,10 +26,10 @@ async function load(slug: string): Promise<CoursePage | null> {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const c = await load((await params).slug);
-  if (!c) return { title: 'Course · CareerPath Africa' };
+  if (!c) return { title: 'Course' };
   const where = [c.exam, c.subject].filter(Boolean).join(' · ');
   return {
-    title: `${c.title}${where ? ` · ${where}` : ''} · CareerPath Africa`,
+    title: `${c.title}${where ? ` · ${where}` : ''}`,
     description: c.shortDescription ?? c.description?.slice(0, 160) ?? undefined,
     openGraph: { title: c.title, description: c.shortDescription ?? undefined, images: c.coverUrl ? [c.coverUrl] : undefined },
   };

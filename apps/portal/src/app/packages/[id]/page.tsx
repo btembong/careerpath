@@ -27,9 +27,9 @@ async function load(id: string): Promise<PackagePage | null> {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const p = await load((await params).id);
-  if (!p) return { title: 'Package · CareerPath Africa' };
+  if (!p) return { title: 'Package' };
   return {
-    title: `${p.name} · ${price(p.priceAmount, p.currency)} · CareerPath Africa`,
+    title: `${p.name} · ${price(p.priceAmount, p.currency)}`,
     description: p.description ?? `${p.counts.courses} courses in one package${p.months ? ` for ${p.months} months` : ''}.`,
     openGraph: { title: p.name, description: p.description ?? undefined },
   };

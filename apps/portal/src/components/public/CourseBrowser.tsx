@@ -11,15 +11,19 @@ export interface BrowseCourse {
   modules: number; lessons: number; questions: number;
   selling: 'free' | 'paid' | 'package' | 'notsale'; price: { amount: number; currency: string } | null;
   website: boolean; joinedThisMonth: number; students: number; added: string;
+  /** Country codes of the course's exam; [] = international; null = no exam yet */
+  countries: string[] | null;
 }
 export interface BrowseData {
   courses: BrowseCourse[];
   start: BrowseCourse | null;
   package: { id: string; name: string; priceAmount: number; currency: string; courses: number } | null;
   packages: number;
+  countries: { code: string; name: string; n: number }[];
+  international: number;
 }
-interface F { q: string; exam: string; price: string; subject: string; where: string; teacher: string; sort: string }
-const BLANK: F = { q: '', exam: '', price: '', subject: '', where: '', teacher: '', sort: 'popular' };
+interface F { q: string; country: string; exam: string; price: string; subject: string; where: string; teacher: string; sort: string }
+const BLANK: F = { q: '', country: '', exam: '', price: '', subject: '', where: '', teacher: '', sort: 'popular' };
 
 const s = (n: number, w: string, ws = `${w}s`) => `${n} ${n === 1 ? w : ws}`;
 const priceText = (c: BrowseCourse) => c.selling === 'paid' && c.price ? price(c.price.amount, c.price.currency) : c.selling === 'free' ? 'Free' : c.selling === 'package' ? 'In a package' : 'Soon';
@@ -45,8 +49,14 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
     history.replaceState(null, '', p.toString() ? `/courses?${p}` : '/courses');
   }, [f]);
 
+  // A country shows its own exams' courses and international ones (IELTS, ACCA); courses with no exam yet only under All countries
+  const code = f.country.toUpperCase();
+  const inCountry = (c: BrowseCourse) => !f.country || (!!c.countries && (c.countries.length === 0 || c.countries.includes(code)));
+  const country = data.countries.find(x => x.code === code) ?? null;
+  const base = useMemo(() => data.courses.filter(inCountry), [data.courses, f.country]); // eslint-disable-line react-hooks/exhaustive-deps
   const pass = (c: BrowseCourse, skip?: keyof F) =>
-    (skip === 'exam' || !f.exam || c.exam?.id === f.exam)
+    (skip === 'country' || inCountry(c))
+    && (skip === 'exam' || !f.exam || c.exam?.id === f.exam)
     && (skip === 'price' || !f.price || (f.price === 'free' ? c.selling === 'free' : f.price === 'paid' ? c.selling === 'paid' : c.selling === 'package'))
     && (skip === 'subject' || !f.subject || c.subject?.id === f.subject)
     && (skip === 'where' || !f.where || (f.where === 'portal' ? !c.website : c.website))
@@ -62,18 +72,18 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
 
   // Counts for each option, given the other choices
   const count = (key: keyof F, test: (c: BrowseCourse) => boolean) => all.filter(c => pass(c, key) && test(c)).length;
-  const exams = useMemo(() => [...new Map(all.filter(c => c.exam).map(c => [c.exam!.id, c.exam!])).values()]
-    .map(e => ({ ...e, n: all.filter(c => c.exam?.id === e.id).length })).sort((a, b) => b.n - a.n), [all]);
+  const exams = useMemo(() => [...new Map(base.filter(c => c.exam).map(c => [c.exam!.id, c.exam!])).values()]
+    .map(e => ({ ...e, n: base.filter(c => c.exam?.id === e.id).length })).sort((a, b) => b.n - a.n), [base]);
   const subjects = useMemo(() => [...new Map(all.filter(c => c.subject).map(c => [c.subject!.id, c.subject!])).values()], [all]);
   const teachers = useMemo(() => {
     const m = new Map<string, { id: string; name: string | null; avatarUrl: string | null; n: number; subjects: Set<string> }>();
     for (const c of all) if (c.teacher) { const t = m.get(c.teacher.id) ?? { ...c.teacher, n: 0, subjects: new Set<string>() }; t.n++; if (c.subject) t.subjects.add(c.subject.name); m.set(c.teacher.id, t); }
     return [...m.values()].sort((a, b) => Number(!!b.avatarUrl) - Number(!!a.avatarUrl) || b.n - a.n);
   }, [all]);
-  const free = all.filter(c => c.selling === 'free').length;
+  const free = base.filter(c => c.selling === 'free').length;
   const browsing = !f.q && !f.price && !f.subject && !f.where && !f.teacher && f.sort === 'popular';
   const set = (k: keyof F, v: string) => setF(x => ({ ...x, [k]: x[k] === v ? '' : v }));
-  const chosen = ([['exam', exams.find(e => e.id === f.exam)?.name], ['price', { free: 'Free', paid: 'Paid', package: 'In a package' }[f.price]], ['subject', subjects.find(x => x.id === f.subject)?.name], ['where', { portal: 'On the portal', website: 'On careerpathafrica.com' }[f.where]], ['teacher', teachers.find(t => t.id === f.teacher)?.name]] as [keyof F, string | undefined][]).filter(([, v]) => v);
+  const chosen = ([['country', country?.name], ['exam', exams.find(e => e.id === f.exam)?.name], ['price', { free: 'Free', paid: 'Paid', package: 'In a package' }[f.price]], ['subject', subjects.find(x => x.id === f.subject)?.name], ['where', { portal: 'On the portal', website: 'On careerpathafrica.com' }[f.where]], ['teacher', teachers.find(t => t.id === f.teacher)?.name]] as [keyof F, string | undefined][]).filter(([, v]) => v);
 
   const shelf = (title: string, list: BrowseCourse[], more?: { label: string; on: () => void }) => list.length > 0 && (
     <section key={title}>
@@ -97,8 +107,14 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
       <section className="bg-[#3F6FE8]">
         <div className="mx-auto grid max-w-[1240px] items-center gap-8 px-4 pb-8 pt-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-10">
           <div className="flex min-w-0 flex-col gap-3">
-            <p className="text-[12px] font-extrabold uppercase tracking-[0.08em]">Courses · {all.length} · free to start</p>
-            <h1 className="text-[34px] font-extrabold leading-[1.02] tracking-[-0.035em] sm:text-[46px]">{all.length} courses,<br /><span className="text-white">{free === all.length ? 'all of them free.' : `${free} of them free.`}</span></h1>
+            <label className="flex w-fit items-center gap-2 rounded-md bg-white/25 py-1 pl-3 pr-1 text-[13px] font-bold text-navy">
+              Courses for
+              <select aria-label="Country" value={code} onChange={e => setF(x => ({ ...x, country: e.target.value.toLowerCase(), exam: '' }))} className="h-7 rounded bg-white px-2 text-[13px] font-extrabold text-navy outline-none">
+                <option value="">All countries</option>
+                {data.countries.map(x => <option key={x.code} value={x.code}>{x.name}</option>)}
+              </select>
+            </label>
+            <h1 className="text-[34px] font-extrabold leading-[1.02] tracking-[-0.035em] sm:text-[46px]">{s(base.length, 'course')}{country ? ` for ${country.name}` : ''},<br /><span className="text-white">{free === base.length ? (base.length === 1 ? 'free.' : 'all of them free.') : `${free} of them free.`}</span></h1>
             <p className="max-w-[560px] text-[16px] leading-relaxed text-[#0B1F55]">Lessons, notes and quizzes from teachers across Africa. Pick your exam, or search a subject or topic.</p>
             <form onSubmit={e => { e.preventDefault(); setF(x => ({ ...x, q })); }} className="mt-1 flex max-w-[600px] items-center rounded-lg bg-white p-1.5 shadow-[0_10px_24px_rgba(7,32,97,0.18)]">
               <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search a subject, topic or teacher…" aria-label="Search courses" className="h-10 min-w-0 flex-1 bg-transparent px-3 text-[15px] text-navy outline-none placeholder:text-[#9AA6C2]" />
@@ -106,7 +122,7 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
               <button className="h-10 rounded-md bg-[#2F57C9] px-4 text-[14px] font-extrabold text-white">Search</button>
             </form>
             <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0" role="group" aria-label="Exams">
-              <button onClick={() => setF(x => ({ ...x, exam: '' }))} aria-pressed={!f.exam} className={clsx('h-8 flex-shrink-0 rounded-md px-3 text-[13.5px] font-bold', !f.exam ? 'bg-white text-navy' : 'bg-white/25 text-navy hover:bg-white/40')}>All <span className="opacity-60">{all.length}</span></button>
+              <button onClick={() => setF(x => ({ ...x, exam: '' }))} aria-pressed={!f.exam} className={clsx('h-8 flex-shrink-0 rounded-md px-3 text-[13.5px] font-bold', !f.exam ? 'bg-white text-navy' : 'bg-white/25 text-navy hover:bg-white/40')}>All <span className="opacity-60">{base.length}</span></button>
               {exams.map(e => <button key={e.id} onClick={() => set('exam', e.id)} aria-pressed={f.exam === e.id} className={clsx('h-8 flex-shrink-0 rounded-md px-3 text-[13.5px] font-bold', f.exam === e.id ? 'bg-white text-navy' : 'bg-white/25 text-navy hover:bg-white/40')}>{e.name} <span className="opacity-60">{e.n}</span></button>)}
             </div>
           </div>
@@ -144,9 +160,12 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
             </select>
           </div>
 
+          {country && (
+            <p className="-mt-3 text-[13px] text-muted">Courses for {country.name}’s exams, plus international ones like IELTS and TOEFL. {all.length - base.length > 0 ? `${s(all.length - base.length, 'course isn’t', 'courses aren’t')} linked to a country yet: ` : ''}{all.length - base.length > 0 && <button onClick={() => setF(x => ({ ...x, country: '' }))} className="font-bold text-azure-strong hover:underline">see all countries</button>}</p>
+          )}
           {browsing && !f.exam ? <>
-            {shelf('Most joined this month', all.filter(c => !c.website))}
-            {exams.slice(0, 4).map(e => shelf(e.name, all.filter(c => c.exam?.id === e.id).sort((a, b) => Number(a.website) - Number(b.website)), { label: `All ${e.n} →`, on: () => set('exam', e.id) }))}
+            {shelf('Most joined this month', base.filter(c => !c.website))}
+            {exams.slice(0, 4).map(e => shelf(e.name, base.filter(c => c.exam?.id === e.id).sort((a, b) => Number(a.website) - Number(b.website)), { label: `All ${e.n} →`, on: () => set('exam', e.id) }))}
             <section className="flex flex-wrap items-center gap-5 rounded-xl bg-[#072061] p-5 text-white sm:p-6">
               <span className="relative h-[62px] w-[90px] flex-shrink-0" aria-hidden><span className="absolute left-0 top-2.5 h-11 w-14 -rotate-6 rounded-md bg-[#17703A]" /><span className="absolute left-[18px] top-1 h-11 w-14 rounded-md bg-[#6B3FB8]" /><span className="absolute left-[34px] top-0 h-11 w-14 rotate-6 rounded-md bg-[#3F6FE8]" /></span>
               <span className="min-w-[200px] flex-1"><b className="text-[19px]">Studying several subjects?</b><span className="mt-1 block text-[14px] text-[#C9D6FF]">{data.packages ? 'A package gives you a set of courses at one price, with practice and mock exams.' : 'Packages of several courses at one price are coming soon. Every course here is free to start meanwhile.'}</span></span>
@@ -166,7 +185,7 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
               </section>
             )}
             <section>
-              <div className="mb-3 flex items-baseline gap-3"><h2 className="flex-1 text-[20px] font-extrabold tracking-[-0.01em]">All courses</h2><span className="text-[13px] text-muted">{s(all.length, 'course')}</span></div>
+              <div className="mb-3 flex items-baseline gap-3"><h2 className="flex-1 text-[20px] font-extrabold tracking-[-0.01em]">{country ? `All courses for ${country.name}` : 'All courses'}</h2><span className="text-[13px] text-muted">{s(base.length, 'course')}</span></div>
               <Grid list={shown} />
             </section>
           </> : shown.length ? <Grid list={shown} /> : (
