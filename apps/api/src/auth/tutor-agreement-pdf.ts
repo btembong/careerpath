@@ -139,7 +139,7 @@ export async function tutorAgreementPdf(text: TutorAgreementText, rec: Acceptanc
     ['Tutor reference', rec.reference],
     ['Agreement version', text.label],
     ['Accepted on', when(rec.acceptedAt)],
-    ['How', 'Electronically, by ticking the acceptance box on the CareerPath Africa platform while applying'],
+    ['How', 'Electronically, by ticking the acceptance box on the CareerPath Africa platform'],
     ['From IP address', rec.ip ?? 'Not recorded'],
   ];
   const rowH = rows.map(([, v]) => wrap(v, 10, BODY - 150).length * 14 + 8);
