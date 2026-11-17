@@ -1,13 +1,32 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { CatalogueService } from './catalogue.service';
+import { PublicPagesService } from './public-pages.service';
 import { ProgrammeType } from '@prisma/client';
 import { ParseBoolPipe } from '@nestjs/common';
 
 @ApiTags('catalogue')
 @Controller('catalogue')
 export class CatalogueController {
-  constructor(private readonly catalogueService: CatalogueService) {}
+  constructor(private readonly catalogueService: CatalogueService, private readonly pages: PublicPagesService) {}
+
+  @Get('course-page/:slug')
+  @ApiOperation({ summary: 'Public course page: outline, teacher, counts, price, packages that include it, related courses' })
+  coursePage(@Param('slug') slug: string) {
+    return this.pages.course(slug);
+  }
+
+  @Get('package-page/:id')
+  @ApiOperation({ summary: 'Public package page: every course inside, teachers, totals, add-ons, FAQ (published packages only)' })
+  packagePage(@Param('id') id: string) {
+    return this.pages.package(id);
+  }
+
+  @Get('package-list')
+  @ApiOperation({ summary: 'Public packages list: each published package with what is in it, cheapest first' })
+  packageList() {
+    return this.pages.packages();
+  }
 
   @Get('programmes')
   @ApiOperation({ summary: 'List all programmes, optionally filtered by type and/or country' })

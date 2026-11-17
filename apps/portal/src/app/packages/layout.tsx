@@ -1,7 +1,10 @@
-'use client';
+import { cookies } from 'next/headers';
 import { Sidebar } from '@/components/layout/Sidebar';
 
-export default function PackagesLayout({ children }: { children: React.ReactNode }) {
+/** Signed in: the portal with its sidebar. Visitors: the public package pages, full width. */
+export default async function PackagesLayout({ children }: { children: React.ReactNode }) {
+  const signedIn = !!(await cookies()).get('cpa_token')?.value;
+  if (!signedIn) return <>{children}</>;
   return (
     <div className="flex h-screen overflow-hidden bg-surface">
       <Sidebar />

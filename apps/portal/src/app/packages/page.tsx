@@ -1,273 +1,90 @@
-'use client';
-import { useEffect, useMemo, useState, Suspense as _Suspense } from 'react';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const Suspense = _Suspense as any;
 import Link from 'next/link';
-import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { clsx } from 'clsx';
-import { majorToMinor, minorToMajor } from '@cpa/shared';
-import { Topbar } from '@/components/layout/Topbar';
-import { KIND_COLOURS, walletMoney } from '@/components/wallet/WalletCharts';
-import api from '@/lib/api';
+import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
+import PackagesApp from '@/components/packages/PackagesApp';
+import { Cover, PayWith, PublicFooter, PublicHeader, perMonth, price } from '@/components/public/PublicChrome';
 
-interface Package {
-  id: string; name: string; description: string | null;
-  priceAmount: number; currency: string;
-  courseIds: string[]; validityDays: number | null; categoryTags: string[];
-  cohort?: { id: string; name: string } | null;
-  mentorship?: string | null;
-  bestValue?: boolean;
-}
-interface Course {
-  id: string; title: string; status: string;
-  priceAmount: number | null; priceCurrency: string | null; isSoldIndividually: boolean;
-  programme: { id: string; name: string; shortName: string | null } | null;
-  _count: { modules: number };
-}
-interface ActivePackage { id: string; expiresAt: string | null }
-interface Offers { live: { price: number } | null; mentorship: { price: number; perMonth: number } | null; owned?: boolean; bought?: string[] }
-
-const term = (days: number | null) => {
-  if (!days) return 'No time limit';
-  const m = Math.round(days / 30.44);
-  return m >= 1 && Math.abs(m * 30.44 - days) <= 3 ? `${m} month${m === 1 ? '' : 's'}` : `${days} days`;
+export const revalidate = 300;
+export const metadata: Metadata = {
+  title: 'Packages · CareerPath Africa',
+  description: 'Bundles of exam courses at one price, with practice, mock exams and optional live classes. Pay by mobile money or card.',
 };
-const ICON = {
-  box: 'M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10',
-  book: 'M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5zM5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3',
-  video: 'M15 10l5-3v10l-5-3M3 6h12v12H3z',
-  user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
-  cal: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
-};
-const Svg = ({ d, size = 15 }: { d: string; size?: number }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={d} /></svg>;
 
-function PackagesInner() {
-  const params = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
-  const [packages, setPackages] = useState<Package[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [mine, setMine] = useState<ActivePackage[]>([]);
-  const [offers, setOffers] = useState<Record<string, Offers>>({});
-  const [loading, setLoading] = useState(true);
-  const [prog, setProgState] = useState(params.get('programme') ?? 'all');
-  const [wants, setWants] = useState<{ live?: boolean; ment?: boolean; budget?: boolean }>({});
-  const [col, setCol] = useState<string | null>(null);
+interface Pkg {
+  id: string; name: string; description: string | null; priceAmount: number; currency: string; bestValue: boolean; months: number | null;
+  courses: number; lessons: number; exams: string[]; covers: string[]; titles: string[]; live: boolean; liveAddOn: boolean; mentorship: boolean;
+}
 
-  useEffect(() => {
-    Promise.all([
-      api.get('/packages').then(r => {
-        const ps: Package[] = r.data ?? [];
-        setPackages(ps);
-        // Extras each package offers at checkout (and which the student already has)
-        ps.forEach(p => api.get(`/payments/add-ons/package/${p.id}`).then(o => setOffers(x => ({ ...x, [p.id]: o.data }))).catch(() => {}));
-      }).catch(() => {}),
-      api.get('/platform-courses').then(r => setCourses((r.data ?? []).filter((c: Course) => c.status === 'PUBLISHED'))).catch(() => {}),
-      api.get('/auth/me').then(r => setMine(r.data?.activePackages ?? [])).catch(() => {}),
-    ]).finally(() => setLoading(false));
-  }, []);
+async function load(): Promise<Pkg[]> {
+  try {
+    const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/catalogue/package-list`, { next: { revalidate: 300 } });
+    return r.ok ? await r.json() : [];
+  } catch { return []; }
+}
 
-  function setProg(id: string) {
-    setProgState(id);
-    const p = new URLSearchParams(params.toString());
-    if (id === 'all') p.delete('programme'); else p.set('programme', id);
-    router.replace(`${pathname}${p.toString() ? `?${p}` : ''}`, { scroll: false });
-  }
-
-  const byId = useMemo(() => new Map(courses.map(c => [c.id, c])), [courses]);
-  const programmeOf = (p: Package) => p.courseIds.map(id => byId.get(id)?.programme).find(Boolean) ?? null;
-
-  const programmes = useMemo(() => {
-    const m = new Map<string, string>();
-    packages.forEach(p => p.courseIds.forEach(id => { const pr = byId.get(id)?.programme; if (pr) m.set(pr.id, pr.shortName ?? pr.name); }));
-    return [...m].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [packages, byId]);
-  const progColour = (id: string | undefined) => KIND_COLOURS[Math.max(0, programmes.findIndex(p => p[0] === id)) % KIND_COLOURS.length];
-
-  const plans = useMemo(() => packages
-    .filter(p => prog === 'all' || p.courseIds.some(id => byId.get(id)?.programme?.id === prog))
-    .map(p => {
-      const cs = p.courseIds.map(id => byId.get(id)).filter(Boolean) as Course[];
-      const allSold = cs.length === p.courseIds.length && cs.length > 0 && cs.every(c => c.isSoldIndividually && c.priceAmount != null && c.priceCurrency === p.currency);
-      const separate = allSold ? cs.reduce((s, c) => s + (c.priceAmount ?? 0), 0) : null;
-      return { p, cs, saving: separate != null && separate > p.priceAmount ? separate - p.priceAmount : null };
-    })
-    .sort((a, b) => (b.saving ?? -1) - (a.saving ?? -1) || a.p.priceAmount - b.p.priceAmount), [packages, byId, prog]);
-
-  // Best value: the one the admin chose; else the biggest saving on buying the courses one by one; failing that, the lowest price per course
-  const perCourse = (p: Package) => p.priceAmount / Math.max(1, p.courseIds.length);
-  const bestId = plans.find(x => x.p.bestValue)?.p.id
-    ?? plans.find(x => x.saving != null)?.p.id
-    ?? (plans.length > 1 && new Set(plans.map(x => x.p.currency)).size === 1 ? [...plans].sort((a, b) => perCourse(a.p) - perCourse(b.p))[0].p.id : null);
-  const owned = (id: string) => mine.find(m => m.id === id) ?? null;
-  const maxSaving = plans.reduce((m, x) => (x.saving && x.saving > m.v ? { v: x.saving, c: x.p.currency } : m), { v: 0, c: 'XAF' });
-  // "Under ..." = the middle price, rounded to a tidy figure
-  const sorted = [...plans].sort((a, b) => a.p.priceAmount - b.p.priceAmount);
-  const mid = sorted[Math.floor(sorted.length / 2)]?.p;
-  const step = mid ? (minorToMajor(mid.priceAmount, mid.currency) >= 10000 ? 5000 : 10) : 1;
-  const budget = mid ? Math.ceil(minorToMajor(mid.priceAmount, mid.currency) / step) * step : 0;
-  const fits = (p: Package) => (!wants.live || !!p.cohort) && (!wants.ment || !!p.mentorship) && (!wants.budget || minorToMajor(p.priceAmount, p.currency) <= budget);
-  const anyWant = wants.live || wants.ment || wants.budget;
-  const mineHere = packages.filter(p => owned(p.id));
-  const highlight = col ?? bestId;
-  const chip = (on: boolean) => clsx('h-8 rounded-md border px-3 text-[13px] font-semibold', on ? 'border-[#3F6FE8] bg-accent-soft text-navy' : 'border-line bg-white text-ink2 hover:text-navy');
-
+/** Visitors: packages side by side, like product tiers. Signed in: the portal's own packages page, as before. */
+export default async function PackagesRoute() {
+  if ((await cookies()).get('cpa_token')?.value) return <PackagesApp />;
+  const list = await load();
+  // The admin's "Best value" choice; otherwise the middle one when there are three or more
+  const best = list.find(p => p.bestValue)?.id ?? (list.length >= 3 ? list[Math.floor(list.length / 2)].id : null);
   return (
-    <div className="flex min-h-full flex-col">
-      <Topbar title="Packages" subtitle="Courses, live classes and mentorship together, for less"
-        actions={<Link href="/student/catalogue" className="hidden h-9 items-center rounded-md border border-line px-3.5 text-[13px] font-bold text-azure-strong hover:bg-subtle sm:inline-flex">Browse single courses</Link>} />
-
-      <div className="flex flex-col gap-[18px] p-4 lg:px-7 lg:py-6">
-        <section className="keep-light relative flex flex-col gap-3.5 overflow-hidden rounded-xl bg-[#3F6FE8] p-5 text-navy sm:p-7">
-          <svg aria-hidden viewBox="0 0 400 200" className="pointer-events-none absolute -bottom-[60px] -right-[30px] h-[210px] w-[420px] opacity-[0.16]"><rect x="40" y="40" width="120" height="120" rx="14" fill="#FFFFFF" /><rect x="180" y="20" width="120" height="120" rx="14" fill="#FFFFFF" /><rect x="110" y="90" width="120" height="120" rx="14" fill="#FFFFFF" /></svg>
-          <h1 className="relative max-w-[640px] text-[30px] font-extrabold leading-[1.02] tracking-[-0.03em] sm:text-[44px]">Everything for your exam, <span className="text-[#FFFFFF]">one price</span></h1>
-          <p className="relative max-w-[600px] text-[15px] text-[#0B1F55]">A package gives you several courses, and often live classes with a teacher and one-to-one mentoring, for less than buying them one by one.</p>
-          <div className="relative flex flex-wrap items-center gap-2.5">
-            {programmes.length > 1 && (
-              <div role="tablist" aria-label="Programme" className="flex max-w-full gap-0.5 overflow-x-auto rounded-lg bg-[#FFFFFF] p-1">
-                {[['all', 'All'] as [string, string], ...programmes].map(([id, l]) => (
-                  <button key={id} type="button" role="tab" aria-selected={prog === id} onClick={() => setProg(id)}
-                    className={clsx('h-8 flex-shrink-0 rounded-md px-3.5 text-[13px] text-navy', prog === id ? 'bg-[#EAF0FF] font-bold' : 'font-medium')}>{l}</button>
-                ))}
-              </div>
-            )}
-            {maxSaving.v > 0 && <span className="inline-flex h-[30px] items-center rounded-md bg-[rgba(255,255,255,0.35)] px-3 text-[12.5px] font-bold">Save up to {walletMoney(maxSaving.v, maxSaving.c)}</span>}
-            <span className="inline-flex h-[30px] items-center rounded-md bg-[rgba(255,255,255,0.35)] px-3 text-[12.5px] font-bold">MTN MoMo or Orange Money</span>
+    <div className="keep-light flex min-h-screen flex-col bg-[#F8F9FC] text-navy">
+      <PublicHeader />
+      <section className="bg-[#3F6FE8]">
+        <div className="mx-auto flex max-w-[1240px] flex-col items-center gap-3 px-4 py-12 text-center sm:px-8">
+          <h1 className="text-[38px] font-extrabold leading-none tracking-[-0.04em] sm:text-[52px]">Pick your <span className="text-white">package.</span></h1>
+          <p className="max-w-[560px] text-[16.5px] leading-relaxed text-[#0B1F55]">Every package: lessons, practice questions and mock exams at one price. Add live classes or a mentor at checkout when they’re offered.</p>
+          <PayWith className="mt-1 justify-center" />
+        </div>
+      </section>
+      <main className="mx-auto w-full max-w-[1240px] px-4 py-10 sm:px-8">
+        {!list.length ? (
+          <div className="mx-auto flex max-w-[520px] flex-col items-center gap-3 rounded-xl border border-line bg-white p-8 text-center">
+            <b className="text-[20px]">New packages are on their way.</b>
+            <p className="text-[14.5px] text-ink2">In the meantime, start with the free courses: no payment needed.</p>
+            <Link href="/courses" className="inline-flex h-11 items-center rounded-md bg-[#2F57C9] px-5 font-bold text-white">See the courses</Link>
           </div>
-        </section>
-
-        {mineHere.map(p => {
-          const o = offers[p.id], have = owned(p.id)!;
-          const add = o?.owned ? (['live', 'mentorship'] as const).find(k => o[k] && !o.bought?.includes(k)) : undefined;
-          return (
-            <section key={p.id} className="flex flex-wrap items-center gap-3.5 rounded-xl border border-line bg-white px-[18px] py-3.5">
-              <span className="inline-flex h-6 items-center rounded bg-[#E6F5EE] px-2 text-xs font-bold text-[#1F6B47]">Yours</span>
-              <p className="min-w-0 flex-[1_1_300px] text-sm text-navy"><strong>{p.name}</strong> <span className="text-ink2">{have.expiresAt ? `until ${new Date(have.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}` : 'no time limit'}{o?.bought?.length ? ` · ${o.bought.map(b => (b === 'live' ? 'live classes' : 'mentorship')).join(' and ')} added` : ''}</span></p>
-              {add && o?.[add] && <Link href={`/packages/${p.id}/checkout?add=${add}`} className="text-[13px] font-bold text-azure-strong hover:underline">Add {add === 'live' ? 'live classes' : 'mentorship'} · {walletMoney(o[add]!.price, p.currency)}</Link>}
-              <Link href={`/packages/${p.id}`} className="inline-flex h-[34px] items-center rounded-md border border-line px-3.5 text-[13px] font-bold text-navy hover:bg-subtle">Open</Link>
-            </section>
-          );
-        })}
-
-        {plans.length > 1 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-[13.5px] font-bold text-navy">I want</span>
-            <button type="button" aria-pressed={!!wants.live} onClick={() => setWants(w => ({ ...w, live: !w.live }))} className={chip(!!wants.live)}>a teacher every week</button>
-            <button type="button" aria-pressed={!!wants.ment} onClick={() => setWants(w => ({ ...w, ment: !w.ment }))} className={chip(!!wants.ment)}>one-to-one mentoring</button>
-            {mid && <button type="button" aria-pressed={!!wants.budget} onClick={() => setWants(w => ({ ...w, budget: !w.budget }))} className={chip(!!wants.budget)}>to spend under {walletMoney(majorToMinor(budget, mid.currency), mid.currency)}</button>}
-            {anyWant && <span className="text-[12.5px] text-muted">{plans.filter(x => fits(x.p)).length} package{plans.filter(x => fits(x.p)).length === 1 ? '' : 's'} fit</span>}
-          </div>
-        )}
-
-        {loading ? (
-          <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]">{[0, 1, 2].map(i => <div key={i} className="h-[460px] animate-pulse rounded-xl border border-line bg-white" />)}</div>
-        ) : !plans.length ? (
-          <div className="rounded-xl border border-line bg-white p-10 text-center">
-            <p className="text-sm font-semibold text-navy">No packages here yet</p>
-            <p className="mt-1 text-[13px] text-ink2">You can still buy single courses from the catalogue.</p>
-          </div>
-        ) : <>
-          <div className="flex snap-x gap-4 overflow-x-auto pb-1 sm:grid sm:items-stretch sm:overflow-visible sm:[grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]">
-            {plans.map(({ p, saving }) => {
-              const best = p.id === bestId, have = owned(p.id), fit = !anyWant || fits(p), o = offers[p.id];
-              const pr = programmeOf(p);
-              const months = p.validityDays ? Math.max(1, Math.round(p.validityDays / 30.44)) : null;
-              const perMonth = months ? Math.round(minorToMajor(p.priceAmount, p.currency) / months / 50) * 50 : null;
-              const inside: [boolean, string, string, string][] = [
-                [true, ICON.book, `${p.courseIds.length} course${p.courseIds.length === 1 ? '' : 's'}`, 'Lessons, practice and quizzes · certificates'],
-                [!!p.cohort, ICON.video, p.cohort ? 'Live classes' : 'No live classes', p.cohort ? p.cohort.name : o?.live ? `Add them at checkout · ${walletMoney(o.live.price, p.currency)}` : 'Not offered with this package'],
-                [!!p.mentorship, ICON.user, p.mentorship ? p.mentorship : 'No mentorship', p.mentorship ? '30 min with a teacher you choose' : o?.mentorship ? `Add it at checkout · ${walletMoney(o.mentorship.price, p.currency)}` : 'Not offered with this package'],
-                [true, ICON.cal, p.validityDays ? `${term(p.validityDays)} of access` : 'No time limit', 'From the day you pay'],
-              ];
+        ) : (
+          <div className={`grid items-start gap-5 ${list.length === 1 ? 'mx-auto max-w-[420px]' : list.length === 2 ? 'mx-auto max-w-[860px] md:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-3'}`}>
+            {list.map(p => {
+              const isBest = p.id === best;
+              const monthly = perMonth(p.priceAmount, p.currency, p.months);
               return (
-                <article key={p.id} className={clsx('flex min-w-[280px] snap-start flex-col overflow-hidden rounded-xl border-2 bg-white transition-opacity sm:min-w-0', best ? 'border-[#2F57C9] shadow-[0_12px_28px_rgba(47,87,201,0.16)]' : 'border-line', !fit && 'opacity-40')}>
-                  <div className="keep-light flex items-center justify-between gap-2 px-5 py-2.5 text-[#FFFFFF]" style={{ background: best ? '#2F57C9' : progColour(pr?.id) }}>
-                    <span className="flex min-w-0 items-center gap-2 text-xs font-bold tracking-[0.04em]"><Svg d={ICON.box} size={16} /><span className="truncate">{pr ? pr.shortName ?? pr.name : 'Package'}</span></span>
-                    {(have || best) && <span className="inline-flex h-[22px] items-center rounded bg-[#FFFFFF] px-2 text-[11.5px] font-extrabold text-[#072061]">{have ? 'Yours' : 'Best value'}</span>}
+                <article key={p.id} className={`relative flex flex-col gap-4 rounded-2xl bg-white p-6 ${isBest ? 'border-2 border-[#3F6FE8] shadow-[0_18px_40px_rgba(63,111,232,0.18)] lg:-translate-y-2' : 'border border-line'}`}>
+                  {isBest && <span className="absolute -top-3 left-6 rounded-md bg-[#3F6FE8] px-2.5 py-1 text-[11.5px] font-extrabold uppercase tracking-[0.04em] text-white">Best value</span>}
+                  <div className="relative h-[96px]" aria-hidden>
+                    {(p.covers.length ? p.covers : [null, null, null]).slice(0, 3).map((c, i) => (
+                      <div key={i} className="absolute h-[76px] w-[124px] overflow-hidden rounded-lg shadow-[0_10px_20px_rgba(7,32,97,0.18)]" style={{ left: i * 34, top: i === 1 ? 0 : 14, transform: `rotate(${[-6, 3, 8][i]}deg)`, zIndex: 3 - i }}>
+                        <Cover src={c} label={p.exams[i] ?? p.name} seed={p.id + i} className="h-full w-full" />
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex flex-1 flex-col gap-3 px-5 pb-5 pt-[18px]">
-                    <div>
-                      <h2 className="text-xl font-extrabold tracking-[-0.01em] text-navy">{p.name}</h2>
-                      <p className="mt-0.5 line-clamp-2 text-[13px] text-muted">{p.description || p.courseIds.map(id => byId.get(id)?.title.split(' · ')[0]).filter(Boolean).slice(0, 4).join(', ')}</p>
-                    </div>
-                    <div>
-                      <p className="text-[32px] font-extrabold leading-none tracking-[-0.02em] text-navy">{walletMoney(p.priceAmount, p.currency)}</p>
-                      <p className="mt-1.5 text-[12.5px] text-ink2">{perMonth ? `About ${walletMoney(majorToMinor(perMonth, p.currency), p.currency)} a month` : 'One payment'}{saving != null ? <strong className="text-[#1F6B47]"> · saves {walletMoney(saving, p.currency)}</strong> : p.courseIds.length > 1 ? <span> · {walletMoney(Math.round(perCourse(p)), p.currency)} a course</span> : null}</p>
-                    </div>
-                    <ul className="flex flex-col gap-2.5 border-t border-line pt-3">
-                      {inside.map(([on, d, t, sub]) => (
-                        <li key={t} className="flex items-start gap-2.5">
-                          <span className={clsx('flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md', on ? 'bg-accent-soft text-azure-strong' : 'bg-subtle text-muted')}><Svg d={d} /></span>
-                          <span className="min-w-0"><span className={clsx('block text-[13.5px] font-bold', on ? 'text-navy' : 'text-muted')}>{t}</span><span className="block text-xs text-muted">{sub}</span></span>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-auto flex flex-col gap-1.5 pt-1.5">
-                      {have
-                        ? <Link href={`/packages/${p.id}`} className="inline-flex h-[42px] items-center justify-center rounded-md border border-line text-sm font-bold text-navy hover:bg-subtle">Open my package</Link>
-                        : <Link href={`/packages/${p.id}/checkout`} className={clsx('inline-flex h-[42px] items-center justify-center rounded-md text-sm font-bold', best ? 'bg-azure-strong text-on-accent' : 'border border-[#3F6FE8] text-azure-strong hover:bg-accent-soft')}>Get {p.name}</Link>}
-                      <Link href={`/packages/${p.id}`} className="text-center text-[12.5px] font-semibold text-muted hover:text-navy">See what’s inside</Link>
-                    </div>
+                  <div>
+                    {p.exams.length > 0 && <p className="text-[12px] font-extrabold uppercase tracking-[0.06em] text-muted">{p.exams.slice(0, 3).join(' · ')}</p>}
+                    <h2 className="mt-1 text-[24px] font-extrabold leading-tight tracking-[-0.01em]">{p.name}</h2>
+                    {p.description && <p className="mt-1 text-[14px] leading-relaxed text-ink2">{p.description}</p>}
                   </div>
+                  <div>
+                    <b className="text-[34px] font-extrabold leading-none tracking-[-0.02em]">{price(p.priceAmount, p.currency)}</b>
+                    <p className="mt-1 text-[13px] text-muted">{p.courses} course{p.courses === 1 ? '' : 's'}{p.months ? ` · ${p.months} months` : ''}{monthly ? ` · ${monthly}` : ''}</p>
+                  </div>
+                  <Link href={`/packages/${p.id}`} className={`flex h-11 items-center justify-center rounded-md text-[15px] font-extrabold ${isBest ? 'bg-[#2F57C9] text-white hover:bg-[#2548AE]' : 'border border-line text-navy hover:bg-subtle'}`}>See what’s inside</Link>
+                  <ul className="flex flex-col gap-1.5 border-t border-line pt-4 text-[13.5px] text-ink2">
+                    <li className="flex gap-2"><span className="text-[#17703A]">✓</span>{p.lessons} lessons with notes and quizzes</li>
+                    <li className="flex gap-2"><span className="text-[#17703A]">✓</span>Practice questions and mock exams</li>
+                    <li className="flex gap-2"><span className="text-[#17703A]">✓</span>Certificates for each course</li>
+                    <li className={`flex gap-2 ${p.live || p.liveAddOn ? '' : 'text-[#9AA6C2]'}`}><span className={p.live || p.liveAddOn ? 'text-[#17703A]' : ''}>{p.live || p.liveAddOn ? '✓' : '—'}</span>{p.live ? 'Live classes included' : p.liveAddOn ? 'Live classes can be added' : 'No live classes'}</li>
+                    {p.mentorship && <li className="flex gap-2"><span className="text-[#17703A]">✓</span>A mentor{p.live ? ' included' : ' can be added'}</li>}
+                  </ul>
                 </article>
               );
             })}
           </div>
-
-          {plans.length > 1 && (
-            <section className="flex flex-col gap-2.5 rounded-xl border border-line bg-white p-4 sm:p-5">
-              <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-base font-bold text-navy">Compare</h2><span className="text-[12.5px] text-muted">Tap a package to highlight it</span></div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[620px] border-collapse text-[13.5px]">
-                  <thead>
-                    <tr>
-                      <th className="border-b border-line px-3 py-2.5" />
-                      {plans.map(({ p }) => (
-                        <th key={p.id} className={clsx('rounded-t-lg border-b border-line px-3 py-2.5 text-center', highlight === p.id && 'bg-accent-soft')}>
-                          <button type="button" onClick={() => setCol(p.id)} className="text-[13px] font-extrabold text-navy">{p.name}</button>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {([
-                      ['Price', ({ p }) => walletMoney(p.priceAmount, p.currency)],
-                      ['Saving vs single courses', ({ p, saving }) => saving != null ? walletMoney(saving, p.currency) : '—'],
-                      ['Courses', ({ p }) => String(p.courseIds.length)],
-                      ['Live classes', ({ p }) => p.cohort ? 'Included' : offers[p.id]?.live ? `+ ${walletMoney(offers[p.id]!.live!.price, p.currency)}` : '—'],
-                      ['Mentorship', ({ p }) => p.mentorship ? p.mentorship : offers[p.id]?.mentorship ? `+ ${walletMoney(offers[p.id]!.mentorship!.price, p.currency)}` : '—'],
-                      ['Access', ({ p }) => term(p.validityDays)],
-                      ['Price per course', ({ p }) => p.courseIds.length ? walletMoney(Math.round(p.priceAmount / p.courseIds.length), p.currency) : '—'],
-                      ['Certificates', () => 'Yes'],
-                    ] as [string, (x: typeof plans[number]) => string][]).map(([label, get]) => (
-                      <tr key={label}>
-                        <td className="whitespace-nowrap border-b border-line px-3 py-[11px] text-ink2">{label}</td>
-                        {plans.map(x => {
-                          const v = get(x);
-                          return <td key={x.p.id} className={clsx('border-b border-line px-3 py-[11px] text-center font-bold', v === '—' || v.startsWith('+') ? 'text-muted' : 'text-navy', highlight === x.p.id && 'bg-accent-soft')}>{v}</td>;
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-        </>}
-
-        <section className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-white px-[18px] py-4">
-          <p className="min-w-0 flex-[1_1_300px] text-sm text-ink2"><strong className="text-navy">Only need one subject?</strong> Many courses are sold on their own, and you can add live classes or mentorship to them too.</p>
-          <Link href="/student/catalogue" className="inline-flex h-[34px] items-center rounded-md border border-line px-3.5 text-[13px] font-bold text-navy hover:bg-subtle">Browse single courses</Link>
-        </section>
-      </div>
+        )}
+        <p className="mt-10 text-center text-[13.5px] text-muted">Prefer one subject? <Link href="/courses" className="font-bold text-azure-strong hover:underline">Browse single courses</Link> · Buying for a school? <a href="mailto:support@careerpathafrica.com?subject=School%20places" className="font-bold text-azure-strong hover:underline">Talk to us</a></p>
+      </main>
+      <PublicFooter />
     </div>
-  );
-}
-
-export default function PackagesPage() {
-  return (
-    <Suspense fallback={<div className="m-7 h-64 animate-pulse rounded-xl border border-line bg-white" />}>
-      <PackagesInner />
-    </Suspense>
   );
 }

@@ -11,6 +11,8 @@ import { CourseCover } from '@/components/courses/CourseCover';
 
 interface Course {
   id: string;
+  /** Readable address of its public page */
+  slug?: string;
   title: string;
   description: string | null;
   coverUrl: string | null;
@@ -215,7 +217,7 @@ export default function PublicCoursesPage() {
                   </div>
 
                   {/* Title */}
-                  <Link href={isLoggedIn ? `/student/courses/${course.id}` : `/login?next=${encodeURIComponent(`/student/courses/${course.id}`)}`}
+                  <Link href={isLoggedIn || !course.slug ? `/student/courses/${course.id}` : `/courses/${course.slug}`}
                     className="text-sm font-bold text-navy leading-snug flex-1 mb-2 hover:text-azure transition block">
                     {course.title}
                   </Link>

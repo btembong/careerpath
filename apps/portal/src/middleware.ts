@@ -100,6 +100,9 @@ export async function middleware(request: NextRequest) {
     }
 
     // Redirect logged-in students from public storefronts
+    // A public course page: students see their own course page instead
+    const courseId = /^\/courses\/.*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(pathname)?.[1];
+    if (courseId && payload.role === 'STUDENT') return NextResponse.redirect(at(request, `/student/courses/${courseId}`));
     const studentDest = STUDENT_REDIRECT[pathname];
     if (studentDest && payload.role === 'STUDENT') {
       return NextResponse.redirect(at(request, studentDest));

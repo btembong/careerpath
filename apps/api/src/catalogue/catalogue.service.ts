@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProgrammeType, ProgrammeScope } from '@prisma/client';
 import { teacherForStudents } from '../platform-courses/platform-courses.service';
+import { slugOf } from './public-pages.service';
 
 @Injectable()
 export class CatalogueService {
@@ -130,7 +131,7 @@ export class CatalogueService {
       orderBy: { createdAt: 'desc' },
     });
     // Public list: a course with no teacher yet shows no teacher
-    return rows.map(teacherForStudents);
+    return rows.map(r => ({ ...teacherForStudents(r), slug: slugOf(r.title, r.id) }));
   }
 
   /** All education systems with their levels */
