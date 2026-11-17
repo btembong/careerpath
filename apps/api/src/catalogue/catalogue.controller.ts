@@ -1,4 +1,6 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req } from '@nestjs/common';
+import type { Request } from 'express';
+import { GeoService } from '../audit/geo.service';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { CatalogueService } from './catalogue.service';
 import { PublicPagesService } from './public-pages.service';
@@ -8,7 +10,14 @@ import { ParseBoolPipe } from '@nestjs/common';
 @ApiTags('catalogue')
 @Controller('catalogue')
 export class CatalogueController {
-  constructor(private readonly catalogueService: CatalogueService, private readonly pages: PublicPagesService) {}
+  constructor(private readonly catalogueService: CatalogueService, private readonly pages: PublicPagesService, private readonly geo: GeoService) {}
+
+  @Get('my-country')
+  @ApiOperation({ summary: 'The country of the visitor’s IP address (from the database on our server), so the course list can start there' })
+  myCountry(@Req() req: Request) {
+    const place = this.geo.place(req.ip);
+    return { code: place?.countryCode ?? null, name: place?.country ?? null };
+  }
 
   @Get('course-page/:slug')
   @ApiOperation({ summary: 'Public course page: outline, teacher, counts, price, packages that include it, related courses' })

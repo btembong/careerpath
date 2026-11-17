@@ -22,6 +22,7 @@ export interface BrowseData {
   countries: { code: string; name: string; n: number }[];
   international: number;
 }
+const COUNTRY_KEY = 'cpa:courses-country';
 interface F { q: string; country: string; exam: string; price: string; subject: string; where: string; teacher: string; sort: string }
 const BLANK: F = { q: '', country: '', exam: '', price: '', subject: '', where: '', teacher: '', sort: 'popular' };
 
@@ -39,7 +40,25 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
   const [f, setF] = useState<F>({ ...BLANK, ...Object.fromEntries(Object.keys(BLANK).filter(k => initial[k]).map(k => [k, initial[k]!])) });
   const [q, setQ] = useState(f.q);
   const [sheet, setSheet] = useState(false);
+  // Set when the country came from where the visitor is, not from their own choice
+  const [auto, setAuto] = useState(false);
   const all = data.courses;
+
+  // First visit: start on the visitor’s country if we have it. Their own choice (remembered on this device) or a
+  // link with ?country= wins. Search engines see every course, as this only runs in the browser.
+  useEffect(() => {
+    if (initial.country !== undefined) return;
+    let saved: string | null = null;
+    try { saved = localStorage.getItem(COUNTRY_KEY); } catch { /* storage blocked */ }
+    if (saved !== null) { if (saved) setF(x => ({ ...x, country: saved! })); return; }
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/catalogue/my-country`).then(r => r.json()).then((d: { code: string | null }) => {
+      if (d.code && data.countries.some(c => c.code === d.code)) { setF(x => (x.country ? x : { ...x, country: d.code!.toLowerCase() })); setAuto(true); }
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const pickCountry = (v: string) => {
+    setF(x => ({ ...x, country: v.toLowerCase(), exam: '' })); setAuto(false);
+    try { localStorage.setItem(COUNTRY_KEY, v.toLowerCase()); } catch { /* storage blocked */ }
+  };
 
   // Search as you type; the address keeps the choices so a search can be shared
   useEffect(() => { const t = setTimeout(() => setF(x => (x.q === q ? x : { ...x, q })), 250); return () => clearTimeout(t); }, [q]);
@@ -109,7 +128,7 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
           <div className="flex min-w-0 flex-col gap-3">
             <label className="flex w-fit items-center gap-2 rounded-md bg-white/25 py-1 pl-3 pr-1 text-[13px] font-bold text-navy">
               Courses for
-              <select aria-label="Country" value={code} onChange={e => setF(x => ({ ...x, country: e.target.value.toLowerCase(), exam: '' }))} className="h-7 rounded bg-white px-2 text-[13px] font-extrabold text-navy outline-none">
+              <select aria-label="Country" value={code} onChange={e => pickCountry(e.target.value)} className="h-7 rounded bg-white px-2 text-[13px] font-extrabold text-navy outline-none">
                 <option value="">All countries</option>
                 {data.countries.map(x => <option key={x.code} value={x.code}>{x.name}</option>)}
               </select>
@@ -151,7 +170,7 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
         <div className="flex min-w-0 flex-col gap-7">
           <div className="flex flex-wrap items-center gap-2">
             <b className="text-[15px]">{s(shown.length, 'course')}{f.q ? ` for “${f.q}”` : ''}</b>
-            {chosen.map(([k, v]) => <button key={k} onClick={() => setF(x => ({ ...x, [k]: '' }))} className="inline-flex h-7 items-center gap-1 rounded-md bg-[#EAF0FF] px-2.5 text-[12.5px] font-bold text-[#2F57C9]">{v} <span aria-hidden>✕</span><span className="sr-only">remove</span></button>)}
+            {chosen.map(([k, v]) => <button key={k} onClick={() => k === 'country' ? pickCountry('') : setF(x => ({ ...x, [k]: '' }))} className="inline-flex h-7 items-center gap-1 rounded-md bg-[#EAF0FF] px-2.5 text-[12.5px] font-bold text-[#2F57C9]">{v} <span aria-hidden>✕</span><span className="sr-only">remove</span></button>)}
             {(chosen.length > 0 || f.q) && <button onClick={() => { setF(BLANK); setQ(''); }} className="text-[13px] font-bold text-azure-strong hover:underline">Clear all</button>}
             <span className="flex-1" />
             <button onClick={() => setSheet(true)} className="h-9 rounded-md border border-line bg-white px-3 text-[13.5px] font-bold lg:hidden">Filters{chosen.filter(([k]) => k !== 'exam').length ? ` · ${chosen.filter(([k]) => k !== 'exam').length}` : ''}</button>
@@ -160,8 +179,14 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
             </select>
           </div>
 
-          {country && (
-            <p className="-mt-3 text-[13px] text-muted">Courses for {country.name}’s exams, plus international ones like IELTS and TOEFL. {all.length - base.length > 0 ? `${s(all.length - base.length, 'course isn’t', 'courses aren’t')} linked to a country yet: ` : ''}{all.length - base.length > 0 && <button onClick={() => setF(x => ({ ...x, country: '' }))} className="font-bold text-azure-strong hover:underline">see all countries</button>}</p>
+          {country && auto && (
+            <p className="-mt-3 text-[13px] text-ink2">Showing courses for <b className="text-navy">{country.name}</b>, where you are. <button onClick={() => pickCountry('')} className="font-bold text-azure-strong hover:underline">Show all countries</button></p>
+          )}
+          {country && country.n === 0 && (
+            <div className="-mt-2 rounded-xl border border-[#BFD0FA] bg-[#F4F7FF] px-4 py-3 text-[14px] text-navy"><b>No courses for {country.name}’s exams yet.</b> They’re on their way. Meanwhile, the courses below work in every country.</div>
+          )}
+          {country && country.n > 0 && (
+            <p className="-mt-3 text-[13px] text-muted">Courses for {country.name}’s exams, plus international ones like IELTS and TOEFL. {all.length - base.length > 0 ? `${s(all.length - base.length, 'course isn’t', 'courses aren’t')} linked to a country yet: ` : ''}{all.length - base.length > 0 && <button onClick={() => pickCountry('')} className="font-bold text-azure-strong hover:underline">see all countries</button>}</p>
           )}
           {browsing && !f.exam ? <>
             {shelf('Most joined this month', base.filter(c => !c.website))}

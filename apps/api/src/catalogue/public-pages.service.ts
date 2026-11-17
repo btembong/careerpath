@@ -136,7 +136,7 @@ export class PublicPagesService {
    */
   async list() {
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const [rows, packages, joined, questions, sample] = await Promise.all([
+    const [rows, packages, joined, questions, sample, featuredRow] = await Promise.all([
       this.prisma.platformCourse.findMany({
         where: { status: 'PUBLISHED', catalogueHidden: false },
         select: {
@@ -151,6 +151,7 @@ export class PublicPagesService {
       this.prisma.courseEnrollment.groupBy({ by: ['courseId'], where: { enrolledAt: { gte: monthStart } }, _count: { _all: true } }),
       this.prisma.questionBank.groupBy({ by: ['courseId'], where: { status: 'LIVE' }, _count: { _all: true } }),
       this.prisma.platformSetting.findUnique({ where: { key: 'sampleCourse' } }),
+      this.prisma.platformSetting.findUnique({ where: { key: 'publicCountries' } }),
     ]);
     const month = new Map(joined.map(j => [j.courseId, j._count._all]));
     const qs = new Map(questions.map(q => [q.courseId, q._count._all]));
@@ -169,9 +170,12 @@ export class PublicPagesService {
         website: lessons === 0, joinedThisMonth: month.get(c.id) ?? 0, students: c._count.enrollments, added: c.createdAt,
       };
     }).sort((a, b) => b.joinedThisMonth - a.joinedThisMonth || b.students - a.students || b.lessons - a.lessons);
-    // Countries that have courses of their own, most first
+    // The countries CareerPath serves come first and are always listed, even before they have courses
+    // (platform setting publicCountries: { codes: [...] }); then every other country with courses, most first
     const byCode = new Map<string, { code: string; name: string; n: number }>();
     for (const c of rows) for (const x of c.programme?.countries ?? []) { const e = byCode.get(x.code) ?? { ...x, n: 0 }; e.n++; byCode.set(x.code, e); }
+    const featured = ((featuredRow?.value ?? {}) as { codes?: string[] }).codes ?? ['CM', 'NG', 'KE', 'ZA'];
+    for (const x of await this.prisma.country.findMany({ where: { code: { in: featured } }, select: { code: true, name: true } })) if (!byCode.has(x.code)) byCode.set(x.code, { ...x, n: 0 });
     const sampleId = ((sample?.value ?? {}) as { courseId?: string }).courseId;
     const best = packages.find(p => p.bestValue) ?? packages[0] ?? null;
     return {
@@ -179,7 +183,7 @@ export class PublicPagesService {
       start: courses.find(c => c.id === sampleId) ?? courses.find(c => c.selling === 'free' && !c.website) ?? null,
       package: best ? { id: best.id, name: best.name, priceAmount: best.priceAmount, currency: best.currency, courses: best.courseIds.length } : null,
       packages: packages.length,
-      countries: [...byCode.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)),
+      countries: [...byCode.values()].sort((a, b) => (featured.includes(a.code) ? featured.indexOf(a.code) : 99) - (featured.includes(b.code) ? featured.indexOf(b.code) : 99) || b.n - a.n || a.name.localeCompare(b.name)),
       international: courses.filter(c => c.countries && !c.countries.length).length,
     };
   }
