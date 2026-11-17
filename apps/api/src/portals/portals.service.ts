@@ -9,6 +9,10 @@ import { MailService } from '../mail/mail.service';
 import { AuditService } from '../audit/audit.service';
 import { ApprovalStatus, UserRole } from '@cpa/shared';
 
+const ROLE_WORD: Record<string, string> = { STUDENT: 'student', TEACHER: 'teacher', ADMIN: 'admin', COUNTRY_REP: 'country rep', SUBJECT_REVIEWER: 'subject reviewer', ORG_ADMIN: 'school admin' };
+const personName = (u: { name?: string | null; firstName?: string | null; lastName?: string | null; email: string }) =>
+  [u.firstName, u.lastName].filter(Boolean).join(' ') || u.name || u.email;
+
 @Injectable()
 export class PortalsService {
   constructor(
@@ -659,6 +663,12 @@ export class PortalsService {
       }
     }
 
+    const who = personName(user);
+    this.audit.record({
+      action: 'user.role', area: 'People', targetType: 'UserProfile', targetId, targetLabel: who,
+      summary: `Changed ${who}’s role from ${ROLE_WORD[user.role] ?? user.role} to ${ROLE_WORD[role] ?? role}${payoutCurrency ? ` (paid in ${payoutCurrency.toUpperCase()})` : ''}`,
+      before: { role: user.role }, after: { role, ...(payoutCurrency && { payoutCurrency }) },
+    });
     return updated;
   }
 
@@ -740,15 +750,15 @@ export class PortalsService {
       : undefined;
     this.mail.sendTeacherApproved(result.email, decision, rejectionReason, teacherNo).catch(() => {});
 
-    this.audit.log(
-      null,
-      decision === 'approve' ? 'teacher.approved' : 'teacher.rejected',
-      'UserProfile',
-      targetId,
-      { approvalStatus: teacher.approvalStatus },
-      { approvalStatus: newStatus },
-      rejectionReason ? { rejectionReason } : undefined,
-    );
+    // The admin comes from the request (these used to be saved with no one's name)
+    const who = personName(teacher);
+    this.audit.record({
+      action: decision === 'approve' ? 'teacher.approved' : 'teacher.rejected', area: 'People',
+      targetType: 'UserProfile', targetId, targetLabel: who,
+      summary: decision === 'approve' ? `Approved ${who}’s tutor application` : `Turned down ${who}’s tutor application${rejectionReason ? `: “${rejectionReason.slice(0, 120)}”` : ''}`,
+      before: { approvalStatus: teacher.approvalStatus }, after: { approvalStatus: newStatus },
+      metadata: rejectionReason ? { rejectionReason } : undefined,
+    });
 
     return result;
   }

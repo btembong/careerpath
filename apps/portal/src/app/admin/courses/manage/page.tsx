@@ -13,6 +13,7 @@ import { majorToMinor, minorToMajor } from '@cpa/shared';
 import { notify } from '@/lib/notify';
 import { AddOnsEditor } from '@/components/admin/AddOnsEditor';
 import { money } from '@/lib/money';
+import { ActivityHistory } from '@/components/activity/Activity';
 import api from '@/lib/api';
 
 type Tags = { programmeId: string | null; subjectId: string | null; levelId: string | null };
@@ -438,6 +439,7 @@ function CourseDrawer({ id, opts, pkgs, onClose, onSaved, onAdd }: { id: string;
             <Link href="/admin/reviews" className="mt-1 inline-block text-[13px] font-semibold text-azure-strong hover:underline">{d.review.reviewer ? 'Change' : 'Assign a reviewer'}</Link>
             {d.status === 'PENDING_REVIEW' && <ReviewDecision courseId={d.id} onDone={async () => { await onSaved(); onClose(); }} />}
           </DrawerSection>
+          <DrawerSection title="History"><ActivityHistory targetType="PlatformCourse" targetId={d.id} /></DrawerSection>
           {d.wpCategories.length > 0 && <DrawerSection title="WordPress categories"><div className="flex flex-wrap gap-1.5">{d.wpCategories.map(c => <span key={c} className="rounded border border-line bg-subtle px-2 py-1 text-xs text-ink2">{c}</span>)}</div></DrawerSection>}
         </>}
       </DrawerContent>

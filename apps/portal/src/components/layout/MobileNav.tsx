@@ -124,6 +124,7 @@ const ROLES: Record<string, { tabs: NavItem[]; menu: NavGroup[]; profile: string
         { label: 'Community', href: '/admin/community', icon: 'community' },
         { label: 'Staff room', href: '/admin/staff-room', icon: 'messages' },
         { label: 'Support', href: '/admin/support', icon: 'shield' },
+        { label: 'Activity log', href: '/admin/activity', icon: 'list' },
         { label: 'Errors', href: '/admin/errors', icon: 'alert' },
       ] },
       { items: [

@@ -1,3 +1,4 @@
+import { requestContextMiddleware } from './audit/context';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -22,6 +23,8 @@ async function bootstrap() {
   // Behind Caddy on the same machine: take the visitor's address from its X-Forwarded-For, so rate limits
   // count each visitor rather than lumping everyone together as the proxy. Only a proxy on this machine is trusted.
   app.set('trust proxy', 'loopback');
+  // Who and from where, for the activity log
+  app.use(requestContextMiddleware);
 
   app.setGlobalPrefix('api/v1');
 

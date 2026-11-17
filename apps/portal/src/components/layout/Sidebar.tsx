@@ -125,6 +125,7 @@ const ADMIN: Item[] = [
     { label: 'Notifications', href: '/admin/notifications' },
     { label: 'Community',     href: '/admin/community' },
     { label: 'Staff room',    href: '/admin/staff-room' },
+    { label: 'Activity log',  href: '/admin/activity' },
     { label: 'Errors',        href: '/admin/errors' },
   ]},
   { label: 'Finance', icon: 'wallet', children: [

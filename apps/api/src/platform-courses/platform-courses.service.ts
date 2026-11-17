@@ -13,6 +13,7 @@ import * as crypto from 'crypto';
 import { priceEmail } from '../notifications/price-email';
 import { defaultTeacherShare } from '../course-admin/default-share';
 import { minorToMajor } from '@cpa/shared';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class PlatformCoursesService {
@@ -25,6 +26,7 @@ export class PlatformCoursesService {
     private files: FilesService,
     private gamification: GamificationService,
     private notifications: NotificationsService,
+    private audit: AuditService,
   ) {}
 
   // ── Course CRUD ───────────────────────────────────────────
@@ -185,10 +187,41 @@ export class PlatformCoursesService {
       ...(isAdmin && dto.status !== undefined && { status: dto.status }),
       ...(isAdmin && dto.teacherId !== undefined && { teacherId: dto.teacherId }),
     };
-    return this.prisma.platformCourse.update({
+    const was = await this.prisma.platformCourse.findUnique({ where: { id } });
+    const updated = await this.prisma.platformCourse.update({
       where: { id },
       data,
       include: courseIncludes(),
+    });
+    if (was) this.logCourseEdit(actor, was, updated);
+    return updated;
+  }
+
+  /** The activity log: what changed on a course, in words, with before and after (long texts only as "rewritten") */
+  private logCourseEdit(actor: UserProfile, was: Record<string, any>, now: Record<string, any>) {
+    const FIELDS: [string, string][] = [
+      ['title', 'title'], ['description', 'description'], ['shortDescription', 'short description'], ['coverUrl', 'cover image'],
+      ['priceAmount', 'price'], ['priceCurrency', 'price currency'], ['isSoldIndividually', 'selling on its own'], ['accessMonths', 'access length'],
+      ['status', 'status'], ['teacherId', 'teacher'], ['programmeId', 'exam'], ['subjectId', 'subject'], ['levelId', 'level'],
+      ['language', 'language'], ['outcomes', 'learning outcomes'], ['source', 'source'], ['wpCourseUrl', 'website link'],
+    ];
+    const LONG = new Set(['description', 'shortDescription', 'outcomes', 'coverUrl']);
+    const changed = FIELDS.filter(([k]) => JSON.stringify(was[k] ?? null) !== JSON.stringify(now[k] ?? null));
+    if (!changed.length) return;
+    const money = (amount: number | null, cur: string | null) => (amount ? `${cur} ${minorToMajor(amount, cur ?? 'USD').toLocaleString('en-GB')}` : 'no price');
+    const title = `“${now.title}”`;
+    const parts = changed.filter(([k]) => k !== 'title' && !(k === 'priceCurrency' && changed.some(c => c[0] === 'priceAmount'))).map(([k, word]) =>
+      k === 'priceAmount' ? `the price from ${money(was.priceAmount, was.priceCurrency)} to ${money(now.priceAmount, now.priceCurrency)}`
+        : k === 'status' ? `the status from ${String(was.status).toLowerCase().replace('_', ' ')} to ${String(now.status).toLowerCase().replace('_', ' ')}`
+        : `the ${word}`);
+    const renamed = changed.some(([k]) => k === 'title');
+    const list = `${parts.slice(0, 3).join(', ')}${parts.length > 3 ? ` and ${parts.length - 3} more` : ''}`;
+    const pick = (o: Record<string, any>) => Object.fromEntries(changed.map(([k]) => [k, LONG.has(k) ? (o[k] == null ? null : `${String(Array.isArray(o[k]) ? o[k].join(' · ') : o[k]).slice(0, 300)}${String(o[k]).length > 300 ? '…' : ''}`) : o[k] ?? null]));
+    this.audit.record({
+      action: 'course.edit', area: changed.some(([k]) => ['priceAmount', 'priceCurrency', 'isSoldIndividually', 'accessMonths'].includes(k)) ? 'Selling' : 'Courses',
+      actorId: actor.id, targetType: 'PlatformCourse', targetId: now.id, targetLabel: now.title,
+      summary: renamed ? `Renamed “${was.title}” to ${title}${parts.length ? ` and changed ${list}` : ''}` : `Changed ${list} on ${title}`,
+      before: pick(was), after: pick(now),
     });
   }
 

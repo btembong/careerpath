@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { deviceOf } from './device';
+import { AuditService } from '../audit/audit.service';
 
 const DAY = 86_400_000;
 const TOUCH_EVERY = 5 * 60_000;
@@ -22,7 +23,7 @@ export const sidOf = (user: unknown): string | undefined => (user as { sid?: str
 export class SessionsService {
   private touched = new Map<string, number>();
 
-  constructor(private prisma: PrismaService, private redis: RedisService) {}
+  constructor(private prisma: PrismaService, private redis: RedisService, private audit: AuditService) {}
 
   newSid(): string { return randomUUID(); }
 
@@ -73,6 +74,7 @@ export class SessionsService {
     const s = await this.prisma.userSession.findUnique({ where: { id: sid }, select: { userId: true } });
     if (!s || s.userId !== userId) throw new NotFoundException('Sign-in not found');
     await this.endMany([sid]);
+    this.audit.record({ action: 'session.ended', area: 'Sign-in', actorId: userId, targetType: 'UserProfile', targetId: userId, summary: 'Signed out one of their devices' });
     return { ended: true };
   }
 
@@ -89,6 +91,7 @@ export class SessionsService {
     // Tokens issued before sids existed have nothing to end, so anything signed before now stops too.
     // A second's grace: the fresh token for this browser is signed within the same second.
     await this.prisma.userProfile.update({ where: { id: userId }, data: { signedOutAt: new Date(Date.now() - 1000) } });
+    this.audit.record({ action: 'session.others', area: 'Sign-in', actorId: userId, targetType: 'UserProfile', targetId: userId, summary: "Signed out everywhere else (" + others.length + ' device' + (others.length === 1 ? '' : 's') + ')' });
     return others.length;
   }
 

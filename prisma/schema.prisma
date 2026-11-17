@@ -1237,16 +1237,32 @@ model PayoutAccount {
 }
 
 /// Immutable audit trail for compliance — records every admin action that touches money or roles.
+/// Admin → Activity log: who changed what, when and from where. Read-only: nothing edits or deletes rows.
 model AuditLog {
-  id         String   @id @default(uuid())
-  actorId    String?
-  action     String
-  targetType String?
-  targetId   String?
-  before     Json?
-  after      Json?
-  metadata   Json?
-  createdAt  DateTime @default(now())
+  id          String   @id @default(uuid())
+  actorId     String?
+  /// The actor's role at the time (roles change)
+  actorRole   String?
+  action      String
+  /// People, Courses, Money, Selling, Sign-in, Settings
+  area        String?
+  /// One plain sentence: "Changed the price of IELTS Writing from XAF 5,000 to XAF 8,000"
+  summary     String?
+  targetType  String?
+  targetId    String?
+  /// The item's name when it happened (a course title, a person's name)
+  targetLabel String?
+  before      Json?
+  after       Json?
+  metadata    Json?
+  ip          String?
+  /// "Chrome on Windows"
+  device      String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([targetType, targetId])
 }
 
 /// A conversation thread between two users (student↔teacher or teacher↔teacher).

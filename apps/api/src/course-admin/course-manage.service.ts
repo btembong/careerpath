@@ -1,3 +1,4 @@
+import { AuditService } from '../audit/audit.service';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CourseSource, CourseStatus, Prisma, UserProfile } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -36,7 +37,7 @@ const UNTAGGED: Prisma.PlatformCourseWhereInput = { OR: [{ programmeId: null }, 
 /** The admin's view of every course: where it sits in the catalogue, who teaches it, and bulk changes */
 @Injectable()
 export class CourseManageService {
-  constructor(private prisma: PrismaService, private pull: WpPullService, private tutor: TutorImportService, private notifications: NotificationsService, private teacherCourses: TeacherCoursesService) {}
+  constructor(private prisma: PrismaService, private pull: WpPullService, private tutor: TutorImportService, private notifications: NotificationsService, private teacherCourses: TeacherCoursesService, private audit: AuditService) {}
 
   /** Course ids that are in at least one package */
   private async packagedIds() {
@@ -160,7 +161,44 @@ export class CourseManageService {
     return { all, published, review, drafts, untagged, untaggedWithSuggestion, noTeacher, hidden, lastPull, onSale, notOnSale, proposed, websiteOnly };
   }
 
+  /** A change to one or more courses, recorded in the activity log with each course's before and after */
   async bulk(admin: UserProfile, dto: BulkInput) {
+    const ids = [...new Set(dto.courseIds ?? [])].slice(0, 500);
+    const snap = () => this.prisma.platformCourse.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, title: true, status: true, catalogueHidden: true, teacherId: true, teacherPending: true, programmeId: true, subjectId: true, levelId: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true, accessMonths: true },
+    });
+    const before = await snap();
+    const result = await this.bulkChange(admin, dto);
+    const after = await snap();
+    const changed = after.filter(a => JSON.stringify(a) !== JSON.stringify(before.find(b => b.id === a.id)));
+    const titles = (changed.length ? changed : after).map(c => `“${c.title}”`);
+    const what = titles.length === 1 ? titles[0] : `${titles.length} courses (${titles.slice(0, 3).join(', ')}${titles.length > 3 ? '…' : ''})`;
+    const fmt = (c: (typeof before)[number] | undefined) => c && c.priceAmount ? `${c.priceCurrency} ${minorToMajor(c.priceAmount, c.priceCurrency!).toLocaleString('en-GB')}` : 'no price';
+    const one = changed.length === 1 ? { b: before.find(b => b.id === changed[0].id), a: changed[0] } : null;
+    const SAY: Record<BulkInput['action'], string> = {
+      tag: `Set the exam, subject or level on ${what}`, accept: `Accepted the WordPress tags for ${what}`,
+      teacher: dto.teacherId ? `Assigned a teacher to ${what}` : `Took the teacher off ${what}`,
+      publish: `Published ${what}`, unpublish: `Unpublished ${what}`, hide: `Hid ${what} from the catalogue`, show: `Showed ${what} in the catalogue`,
+      archive: `Archived ${what}`,
+      price: one ? `Changed the price of ${what} from ${fmt(one.b)} to ${fmt(one.a)}` : `Set the price of ${what}`,
+      free: `Made ${what} free`, unsell: `Stopped selling ${what} on its own`,
+      approvePrice: `Approved the price proposed for ${what}`, declinePrice: `Turned down the price proposed for ${what}`,
+      addToPackage: `Added ${what} to a package`, import: `Queued ${what} for import from Tutor LMS`,
+    };
+    const ids1 = changed.length ? changed : after;
+    this.audit.record({
+      action: `course.${dto.action}`, area: dto.action === 'price' || dto.action === 'free' || dto.action === 'unsell' || dto.action === 'addToPackage' ? 'Selling' : 'Courses',
+      actorId: admin.id, summary: SAY[dto.action],
+      ...(ids1.length === 1 ? { targetType: 'PlatformCourse', targetId: ids1[0].id, targetLabel: ids1[0].title } : {}),
+      before: { courses: before.filter(b => ids1.some(c => c.id === b.id)).slice(0, 50) },
+      after: { courses: ids1.slice(0, 50) },
+      metadata: { courseIds: ids1.map(c => c.id), count: ids1.length },
+    });
+    return result;
+  }
+
+  private async bulkChange(admin: UserProfile, dto: BulkInput) {
     const ids = [...new Set(dto.courseIds ?? [])];
     if (!ids.length) throw new BadRequestException('Choose at least one course');
     if (ids.length > 500) throw new BadRequestException('Up to 500 courses at a time');

@@ -4,7 +4,8 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { UserThrottlerGuard } from './common/user-throttler.guard';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { AuditInterceptor } from './audit/audit.interceptor';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { CountriesModule } from './countries/countries.module';
@@ -54,6 +55,8 @@ import { RedisModule } from './redis/redis.module';
   providers: [
     // Apply throttler globally — all routes subject to rate limiting unless @SkipThrottle() is added
     { provide: APP_GUARD, useClass: UserThrottlerGuard },
+    // Every change a staff member makes goes into the activity log
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),

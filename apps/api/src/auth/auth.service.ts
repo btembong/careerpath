@@ -3,6 +3,7 @@ import { resolvePrefs, resolveDisplay, resolveQuiet, kindsFor } from '../notific
 import { SessionsService } from './sessions.service';
 import { AuthenticatorService } from './authenticator.service';
 import { TutorAgreementService } from './tutor-agreement.service';
+import { AuditService } from '../audit/audit.service';
 import {
   Injectable,
   ConflictException,
@@ -67,6 +68,7 @@ export class AuthService {
     private sessions: SessionsService,
     private authenticator: AuthenticatorService,
     private tutorAgreement: TutorAgreementService,
+    private audit: AuditService,
   ) {}
 
   // ── OTP ──────────────────────────────────────────────────
@@ -136,7 +138,15 @@ export class AuthService {
       await this.prisma.userProfile.update({ where: { id: existing.id }, data: { lastActiveDate: new Date() } }).catch(() => {});
       return this.finishSignIn(existing, dto.trustToken);
     }
-    const profile = await this.loginViaWordPress(dto);
+    let profile;
+    try { profile = await this.loginViaWordPress(dto); }
+    catch (err) {
+      // A wrong password on an admin account goes in the activity log
+      if (existing?.role === UserRole.ADMIN && err instanceof UnauthorizedException) {
+        this.audit.record({ action: 'signin.failed', area: 'Sign-in', actorId: existing.id, targetType: 'UserProfile', targetId: existing.id, summary: 'Wrong password on an admin account' });
+      }
+      throw err;
+    }
     if (!profile.passwordHash || !(await bcrypt.compare(dto.password, profile.passwordHash))) await this.savePasswordCopy(profile.id, dto.password);
     return this.finishSignIn(profile, dto.trustToken);
   }
@@ -260,6 +270,7 @@ export class AuthService {
     // A trusted computer keeps its sign-in id, so it stays one row in Settings → Where you're signed in
     const trustedSid = await this.trusted(profile.id, trustToken);
     if (trustedSid) {
+      this.audit.record({ action: 'signin', area: 'Sign-in', actorId: profile.id, targetType: 'UserProfile', targetId: profile.id, summary: 'Signed in on a trusted computer' });
       return { accessToken: this.signToken(profile.id, profile.email, profile.role as UserRole, profile.wpUserId, profile.onboardingCompleted, trustedSid === true ? undefined : trustedSid) };
     }
     const challenge = randomBytes(24).toString('hex');
@@ -307,11 +318,17 @@ export class AuthService {
     if (!raw) throw new UnauthorizedException('That sign-in has expired. Start again with your password.');
     const st = JSON.parse(raw) as { userId: string; code: string | null; tries: number; sentAt: number };
     const given = String(code ?? '').trim();
-    const ok = (!!st.code && given === st.code) || !!(await this.authenticator.verify(st.userId, given));
-    if (!ok) {
+    const how = !!st.code && given === st.code ? 'email' : await this.authenticator.verify(st.userId, given);
+    if (!how) {
       st.tries++;
-      if (st.tries >= 5) { await this.redis.del(key); throw new UnauthorizedException('Too many wrong codes. Start again with your password.'); }
+      const signIn = { area: 'Sign-in' as const, actorId: st.userId, targetType: 'UserProfile', targetId: st.userId };
+      if (st.tries >= 5) {
+        await this.redis.del(key);
+        this.audit.record({ ...signIn, action: 'signin.locked', summary: 'Typed 5 wrong sign-in codes; the sign-in was stopped' });
+        throw new UnauthorizedException('Too many wrong codes. Start again with your password.');
+      }
       await this.redis.set(key, JSON.stringify(st), OTP_TTL);
+      this.audit.record({ ...signIn, action: 'signin.failed', summary: 'Typed a wrong sign-in code' });
       throw new UnauthorizedException('That code isn’t right.');
     }
     await this.redis.del(key);
@@ -319,6 +336,10 @@ export class AuthService {
     if (!p || p.deletedAt) throw new UnauthorizedException('Start again with your password.');
     const sid = this.sessions.newSid();
     const accessToken = this.signToken(p.id, p.email, p.role as UserRole, p.wpUserId, p.onboardingCompleted, sid);
+    this.audit.record({
+      action: 'signin', area: 'Sign-in', actorId: p.id, targetType: 'UserProfile', targetId: p.id,
+      summary: `Signed in with ${how === 'app' ? 'a code from the authenticator app' : how === 'backup' ? 'a backup code' : 'a code by email'}${remember ? ', and trusted this computer for 30 days' : ''}`,
+    });
     if (remember) await this.sessions.trust(sid, p.id);
     const trustToken = remember ? this.jwt.sign({ sub: p.id, purpose: 'admin-trust', sid }, { expiresIn: '30d' }) : undefined;
     return { accessToken, trustToken };
@@ -336,6 +357,7 @@ export class AuthService {
     if (!ok) throw new UnauthorizedException('Your current password isn’t right.');
     await this.savePasswordCopy(p.id, next);
     await this.wp.setPassword(p.wpUserId, next);
+    this.audit.record({ action: 'password.changed', area: 'Sign-in', actorId: p.id, targetType: 'UserProfile', targetId: p.id, summary: 'Changed their password' });
     return { changed: true };
   }
 

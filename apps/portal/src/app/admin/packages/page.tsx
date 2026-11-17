@@ -7,6 +7,7 @@ import { AdminPackagesHero } from '@/components/hero/AdminContentHeroes';
 import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
+import { ActivityHistory } from '@/components/activity/Activity';
 import api from '@/lib/api';
 import { AddOnsEditor } from '@/components/admin/AddOnsEditor';
 
@@ -293,6 +294,12 @@ export default function AdminPackagesPage() {
                 : <Button size="sm" variant="secondary" loading={saving} onClick={() => save(true)}>Publish</Button>)}
               {selId === 'new' && <Button size="sm" variant="secondary" loading={saving} onClick={() => save(true)}>Create and publish</Button>}
             </div>
+            {selId !== 'new' && (
+              <div className="flex flex-col gap-2 border-t border-line pt-4">
+                <span className={label}>History</span>
+                <ActivityHistory key={selId} targetType="Package" targetId={selId} />
+              </div>
+            )}
           </section>
         )}
       </div>
