@@ -1,4 +1,4 @@
-import { Controller, Get, Header, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Header, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@cpa/shared';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
@@ -31,6 +31,18 @@ export class ActivityController {
   @ApiOperation({ summary: '[Admin] Everyone who appears in the log, for the Person filter' })
   people() {
     return this.svc.actors();
+  }
+
+  @Get('places/:userId')
+  @ApiOperation({ summary: '[Admin] Where a person signs in from (city and country, most used first) and their profile country' })
+  places(@Param('userId') userId: string) {
+    return this.svc.placesOf(userId);
+  }
+
+  @Get('where')
+  @ApiOperation({ summary: '[Admin] Where users are: profile country and sign-in country per country (people, last 30 days), and top cities' })
+  where(@Query('role') role?: string) {
+    return this.svc.whereUsersAre(role);
   }
 
   @Get('export.csv')

@@ -29,7 +29,7 @@ interface Prefs {
   timezone: string | null;
   countries: { id: string; name: string }[];
 }
-interface Session { id: string; userAgent: string | null; device: string | null; createdAt: string; lastSeenAt: string; trustedUntil: string | null; current: boolean }
+interface Session { id: string; userAgent: string | null; device: string | null; createdAt: string; lastSeenAt: string; trustedUntil: string | null; current: boolean; city?: string | null; country?: string | null; unusual?: boolean }
 interface Programme { id: string; name: string; shortName: string | null; levels: { id: string; name: string }[] }
 type Save = (p: Record<string, unknown>) => Promise<boolean>;
 
@@ -437,8 +437,8 @@ function SecurityPanel({ me, sessions, reload }: { me: Me; sessions: Session[] |
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">{s.device === 'phone' || s.device === 'tablet' ? <path d="M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2" /> : <path d="M4 5h16v11H4zM2 19h20" />}</svg>
                 </span>
                 <span className="min-w-0 flex-1">
-                  <strong className="block text-[14px] text-navy">{browserName(s.userAgent, s.device)}{s.current ? ' · this browser' : ''}</strong>
-                  <span className="text-xs text-muted">{s.current ? 'Active now' : `Last active ${ago(s.lastSeenAt)}`} · signed in {shortDate(s.createdAt)}{s.trustedUntil ? ` · trusted until ${shortDate(s.trustedUntil)}` : ''}</span>
+                  <strong className="block text-[14px] text-navy">{browserName(s.userAgent, s.device)}{s.current ? ' · this browser' : ''}{s.unusual && <span className="ml-2 rounded-md bg-[#FFF1D6] px-1.5 py-0.5 text-[11px] font-extrabold text-[#8A5A00]">Not your usual country</span>}</strong>
+                  <span className="text-xs text-muted">{s.country ? [s.city, s.country].filter(Boolean).join(', ') + ' · ' : ''}{s.current ? 'Active now' : `Last active ${ago(s.lastSeenAt)}`} · signed in {shortDate(s.createdAt)}{s.trustedUntil ? ` · trusted until ${shortDate(s.trustedUntil)}` : ''}</span>
                 </span>
                 {s.current ? <span className="rounded-md bg-[#E3F5EA] px-2 py-1 text-xs font-bold text-[#17703A]">This one</span>
                   : <button onClick={() => forget(s.id)} disabled={busy === s.id} className={btnLine}>Sign out</button>}

@@ -85,6 +85,8 @@ export class ActivityService {
         target: r.targetType ? { type: r.targetType, id: r.targetId, label } : null,
         before: r.before, after: r.after, metadata: r.metadata,
         device: r.device, ip: shortIp(r.ip), fullIp: r.ip,
+        place: r.country ? { city: r.city, country: r.country, code: r.countryCode } : null,
+        newCountry: !!(r.metadata as any)?.newCountry,
       };
     });
     return { entries, next: rows.length > limit ? page[page.length - 1].id : null, total: await this.prisma.auditLog.count({ where }) };
@@ -125,15 +127,64 @@ export class ActivityService {
   }
 
   async csv(q: ActivityQuery) {
-    const rows: string[][] = [['When (UTC)', 'Who', 'Role', 'Area', 'What', 'Item', 'Item id', 'Device', 'IP address', 'Action']];
+    const rows: string[][] = [['When (UTC)', 'Who', 'Role', 'Area', 'What', 'Item', 'Item id', 'Device', 'City', 'Country', 'IP address', 'Action']];
     let cursor: string | undefined;
     for (let i = 0; i < 50; i++) {
       const page = await this.list({ ...q, cursor, limit: 200 });
-      for (const e of page.entries) rows.push([new Date(e.at).toISOString().replace('T', ' ').slice(0, 19), e.actor?.name ?? 'System', e.actor?.role ?? '', e.area, e.summary, e.target?.label ?? '', e.target?.id ?? '', e.device ?? '', e.fullIp ?? '', e.action]);
+      for (const e of page.entries) rows.push([new Date(e.at).toISOString().replace('T', ' ').slice(0, 19), e.actor?.name ?? 'System', e.actor?.role ?? '', e.area, e.summary, e.target?.label ?? '', e.target?.id ?? '', e.device ?? '', e.place?.city ?? '', e.place?.country ?? '', e.fullIp ?? '', e.action]);
       if (!page.next) break;
       cursor = page.next;
     }
     return rows.map(r => r.map(c => /[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c).join(',')).join('\n');
+  }
+
+  /** People → a person → Signs in from: their places, most used first, and their profile country */
+  async placesOf(userId: string) {
+    const [rows, u] = await Promise.all([
+      this.prisma.userSession.groupBy({ by: ['city', 'country', 'countryCode'], where: { userId, country: { not: null } }, _count: { _all: true }, _max: { lastSeenAt: true }, orderBy: { _count: { country: 'desc' } }, take: 8 }),
+      this.prisma.userProfile.findUnique({ where: { id: userId }, select: { country: { select: { name: true } } } }),
+    ]);
+    const places = rows.map(r => ({ city: r.city, country: r.country, code: r.countryCode, signIns: r._count._all, last: r._max.lastSeenAt }));
+    const profile = u?.country?.name ?? null;
+    return { places, profileCountry: profile, matches: profile && places[0] ? places[0].country === profile : null };
+  }
+
+  /**
+   * Insights → Where your users are. People, not visits: each person counts once, at the place of their most
+   * recent sign-in in the last 30 days. Beside it, the country on their profile.
+   */
+  async whereUsersAre(role?: string) {
+    const roleWhere = role && role !== 'ALL' ? { role: role as any } : {};
+    const since = new Date(Date.now() - 30 * DAY);
+    const [profiles, countries, sessions, active] = await Promise.all([
+      this.prisma.userProfile.groupBy({ by: ['countryId'], where: { deletedAt: null, ...roleWhere }, _count: { _all: true } }),
+      this.prisma.country.findMany({ select: { id: true, name: true, code: true } }),
+      this.prisma.userSession.findMany({
+        where: { lastSeenAt: { gte: since }, countryCode: { not: null }, user: { deletedAt: null, ...roleWhere } },
+        orderBy: { lastSeenAt: 'desc' }, select: { userId: true, city: true, country: true, countryCode: true },
+      }),
+      this.prisma.userProfile.count({ where: { deletedAt: null, lastSeenAt: { gte: new Date(Date.now() - 7 * DAY) }, ...roleWhere } }),
+    ]);
+    const latest = new Map<string, (typeof sessions)[number]>();
+    for (const s of sessions) if (!latest.has(s.userId)) latest.set(s.userId, s);
+    const signIn = new Map<string, { country: string; code: string; n: number }>();
+    const cities = new Map<string, { city: string; country: string; code: string; n: number }>();
+    for (const s of latest.values()) {
+      const c = signIn.get(s.countryCode!) ?? { country: s.country!, code: s.countryCode!, n: 0 }; c.n++; signIn.set(s.countryCode!, c);
+      if (s.city) { const k = `${s.city}|${s.countryCode}`; const x = cities.get(k) ?? { city: s.city, country: s.country!, code: s.countryCode!, n: 0 }; x.n++; cities.set(k, x); }
+    }
+    const byName = new Map(countries.map(c => [c.id, c.name]));
+    const profile = profiles.map(p => ({ country: p.countryId ? byName.get(p.countryId) ?? 'Unknown' : null, n: p._count._all }));
+    // One row per country: profile count and sign-in count side by side
+    const rows = new Map<string, { country: string; code: string | null; profile: number; signIn: number }>();
+    for (const p of profile) if (p.country) rows.set(p.country, { country: p.country, code: null, profile: p.n, signIn: 0 });
+    for (const s of signIn.values()) { const r = rows.get(s.country) ?? { country: s.country, code: s.code, profile: 0, signIn: 0 }; r.code = s.code; r.signIn = s.n; rows.set(s.country, r); }
+    return {
+      people: profiles.reduce((t, p) => t + p._count._all, 0), active, located: latest.size,
+      notSet: profile.find(p => !p.country)?.n ?? 0,
+      countries: [...rows.values()].sort((a, b) => Math.max(b.profile, b.signIn) - Math.max(a.profile, a.signIn)),
+      cities: [...cities.values()].sort((a, b) => b.n - a.n).slice(0, 8),
+    };
   }
 
   private async people(ids: (string | null)[]) {

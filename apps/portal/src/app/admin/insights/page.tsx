@@ -8,6 +8,7 @@ import { AfricaTiles, AFRICA, RAMP, shade } from '@/components/insights/AfricaTi
 import { majorMoney } from '@/components/insights/CountryView';
 import { KIND_COLOURS } from '@/components/wallet/WalletCharts';
 import { notify } from '@/lib/notify';
+import { WhereUsers } from '@/components/activity/WhereUsers';
 import api from '@/lib/api';
 
 type Metric = 'students' | 'teachers' | 'signups' | 'sales';
@@ -114,6 +115,8 @@ export default function InsightsPage() {
               </div>
             ))}
           </dl>
+
+          <WhereUsers />
 
           <section className="flex flex-col gap-3.5 rounded-xl border border-line bg-white p-4 sm:p-5">
             <div className="flex flex-wrap items-center justify-between gap-2.5">

@@ -11,6 +11,7 @@ export default function PrivacyPage() {
       covers={[
         'What we collect: your account details, learning progress, test results, messages and payments.',
         'Why we use it: to run your courses and classes, mark your work, send reminders and keep the portal safe.',
+        'Where you sign in from: we work out a rough location (city and country) from your IP address when you sign in, using a database on our own server. It keeps accounts safe (for example, a warning when an admin signs in from a new country) and helps us plan where to offer courses. We don’t track your exact location.',
         'Who we share it with: your teachers, your school if it enrolled you, and the services that run the portal (video calls, email, payments, storage).',
         'Recordings of live classes and calls, and how long they are kept.',
         'Notifications and emails, and how to choose which ones you get.',

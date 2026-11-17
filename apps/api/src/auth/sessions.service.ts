@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { deviceOf } from './device';
 import { AuditService } from '../audit/audit.service';
+import { GeoService } from '../audit/geo.service';
 
 const DAY = 86_400_000;
 const TOUCH_EVERY = 5 * 60_000;
@@ -23,7 +24,7 @@ export const sidOf = (user: unknown): string | undefined => (user as { sid?: str
 export class SessionsService {
   private touched = new Map<string, number>();
 
-  constructor(private prisma: PrismaService, private redis: RedisService, private audit: AuditService) {}
+  constructor(private prisma: PrismaService, private redis: RedisService, private audit: AuditService, private geo: GeoService) {}
 
   newSid(): string { return randomUUID(); }
 
@@ -34,10 +35,11 @@ export class SessionsService {
     this.touched.set(sid, now);
     if (this.touched.size > 20_000) this.touched.clear();
     const ua = userAgent?.slice(0, 300) ?? null;
+    const place = this.geo.place(ip) ?? { city: null, country: null, countryCode: null };
     this.prisma.userSession.upsert({
       where: { id: sid },
-      create: { id: sid, userId, userAgent: ua, device: deviceOf(userAgent), ip: ip?.slice(0, 64) ?? null },
-      update: { lastSeenAt: new Date(), userAgent: ua, device: deviceOf(userAgent), ip: ip?.slice(0, 64) ?? null },
+      create: { id: sid, userId, userAgent: ua, device: deviceOf(userAgent), ip: ip?.slice(0, 64) ?? null, ...place },
+      update: { lastSeenAt: new Date(), userAgent: ua, device: deviceOf(userAgent), ip: ip?.slice(0, 64) ?? null, ...place },
     }).catch(() => {});
   }
 
@@ -58,12 +60,15 @@ export class SessionsService {
     const rows = await this.prisma.userSession.findMany({
       where: { userId, endedAt: null, OR: [{ lastSeenAt: { gte: new Date(Date.now() - 8 * DAY) } }, { trustedUntil: { gt: new Date() } }] },
       orderBy: { lastSeenAt: 'desc' }, take: 30,
-      select: { id: true, userAgent: true, device: true, createdAt: true, lastSeenAt: true, trustedUntil: true },
+      select: { id: true, userAgent: true, device: true, createdAt: true, lastSeenAt: true, trustedUntil: true, city: true, country: true, countryCode: true },
     });
     const user = await this.prisma.userProfile.findUnique({ where: { id: userId }, select: { signedOutAt: true } });
+    // Their usual country: where most of their sign-ins are. Others are marked, so a stranger's sign-in stands out.
+    const counts = await this.prisma.userSession.groupBy({ by: ['countryCode'], where: { userId, countryCode: { not: null } }, _count: { _all: true }, orderBy: { _count: { countryCode: 'desc' } } });
+    const usual = counts[0]?.countryCode ?? null;
     return {
       current: current ?? null,
-      sessions: rows.map(r => ({ ...r, current: r.id === current })).sort((a, b) => Number(b.current) - Number(a.current)),
+      sessions: rows.map(r => ({ ...r, current: r.id === current, unusual: !!usual && counts.length > 1 && !!r.countryCode && r.countryCode !== usual })).sort((a, b) => Number(b.current) - Number(a.current)),
       signedOutAt: user?.signedOutAt ?? null,
     };
   }

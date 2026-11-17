@@ -1258,6 +1258,10 @@ model AuditLog {
   ip          String?
   /// "Chrome on Windows"
   device      String?
+  /// Where the IP address is, from the DB-IP database on our server (never sent anywhere)
+  city        String?
+  country     String?
+  countryCode String?
   createdAt   DateTime @default(now())
 
   @@index([createdAt])
@@ -2052,6 +2056,10 @@ model UserSession {
   userAgent    String?
   device       String?
   ip           String?
+  /// Where the IP address is (DB-IP, looked up on our server)
+  city         String?
+  country      String?
+  countryCode  String?
   createdAt    DateTime    @default(now())
   lastSeenAt   DateTime    @default(now())
   /// Admin two-step: this computer skips the emailed code until then
@@ -2061,6 +2069,7 @@ model UserSession {
   user         UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, endedAt])
+  @@index([countryCode])
 }
 
 /// An authenticator app (Google Authenticator, Microsoft Authenticator, Authy). Kept apart from UserProfile

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import { PageHero, heroBtnDark, heroBtnLine, asideLabel } from '@/components/hero/PageHero';
-import { AreaTag, dayLabel, EntryDetails, time, Who, type Entry } from '@/components/activity/Activity';
+import { AreaTag, dayLabel, EntryDetails, flag, placeText, time, Who, type Entry } from '@/components/activity/Activity';
 import { downloadFromApi } from '@/lib/download';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
@@ -134,12 +134,15 @@ export default function ActivityLogPage() {
                 {d.items.map(e => (
                   <div key={e.id} className={clsx('border-t border-[#EEF1F7]', !e.actor && /^teacher\./.test(e.action) && 'bg-[#FFF8E8]', open === e.id && 'bg-[#F7F9FF]')}>
                     <button type="button" onClick={() => setOpen(open === e.id ? null : e.id)} aria-expanded={open === e.id}
-                      className="grid w-full grid-cols-[minmax(0,1fr)] gap-x-4 gap-y-1.5 px-4 py-3 text-left md:grid-cols-[48px_200px_minmax(0,1fr)_92px_160px] md:items-center">
+                      className="grid w-full grid-cols-[minmax(0,1fr)] gap-x-4 gap-y-1.5 px-4 py-3 text-left md:grid-cols-[48px_200px_minmax(0,1fr)_92px_190px] md:items-center">
                       <span className="text-[12.5px] tabular-nums text-muted md:order-none">{time(e.at)}</span>
                       <Who e={e} />
                       <span className="text-[13.5px] leading-snug text-navy">{e.summary}</span>
                       <span><AreaTag area={e.area} /></span>
-                      <span className="text-[11.5px] leading-tight text-muted">{e.device ?? '—'}{e.ip ? <><br />{e.ip}</> : null}</span>
+                      <span className="text-[11.5px] leading-tight text-muted">
+                        {e.place && <span className="block font-semibold text-navy">{placeText(e.place)} {flag(e.place.code)}{e.newCountry && <span className="ml-1 rounded bg-[#FFF1D6] px-1 text-[10px] font-extrabold text-[#8A5A00]">New country</span>}</span>}
+                        {e.device ?? (e.place ? null : '—')}{e.ip ? <> · {e.ip}</> : null}
+                      </span>
                     </button>
                     {open === e.id && <div className="px-4 pb-4 md:pl-[268px]"><EntryDetails e={e} /></div>}
                   </div>

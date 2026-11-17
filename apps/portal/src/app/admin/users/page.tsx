@@ -8,6 +8,7 @@ import { Drawer, DrawerContent, DrawerSection } from '@/components/ui/Dialog';
 import { notify } from '@/lib/notify';
 import { money } from '@/lib/money';
 import { ActivityHistory } from '@/components/activity/Activity';
+import { PersonPlaces } from '@/components/activity/WhereUsers';
 import api from '@/lib/api';
 
 type Role = 'STUDENT' | 'TEACHER' | 'SUBJECT_REVIEWER' | 'COUNTRY_REP' | 'ADMIN';
@@ -208,6 +209,7 @@ function Person({ id, onClose, onChanged }: { id: string | null; onClose: () => 
             <p className="mt-1.5 text-[12.5px] text-muted">Changing a role changes what they see the next time they sign in. Their courses and payments stay.</p>
           </DrawerSection>
           {p.role !== 'STUDENT' && <AppReset person={p} />}
+          <DrawerSection title="Signs in from"><PersonPlaces userId={p.id} /></DrawerSection>
           <DrawerSection title="History"><ActivityHistory person={p.id} /></DrawerSection>
         </>}
       </DrawerContent>
