@@ -12,6 +12,7 @@ import {
   Ip,
   Delete,
   Param,
+  StreamableFile,
 } from '@nestjs/common';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import {
@@ -26,6 +27,7 @@ import {
 import { AuthService } from './auth.service';
 import { SessionsService, sidOf } from './sessions.service';
 import { AuthenticatorService } from './authenticator.service';
+import { TutorAgreementService } from './tutor-agreement.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterStudentDto } from './dto/register-student.dto';
 import { RegisterTeacherDto } from './dto/register-teacher.dto';
@@ -48,6 +50,7 @@ export class AuthController {
     private readonly platformCourses: PlatformCoursesService,
     private readonly sessions: SessionsService,
     private readonly authenticator: AuthenticatorService,
+    private readonly tutorAgreement: TutorAgreementService,
   ) {}
 
   @Post('login')
@@ -370,5 +373,54 @@ export class AuthController {
   @ApiOperation({ summary: '[Admin] Clear someone’s authenticator app (a lost phone); they set it up again' })
   authenticatorReset(@CurrentUser() user: UserProfile, @Param('id') id: string) {
     return this.authenticator.reset(user, id);
+  }
+
+  // ── The tutor agreement, as a signed PDF ────────────────
+
+  @Get('me/tutor-agreement.pdf')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Your copy of the tutor agreement you accepted, as a PDF' })
+  async myAgreement(@CurrentUser() user: UserProfile) {
+    const p = await this.tutorAgreement.pdf(user.id);
+    return new StreamableFile(Buffer.from(p.bytes), { type: 'application/pdf', disposition: `attachment; filename="${p.fileName}"` });
+  }
+
+  @Post('me/tutor-agreement/email')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Throttle({ default: { ttl: 3_600_000, limit: 3 } })
+  @ApiOperation({ summary: 'Email me my copy of the tutor agreement (3 an hour)' })
+  emailMyAgreement(@CurrentUser() user: UserProfile) {
+    return this.tutorAgreement.email(user.id, 'asked');
+  }
+
+  @Get('admin/users/:id/tutor-agreement.pdf')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[Admin] A tutor’s signed agreement, as a PDF' })
+  async tutorAgreementFor(@Param('id') id: string) {
+    const p = await this.tutorAgreement.pdf(id);
+    return new StreamableFile(Buffer.from(p.bytes), { type: 'application/pdf', disposition: `attachment; filename="${p.fileName}"` });
+  }
+
+  @Get('admin/tutor-agreements/signed')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[Admin] How many tutors have accepted the agreement (who would get a copy)' })
+  async signedTutors() {
+    return { count: (await this.tutorAgreement.signed()).length };
+  }
+
+  @Post('admin/tutor-agreements/send-copies')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Throttle({ default: { ttl: 3_600_000, limit: 2 } })
+  @ApiOperation({ summary: '[Admin] Email every tutor who accepted the agreement their signed copy' })
+  sendAgreementCopies(@CurrentUser() user: UserProfile) {
+    return this.tutorAgreement.emailAll(user.id);
   }
 }

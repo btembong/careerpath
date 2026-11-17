@@ -156,6 +156,11 @@ export class MailService {
     await this.send(email, subject, noticeTemplate(opts), sender);
   }
 
+  /** A notice with files attached (e.g. a tutor's signed agreement as a PDF) */
+  async sendWithAttachment(email: string, subject: string, opts: NoticeOpts, sender: SenderType, files: { name: string; content: Uint8Array }[]): Promise<void> {
+    await this.send(email, subject, noticeTemplate(opts), sender, files);
+  }
+
   async sendOrgAdminWelcome(email: string, name: string, orgName: string, link: string): Promise<void> {
     await this.send(email, `Your ${orgName} school portal on CareerPath Africa`, orgAdminWelcomeTemplate(name, orgName, link), 'hello');
   }

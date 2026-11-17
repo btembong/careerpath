@@ -11,10 +11,12 @@ import api, { setAuthToken } from '@/lib/api';
 import { AppVersion } from '@/components/ui/AppVersion';
 import { PushSettings } from '@/components/push/Push';
 import { AuthenticatorApp, useAppStatus } from '@/components/settings/AuthenticatorApp';
+import { downloadFromApi } from '@/lib/download';
 
 interface Me {
   id: string; email: string; role: string; firstName?: string; lastName?: string; phone?: string;
   avatarUrl?: string | null; countryId: string | null; levelId?: string | null; programmeInterestIds?: string[]; createdAt?: string;
+  agreementAcceptedAt?: string | null; agreementVersion?: string | null;
 }
 interface Kind { key: string; group: string; label: string; hint: string; email: boolean; emailAlways?: boolean }
 interface Quiet { on: boolean; from: string; to: string; pausedUntil: string | null }
@@ -683,7 +685,37 @@ function YourDataPanel({ me }: { me: Me }) {
           {me.role !== 'STUDENT' && me.role !== 'ADMIN' && !due && <p className="text-xs text-muted">Teachers and other staff: an admin finishes the deletion after any last payout.</p>}
         </section>
       </div>
+      {me.agreementAcceptedAt && <AgreementCard me={me} />}
       <p className="rounded-lg border border-line px-4 py-3 text-[13px] text-ink2"><strong className="text-navy">What we keep and why:</strong> profile and progress while your account is open · payments for 6 years, for tax · sign-in codes for 10 minutes.</p>
     </div>
+  );
+}
+
+/** Settings → Your data, for tutors: the agreement they accepted, as a PDF */
+function AgreementCard({ me }: { me: Me }) {
+  const [busy, setBusy] = useState('');
+  const on = new Date(me.agreementAcceptedAt!).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  async function download() {
+    setBusy('download');
+    try { await downloadFromApi('/auth/me/tutor-agreement.pdf', 'CareerPath-Tutor-Agreement.pdf'); }
+    catch { notify.error('Could not make the PDF. Try again.'); } finally { setBusy(''); }
+  }
+  async function email() {
+    setBusy('email');
+    try { const r = await api.post('/auth/me/tutor-agreement/email'); notify.success('Sent', { description: `Check ${r.data.to}` }); }
+    catch (e: any) { notify.error(e?.response?.status === 429 ? 'You’ve asked a few times already. Try again in an hour.' : 'Could not send it. Try again.'); } finally { setBusy(''); }
+  }
+  return (
+    <section className="flex flex-wrap items-center gap-4 rounded-lg border border-line p-5">
+      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[9px] bg-accent-soft text-[#3F6FE8]"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6" /></svg></span>
+      <span className="min-w-0 flex-1">
+        <strong className="block text-[15px] text-navy">Your tutor agreement</strong>
+        <span className="text-sm text-ink2">Tutor Offer Letter & Content Ownership Agreement, accepted on {on}{me.agreementVersion ? ` (${me.agreementVersion})` : ''}. A PDF with the full text and when you accepted it.</span>
+      </span>
+      <span className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={download} loading={busy === 'download'}>Download PDF</Button>
+        <button onClick={email} disabled={busy === 'email'} className={btnLine}>Email me a copy</button>
+      </span>
+    </section>
   );
 }

@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { SessionsService } from './sessions.service';
 import { AuthenticatorService } from './authenticator.service';
+import { TutorAgreementService } from './tutor-agreement.service';
 import { AuditModule } from '../audit/audit.module';
 import { WordPressModule } from '../wordpress/wordpress.module';
 import { MailModule } from '../mail/mail.module';
@@ -35,7 +36,7 @@ import { CourseAdminModule } from '../course-admin/course-admin.module';
     AuditModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, SessionsService, AuthenticatorService],
+  providers: [AuthService, JwtStrategy, SessionsService, AuthenticatorService, TutorAgreementService],
   exports: [JwtModule, PassportModule, JwtStrategy, SessionsService, AuthenticatorService],
 })
 export class AuthModule {}

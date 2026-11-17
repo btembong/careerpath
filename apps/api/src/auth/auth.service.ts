@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { resolvePrefs, resolveDisplay, resolveQuiet, kindsFor } from '../notifications/notification-prefs';
 import { SessionsService } from './sessions.service';
 import { AuthenticatorService } from './authenticator.service';
+import { TutorAgreementService } from './tutor-agreement.service';
 import {
   Injectable,
   ConflictException,
@@ -65,6 +66,7 @@ export class AuthService {
     private teacherCourses: TeacherCoursesService,
     private sessions: SessionsService,
     private authenticator: AuthenticatorService,
+    private tutorAgreement: TutorAgreementService,
   ) {}
 
   // ── OTP ──────────────────────────────────────────────────
@@ -409,8 +411,10 @@ export class AuthService {
       await this.writeTeacherProfile(tx, profile.id, dto, ip);
     });
 
-    // Welcome email to teacher (pending state)
+    // Welcome email to teacher (pending state), and their copy of the agreement they accepted
     this.mail.sendWelcomeTeacher(dto.email, dto.firstName ?? '').catch(() => {});
+    const created = await this.prisma.userProfile.findUnique({ where: { email: dto.email }, select: { id: true, agreementAcceptedAt: true } });
+    if (created?.agreementAcceptedAt) this.tutorAgreement.emailAfterAccepting(created.id);
 
     return {
       message:
@@ -434,6 +438,8 @@ export class AuthService {
       await this.writeTeacherProfile(tx, userId, dto, ip);
       await tx.userProfile.update({ where: { id: userId }, data: { onboardingCompleted: true } });
     });
+    // Their copy of the agreement they just accepted
+    this.tutorAgreement.emailAfterAccepting(userId);
 
     // The courses they wrote on careerpathafrica.com become theirs here (a failure never blocks onboarding)
     const linked = await this.teacherCourses.linkWordPressCourses(userId).catch(err => {

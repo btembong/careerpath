@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent, DrawerSection, InfoGrid, Stepper } from '@/components/ui/Dialog';
 import { minorToMajor } from '@cpa/shared';
 import api from '@/lib/api';
+import { downloadFromApi } from '@/lib/download';
 
 type Status = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
 
@@ -173,6 +174,10 @@ function TeacherDrawer({
                 ? <>Signed on <strong className="text-navy">{new Date(teacher.agreementAcceptedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>{teacher.agreementVersion ? ` (version ${teacher.agreementVersion})` : ''}.</>
                 : 'Not signed yet. Teachers sign it when they first open their portal after approval.'}
             </p>
+            {teacher.agreementAcceptedAt && (
+              <button type="button" onClick={() => downloadFromApi(`/auth/admin/users/${teacher.id}/tutor-agreement.pdf`, 'tutor-agreement.pdf').catch(() => notify.error('Could not make the PDF'))}
+                className="mt-2 inline-flex h-8 w-fit items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Download signed copy (PDF)</button>
+            )}
           </DrawerSection>
 
           <DrawerSection title="Intro video">
