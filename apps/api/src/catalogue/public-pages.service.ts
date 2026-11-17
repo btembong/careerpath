@@ -130,6 +130,53 @@ export class PublicPagesService {
     };
   }
 
+  /**
+   * /courses for visitors: every catalogue course with what a card needs, plus the first step to suggest
+   * (the sample course) and whether any package is on sale. Sorted most joined this month first.
+   */
+  async list() {
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const [rows, packages, joined, questions, sample] = await Promise.all([
+      this.prisma.platformCourse.findMany({
+        where: { status: 'PUBLISHED', catalogueHidden: false },
+        select: {
+          id: true, title: true, shortDescription: true, coverUrl: true, source: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true, teacherPending: true, createdAt: true,
+          programme: { select: { id: true, name: true, shortName: true } }, subject: { select: { id: true, name: true } },
+          teacher: { select: { id: true, name: true, firstName: true, lastName: true, avatarUrl: true } },
+          modules: { select: { _count: { select: { lessons: true } } } },
+          _count: { select: { enrollments: true } },
+        },
+      }),
+      this.publishedPackages(),
+      this.prisma.courseEnrollment.groupBy({ by: ['courseId'], where: { enrolledAt: { gte: monthStart } }, _count: { _all: true } }),
+      this.prisma.questionBank.groupBy({ by: ['courseId'], where: { status: 'LIVE' }, _count: { _all: true } }),
+      this.prisma.platformSetting.findUnique({ where: { key: 'sampleCourse' } }),
+    ]);
+    const month = new Map(joined.map(j => [j.courseId, j._count._all]));
+    const qs = new Map(questions.map(q => [q.courseId, q._count._all]));
+    const courses = rows.map(c => {
+      const lessons = c.modules.reduce((t, m) => t + m._count.lessons, 0);
+      const selling = sellingOf(c, packages.some(p => p.courseIds.includes(c.id)));
+      return {
+        id: c.id, slug: slugOf(c.title, c.id), title: c.title, summary: c.shortDescription, coverUrl: c.coverUrl,
+        exam: c.programme ? { id: c.programme.id, name: c.programme.shortName ?? c.programme.name } : null,
+        subject: c.subject, teacher: c.teacherPending ? null : { id: c.teacher.id, name: nameOf(c.teacher), avatarUrl: c.teacher.avatarUrl },
+        modules: c.modules.filter(m => m._count.lessons).length, lessons, questions: qs.get(c.id) ?? 0,
+        selling, price: selling === 'paid' ? { amount: c.priceAmount!, currency: c.priceCurrency! } : null,
+        // No lessons here yet: it opens on careerpathafrica.com
+        website: lessons === 0, joinedThisMonth: month.get(c.id) ?? 0, students: c._count.enrollments, added: c.createdAt,
+      };
+    }).sort((a, b) => b.joinedThisMonth - a.joinedThisMonth || b.students - a.students || b.lessons - a.lessons);
+    const sampleId = ((sample?.value ?? {}) as { courseId?: string }).courseId;
+    const best = packages.find(p => p.bestValue) ?? packages[0] ?? null;
+    return {
+      courses,
+      start: courses.find(c => c.id === sampleId) ?? courses.find(c => c.selling === 'free' && !c.website) ?? null,
+      package: best ? { id: best.id, name: best.name, priceAmount: best.priceAmount, currency: best.currency, courses: best.courseIds.length } : null,
+      packages: packages.length,
+    };
+  }
+
   /** /packages for visitors: every published package, with what's in it, for choosing side by side */
   async packages() {
     const rows = await this.prisma.package.findMany({ where: { isPublished: true }, orderBy: { priceAmount: 'asc' } });

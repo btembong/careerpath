@@ -22,6 +22,12 @@ export class CatalogueController {
     return this.pages.package(id);
   }
 
+  @Get('course-list')
+  @ApiOperation({ summary: 'Public course list: every catalogue course with what a card needs, the suggested first course, and the best package' })
+  courseList() {
+    return this.pages.list();
+  }
+
   @Get('package-list')
   @ApiOperation({ summary: 'Public packages list: each published package with what is in it, cheapest first' })
   packageList() {
