@@ -8,12 +8,26 @@ export interface Suggestion { id: string; name: string; confidence: Confidence; 
 
 /** Exam (programme) rules, checked in order: the first that matches wins. Matched against the programme's short name. */
 const EXAM_RULES: [RegExp, string][] = [
+  // The programme list teachers are given: titles start with the programme, e.g. "JSS Kenya-Physics-JSS2"
+  [/\bnmc\s*nigeria\b/i, 'NMC Nigeria'],
+  [/\bnmc\s*ghana\b/i, 'NMC Ghana'],
+  [/\bjss\s*kenya\b/i, 'JSS Kenya'],
+  [/\bsss\s*kenya\b/i, 'SSS Kenya'],
+  [/\bkcse\b/i, 'KCSE'],
+  [/\bnsc\b|\bmatric\b/i, 'NSC (Matric)'],
+  [/\bjamb\b|\butme\b/i, 'JAMB'],
+  [/\bssce\b|\bneco\b|\bnabteb\b/i, 'SSCE'],
+  [/\bopms\b|\baptitude\s*test\b/i, 'Aptitude Test'],
+  [/\b(hnd|srn|bts)\b/i, 'BTS/HND/SRN'],
   [/\bnclex\b/i, 'NCLEX'],
   [/\bielts\b/i, 'IELTS'],
   [/\btoefl\b/i, 'TOEFL'],
   [/\bwassce\b|\bwaec\b/i, 'WASSCE'],
   [/\bbepc\b/i, 'BEPC'],
   [/\bigcse\b/i, 'IGCSE'],
+  // A title that names the level wins over its form ("GCE A Level – Biology – Form 4 & 5")
+  [/\bgce\b.*\ba[\s'’-]?level\b/i, 'GCE A-Level'],
+  [/\bgce\b.*\bo[\s'’-]?level\b/i, 'GCE O-Level'],
   [/\b(form\s*(five|5|four|4)|o[\s'’-]?level|ordinary level)\b/i, 'GCE O-Level'],
   // Cameroon's A-Level when the title says GCE, Cameroon or sixth form; otherwise Cambridge
   [/\b(upper|lower)\s*sixth\b|\b(gce|cameroon)\b.*\ba[\s'’-]?level\b/i, 'GCE A-Level'],
