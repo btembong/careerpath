@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { SkeletonTopbar, SkeletonTable } from '@/components/ui/Skeleton';
 import { Icon } from '@/components/ui/Icon';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Flag } from '@/components/ui/Flag';
 import api from '@/lib/api';
 
 interface Country {
@@ -98,9 +99,7 @@ export default function AdminCountryOverviewPage() {
               {countries.map(c => (
                 <li key={c.id} className="flex items-center gap-4 px-5 py-4">
                   {/* Country badge */}
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-navy">
-                    <span className="text-[10px] font-black text-azure uppercase">{c.code}</span>
-                  </div>
+                  <Flag code={c.code} title={c.name} className="h-7 w-[42px]" />
 
                   {/* Name + currency */}
                   <div className="flex-1 min-w-0">

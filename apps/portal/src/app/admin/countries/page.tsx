@@ -6,6 +6,7 @@ import { majorToMinor, minorToMajor } from '@cpa/shared';
 import { RepTable, td } from '@/components/rep/RepTable';
 import { Button } from '@/components/ui/Button';
 import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent, DrawerSection } from '@/components/ui/Dialog';
+import { Flag } from '@/components/ui/Flag';
 import { notify } from '@/lib/notify';
 import { money } from '@/lib/money';
 import api from '@/lib/api';
@@ -52,7 +53,7 @@ export default function AdminCountriesPage() {
         note="Reps earn their commission on sales to students in their country, plus the per-student bonus each month. Education systems are set in Taxonomy.">
         {shown.map(c => (
           <tr key={c.id} className="cursor-pointer hover:bg-subtle" onClick={() => setOpen(c)}>
-            <td className={td}><strong className="text-navy">{c.name}</strong><br /><span className="text-[12.5px] text-muted">{c.code} · {c.currency}</span></td>
+            <td className={td}><span className="flex items-center gap-3"><Flag code={c.code} title={c.name} className="h-6 w-9" /><span><strong className="text-navy">{c.name}</strong><br /><span className="text-[12.5px] text-muted">{c.code} · {c.currency}</span></span></span></td>
             <td className={clsx(td, 'text-ink2')}>{c.educationSystem?.name ?? '—'}</td>
             <td className={td}>{c.rep ? <span className="text-navy">{c.rep.name}</span> : <span className="inline-flex rounded border border-dashed border-azure px-2 py-0.5 text-[12.5px] font-semibold text-azure-strong">Assign a rep</span>}</td>
             <td className={clsx(td, 'text-ink2')}>{terms(c)}</td>
