@@ -1,448 +1,341 @@
 'use client';
-import { notify } from '@/lib/notify';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
-import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
+import { PageHero } from '@/components/hero/PageHero';
 import { Button } from '@/components/ui/Button';
-import { SkeletonTopbar, SkeletonCard } from '@/components/ui/Skeleton';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Dialog, DialogContent, DialogFooter, Drawer, DrawerContent, DrawerSection, InfoGrid, Stepper } from '@/components/ui/Dialog';
-import { minorToMajor } from '@cpa/shared';
+import { Dialog, DialogContent, DialogFooter } from '@/components/ui/Dialog';
+import { Flag } from '@/components/ui/Flag';
+import { TeacherDrawer, money, initialsOf, type Money } from '@/components/admin-teachers/TeacherDrawer';
+import { ApplicationsQueue, type Application } from '@/components/admin-teachers/ApplicationsQueue';
+import { notify } from '@/lib/notify';
 import api from '@/lib/api';
-import { downloadFromApi } from '@/lib/download';
 
-type Status = 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
-
-interface Teacher {
-  id: string;
-  email: string;
-  approvalStatus: Status;
-  videoIntroUrl?: string | null;
-  agreementAcceptedAt?: string | null;
-  agreementVersion?: string | null;
-  teacherApplication: {
-    firstName?: string | null;
-    lastName?: string | null;
-    phone?: string | null;
-    subjectAreas: string[];
-    yearsExperience?: number | null;
-    qualification?: string | null;
-    teachingModality?: string | null;
-    bio: string;
-    documentUrl?: string | null;
-    linkedinUrl?: string | null;
-    websiteUrl?: string | null;
-    rejectionReason?: string | null;
-    submittedAt: string;
-  } | null;
+type Status = 'APPROVED' | 'SUSPENDED';
+interface Row {
+  id: string; name: string; email: string; status: Status; avatarUrl: string | null; country: { code: string; name: string } | null;
+  subjects: string[]; courses: number; published: number; students: number; rating: number | null; ratings: number; earned30d: Money[];
+  checks: { photo: boolean; bio: boolean; video: boolean; agreement: boolean }; lastActive: string | null; joinedAt: string;
 }
-
-const QUALIFICATION_LABEL: Record<string, string> = {
-  HIGH_SCHOOL: 'High school', BACHELOR: "Bachelor's", MASTER: "Master's",
-  PHD: 'PhD', PROFESSIONAL: 'Professional cert.',
-};
-const MODALITY_LABEL: Record<string, string> = {
-  ONLINE: 'Online', IN_PERSON: 'In-person', HYBRID: 'Hybrid',
-};
-const STATUS_LABEL: Record<Status, string> = { PENDING: 'Pending review', APPROVED: 'Approved', REJECTED: 'Rejected', SUSPENDED: 'Suspended' };
-
-function initials(t: Teacher): string {
-  const app = t.teacherApplication;
-  if (app?.firstName && app?.lastName) return `${app.firstName[0]}${app.lastName[0]}`.toUpperCase();
-  return t.email[0].toUpperCase();
+interface Overview {
+  stats: {
+    active: number; suspended: number; applications: number; students: number; courses: number; avgRating: number | null; ratings: number; paidThisMonth: Money[];
+    countries: number; noCountry: number; signed: number; withPhoto: number; withCourses: number; teaching: number; complete: number; unassignedCourses: number;
+  };
+  teachers: Row[];
 }
-
-function displayName(t: Teacher): string {
-  const app = t.teacherApplication;
-  if (app?.firstName && app?.lastName) return `${app.firstName} ${app.lastName}`;
-  return t.email.split('@')[0];
-}
-
-// ─── Rejection dialog ────────────────────────────────────────────────────────
-
-function RejectDialog({
-  teacher, onClose, onConfirm, loading,
-}: {
-  teacher: Teacher | null;
-  onClose: () => void;
-  onConfirm: (reason: string) => void;
-  loading: boolean;
-}) {
-  const [reason, setReason] = useState('');
-  useEffect(() => { setReason(''); }, [teacher?.id]);
-
-  return (
-    <Dialog open={!!teacher} onOpenChange={o => { if (!o) onClose(); }}>
-      {teacher && (
-        <DialogContent title="Reject application" description={displayName(teacher)}>
-          <label className="block space-y-1.5">
-            <span className="text-[13px] font-semibold text-navy">Reason <span className="font-normal text-muted">(sent to the applicant by email)</span></span>
-            <textarea rows={4} value={reason} maxLength={500} onChange={e => setReason(e.target.value)}
-              placeholder="For example: we need at least two years of classroom experience. You're welcome to apply again later."
-              className="w-full resize-none rounded-md border border-line bg-white px-3 py-2.5 text-sm text-navy outline-none focus:border-azure placeholder:text-muted" />
-            <span className="block text-xs text-muted">{reason.length} / 500</span>
-          </label>
-          <DialogFooter>
-            <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
-            <Button variant="danger" size="sm" loading={loading} onClick={() => onConfirm(reason)}>Reject application</Button>
-          </DialogFooter>
-        </DialogContent>
-      )}
-    </Dialog>
-  );
-}
-
-// ─── Application drawer ──────────────────────────────────────────────────────
-
-function TeacherDrawer({
-  teacher, onClose, onApprove, onReject, deciding,
-}: {
-  teacher: Teacher | null;
-  onClose: () => void;
-  onApprove: (id: string) => void;
-  onReject: (t: Teacher) => void;
-  deciding: boolean;
-}) {
-  const [videoUrl, setVideoUrl] = useState('');
-  const [savingVideo, setSavingVideo] = useState(false);
-  useEffect(() => { setVideoUrl(teacher?.videoIntroUrl ?? ''); }, [teacher?.id, teacher?.videoIntroUrl]);
-
-  async function saveVideoUrl() {
-    if (!teacher) return;
-    setSavingVideo(true);
-    try {
-      await api.patch(`/teachers/admin/${teacher.id}/video`, { videoIntroUrl: videoUrl.trim() || null });
-      notify.success('Intro video saved');
-    } catch (err: any) {
-      notify.error(err?.response?.data?.message ?? 'Could not save the video link');
-    } finally { setSavingVideo(false); }
-  }
-
-  const app = teacher?.teacherApplication;
-  const step = !teacher ? 0
-    : teacher.approvalStatus === 'PENDING' ? 1
-    : teacher.approvalStatus === 'REJECTED' ? 2
-    : teacher.agreementAcceptedAt ? 4 : 3;
-  const isFile = videoUrl.startsWith('http') && !/youtube|youtu\.be|vimeo/.test(videoUrl);
-
-  return (
-    <Drawer open={!!teacher} onOpenChange={o => { if (!o) onClose(); }}>
-      {teacher && (
-        <DrawerContent title={displayName(teacher)} description={teacher.email}
-          action={app?.documentUrl ? (
-            <a href={app.documentUrl} target="_blank" rel="noreferrer"
-              className="inline-flex h-8 items-center rounded-md border border-line bg-white px-3 text-[13px] font-semibold text-navy hover:bg-subtle transition-colors">
-              View CV
-            </a>
-          ) : undefined}>
-
-          <Stepper steps={['Applied', 'Under review', teacher.approvalStatus === 'REJECTED' ? 'Rejected' : 'Approved', 'Agreement signed']} current={step} />
-
-          <InfoGrid items={[
-            { label: 'Status', value: STATUS_LABEL[teacher.approvalStatus] },
-            { label: 'Qualification', value: app?.qualification ? (QUALIFICATION_LABEL[app.qualification] ?? app.qualification) : '—' },
-            { label: 'Experience', value: app?.yearsExperience != null ? `${app.yearsExperience} years` : '—' },
-            { label: 'Teaches', value: app?.teachingModality ? (MODALITY_LABEL[app.teachingModality] ?? app.teachingModality) : '—' },
-            { label: 'Phone', value: app?.phone || '—' },
-            { label: 'Applied', value: app?.submittedAt ? new Date(app.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—' },
-          ]} />
-
-          {app && app.subjectAreas.length > 0 && (
-            <DrawerSection title="Subjects" count={app.subjectAreas.length}>
-              <div className="flex flex-wrap gap-1.5">
-                {app.subjectAreas.map(s => <Badge key={s} variant="default">{s}</Badge>)}
-              </div>
-            </DrawerSection>
-          )}
-
-          {app?.bio && (
-            <DrawerSection title="About">
-              <p className="whitespace-pre-line text-sm leading-relaxed text-ink2">{app.bio}</p>
-            </DrawerSection>
-          )}
-
-          {teacher.approvalStatus === 'REJECTED' && app?.rejectionReason && (
-            <DrawerSection title="Reason for rejection">
-              <p className="rounded-md border border-line bg-subtle px-3 py-2.5 text-sm text-ink2">{app.rejectionReason}</p>
-            </DrawerSection>
-          )}
-
-          <DrawerSection title="Content agreement">
-            <p className="text-sm text-ink2">
-              {teacher.agreementAcceptedAt
-                ? <>Signed on <strong className="text-navy">{new Date(teacher.agreementAcceptedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>{teacher.agreementVersion ? ` (version ${teacher.agreementVersion})` : ''}.</>
-                : 'Not signed yet. Teachers sign it when they first open their portal after approval.'}
-            </p>
-            {teacher.agreementAcceptedAt && (
-              <button type="button" onClick={() => downloadFromApi(`/auth/admin/users/${teacher.id}/tutor-agreement.pdf`, 'tutor-agreement.pdf').catch(() => notify.error('Could not make the PDF'))}
-                className="mt-2 inline-flex h-8 w-fit items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Download signed copy (PDF)</button>
-            )}
-          </DrawerSection>
-
-          <DrawerSection title="Intro video">
-            {videoUrl && isFile && <video src={videoUrl} controls className="max-h-48 w-full rounded-md bg-black" />}
-            <div className="flex gap-2">
-              <input value={videoUrl} onChange={e => setVideoUrl(e.target.value)} type="url" aria-label="Intro video link"
-                placeholder="YouTube, Vimeo or a direct video link" className="input-base" />
-              <Button size="sm" variant="secondary" loading={savingVideo} onClick={saveVideoUrl} className="h-[38px]">Save</Button>
-            </div>
-            <p className="text-xs text-muted">Shown on the teacher&apos;s public profile and when students browse mentors.</p>
-          </DrawerSection>
-
-          {(app?.linkedinUrl || app?.websiteUrl) && (
-            <DrawerSection title="Links">
-              <div className="flex flex-wrap gap-4">
-                {app?.linkedinUrl && <a href={app.linkedinUrl} target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-azure-strong hover:underline">LinkedIn</a>}
-                {app?.websiteUrl && <a href={app.websiteUrl} target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-azure-strong hover:underline">Website</a>}
-              </div>
-            </DrawerSection>
-          )}
-
-          {teacher.approvalStatus === 'PENDING' && (
-            <div className="flex gap-2 border-t border-line pt-4">
-              <Button size="sm" loading={deciding} onClick={() => onApprove(teacher.id)}>Approve</Button>
-              <Button size="sm" variant="danger" disabled={deciding} onClick={() => onReject(teacher)}>Reject</Button>
-            </div>
-          )}
-        </DrawerContent>
-      )}
-    </Drawer>
-  );
-}
-
-// ─── Row ─────────────────────────────────────────────────────────────────────
-
-function TeacherRow({ teacher, onOpen }: { teacher: Teacher; onOpen: () => void }) {
-  const app = teacher.teacherApplication;
-  return (
-    <button type="button" onClick={onOpen}
-      className="flex w-full items-center gap-4 border-b border-line px-5 py-3.5 text-left last:border-b-0 hover:bg-subtle transition-colors">
-      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-accent-soft text-[13px] font-bold text-navy">
-        {initials(teacher)}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold text-navy">{displayName(teacher)}</span>
-        <span className="block truncate text-[13px] text-muted">{teacher.email}</span>
-      </span>
-      <span className="hidden min-w-0 max-w-[260px] flex-wrap gap-1 md:flex">
-        {app?.subjectAreas.slice(0, 2).map(s => <Badge key={s} variant="default">{s}</Badge>)}
-        {(app?.subjectAreas.length ?? 0) > 2 && <span className="self-center text-xs text-muted">+{app!.subjectAreas.length - 2}</span>}
-      </span>
-      <span className="hidden w-20 text-[13px] text-ink2 sm:block">{app?.yearsExperience != null ? `${app.yearsExperience} yrs` : '—'}</span>
-      <Badge variant={teacher.approvalStatus === 'APPROVED' ? 'active' : 'default'}>{STATUS_LABEL[teacher.approvalStatus]}</Badge>
-    </button>
-  );
-}
-
-// ─── Performance (active and suspended teachers) ─────────────────────────────
-
-interface Money { currency: string; amount: number }
-interface PerfRow {
-  id: string; name: string; email: string; status: Status; subjects: string[]; courses: number; published: number; students: number;
-  rating: number | null; ratings: number; earned30d: Money[]; profileComplete: boolean; missing: string[]; lastActive: string | null;
-}
-interface PerfOverview {
-  stats: { active: number; suspended: number; applications: number; students: number; courses: number; avgRating: number | null; ratings: number; paidThisMonth: Money[] };
-  teachers: PerfRow[];
-}
-interface PerfDetail {
-  id: string; name: string; email: string; status: Status; joinedAt: string; lastActive: string | null; subjects: string[]; yearsExperience: number | null;
-  profile: { video: boolean; bio: boolean };
-  courses: { id: string; title: string; status: string; students: number; commissionPct: number | null }[];
-  cohorts: { id: string; name: string; students: number; classesHeld: number; attendancePct: number | null; missingRecordings: number }[];
-  mentorship: { freeSlots: number; booked: number; rating: number | null; ratings: number };
-  earned30d: Money[];
-}
-const money = (m: Money[]) => m.length ? m.map(x => `${x.currency} ${minorToMajor(x.amount, x.currency).toLocaleString()}`).join(' · ') : '—';
-const COURSE_STATUS: Record<string, string> = { PUBLISHED: 'Published', PENDING_REVIEW: 'In review', DRAFT: 'Draft', ARCHIVED: 'Archived' };
-
-function PerfDrawer({ id, app, onClose, onChanged, onOpenApplication }: { id: string | null; app: Teacher | null; onClose: () => void; onChanged: () => Promise<void>; onOpenApplication: () => void }) {
-  const [d, setD] = useState<PerfDetail | null>(null);
-  const [busy, setBusy] = useState(false);
-  async function load(tid: string) { const r = await api.get(`/portals/admin/teachers/${tid}/overview`); setD(r.data); }
-  useEffect(() => { setD(null); if (id) load(id).catch(() => notify.error('Could not load this teacher')); }, [id]);
-  async function suspend(on: boolean) {
-    if (!id) return;
-    setBusy(true);
-    try {
-      await api.patch(`/portals/admin/teachers/${id}/suspend`, { suspended: on });
-      notify.success(on ? 'Teacher suspended' : 'Teacher reinstated', { description: on ? 'They can’t sign in and are hidden from students.' : undefined });
-      await load(id); await onChanged();
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'That didn’t work'); }
-    finally { setBusy(false); }
-  }
-  return (
-    <Drawer open={!!id} onOpenChange={o => { if (!o) onClose(); }}>
-      {id && (
-        <DrawerContent width="lg" title={d?.name ?? 'Teacher'}
-          description={d ? [d.subjects.join(', '), `joined ${new Date(d.joinedAt).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`, d.email].filter(Boolean).join(' · ') : undefined}
-          action={d && <a href={`/admin/messages?to=${d.id}`} className="inline-flex h-8 items-center rounded-md border border-line bg-white px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Message</a>}
-          footer={d && <>
-            {app && <Button size="sm" variant="secondary" onClick={onOpenApplication}>Application and intro video</Button>}
-            <span className="flex-1" />
-            {d.status === 'SUSPENDED'
-              ? <Button size="sm" loading={busy} onClick={() => suspend(false)}>Reinstate</Button>
-              : <Button size="sm" variant="danger" loading={busy} onClick={() => suspend(true)}>Suspend</Button>}
-          </>}>
-          {!d ? <div className="h-64 rounded-md bg-subtle animate-pulse" /> : <>
-            {d.status === 'SUSPENDED' && <p className="rounded-md border border-line bg-subtle px-3.5 py-2.5 text-[13px] text-ink2"><strong className="text-navy">Suspended.</strong> They can’t sign in, and students can’t see or book them.</p>}
-            <InfoGrid items={[
-              { label: 'Courses', value: String(d.courses.filter(c => c.status !== 'ARCHIVED').length) },
-              { label: 'Students', value: String(d.courses.reduce((n, c) => n + c.students, 0) + d.cohorts.reduce((n, c) => n + c.students, 0)) },
-              { label: 'Mentorship rating', value: d.mentorship.rating ? `${d.mentorship.rating} ★ (${d.mentorship.ratings})` : '—' },
-              { label: 'Earned, 30 days', value: money(d.earned30d) },
-              { label: 'Experience', value: d.yearsExperience ? `${d.yearsExperience} years` : '—' },
-              { label: 'Last active', value: d.lastActive ? new Date(d.lastActive).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'Never' },
-            ]} />
-            <DrawerSection title="Courses" count={d.courses.length}>
-              {!d.courses.length ? <p className="text-[13px] text-ink2">No courses yet.</p> : d.courses.map(c => (
-                <a key={c.id} href={`/admin/courses/${c.id}/builder`} className="flex justify-between gap-3 rounded-md border border-line px-3 py-2 text-[13px] hover:bg-subtle">
-                  <span className="truncate text-navy">{c.title}</span>
-                  <strong className="whitespace-nowrap font-semibold text-navy">{COURSE_STATUS[c.status] ?? c.status}{c.commissionPct != null ? ` · ${c.commissionPct}%` : ''}</strong>
-                </a>
-              ))}
-              <p className="text-xs text-muted">Change a course’s commission in Courses → course drawer.</p>
-            </DrawerSection>
-            <DrawerSection title="Teaching">
-              {!d.cohorts.length ? <p className="text-[13px] text-ink2">No cohorts.</p> : d.cohorts.map(c => (
-                <p key={c.id} className="text-[13px] text-ink2">
-                  <strong className="text-navy">{c.name}</strong> · {c.students} students · {c.classesHeld} classes{c.attendancePct != null ? ` · ${c.attendancePct}% attendance` : ''}{c.missingRecordings ? ` · ${c.missingRecordings} recording${c.missingRecordings === 1 ? '' : 's'} missing` : ''}
-                </p>
-              ))}
-              <p className="text-[13px] text-ink2">Mentorship: {d.mentorship.freeSlots} free time{d.mentorship.freeSlots === 1 ? '' : 's'} · {d.mentorship.booked} booked</p>
-            </DrawerSection>
-            <DrawerSection title="Profile">
-              <p className="text-[13px] text-ink2">{d.profile.video ? 'Intro video added' : 'No intro video'} · {d.profile.bio ? 'bio added' : 'no bio'} · {d.profile.video && d.status === 'APPROVED' ? 'visible to students for mentorship' : 'not bookable for mentorship'}</p>
-            </DrawerSection>
-          </>}
-        </DrawerContent>
-      )}
-    </Drawer>
-  );
-}
-
-// ─── Page ────────────────────────────────────────────────────────────────────
-
 type Tab = 'APPROVED' | 'PENDING' | 'SUSPENDED' | 'REJECTED';
+type Filter = 'all' | 'teaching' | 'courses' | 'nocourse' | 'never' | 'unsigned' | 'nophoto';
+type Nudge = 'agreement' | 'welcome' | 'course' | 'photo';
+type Sort = 'students' | 'courses' | 'seen' | 'newest' | 'name';
+
+const realSubjects = (xs: string[]) => xs.filter(x => !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(x));
+const FILTERS: Record<Filter, { l: string; f: (r: Row) => boolean }> = {
+  all: { l: 'All', f: () => true },
+  teaching: { l: 'Teaching students', f: r => r.students > 0 },
+  courses: { l: 'Has courses', f: r => r.courses > 0 },
+  nocourse: { l: 'No course yet', f: r => r.courses === 0 },
+  never: { l: 'Never signed in', f: r => !r.lastActive },
+  unsigned: { l: 'Not signed agreement', f: r => !r.checks.agreement },
+  nophoto: { l: 'No photo', f: r => !r.checks.photo },
+};
+const NUDGE: Record<Nudge, { title: string; what: string; button: string }> = {
+  agreement: { title: 'Remind them to sign the agreement', what: 'They’re approved but can’t publish courses or take classes until they sign. The email links straight to the agreement.', button: 'Send the reminder' },
+  welcome: { title: 'Resend the welcome email', what: 'They have an account from the website but have never opened the portal. The email tells them to sign in with their website email and password.', button: 'Send the welcome email' },
+  course: { title: 'Ask them to build a first course', what: 'They’re approved and signed, with nothing built yet. The email opens the course builder.', button: 'Send the email' },
+  photo: { title: 'Ask them to add a photo', what: 'Students see their initials. The email opens their profile, and mentions an intro video too.', button: 'Send the email' },
+};
+const seen = (d: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null;
+const csvCell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
+function Avatar({ r, size = 'h-9 w-9' }: { r: { name: string; avatarUrl: string | null }; size?: string }) {
+  return (
+    <span className={clsx('flex flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-accent-soft text-[12.5px] font-extrabold text-azure-strong', size)}>
+      {r.avatarUrl ? <img src={r.avatarUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : initialsOf(r.name)}
+    </span>
+  );
+}
+function Checks({ c, only }: { c: Row['checks']; only?: (keyof Row['checks'])[] }) {
+  const all: [keyof Row['checks'], string, string][] = [['photo', 'P', 'Photo'], ['bio', 'B', 'Bio'], ['video', 'V', 'Intro video'], ['agreement', 'A', 'Agreement signed']];
+  return (
+    <span className="flex gap-1">
+      {all.filter(([k]) => !only || only.includes(k)).map(([k, l, t]) => (
+        <span key={k} title={`${t}: ${c[k] ? 'yes' : 'no'}`} aria-label={`${t}: ${c[k] ? 'yes' : 'no'}`}
+          className={clsx('flex h-[22px] w-[22px] items-center justify-center rounded-[5px] text-[10px] font-extrabold', c[k] ? 'bg-[#E3F5EA] text-[#17703A]' : 'bg-subtle text-[#B0B9CE]')}>{l}</span>
+      ))}
+    </span>
+  );
+}
 
 export default function AdminTeachersPage() {
-  const [all, setAll] = useState<Teacher[]>([]);
-  const [perf, setPerf] = useState<PerfOverview | null>(null);
+  const [ov, setOv] = useState<Overview | null>(null);
+  const [apps, setApps] = useState<Application[] | null>(null);
   const [tab, setTab] = useState<Tab>('APPROVED');
+  const [filter, setFilter] = useState<Filter>('all');
+  const [country, setCountry] = useState('');
+  const [sort, setSort] = useState<Sort>('students');
   const [q, setQ] = useState('');
-  const [deciding, setDeciding] = useState<string | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<Teacher | null>(null);
-  const [appId, setAppId] = useState<string | null>(null);
-  const [perfId, setPerfId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [nudging, setNudging] = useState<{ kind: Nudge; ids: string[] } | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [invite, setInvite] = useState({ email: '', name: '', note: '' });
+  const [busy, setBusy] = useState(false);
 
   async function load() {
-    const [a, p] = await Promise.all([
-      api.get('/portals/admin/teachers').then(r => r.data as Teacher[]).catch(() => [] as Teacher[]),
-      api.get('/portals/admin/teachers-overview').then(r => r.data as PerfOverview).catch(() => null),
+    const [o, a] = await Promise.all([
+      api.get('/portals/admin/teachers-overview').then(r => r.data as Overview).catch(() => null),
+      api.get('/portals/admin/teacher-applications').then(r => r.data as Application[]).catch(() => [] as Application[]),
     ]);
-    setAll(a); setPerf(p);
-    if (!p?.teachers.length && a.some(t => t.approvalStatus === 'PENDING')) setTab('PENDING');
+    setOv(o); setApps(a);
   }
   useEffect(() => { load(); }, []);
+  // Other pages link here with ?tab=applications or ?open=<id>
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('tab') === 'applications') setTab('PENDING');
+    if (p.get('open')) setOpenId(p.get('open'));
+  }, []);
 
-  async function approve(id: string) {
-    setDeciding(id);
+  const s = ov?.stats;
+  const rows = ov?.teachers ?? [];
+  const active = rows.filter(r => r.status === 'APPROVED');
+  const pending = (apps ?? []).filter(a => a.status === 'PENDING');
+  const turnedDown = (apps ?? []).filter(a => a.status === 'REJECTED');
+  const waiting = pending.filter(a => !a.questionAskedAt);
+  const oldest = waiting[0] ?? null;
+
+  // What needs a look, as lists you can act on
+  const queues = useMemo(() => {
+    const unsigned = active.filter(r => !r.checks.agreement);
+    const never = active.filter(r => !r.lastActive);
+    const noCourse = active.filter(r => r.courses === 0 && r.checks.agreement);
+    const noPhoto = active.filter(r => !r.checks.photo);
+    return { unsigned, never, noCourse, noPhoto, noVideo: active.filter(r => !r.checks.video).length };
+  }, [ov]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const countries = useMemo(() => [...new Map(rows.filter(r => r.country).map(r => [r.country!.code, r.country!.name])).entries()].sort((a, b) => a[1].localeCompare(b[1])), [rows]);
+  const match = (t: string) => !q.trim() || t.toLowerCase().includes(q.trim().toLowerCase());
+  const shown = rows.filter(r => r.status === tab && FILTERS[filter].f(r) && (!country || (country === '-' ? !r.country : r.country?.code === country)) && match(`${r.name} ${r.email} ${r.subjects.join(' ')}`))
+    .sort((a, b) => sort === 'students' ? b.students - a.students || b.courses - a.courses
+      : sort === 'courses' ? b.courses - a.courses
+      : sort === 'seen' ? +new Date(b.lastActive ?? 0) - +new Date(a.lastActive ?? 0)
+      : sort === 'newest' ? +new Date(b.joinedAt) - +new Date(a.joinedAt)
+      : a.name.localeCompare(b.name));
+  const appsShown = (tab === 'PENDING' ? pending : turnedDown).filter(a => match(`${a.name} ${a.email} ${a.subjects.join(' ')}`));
+
+  async function sendNudge() {
+    if (!nudging) return;
+    setBusy(true);
     try {
-      await api.patch(`/portals/admin/teachers/${id}/approve`, { decision: 'approve' });
-      notify.success('Teacher approved');
-      await load();
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not approve the application'); }
-    finally { setDeciding(null); }
+      const r = await api.post('/portals/admin/teachers-nudge', nudging);
+      notify.success(`Sent to ${r.data.sent} teacher${r.data.sent === 1 ? '' : 's'}`, r.data.skipped ? { description: `${r.data.skipped} couldn’t be sent` } : undefined);
+      setNudging(null);
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not send it'); }
+    finally { setBusy(false); }
   }
-  async function rejectConfirm(reason: string) {
-    if (!rejectTarget) return;
-    setDeciding(rejectTarget.id);
+  async function sendInvite() {
+    setBusy(true);
     try {
-      await api.patch(`/portals/admin/teachers/${rejectTarget.id}/approve`, { decision: 'reject', rejectionReason: reason || undefined });
-      setRejectTarget(null); notify.success('Application rejected'); await load();
-    } catch (err: any) { notify.error(err?.response?.data?.message ?? 'Could not reject the application'); }
-    finally { setDeciding(null); }
+      await api.post('/portals/admin/teachers-invite', invite);
+      notify.success('Invitation sent', { description: `${invite.email} gets a link to apply.` });
+      setInviting(false); setInvite({ email: '', name: '', note: '' });
+    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not send the invitation'); }
+    finally { setBusy(false); }
+  }
+  function exportCsv() {
+    const head = ['Name', 'Email', 'Status', 'Country', 'Subjects', 'Courses', 'Published', 'Students', 'Rating', 'Ratings', 'Earned 30 days', 'Last seen', 'Photo', 'Bio', 'Intro video', 'Agreement'];
+    const lines = rows.map(r => [r.name, r.email, r.status === 'APPROVED' ? 'Active' : 'Suspended', r.country?.name ?? '', realSubjects(r.subjects).join('; '), r.courses, r.published, r.students, r.rating ?? '', r.ratings,
+      money(r.earned30d), r.lastActive ? new Date(r.lastActive).toISOString().slice(0, 10) : 'never', ...(['photo', 'bio', 'video', 'agreement'] as const).map(k => r.checks[k] ? 'yes' : 'no')].map(csvCell).join(','));
+    const blob = new Blob([[head.map(csvCell).join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `teachers-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(a.href);
   }
 
-  const s = perf?.stats;
-  const counts: Record<Tab, number> = {
-    APPROVED: perf?.teachers.filter(t => t.status === 'APPROVED').length ?? 0,
-    PENDING: all.filter(t => t.approvalStatus === 'PENDING').length,
-    SUSPENDED: perf?.teachers.filter(t => t.status === 'SUSPENDED').length ?? 0,
-    REJECTED: all.filter(t => t.approvalStatus === 'REJECTED').length,
-  };
-  const match = (text: string) => !q.trim() || text.toLowerCase().includes(q.trim().toLowerCase());
-  const perfRows = (perf?.teachers ?? []).filter(t => t.status === tab && match(`${t.name} ${t.email} ${t.subjects.join(' ')}`));
-  const appRows = all.filter(t => t.approvalStatus === tab && match(`${displayName(t)} ${t.email}`));
-  const app = all.find(t => t.id === appId) ?? null;
+  const queueCard = (n: number, title: string, sub: string, action: string, onAction: () => void, onTitle?: () => void, warm?: boolean) => n > 0 && (
+    <div key={title} className={clsx('flex min-w-[200px] flex-1 snap-start flex-col gap-1.5 rounded-lg border p-3.5', warm ? 'border-[#F1D9A6] bg-[#FFFBF0]' : 'border-line bg-white')}>
+      <button type="button" onClick={onTitle ?? onAction} className="flex flex-col gap-1 text-left">
+        <b className="text-[28px] font-extrabold leading-none tracking-[-0.02em] text-navy">{n}</b>
+        <span className="text-[13.5px] font-extrabold text-navy">{title}</span>
+      </button>
+      <span className="text-[12.5px] leading-snug text-muted">{sub}</span>
+      <button type="button" onClick={onAction} className="mt-auto pt-1 text-left text-[12.5px] font-extrabold text-azure-strong hover:underline">{action} →</button>
+    </div>
+  );
+  const tabBtn = (k: Tab, l: string, count: React.ReactNode) => (
+    <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+      className={clsx('-mb-px flex h-[46px] items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 text-[13.5px] text-navy', tab === k ? 'border-azure-strong font-extrabold' : 'border-transparent font-semibold')}>{l}{count}</button>
+  );
 
   return (
     <div className="flex min-h-full flex-col">
-      <Topbar title="Teachers" subtitle="Applications, active teachers and how they’re doing" />
+      <Topbar title="Teachers" subtitle="Applications, active teachers and how they’re doing"
+        actions={<>
+          <button type="button" onClick={exportCsv} disabled={!ov} className="hidden h-9 items-center rounded-md border border-line bg-white px-3 text-[13px] font-semibold text-navy hover:bg-subtle sm:inline-flex">Export CSV</button>
+          <button type="button" onClick={() => setInviting(true)} className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Invite a teacher</button>
+        </>} />
       <div className="flex flex-col gap-5 p-4 lg:px-7 lg:py-6">
-        <dl className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
-          {[
-            { l: 'Active teachers', v: s ? String(s.active) : '…', sub: s ? `${s.applications} application${s.applications === 1 ? '' : 's'} waiting` : '' },
-            { l: 'Students taught', v: s ? s.students.toLocaleString() : '…', sub: s ? `Across ${s.courses} published course${s.courses === 1 ? '' : 's'}` : '' },
-            { l: 'Average rating', v: s?.avgRating != null ? `${s.avgRating} ★` : '—', sub: s?.ratings ? `From ${s.ratings} rating${s.ratings === 1 ? '' : 's'}` : 'No ratings yet' },
-            { l: 'Paid this month', v: s ? money(s.paidThisMonth) : '…', sub: 'Teacher commissions' },
-          ].map(x => (
-            <div key={x.l} className="rounded-lg border border-line bg-white p-4">
-              <dt className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-muted">{x.l}</dt>
-              <dd className="mt-1.5 truncate text-[22px] font-extrabold text-navy">{x.v}</dd>
-              <dd className="mt-0.5 truncate text-[12.5px] text-muted">{x.sub}</dd>
+        {!s || !apps ? <div className="h-[230px] animate-pulse rounded-[14px] bg-[#3F6FE8]/30" /> : (
+          <PageHero
+            kicker={`Teachers · ${s.active} active · ${s.countries} ${s.countries === 1 ? 'country' : 'countries'}${s.noCountry ? ` · ${s.noCountry} without one` : ''}`}
+            l1={waiting.length ? `${waiting.length} application${waiting.length === 1 ? '' : 's'} waiting.` : `${s.active} teachers on board.`}
+            l2={waiting.length ? `${s.active} teachers on board.` : `${s.teaching} teaching students.`}
+            sub={`${s.withCourses} have courses, ${s.teaching} ${s.teaching === 1 ? 'is' : 'are'} teaching students. ${s.complete} ${s.complete === 1 ? 'profile is' : 'profiles are'} complete${queues.noVideo > s.active / 2 ? '; most are missing an intro video' : ''}.`}
+            chips={[
+              { t: `${s.signed} signed the agreement` }, { t: `${s.withPhoto} with a photo` },
+              { t: s.ratings ? `${s.ratings} rating${s.ratings === 1 ? '' : 's'} · ${s.avgRating} ★` : 'No ratings yet' },
+              { t: s.paidThisMonth.length ? `${money(s.paidThisMonth)} paid this month` : 'Nothing paid this month' },
+            ]}
+            actions={waiting.length ? <button type="button" onClick={() => setTab('PENDING')} className="inline-flex h-10 items-center rounded-md bg-[#072061] px-4 text-sm font-bold text-[#FFFFFF] lg:hidden">Review applications · {waiting.length}</button> : undefined}
+            asideClassName="hidden lg:flex"
+            aside={oldest ? <>
+              <p className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-muted">Waiting longest</p>
+              <div className="flex items-center gap-3">
+                <Avatar r={oldest} size="h-12 w-12 text-[16px]" />
+                <span className="min-w-0"><b className="block truncate text-[15px]">{oldest.name}</b><span className="line-clamp-2 text-[12.5px] text-muted">{realSubjects(oldest.subjects).slice(0, 2).join(', ')} · applied {new Date(oldest.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span></span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="rounded-[5px] bg-[#FFF1D6] px-2 py-0.5 text-[11.5px] font-extrabold text-[#8A5A00]">{oldest.daysWaiting === 0 ? 'Today' : `${oldest.daysWaiting} day${oldest.daysWaiting === 1 ? '' : 's'} waiting`}</span>
+                <span className={clsx('rounded-[5px] px-2 py-0.5 text-[11.5px] font-extrabold', oldest.cv ? 'bg-[#E3F5EA] text-[#17703A]' : 'bg-[#FDE8E8] text-[#B42318]')}>{oldest.cv ? 'CV attached' : 'No CV'}</span>
+                {oldest.country && <span className="inline-flex items-center gap-1.5 rounded-[5px] bg-[#EAF0FF] px-2 py-0.5 text-[11.5px] font-extrabold text-[#2F57C9]"><Flag code={oldest.country.code} />{oldest.country.name}</span>}
+              </div>
+              <button type="button" onClick={() => setTab('PENDING')} className="inline-flex h-9 items-center justify-center rounded-md bg-[#2F57C9] text-[13.5px] font-extrabold text-[#FFFFFF]">Review applications · {waiting.length}</button>
+            </> : <>
+              <p className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-muted">No applications waiting</p>
+              <p className="text-[13.5px] text-ink2">New teacher applications land here. Know someone who should teach?</p>
+              <button type="button" onClick={() => setInviting(true)} className="inline-flex h-9 items-center justify-center rounded-md bg-[#2F57C9] text-[13.5px] font-extrabold text-[#FFFFFF]">Invite a teacher</button>
+            </>} />
+        )}
+
+        {s && apps && (waiting.length + queues.unsigned.length + queues.never.length + queues.noCourse.length + queues.noPhoto.length > 0) && (
+          <section className="flex flex-col gap-2.5">
+            <p className="text-[12px] font-extrabold uppercase tracking-[0.06em] text-muted">Needs a look</p>
+            <div className="no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 lg:mx-0 lg:grid lg:grid-cols-5 lg:px-0">
+              {queueCard(waiting.length, `Application${waiting.length === 1 ? '' : 's'} waiting`, `Oldest ${oldest?.daysWaiting ?? 0} day${oldest?.daysWaiting === 1 ? '' : 's'}. ${waiting.filter(a => a.cv).length} sent a CV${waiting.some(a => !a.cv) ? `, ${waiting.filter(a => !a.cv).length} didn’t` : ''}.`, 'Review', () => setTab('PENDING'), undefined, true)}
+              {queueCard(queues.unsigned.length, 'Haven’t signed the agreement', 'Approved, but can’t publish until they sign.', 'Send a reminder', () => setNudging({ kind: 'agreement', ids: queues.unsigned.map(r => r.id) }), () => { setTab('APPROVED'); setFilter('unsigned'); })}
+              {queueCard(queues.never.length, 'Never signed in', 'They have an account but have never opened the portal.', 'Resend the welcome email', () => setNudging({ kind: 'welcome', ids: queues.never.map(r => r.id) }), () => { setTab('APPROVED'); setFilter('never'); })}
+              {queueCard(queues.noCourse.length, 'No course yet', 'Approved and signed, nothing built.', 'Message them', () => setNudging({ kind: 'course', ids: queues.noCourse.map(r => r.id) }), () => { setTab('APPROVED'); setFilter('nocourse'); })}
+              {queueCard(queues.noPhoto.length, 'No photo', `Students see initials. ${queues.noVideo} have no intro video.`, 'Ask for a photo', () => setNudging({ kind: 'photo', ids: queues.noPhoto.map(r => r.id) }), () => { setTab('APPROVED'); setFilter('nophoto'); })}
             </div>
-          ))}
-        </dl>
+          </section>
+        )}
 
         <section className="rounded-lg border border-line bg-white">
-          <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4">
-            <div role="tablist" aria-label="Teachers" className="flex flex-1 gap-1 overflow-x-auto">
-              {([['APPROVED', 'Active'], ['PENDING', 'Applications'], ['SUSPENDED', 'Suspended'], ['REJECTED', 'Rejected']] as [Tab, string][]).map(([k, l]) => (
-                <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
-                  className={`-mb-px h-[46px] whitespace-nowrap border-b-2 px-3 text-[13.5px] text-navy ${tab === k ? 'border-azure-strong font-semibold' : 'border-transparent font-medium'}`}>
-                  {l} <span className="font-medium text-muted">{counts[k]}</span>
-                </button>
-              ))}
+          <div className="flex flex-wrap items-center gap-x-2.5 border-b border-line px-4">
+            <div role="tablist" aria-label="Teachers" className="no-scrollbar flex flex-1 gap-1 overflow-x-auto">
+              {tabBtn('APPROVED', 'Active', <span className="font-medium text-muted">{s?.active ?? '…'}</span>)}
+              {tabBtn('PENDING', 'Applications', pending.length ? <span className={clsx('rounded-[5px] px-1.5 py-0.5 text-[11px] font-extrabold', waiting.length ? 'bg-[#FFF1D6] text-[#8A5A00]' : 'bg-subtle text-ink2')}>{pending.length}</span> : <span className="font-medium text-muted">0</span>)}
+              {tabBtn('SUSPENDED', 'Suspended', <span className="font-medium text-muted">{s?.suspended ?? '…'}</span>)}
+              {tabBtn('REJECTED', 'Rejected', <span className="font-medium text-muted">{turnedDown.length}</span>)}
             </div>
-            <input type="search" aria-label="Search teachers" value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name, email or subject" className="input-base my-2 h-[34px] w-60" />
+            <input type="search" aria-label="Search teachers" value={q} onChange={e => setQ(e.target.value)} placeholder="Name, email or subject" className="input-base my-2 h-[34px] w-full sm:w-64" />
           </div>
-          {tab === 'APPROVED' || tab === 'SUSPENDED' ? (
-            !perf ? <div className="m-4 h-40 rounded-md bg-subtle animate-pulse" /> : !perfRows.length ? <p className="px-4 py-10 text-center text-[13px] text-ink2">No {tab === 'APPROVED' ? 'active' : 'suspended'} teachers.</p> : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[860px] border-collapse text-[13.5px]">
-                  <thead><tr>{['Teacher', 'Subjects', 'Courses', 'Students', 'Rating', 'Earned (30 days)', 'Profile'].map(h => <th key={h} className="border-b border-line px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{h}</th>)}</tr></thead>
+
+          {tab === 'PENDING' || tab === 'REJECTED' ? (
+            !apps ? <div className="m-4 h-60 animate-pulse rounded-md bg-subtle" /> : <ApplicationsQueue key={tab} apps={appsShown} rejected={tab === 'REJECTED'} onChanged={load} />
+          ) : <>
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2.5">
+              <div className="no-scrollbar flex max-w-full gap-1.5 overflow-x-auto">
+                {(Object.keys(FILTERS) as Filter[]).map(k => {
+                  const n = rows.filter(r => r.status === tab && FILTERS[k].f(r)).length;
+                  if (k !== 'all' && !n) return null;
+                  return <button key={k} type="button" aria-pressed={filter === k} onClick={() => setFilter(k)}
+                    className={clsx('h-[30px] flex-shrink-0 whitespace-nowrap rounded-md border px-2.5 text-[12.5px] font-bold', filter === k ? 'border-[#3F6FE8] bg-accent-soft text-navy' : 'border-line bg-white text-ink2 hover:text-navy')}>{FILTERS[k].l} {n}</button>;
+                })}
+              </div>
+              <span className="flex-1" />
+              <select aria-label="Country" value={country} onChange={e => setCountry(e.target.value)} className="h-[30px] rounded-md border border-line bg-white px-2 text-[12.5px] font-bold text-navy">
+                <option value="">Country: any</option>
+                {countries.map(([c, n]) => <option key={c} value={c}>{n}</option>)}
+                {rows.some(r => !r.country) && <option value="-">No country set</option>}
+              </select>
+              <select aria-label="Sort" value={sort} onChange={e => setSort(e.target.value as Sort)} className="h-[30px] rounded-md border border-line bg-white px-2 text-[12.5px] font-bold text-navy">
+                <option value="students">Sort: most students</option><option value="courses">Sort: most courses</option><option value="seen">Sort: last seen</option><option value="newest">Sort: newest</option><option value="name">Sort: name</option>
+              </select>
+            </div>
+            {!ov ? <div className="m-4 h-60 animate-pulse rounded-md bg-subtle" /> : !shown.length ? (
+              <p className="px-4 py-12 text-center text-[13px] text-ink2">{tab === 'SUSPENDED' ? 'No suspended teachers.' : 'No teachers match.'}</p>
+            ) : <>
+              {/* Phone: rows */}
+              <div className="flex flex-col gap-2 p-3 md:hidden">
+                {shown.map(r => (
+                  <button key={r.id} type="button" onClick={() => setOpenId(r.id)} className="flex items-center gap-3 rounded-lg border border-line bg-white p-3 text-left">
+                    <Avatar r={r} size="h-12 w-12 text-[15px]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5 text-[14.5px] font-bold text-navy"><span className="truncate">{r.name}</span><Flag code={r.country?.code} title={r.country?.name} /></span>
+                      <span className="block truncate text-xs text-muted">{r.courses} course{r.courses === 1 ? '' : 's'} · {r.students} student{r.students === 1 ? '' : 's'}{r.rating ? ` · ${r.rating} ★` : ''}{!r.lastActive && <span className="font-bold text-[#B42318]"> · never signed in</span>}</span>
+                    </span>
+                    <Checks c={r.checks} only={['photo', 'video']} />
+                  </button>
+                ))}
+              </div>
+              {/* Wider: the table */}
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full min-w-[980px] border-collapse text-[13px]">
+                  <thead><tr>{['Teacher', 'Subjects', 'Courses', 'Students', 'Rating', 'Earned · 30 days', 'Last seen', 'Profile'].map((h, k) => <th key={h} className={clsx('whitespace-nowrap border-b border-line px-3 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted', k === 0 && 'pl-4')}>{h}</th>)}</tr></thead>
                   <tbody>
-                    {perfRows.map(t => (
-                      <tr key={t.id} onClick={() => setPerfId(t.id)} className="cursor-pointer hover:bg-subtle">
-                        <td className="border-b border-line px-4 py-3"><strong className="block font-semibold text-navy">{t.name}</strong><span className="text-xs text-muted">{t.email}</span></td>
-                        <td className="border-b border-line px-4 py-3 text-ink2">{t.subjects.slice(0, 2).join(', ') || '—'}</td>
-                        <td className="border-b border-line px-4 py-3 text-navy">{t.published}{t.courses > t.published ? <span className="text-muted"> (+{t.courses - t.published})</span> : ''}</td>
-                        <td className="border-b border-line px-4 py-3 text-navy">{t.students}</td>
-                        <td className="border-b border-line px-4 py-3 text-navy">{t.rating ? `${t.rating} ★` : '—'}</td>
-                        <td className="border-b border-line px-4 py-3 text-navy">{money(t.earned30d)}</td>
-                        <td className="border-b border-line px-4 py-3">
-                          <span className={`inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs font-semibold ${t.profileComplete ? 'bg-accent-soft text-navy' : 'border border-line bg-subtle text-ink2'}`}>{t.profileComplete ? 'Complete' : `No ${t.missing.join(' or ')}`}</span>
-                        </td>
-                      </tr>
-                    ))}
+                    {shown.map(r => {
+                      const subj = realSubjects(r.subjects);
+                      return (
+                        <tr key={r.id} onClick={() => setOpenId(r.id)} className={clsx('cursor-pointer hover:bg-subtle', openId === r.id && 'bg-[#F7F9FF]')}>
+                          <td className="border-b border-line py-2.5 pl-4 pr-3">
+                            <span className="flex items-center gap-2.5">
+                              <Avatar r={r} />
+                              <span className="min-w-0"><span className="flex items-center gap-1.5 font-bold text-navy"><span className="truncate">{r.name}</span><Flag code={r.country?.code} title={r.country?.name} /></span><span className="block max-w-[230px] truncate text-xs text-muted">{r.email}</span></span>
+                            </span>
+                          </td>
+                          <td className="max-w-[220px] border-b border-line px-3 py-2.5 text-ink2"><span className="line-clamp-2">{subj.slice(0, 2).join(', ') || '—'}{subj.length > 2 && <span className="text-[#9AA6C2]"> +{subj.length - 2}</span>}</span></td>
+                          <td className={clsx('border-b border-line px-3 py-2.5', r.courses ? 'font-bold text-navy' : 'text-[#9AA6C2]')}>{r.published}{r.courses > r.published ? <span className="font-normal text-muted"> (+{r.courses - r.published})</span> : ''}</td>
+                          <td className={clsx('border-b border-line px-3 py-2.5', r.students ? 'font-bold text-navy' : 'text-[#9AA6C2]')}>{r.students}</td>
+                          <td className="border-b border-line px-3 py-2.5 text-navy">{r.rating ? <>{r.rating} ★ <span className="text-[#9AA6C2]">{r.ratings}</span></> : <span className="text-[#9AA6C2]">—</span>}</td>
+                          <td className={clsx('border-b border-line px-3 py-2.5', r.earned30d.length ? 'text-navy' : 'text-[#9AA6C2]')}>{money(r.earned30d)}</td>
+                          <td className="whitespace-nowrap border-b border-line px-3 py-2.5 text-navy">{seen(r.lastActive) ?? <span className="rounded-[5px] bg-[#FDE8E8] px-1.5 py-0.5 text-[11px] font-extrabold text-[#B42318]">Never</span>}</td>
+                          <td className="border-b border-line px-3 py-2.5"><Checks c={r.checks} /></td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
-            )
-          ) : !appRows.length ? (
-            <p className="px-4 py-10 text-center text-[13px] text-ink2">{tab === 'PENDING' ? 'No applications waiting. New teacher applications appear here.' : 'No rejected applications.'}</p>
-          ) : appRows.map(t => <TeacherRow key={t.id} teacher={t} onOpen={() => setAppId(t.id)} />)}
+            </>}
+            {!!s?.unassignedCourses && tab === 'APPROVED' && (
+              <p className="border-t border-line px-4 py-3 text-[12.5px] text-muted"><b className="text-navy">{s.unassignedCourses} course{s.unassignedCourses === 1 ? ' has' : 's have'} no teacher</b> (they sit on the “CareerPath Africa” system account). <Link href="/admin/courses" className="font-extrabold text-azure-strong hover:underline">Assign them in Courses →</Link></p>
+            )}
+          </>}
         </section>
       </div>
 
-      <PerfDrawer id={perfId} app={all.find(t => t.id === perfId) ?? null} onClose={() => setPerfId(null)} onChanged={load}
-        onOpenApplication={() => { const id = perfId; setPerfId(null); setAppId(id); }} />
-      <TeacherDrawer teacher={app} onClose={() => setAppId(null)}
-        onApprove={approve} onReject={setRejectTarget} deciding={!!app && deciding === app.id} />
-      <RejectDialog teacher={rejectTarget} onClose={() => setRejectTarget(null)}
-        onConfirm={rejectConfirm} loading={!!rejectTarget && deciding === rejectTarget.id} />
+      <TeacherDrawer id={openId} onClose={() => setOpenId(null)} onChanged={load} />
+
+      <Dialog open={!!nudging} onOpenChange={o => { if (!o) setNudging(null); }}>
+        {nudging && (
+          <DialogContent title={NUDGE[nudging.kind].title} description={`${nudging.ids.length} teacher${nudging.ids.length === 1 ? '' : 's'}, one email each, from CareerPath Teachers. Replies go to the teachers mailbox.`}>
+            <p className="text-[13.5px] text-ink2">{NUDGE[nudging.kind].what}</p>
+            <div className="mt-3 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+              {rows.filter(r => nudging.ids.includes(r.id)).map(r => <span key={r.id} className="rounded-[5px] bg-subtle px-2 py-0.5 text-xs font-semibold text-navy">{r.name}</span>)}
+            </div>
+            <DialogFooter>
+              <Button size="sm" variant="secondary" onClick={() => setNudging(null)}>Cancel</Button>
+              <Button size="sm" loading={busy} onClick={sendNudge}>{NUDGE[nudging.kind].button}</Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      <Dialog open={inviting} onOpenChange={o => { if (!o) setInviting(false); }}>
+        {inviting && (
+          <DialogContent title="Invite a teacher" description="They get an email with a link to apply. Their application then lands in Applications for you to review.">
+            <div className="flex flex-col gap-3">
+              <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Email</span><input type="email" value={invite.email} onChange={e => setInvite({ ...invite, email: e.target.value })} className="input-base" placeholder="name@example.com" /></label>
+              <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">Name <span className="font-normal text-muted">(optional)</span></span><input value={invite.name} onChange={e => setInvite({ ...invite, name: e.target.value })} className="input-base" /></label>
+              <label className="flex flex-col gap-1"><span className="text-[13px] font-semibold text-navy">A note from you <span className="font-normal text-muted">(optional)</span></span><textarea rows={3} maxLength={600} value={invite.note} onChange={e => setInvite({ ...invite, note: e.target.value })} className="w-full resize-none rounded-md border border-line px-3 py-2 text-sm text-navy outline-none focus:border-azure" placeholder="We need a chemistry teacher for WASSCE in Ghana…" /></label>
+            </div>
+            <DialogFooter>
+              <Button size="sm" variant="secondary" onClick={() => setInviting(false)}>Cancel</Button>
+              <Button size="sm" loading={busy} disabled={!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invite.email.trim())} onClick={sendInvite}>Send the invitation</Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   );
 }

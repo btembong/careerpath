@@ -7,7 +7,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { StudentCalendarService } from './student-calendar.service';
-import { AdminTeachersService } from './admin-teachers.service';
+import { AdminTeachersService, Nudge } from './admin-teachers.service';
 import { StudentProgressService } from './student-progress.service';
 
 @ApiTags('portals')
@@ -92,8 +92,36 @@ export class PeopleController {
 
   @Patch('admin/teachers/:id/suspend')
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: '[Admin] Suspend or reinstate a teacher' })
-  suspend(@Param('id') id: string, @Body() dto: { suspended: boolean }) {
-    return this.teachers.setSuspended(id, !!dto?.suspended);
+  @ApiOperation({ summary: '[Admin] Suspend (with a reason) or reinstate a teacher' })
+  suspend(@Param('id') id: string, @Body() dto: { suspended: boolean; reason?: string }) {
+    return this.teachers.setSuspended(id, !!dto?.suspended, dto?.reason);
+  }
+
+  @Get('admin/teacher-applications')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Applications waiting and turned down, oldest first, with subject coverage in their country' })
+  applications() {
+    return this.teachers.applications();
+  }
+
+  @Post('admin/teachers/:id/ask')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Email an applicant a question before deciding' })
+  ask(@CurrentUser() admin: UserProfile, @Param('id') id: string, @Body() dto: { question: string }) {
+    return this.teachers.ask(admin, id, dto?.question);
+  }
+
+  @Post('admin/teachers-nudge')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Send the same reminder to several teachers: agreement, welcome, course or photo' })
+  nudge(@Body() dto: { kind: Nudge; ids: string[] }) {
+    return this.teachers.nudge(dto?.kind, dto?.ids);
+  }
+
+  @Post('admin/teachers-invite')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Invite someone by email to apply as a teacher' })
+  invite(@Body() dto: { email: string; name?: string; note?: string }) {
+    return this.teachers.invite(dto?.email, dto?.name, dto?.note);
   }
 }
