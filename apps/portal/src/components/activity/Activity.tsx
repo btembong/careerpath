@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import api from '@/lib/api';
+import { Flag } from '@/components/ui/Flag';
 
 export interface Entry {
   id: string; at: string; action: string; area: string; summary: string;
@@ -117,7 +118,7 @@ export function EntryDetails({ e }: { e: Entry }) {
       <dl className="grid gap-x-6 gap-y-1 text-[12.5px] sm:grid-cols-[auto_1fr]">
         {e.target && <><dt className="text-muted">Item</dt><dd className="text-navy">{href ? <Link href={href} className="font-semibold text-azure-strong hover:underline">{e.target.label ?? e.target.type}</Link> : (e.target.label ?? e.target.type)}</dd></>}
         <dt className="text-muted">When</dt><dd className="text-navy">{new Date(e.at).toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'medium' })}</dd>
-        <dt className="text-muted">From</dt><dd className="text-navy">{[placeText(e.place) && `${placeText(e.place)} ${flag(e.place?.code)}`.trim(), e.device, e.fullIp].filter(Boolean).join(' · ') || 'Not recorded (older entry, or the system)'}{e.newCountry && <span className="ml-2 rounded-md bg-[#FFF1D6] px-1.5 py-0.5 text-[11px] font-extrabold text-[#8A5A00]">New country for them</span>}</dd>
+        <dt className="text-muted">From</dt><dd className="text-navy">{placeText(e.place) && <>{placeText(e.place)} <Flag code={e.place?.code} title={e.place?.country} />{(e.device || e.fullIp) && ' · '}</>}{[e.device, e.fullIp].filter(Boolean).join(' · ') || (!placeText(e.place) && 'Not recorded (older entry, or the system)')}{e.newCountry && <span className="ml-2 rounded-md bg-[#FFF1D6] px-1.5 py-0.5 text-[11px] font-extrabold text-[#8A5A00]">New country for them</span>}</dd>
         {m?.route && <><dt className="text-muted">Request</dt><dd className="font-mono text-[11.5px] text-ink2">{m.method} {m.route}{m.fields?.length ? ` · fields: ${m.fields.join(', ')}` : ''}</dd></>}
         {m?.rejectionReason && <><dt className="text-muted">Reason</dt><dd className="text-navy">{m.rejectionReason}</dd></>}
         <dt className="text-muted">Reference</dt><dd className="font-mono text-[11.5px] text-ink2">{e.action} · {e.id.slice(0, 8)}</dd>

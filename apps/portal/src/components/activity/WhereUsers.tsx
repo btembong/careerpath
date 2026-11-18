@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { clsx } from 'clsx';
 import api from '@/lib/api';
-import { flag } from '@/components/activity/Activity';
+import { Flag } from '@/components/ui/Flag';
 
 interface Where {
   people: number; active: number; located: number; notSet: number;
@@ -41,7 +41,7 @@ export function WhereUsers() {
             </div>
             {d.countries.map(c => (
               <div key={c.country} className="grid grid-cols-[130px_minmax(0,1fr)_64px] items-center gap-3 text-[13px]">
-                <span className="truncate text-navy">{flag(c.code)} {c.country}</span>
+                <span className="truncate text-navy"><Flag code={c.code} title={c.country} /> {c.country}</span>
                 <span className="flex flex-col gap-[3px]">
                   <span className="h-2 overflow-hidden rounded bg-[#EAF0FF]"><span className="block h-2 rounded bg-[#3F6FE8]" style={{ width: `${(c.profile / max) * 100}%` }} /></span>
                   <span className="h-2 overflow-hidden rounded bg-[#EAF0FF]"><span className="block h-2 rounded bg-[#8FB0FF]" style={{ width: `${(c.signIn / max) * 100}%` }} /></span>
@@ -62,7 +62,7 @@ export function WhereUsers() {
             <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-muted">Top cities, last 30 days</span>
             {d.cities.length ? d.cities.map(c => (
               <div key={`${c.city}${c.code}`} className="grid grid-cols-[minmax(0,1fr)_90px_28px] items-center gap-2 text-[13px]">
-                <span className="truncate text-navy">{c.city} <span className="text-muted">{flag(c.code)}</span></span>
+                <span className="truncate text-navy">{c.city} <Flag code={c.code} title={c.country} /></span>
                 <span className="h-2 overflow-hidden rounded bg-[#EAF0FF]"><span className="block h-2 rounded bg-[#3F6FE8]" style={{ width: `${(c.n / cmax) * 100}%` }} /></span>
                 <span className="text-right font-bold tabular-nums text-navy">{c.n}</span>
               </div>
@@ -87,7 +87,7 @@ export function PersonPlaces({ userId }: { userId: string }) {
     <div className="flex flex-col divide-y divide-line text-[13.5px]">
       {d.places.map((p, i) => (
         <div key={`${p.city}${p.code}`} className="flex items-center gap-3 py-1.5">
-          <span className="min-w-0 flex-1 text-navy"><strong>{[p.city, p.country].filter(Boolean).join(', ')}</strong> {flag(p.code)}{i === 0 && d.places.length > 1 && <span className="text-xs text-muted"> · usually</span>}</span>
+          <span className="min-w-0 flex-1 text-navy"><strong>{[p.city, p.country].filter(Boolean).join(', ')}</strong> <Flag code={p.code} title={p.country} />{i === 0 && d.places.length > 1 && <span className="text-xs text-muted"> · usually</span>}</span>
           <span className="text-xs text-muted">{p.signIns} sign-in{p.signIns === 1 ? '' : 's'}</span>
         </div>
       ))}

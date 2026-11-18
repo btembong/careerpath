@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { clsx } from 'clsx';
 import { Topbar } from '@/components/layout/Topbar';
 import { PageHero, heroBtnDark, heroBtnLine, asideLabel } from '@/components/hero/PageHero';
-import { AreaTag, dayLabel, EntryDetails, flag, placeText, time, Who, type Entry } from '@/components/activity/Activity';
+import { AreaTag, dayLabel, EntryDetails, placeText, time, Who, type Entry } from '@/components/activity/Activity';
+import { Flag as CountryFlag } from '@/components/ui/Flag';
 import { downloadFromApi } from '@/lib/download';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
@@ -140,7 +141,7 @@ export default function ActivityLogPage() {
                       <span className="text-[13.5px] leading-snug text-navy">{e.summary}</span>
                       <span><AreaTag area={e.area} /></span>
                       <span className="text-[11.5px] leading-tight text-muted">
-                        {e.place && <span className="block font-semibold text-navy">{placeText(e.place)} {flag(e.place.code)}{e.newCountry && <span className="ml-1 rounded bg-[#FFF1D6] px-1 text-[10px] font-extrabold text-[#8A5A00]">New country</span>}</span>}
+                        {e.place && <span className="block font-semibold text-navy">{placeText(e.place)} <CountryFlag code={e.place.code} title={e.place.country} />{e.newCountry && <span className="ml-1 rounded bg-[#FFF1D6] px-1 text-[10px] font-extrabold text-[#8A5A00]">New country</span>}</span>}
                         {e.device ?? (e.place ? null : '—')}{e.ip ? <> · {e.ip}</> : null}
                       </span>
                     </button>

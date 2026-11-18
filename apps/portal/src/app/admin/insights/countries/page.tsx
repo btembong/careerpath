@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, Suspense as _Suspense } from 'react';
+import { useCallback, useEffect, useRef, useState, Suspense as _Suspense } from 'react';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const Suspense = _Suspense as any;
 import Link from 'next/link';
@@ -9,6 +9,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { InsightsTabs } from '@/components/insights/InsightsTabs';
 import { CountryView, CountryInsights, majorMoney } from '@/components/insights/CountryView';
 import { KIND_COLOURS, KpiTile } from '@/components/wallet/WalletCharts';
+import { Flag } from '@/components/ui/Flag';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
@@ -17,6 +18,60 @@ interface All { base: string; period: string; months: { label: string; start: st
 
 const n = (v: number) => v.toLocaleString('en-GB');
 const colourOf = (i: number) => KIND_COLOURS[i % KIND_COLOURS.length];
+
+interface Tab { id: string; code: string | null; name: string; students: number }
+
+/** One tab per country with its flag. Scrolls sideways with arrows, the mouse wheel or a swipe, and keeps the chosen one in view. */
+function CountryTabs({ tabs, current, onPick }: { tabs: Tab[]; current: string; onPick: (id: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [edge, setEdge] = useState({ left: false, right: false });
+  const measure = useCallback(() => {
+    const el = ref.current; if (!el) return;
+    setEdge({ left: el.scrollLeft > 4, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
+  }, []);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    measure();
+    const ro = new ResizeObserver(measure); ro.observe(el);
+    // A plain mouse wheel scrolls the strip sideways instead of the page
+    const wheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || el.scrollWidth <= el.clientWidth) return;
+      const atEnd = e.deltaY > 0 ? el.scrollLeft + el.clientWidth >= el.scrollWidth - 1 : el.scrollLeft <= 0;
+      if (atEnd) return;
+      e.preventDefault(); el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => { ro.disconnect(); el.removeEventListener('wheel', wheel); };
+  }, [measure, tabs.length]);
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+  }, [current, tabs.length]);
+  const by = (dir: number) => ref.current?.scrollBy({ left: dir * ref.current.clientWidth * 0.7, behavior: 'smooth' });
+  const arrow = 'absolute top-1/2 z-10 hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md border border-line bg-white text-navy shadow-[0_4px_12px_rgba(7,32,97,0.12)] hover:bg-subtle sm:flex';
+
+  return (
+    <nav aria-label="Country" className="relative border-b border-line bg-white">
+      {edge.left && <>
+        <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-[5] w-16 bg-[linear-gradient(90deg,#FFFFFF_30%,rgba(255,255,255,0))]" />
+        <button type="button" aria-label="Earlier countries" onClick={() => by(-1)} className={clsx(arrow, 'left-2')}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden><path d="M15 6l-6 6 6 6" /></svg></button>
+      </>}
+      {edge.right && <>
+        <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 z-[5] w-16 bg-[linear-gradient(270deg,#FFFFFF_30%,rgba(255,255,255,0))]" />
+        <button type="button" aria-label="More countries" onClick={() => by(1)} className={clsx(arrow, 'right-2')}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden><path d="M9 6l6 6-6 6" /></svg></button>
+      </>}
+      <div ref={ref} onScroll={measure} className="no-scrollbar flex snap-x scroll-px-4 gap-1 overflow-x-auto px-4 pt-2.5 lg:scroll-px-7 lg:px-7">
+        {tabs.map(t => (
+          <button key={t.id} type="button" onClick={() => onPick(t.id)} aria-current={current === t.id ? 'page' : undefined} title={t.name}
+            className={clsx('flex flex-shrink-0 snap-start items-center gap-2.5 rounded-t-md border-b-[3px] px-3 pb-2.5 pt-2 text-left', current === t.id ? 'border-[#3F6FE8] bg-[#F7F9FF]' : 'border-transparent hover:bg-subtle')}>
+            {t.code ? <Flag code={t.code} title={t.name} className="h-5 w-[30px]" />
+              : <span className="flex h-5 w-[30px] flex-shrink-0 items-center justify-center rounded-[3px] bg-[#072061] text-[#FFFFFF]"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></svg></span>}
+            <span><span className="block whitespace-nowrap text-sm font-bold text-navy">{t.name}</span><span className="block text-[11.5px] text-muted">{n(t.students)} students</span></span>
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+}
 
 function Inner() {
   const params = useSearchParams();
@@ -52,15 +107,7 @@ function Inner() {
         </>} />
       <InsightsTabs />
 
-      <nav aria-label="Country" className="flex gap-1.5 overflow-x-auto border-b border-line bg-white px-4 pt-3 lg:px-7">
-        {[{ id: 'all', code: 'All', name: 'All countries', students: all?.totals.students ?? 0, i: -1 }, ...rows.map((r, i) => ({ id: r.id, code: r.code, name: r.name, students: r.students, i }))].map(t => (
-          <button key={t.id} type="button" onClick={() => pick(t.id)} aria-current={tab === t.id ? 'page' : undefined}
-            className={clsx('flex flex-shrink-0 items-center gap-2.5 rounded-t-md border-b-[3px] px-3.5 pb-3 pt-2.5 text-left', tab === t.id ? 'border-[#3F6FE8] bg-[#F7F9FF]' : 'border-transparent hover:bg-subtle')}>
-            <span className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-md text-[11px] font-extrabold text-[#FFFFFF]" style={{ background: t.i < 0 ? '#072061' : colourOf(t.i) }}>{t.code}</span>
-            <span><span className="block text-sm font-bold text-navy">{t.name}</span><span className="block text-[11.5px] text-muted">{n(t.students)} students</span></span>
-          </button>
-        ))}
-      </nav>
+      <CountryTabs tabs={[{ id: 'all', code: null, name: 'All countries', students: all?.totals.students ?? 0 }, ...rows.map(r => ({ id: r.id, code: r.code, name: r.name, students: r.students }))]} current={tab} onPick={pick} />
 
       <div className="flex flex-col gap-[18px] p-4 lg:px-7 lg:py-6">
         {tab !== 'all' ? (
@@ -88,9 +135,9 @@ function Inner() {
               <table className="w-full min-w-[900px] border-collapse text-[13.5px]">
                 <thead><tr>{['Country', 'Students', 'New', 'Teachers', 'Sales', 'Teachers earned', 'Rep earned', 'CareerPath kept', 'Last 6 months'].map((l, i) => <th key={l} className={clsx('border-t border-line px-[18px] py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted', i ? 'text-right' : 'text-left')}>{l}</th>)}</tr></thead>
                 <tbody>
-                  {rows.map((r, i) => (
+                  {rows.map(r => (
                     <tr key={r.id} onClick={() => pick(r.id)} className="cursor-pointer hover:bg-subtle">
-                      <td className="border-t border-line px-[18px] py-3"><span className="flex items-center gap-2.5"><span className="flex h-[30px] w-[30px] items-center justify-center rounded-md text-[11px] font-extrabold text-[#FFFFFF]" style={{ background: colourOf(i) }}>{r.code}</span><span><strong className="block text-navy">{r.name}</strong><span className="text-xs text-muted">{r.rep ?? 'No rep yet'}</span></span></span></td>
+                      <td className="border-t border-line px-[18px] py-3"><span className="flex items-center gap-2.5"><Flag code={r.code} title={r.name} className="h-5 w-[30px]" /><span><strong className="block text-navy">{r.name}</strong><span className="text-xs text-muted">{r.rep ?? 'No rep yet'}</span></span></span></td>
                       {[n(r.students), `+${n(r.newStudents)}`, n(r.teachers), r.sales ? m(r.sales) : 'No sales', m(r.teachersEarned), m(r.repEarned), r.sales ? m(r.kept) : '—'].map((v, j) => (
                         <td key={j} className={clsx('whitespace-nowrap border-t border-line px-[18px] py-3 text-right font-semibold', v === '—' || v === 'No sales' ? 'text-muted' : 'text-navy')}>{v}</td>
                       ))}
