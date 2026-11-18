@@ -34,7 +34,6 @@ export default function AdminUsersPage() {
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback((t: string, term: string, p: number) => {
@@ -51,22 +50,10 @@ export default function AdminUsersPage() {
   // Other pages link here with ?open=<id> to show one person
   useEffect(() => { const id = new URLSearchParams(window.location.search).get('open'); if (id) setOpen(id); }, []);
 
-  async function sync() {
-    setSyncing(true);
-    try {
-      const r = await api.post('/portals/admin/sync/wp-users');
-      const n = r.data?.imported ?? r.data?.created ?? r.data?.count ?? 0;
-      notify.success(n ? `${n} people brought in from WordPress` : 'Everyone on WordPress is already here');
-      load(tab, q, page);
-    } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not reach WordPress'); }
-    finally { setSyncing(false); }
-  }
-
   const s = d?.stats, c = d?.counts;
   return (
     <>
       <RepTable title="Users" subtitle="Everyone on the portal: students, teachers, reviewers, reps and admins"
-        actions={<button onClick={sync} disabled={syncing} className="inline-flex h-9 items-center rounded-md border border-line bg-white px-3.5 text-[13.5px] font-semibold text-navy hover:bg-subtle disabled:opacity-50">{syncing ? 'Checking WordPress…' : 'Bring in from WordPress'}</button>}
         stats={[
           { l: 'Students', v: s ? s.students.toLocaleString('en-GB') : '—', sub: s ? `${s.joinedThisMonth} people joined this month` : '' },
           { l: 'Teachers', v: s ? String(s.teachers) : '—', sub: c?.pending ? `${c.pending} waiting for approval` : 'all approved' },

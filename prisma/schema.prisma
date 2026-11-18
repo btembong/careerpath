@@ -373,6 +373,9 @@ model TeacherApplication {
   websiteUrl           String?
   teachingProgrammeIds String[]
   teachingSubjectIds   String[]
+  /// A question an admin emailed the applicant before deciding; cleared by the decision
+  question             String?
+  questionAskedAt      DateTime?
   user                 UserProfile @relation(fields: [userId], references: [id])
 }
 

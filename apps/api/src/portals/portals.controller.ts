@@ -164,12 +164,6 @@ export class PortalsController {
     return this.portalsService.setUserRole(id, dto.role, dto.payoutCurrency);
   }
 
-  @Post('admin/sync/wp-users')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: '[Admin] Bulk-import WordPress users who have never logged into this portal' })
-  syncWpUsers() {
-    return this.portalsService.syncWpUsers();
-  }
 
   // ── Admin cohort management ──────────────────────────────
 

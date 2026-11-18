@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { WordPressService, wpCourseImageUrl, portalRoleFromWp } from '../wordpress/wordpress.service';
+import { WordPressService, wpCourseImageUrl } from '../wordpress/wordpress.service';
 import { MailService } from '../mail/mail.service';
 import { AuditService } from '../audit/audit.service';
 import { ApprovalStatus, UserRole } from '@cpa/shared';
@@ -603,13 +603,24 @@ export class PortalsService {
     };
   }
 
+  /** Only what admin pages show: never the password hash, sign-in ids or two-step settings */
   async getTeachersByStatus(status?: ApprovalStatus) {
     return this.prisma.userProfile.findMany({
       where: {
         role: UserRole.TEACHER,
         ...(status ? { approvalStatus: status } : {}),
       },
-      include: { teacherApplication: true },
+      select: {
+        id: true, email: true, name: true, firstName: true, lastName: true, avatarUrl: true, approvalStatus: true,
+        videoIntroUrl: true, bio: true, phone: true, createdAt: true, agreementAcceptedAt: true, agreementVersion: true,
+        country: { select: { id: true, code: true, name: true } },
+        teacherApplication: {
+          select: {
+            firstName: true, lastName: true, phone: true, subjectAreas: true, yearsExperience: true, qualification: true,
+            teachingModality: true, bio: true, documentUrl: true, linkedinUrl: true, websiteUrl: true, rejectionReason: true, submittedAt: true,
+          },
+        },
+      },
       orderBy: { id: 'asc' },
     });
   }
@@ -672,44 +683,6 @@ export class PortalsService {
     return updated;
   }
 
-  /**
-   * Bulk-import WordPress users into our DB.
-   * - Skips users already in the DB (matched by wpUserId or email).
-   * - Maps WP roles via portalRoleFromWp (administrator → ADMIN, author/tutor_instructor → TEACHER).
-   * - Everyone is APPROVED; teachers complete their profile at /teacher/onboarding on first login.
-   * Returns counts: created, skipped.
-   */
-  async syncWpUsers(): Promise<{ created: number; skipped: number }> {
-    const wpUsers = await this.wp.listAllUsers();
-    let created = 0;
-    let skipped = 0;
-
-    for (const wu of wpUsers) {
-      // Skip if already in DB by wpUserId or email
-      const existing = await this.prisma.userProfile.findFirst({
-        where: { OR: [{ wpUserId: wu.id }, { email: wu.email }] },
-      });
-      if (existing) { skipped++; continue; }
-
-      // WP tutors are approved; they complete their teacher profile at first login
-      await this.prisma.userProfile.create({
-        data: {
-          signupSource: 'import',
-          wpUserId: wu.id,
-          email: wu.email,
-          name: wu.name || null,
-          firstName: wu.first_name || null,
-          lastName: wu.last_name || null,
-          role: portalRoleFromWp(wu.roles) as UserRole,
-          approvalStatus: ApprovalStatus.APPROVED,
-        },
-      });
-      created++;
-    }
-
-    return { created, skipped };
-  }
-
   async approveOrRejectTeacher(
     targetId: string,
     decision: 'approve' | 'reject',
@@ -730,13 +703,11 @@ export class PortalsService {
     const newStatus =
       decision === 'approve' ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED;
 
-    // Store rejection reason in the application record if rejecting
-    if (decision === 'reject' && rejectionReason) {
-      await this.prisma.teacherApplication.updateMany({
-        where: { userId: targetId },
-        data: { rejectionReason },
-      });
-    }
+    // Store the rejection reason; a question that was waiting for them is answered by the decision
+    await this.prisma.teacherApplication.updateMany({
+      where: { userId: targetId },
+      data: { question: null, questionAskedAt: null, ...(decision === 'reject' && rejectionReason ? { rejectionReason } : {}) },
+    });
 
     const result = await this.prisma.userProfile.update({
       where: { id: targetId },
