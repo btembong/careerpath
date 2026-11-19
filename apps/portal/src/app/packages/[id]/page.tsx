@@ -7,6 +7,7 @@ import { Cover, PublicFooter, PublicHeader, perMonth, price } from '@/components
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { AllCard, ReadMore } from '@/components/public/course/CourseParts';
 import { MoreFromTeachers, PackageCourses, type PkgCourse, type TeacherMore } from '@/components/public/course/PackageParts';
+import { LiveClassCard, MentoringCard, weeksTo, type PkgLiveClass, type PkgPerson } from '@/components/public/course/PackageLive';
 
 export const revalidate = 300;
 
@@ -16,7 +17,9 @@ interface PackagePage {
   courses: PkgCourse[]; teachers: Teacher[]; published?: boolean;
   counts: { courses: number; ready: number; lessons: number; videos: number; quizzes: number; questions: number };
   live: { cohort: string; teacher: string | null; examDate: string | null; next: { title: string; scheduledAt: string; durationMins: number }[] } | null;
+  liveClass?: PkgLiveClass | null;
   mentorship: { text: string | null; perMonth: number | null } | null;
+  mentors?: PkgPerson[];
   addOns: { live: { price: number; cohort: string } | null; mentorship: { price: number; perMonth: number } | null };
   faq: { q: string; a: string }[];
   others?: { id: string; name: string; priceAmount: number; currency: string; courses: number; months: number | null; bestValue: boolean; published?: boolean }[];
@@ -55,13 +58,21 @@ export default async function PackagePageRoute({ params, searchParams }: { param
   else if (token) return <PackageDetailApp />;
   else raw = await load(id);
   if (!raw) notFound();
-  const p: PackagePage = { ...raw, teachers: raw.teachers ?? [], courses: raw.courses ?? [], others: raw.others ?? [], moreByTeacher: raw.moreByTeacher ?? [], faq: raw.faq ?? [] };
+  const p: PackagePage = { ...raw, teachers: raw.teachers ?? [], courses: raw.courses ?? [], others: raw.others ?? [], moreByTeacher: raw.moreByTeacher ?? [], faq: raw.faq ?? [], liveClass: raw.liveClass ?? null, mentors: raw.mentors ?? [] };
 
   const checkout = `/register?next=${encodeURIComponent(`/packages/${p.id}/checkout`)}`;
   const monthly = perMonth(p.priceAmount, p.currency, p.months);
   const soon = p.courses.filter(c => c.lessons === 0).length;
   const subjects = [...new Set(p.courses.map(c => c.subject).filter(Boolean))] as string[];
   const mentoring = p.mentorship?.perMonth ?? null;
+  const showMentoring = !!p.mentorship || !!p.addOns.mentorship;
+  const examWeeks = p.liveClass ? weeksTo(p.liveClass.examDate) : null;
+  // Badges on the blue card: what comes with it, at a glance
+  const badges: [IconName, string, string | null][] = [
+    ...(p.liveClass ? [['live', p.liveClass.included ? 'Live classes' : 'Live classes as an add-on', '#live-class'] as [IconName, string, string]] : []),
+    ...(showMentoring ? [['mentorship', p.mentorship ? 'Mentoring included' : 'Mentoring as an add-on', '#mentoring'] as [IconName, string, string]] : []),
+    ...(examWeeks && p.liveClass?.included ? [['calendar', `Exam in ${s(examWeeks, 'week')}`, null] as [IconName, string, null]] : []),
+  ];
   const tiles: [IconName, string][] = [
     ['courses', s(p.counts.courses, 'course')],
     ...(mentoring ? [['mentorship', mentoring === 1 ? 'Mentor once a month' : `${mentoring} mentor sessions a month`] as [IconName, string]] : []),
@@ -95,6 +106,14 @@ export default async function PackagePageRoute({ params, searchParams }: { param
               <div className="flex flex-wrap gap-1.5">{['Package', ...p.exams.slice(0, 2), ...subjects.slice(0, 2), p.months ? `${p.months} months` : null].filter(Boolean).map(t => <span key={t} className="inline-flex h-7 items-center rounded-md bg-[rgba(255,255,255,0.22)] px-2.5 text-[13px] font-bold">{t}</span>)}</div>
               <h1 className="mt-4 text-[30px] font-extrabold leading-[1.06] tracking-[-0.03em] text-[#FFFFFF] sm:text-[38px]">{p.name.replace(/\s+Package$/i, '')}</h1>
               {p.description && <p className="mt-3 line-clamp-3 max-w-[520px] whitespace-pre-line text-[15.5px] leading-relaxed text-[#EEF3FF]">{p.description}</p>}
+              {badges.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {badges.map(([icon, label, href]) => {
+                    const cls = 'inline-flex h-7 items-center gap-1.5 rounded-md bg-[#FFFFFF] px-2.5 text-[13px] font-bold text-[#2F57C9]';
+                    return href ? <a key={label} href={href} className={`${cls} hover:bg-[#EAF0FF]`}><Icon name={icon} size={14} />{label}</a> : <span key={label} className={cls}><Icon name={icon} size={14} />{label}</span>;
+                  })}
+                </div>
+              )}
               {p.teachers.length > 0 && (
                 <div className="mt-5 flex items-center gap-3">
                   <div className="flex">{p.teachers.slice(0, 3).map((t, i) => (
@@ -133,6 +152,20 @@ export default async function PackagePageRoute({ params, searchParams }: { param
             </div>
             {soon > 0 && <p className="mt-2 text-[12.5px] text-[#637090]">“Lessons coming”: the course is on careerpathafrica.com and its lessons are being moved into the portal. They appear in your package as soon as they’re here.</p>}
           </section>
+
+          {p.liveClass && (
+            <section id="live-class" className="mt-9 scroll-mt-24 border-t border-line pt-8 lg:mx-6">
+              <h2 className="mb-3.5 text-[26px] font-extrabold tracking-[-0.025em]">Your live class</h2>
+              <LiveClassCard c={p.liveClass} currency={p.currency} />
+            </section>
+          )}
+
+          {showMentoring && (
+            <section id="mentoring" className="mt-9 scroll-mt-24 border-t border-line pt-8 lg:mx-6">
+              <h2 className="mb-3.5 text-[26px] font-extrabold tracking-[-0.025em]">Mentoring</h2>
+              <MentoringCard perMonth={p.mentorship ? mentoring : p.addOns.mentorship!.perMonth} included={!!p.mentorship} addOnPrice={p.addOns.mentorship?.price ?? null} currency={p.currency} mentors={p.mentors!} />
+            </section>
+          )}
 
           {p.teachers.length > 0 && (
             <section className="mt-9 border-t border-line pt-8 lg:mx-6">

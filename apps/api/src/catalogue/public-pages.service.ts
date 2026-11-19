@@ -113,6 +113,24 @@ export class PublicPagesService {
   }
 
   /** More courses by a teacher, leaving out the ones given (already in the package): for the sidebar's course cards */
+  /** A cohort for the package page: its teacher, size, exam date and next 4 classes */
+  private async cohortCard(id: string, directory: Awaited<ReturnType<PublicPagesService['teachers']>>) {
+    const c = await this.prisma.cohort.findUnique({
+      where: { id },
+      select: {
+        name: true, examDate: true, sittingLabel: true, teacher: { select: { id: true, name: true, firstName: true, lastName: true, avatarUrl: true } },
+        _count: { select: { students: true } },
+        liveClasses: { where: { status: 'SCHEDULED', scheduledAt: { gt: new Date() } }, orderBy: { scheduledAt: 'asc' }, take: 4, select: { title: true, scheduledAt: true, durationMins: true } },
+      },
+    });
+    if (!c) return null;
+    const d = directory.find(t => t.id === c.teacher.id);
+    return {
+      name: c.name, examDate: c.examDate, sitting: c.sittingLabel, students: c._count.students, next: c.liveClasses,
+      teacher: { name: d?.name ?? nameOf(c.teacher), avatarUrl: d?.avatarUrl ?? this.photo(c.teacher.avatarUrl), slug: d?.slug ?? null },
+    };
+  }
+
   private async moreFrom(teacherId: string | null, exclude: string[]) {
     if (!teacherId) return [];
     const [rows, packages] = await Promise.all([
@@ -166,6 +184,12 @@ export class PublicPagesService {
     const worth = priced && ordered.length ? ordered.reduce((t, c) => t + (c.priceAmount ?? 0), 0) : null;
     const cfg = (p.addOns ?? {}) as { live?: { cohortId: string; price: number } | null; mentorship?: { perMonth: number; price: number } | null };
     const liveAddOn = cfg.live ? await this.prisma.cohort.findUnique({ where: { id: cfg.live.cohortId }, select: { name: true } }) : null;
+    // The live class card: the included cohort, or the one offered as an add-on (same card, with its price)
+    const classId = p.cohortId ?? (liveAddOn ? cfg.live!.cohortId : null);
+    const liveClass = classId ? await this.cohortCard(classId, directory) : null;
+    // Mentors: the package's teachers who have free times to book
+    const offersMentoring = !!p.mentorship || p.mentorshipSessionsPerMonth != null || !!cfg.mentorship;
+    const open = offersMentoring && teachers.size ? await this.prisma.mentorSlot.groupBy({ by: ['teacherId'], where: { teacherId: { in: [...teachers.keys()] }, isBooked: false, startsAt: { gt: new Date() } } }) : [];
     const exams = [...new Set(ordered.map(c => c.programme ? c.programme.shortName ?? c.programme.name : null).filter(Boolean))] as string[];
     return {
       id: p.id, name: p.name, description: p.description, priceAmount: p.priceAmount, currency: p.currency,
@@ -192,7 +216,9 @@ export class PublicPagesService {
       others: others.map(o => ({ id: o.id, name: o.name, priceAmount: o.priceAmount, currency: o.currency, courses: o.courseIds.length, months: o.validityDays ? Math.round(o.validityDays / 30) : null, bestValue: o.bestValue, published: o.isPublished })),
       counts: { courses: ordered.length, ready: ordered.filter(c => c.modules.some(m => m.lessons.length)).length, lessons: all.length, videos: all.filter(l => l.type === 'VIDEO').length, quizzes: all.filter(l => l.type === 'QUIZ').length, questions },
       live: cohort ? { cohort: cohort.name, teacher: nameOf(cohort.teacher), examDate: cohort.examDate, next: cohort.liveClasses } : null,
+      liveClass: liveClass ? { ...liveClass, included: !!p.cohortId, price: p.cohortId ? null : cfg.live!.price } : null,
       mentorship: p.mentorship || p.mentorshipSessionsPerMonth != null ? { text: p.mentorship, perMonth: p.mentorshipSessionsPerMonth } : null,
+      mentors: open.map(o => teachers.get(o.teacherId)!).filter(Boolean).map(t => ({ name: t.name, avatarUrl: t.avatarUrl, slug: t.slug })),
       addOns: {
         live: cfg.live && liveAddOn ? { price: cfg.live.price, cohort: liveAddOn.name } : null,
         mentorship: cfg.mentorship ? { price: cfg.mentorship.price, perMonth: cfg.mentorship.perMonth } : null,
