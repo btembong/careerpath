@@ -5,8 +5,8 @@ import { clsx } from 'clsx';
 import { openCookieSettings } from './CookieConsent';
 
 const COLS: { title: string; links: [string, string][] }[] = [
-  { title: 'Learn', links: [['/courses', 'Courses'], ['/teachers', 'Teachers'], ['/packages', 'Packages'], ['/#test-centre', 'Test Centre']] },
-  { title: 'CareerPath', links: [['/register?role=teacher', 'Teach with us'], ['/#schools', 'For schools'], ['/verify', 'Check a certificate'], ['https://careerpathafrica.com', 'careerpathafrica.com']] },
+  { title: 'Learn', links: [['/students', 'For students'], ['/courses', 'Courses'], ['/teachers', 'Teachers'], ['/packages', 'Packages']] },
+  { title: 'CareerPath', links: [['/teach', 'For tutors'], ['/schools', 'For schools'], ['/verify', 'Check a certificate'], ['https://careerpathafrica.com', 'careerpathafrica.com']] },
   { title: 'Help', links: [['mailto:support@careerpathafrica.com', 'support@careerpathafrica.com'], ['/login', 'Sign in'], ['/register', 'Start free']] },
   { title: 'Legal', links: [['/legal/terms', 'Terms'], ['/legal/privacy', 'Privacy'], ['/legal/cookies', 'Cookies'], ['/legal/tutor-agreement', 'Tutor agreement']] },
 ];

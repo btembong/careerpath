@@ -30,8 +30,9 @@ export function PublicHeader() {
         <span className="flex-1" />
         <Link href="/courses" className={nav}>Courses</Link>
         <Link href="/teachers" className={nav}>Teachers</Link>
-        <Link href="/packages" className={nav}>Packages</Link>
-        <Link href="/register?role=teacher" className={nav}>Teach</Link>
+        <Link href="/students" className={nav}>For students</Link>
+        <Link href="/teach" className={nav}>For tutors</Link>
+        <Link href="/schools" className={nav}>For schools</Link>
         <Link href="/login" className="text-[14px] font-bold text-[#072061] hover:underline">Sign in</Link>
         <Link href="/register" className="inline-flex h-9 items-center rounded-md bg-[#2F57C9] px-3.5 text-[13.5px] font-bold text-white hover:bg-[#2548AE]">Start free</Link>
       </div>

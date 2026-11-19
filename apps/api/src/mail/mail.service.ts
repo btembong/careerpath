@@ -83,6 +83,8 @@ export class MailService {
     htmlContent: string,
     senderType: SenderType = 'hello',
     attachments?: { name: string; content: string | Uint8Array }[],
+    /** Replies go here instead of the sender's mailbox (an enquiry: reply straight to the person) */
+    replyToOverride?: string,
   ): Promise<void> {
     // Reserved domains can never receive mail (test accounts, deleted accounts): sending only bounces
     if (/\.(test|invalid|example)$/i.test(to.trim())) { this.logger.log(`Mail to a reserved domain skipped: ${subject}`); return; }
@@ -97,7 +99,7 @@ export class MailService {
       const who = SENDERS[senderType] ?? SENDERS.hello;
       const res = await this.client.transactionalEmails.sendTransacEmail({
         sender: { name: who.name, email: this.address(who.from) },
-        replyTo: { email: this.address(who.reply), name: who.name },
+        replyTo: replyToOverride ? { email: replyToOverride } : { email: this.address(who.reply), name: who.name },
         to: [{ email: to }],
         subject,
         htmlContent: htmlContent.split(FOOTER_NOTE_SLOT).join(who.note),
@@ -108,6 +110,17 @@ export class MailService {
     } catch (err: any) {
       this.logger.error(`Email failed: "${subject}" → ${to} | ${JSON.stringify(err?.response?.data ?? err?.message)}`);
     }
+  }
+
+  /** A school asking for seats, from /schools: to the partnerships inbox, replies go to the school */
+  async sendSchoolEnquiry(o: { organisation: string; name: string | null; email: string; phone: string | null; students: string; exam: string; country: string | null; message: string | null }): Promise<void> {
+    const details: [string, string][] = [['School or organisation', o.organisation], ['Contact', [o.name, o.email, o.phone].filter(Boolean).join(' · ')], ['Students', o.students], ['Exam', o.exam]];
+    if (o.country) details.push(['Country', o.country]);
+    await this.send(this.address('MAIL_FROM_PARTNERS'), `School places: ${o.organisation} (${o.students} students)`, noticeTemplate({
+      badge: 'School enquiry', title: `${o.organisation} wants school places`,
+      text: 'A school or organisation asked for a quote on the For schools page. Reply to this email to answer them directly.',
+      details, quote: o.message, quoteLabel: 'Their message', cta: 'Open school accounts', href: '/admin/org',
+    }), 'reports', undefined, o.email);
   }
 
   // ── System / Security ────────────────────────────────────

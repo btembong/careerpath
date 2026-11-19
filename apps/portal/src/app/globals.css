@@ -626,3 +626,5 @@ html.dark .cpa-strip-warn .cpa-strip-icon { color: #F0B65A; }
   .cpa-mark, .cpa-mark::after { animation: none; }
   .cpa-word, .cpa-in .cpa-word { animation: none; clip-path: none; translate: none; }
 }
+@keyframes cpa-fade-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { [class*="cpa-fade-up"] { animation: none !important; } }

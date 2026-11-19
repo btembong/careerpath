@@ -10,6 +10,8 @@ const PUBLIC_PATHS = [
 // Paths accessible without auth
 // The legal pages are linked from sign-up, so visitors must be able to read them
 const OPEN_PATHS = ['/packages', '/courses', '/teachers', '/offline', '/legal', '/sitemap.xml'];
+// Open as exact paths only: a prefix like '/teach' would also open the teacher portal ('/teacher/…')
+const OPEN_EXACT = ['/students', '/teach', '/schools'];
 // Logged-in students get sent to in-app equivalents
 const STUDENT_REDIRECT: Record<string, string> = {
   '/courses': '/student/catalogue',
@@ -50,6 +52,9 @@ function at(request: NextRequest, path: string) {
   return new URL(path, host ? `${proto}://${host}` : request.url);
 }
 
+/** A portal area: '/school' and '/school/…', but not the public '/schools' (same for '/student' and '/students') */
+const inArea = (pathname: string, area: string) => pathname === area || pathname.startsWith(area + '/');
+
 /** Sign in, then come back here: links in emails land on the page they point to */
 function signInFirst(request: NextRequest) {
   const url = at(request, '/login');
@@ -64,7 +69,7 @@ export async function middleware(request: NextRequest) {
 
   // The home page is open to everyone; signed-in people go to their dashboard
   const isPublic = pathname === '/' || PUBLIC_PATHS.some((p) => pathname.startsWith(p));
-  const isOpen   = OPEN_PATHS.some((p) => pathname.startsWith(p));
+  const isOpen   = OPEN_PATHS.some((p) => pathname.startsWith(p)) || OPEN_EXACT.includes(pathname);
 
   if (!token) {
     if (isPublic || isOpen) return NextResponse.next();
@@ -110,7 +115,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // Redirect students who haven't completed onboarding
-    const isStudentArea = pathname.startsWith('/student') || pathname.includes('/checkout');
+    const isStudentArea = inArea(pathname, '/student') || pathname.includes('/checkout');
     if (
       payload.role === 'STUDENT' &&
       !payload.onboardingCompleted &&
@@ -124,7 +129,7 @@ export async function middleware(request: NextRequest) {
     // Each protected prefix is only accessible by its owning role.
     // Real RBAC is enforced by NestJS on every API call; this is a UI-level guard.
 
-    if (pathname.startsWith('/student') && payload.role !== 'STUDENT') {
+    if (inArea(pathname, '/student') && payload.role !== 'STUDENT') {
       return NextResponse.redirect(at(request, ROLE_HOME[payload.role]));
     }
     // The teacher portal, not the public /teachers pages
@@ -134,7 +139,7 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/admin') && payload.role !== 'ADMIN') {
       return NextResponse.redirect(at(request, ROLE_HOME[payload.role]));
     }
-    if (pathname.startsWith('/school') && payload.role !== 'ORG_ADMIN') {
+    if (inArea(pathname, '/school') && payload.role !== 'ORG_ADMIN') {
       return NextResponse.redirect(at(request, ROLE_HOME[payload.role]));
     }
     if (pathname.startsWith('/country-rep') && payload.role !== 'COUNTRY_REP') {
@@ -158,5 +163,5 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Files every visitor needs, signed in or not: the service worker can't be redirected (browsers refuse it)
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|robots.txt|icons/|demo/|brand/|flags/).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|robots.txt|icons/|demo/|brand/|flags/|landing/).*)'],
 };

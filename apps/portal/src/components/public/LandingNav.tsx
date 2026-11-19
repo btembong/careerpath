@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { clsx } from 'clsx';
 import { BrandLogo } from '@/components/brand/BrandLogo';
 
-const LINKS: [string, string][] = [['/courses', 'Courses'], ['/teachers', 'Teachers'], ['/#test-centre', 'Test Centre'], ['/#schools', 'For schools'], ['/register?role=teacher', 'Teach']];
+const LINKS: [string, string][] = [['/courses', 'Courses'], ['/teachers', 'Teachers'], ['/students', 'For students'], ['/teach', 'For tutors'], ['/schools', 'For schools']];
 
 /**
  * The landing page's menu: floats over the blue hero, slightly see-through. Once you scroll down it shrinks

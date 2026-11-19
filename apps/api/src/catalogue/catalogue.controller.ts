@@ -1,4 +1,8 @@
-import { Controller, Get, Param, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { MailService } from '../mail/mail.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { defaultTeacherShare } from '../course-admin/default-share';
 import type { Request } from 'express';
 import { GeoService } from '../audit/geo.service';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
@@ -10,7 +14,29 @@ import { ParseBoolPipe } from '@nestjs/common';
 @ApiTags('catalogue')
 @Controller('catalogue')
 export class CatalogueController {
-  constructor(private readonly catalogueService: CatalogueService, private readonly pages: PublicPagesService, private readonly geo: GeoService) {}
+  constructor(private readonly catalogueService: CatalogueService, private readonly pages: PublicPagesService, private readonly geo: GeoService, private readonly mail: MailService, private readonly prisma: PrismaService) {}
+
+  @Get('teacher-share')
+  @ApiOperation({ summary: 'The teacher’s default share of a course sale, for the tutors page' })
+  async teacherShare() {
+    return { pct: await defaultTeacherShare(this.prisma) };
+  }
+
+  @Post('school-enquiry')
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  @ApiOperation({ summary: 'A school asking for a quote on places (the For schools page): emailed to the partnerships inbox' })
+  async schoolEnquiry(@Req() req: Request, @Body() b: { organisation?: string; name?: string; email?: string; phone?: string; students?: string | number; exam?: string; message?: string; website?: string }) {
+    // A filled hidden field means a bot: say thanks and send nothing
+    if (b?.website) return { ok: true };
+    const t = (v: unknown, n: number) => String(v ?? '').trim().slice(0, n);
+    const organisation = t(b?.organisation, 140), email = t(b?.email, 160).toLowerCase(), students = t(b?.students, 20), exam = t(b?.exam, 120);
+    if (organisation.length < 2) throw new BadRequestException('Tell us the name of your school or organisation');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('Enter a valid email address');
+    if (!students) throw new BadRequestException('About how many students?');
+    const place = this.geo.place(req.ip);
+    await this.mail.sendSchoolEnquiry({ organisation, name: t(b?.name, 100) || null, email, phone: t(b?.phone, 40) || null, students, exam: exam || 'Not said', country: place?.country ?? null, message: t(b?.message, 1500) || null });
+    return { ok: true };
+  }
 
   @Get('my-country')
   @ApiOperation({ summary: 'The country of the visitor’s IP address (from the database on our server), so the course list can start there' })

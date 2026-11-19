@@ -19,7 +19,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ]);
   const page = (path: string, priority: number): MetadataRoute.Sitemap[number] => ({ url: `${SITE}${path}`, changeFrequency: 'weekly', priority });
   return [
-    page('/', 1), page('/courses', 0.9), page('/teachers', 0.8), page('/packages', 0.8),
+    page('/', 1), page('/students', 0.9), page('/teach', 0.8), page('/schools', 0.8), page('/courses', 0.9), page('/teachers', 0.8), page('/packages', 0.8),
     ...(courses?.courses ?? []).map(c => page(`/courses/${c.slug}`, 0.7)),
     ...(packages ?? []).map(p => page(`/packages/${p.id}`, 0.6)),
     ...(teachers ?? []).map(t => page(`/teachers/${t.slug}`, 0.6)),
