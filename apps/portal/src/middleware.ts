@@ -9,10 +9,11 @@ const PUBLIC_PATHS = [
 ];
 // Paths accessible without auth
 // The legal pages are linked from sign-up, so visitors must be able to read them
-const OPEN_PATHS = ['/packages', '/courses', '/offline', '/legal'];
+const OPEN_PATHS = ['/packages', '/courses', '/teachers', '/offline', '/legal', '/sitemap.xml'];
 // Logged-in students get sent to in-app equivalents
 const STUDENT_REDIRECT: Record<string, string> = {
   '/courses': '/student/catalogue',
+  '/teachers': '/student/teachers',
 };
 
 type Role = 'STUDENT' | 'TEACHER' | 'ADMIN' | 'COUNTRY_REP' | 'SUBJECT_REVIEWER' | 'ORG_ADMIN';
@@ -126,7 +127,8 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/student') && payload.role !== 'STUDENT') {
       return NextResponse.redirect(at(request, ROLE_HOME[payload.role]));
     }
-    if (pathname.startsWith('/teacher') && payload.role !== 'TEACHER') {
+    // The teacher portal, not the public /teachers pages
+    if ((pathname === '/teacher' || pathname.startsWith('/teacher/')) && payload.role !== 'TEACHER') {
       return NextResponse.redirect(at(request, ROLE_HOME[payload.role]));
     }
     if (pathname.startsWith('/admin') && payload.role !== 'ADMIN') {
@@ -156,5 +158,5 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Files every visitor needs, signed in or not: the service worker can't be redirected (browsers refuse it)
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|robots.txt|icons/|demo/|brand/).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|robots.txt|icons/|demo/|brand/|flags/).*)'],
 };

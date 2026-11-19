@@ -37,6 +37,18 @@ export class CatalogueController {
     return this.pages.list();
   }
 
+  @Get('teacher-list')
+  @ApiOperation({ summary: 'Public teachers list: approved teachers with photo, country, subjects, courses and rating (nothing private)' })
+  teacherList() {
+    return this.pages.teachers();
+  }
+
+  @Get('teacher-page/:slug')
+  @ApiOperation({ summary: 'Public teacher profile: bio, courses in the catalogue, reviews (first names only), others in the same subject' })
+  teacherPage(@Param('slug') slug: string) {
+    return this.pages.teacher(slug);
+  }
+
   @Get('package-list')
   @ApiOperation({ summary: 'Public packages list: each published package with what is in it, cheapest first' })
   packageList() {

@@ -28,6 +28,7 @@ export function PublicHeader() {
         <BrandLogo size="md" href="/" />
         <span className="flex-1" />
         <Link href="/courses" className={nav}>Courses</Link>
+        <Link href="/teachers" className={nav}>Teachers</Link>
         <Link href="/packages" className={nav}>Packages</Link>
         <Link href="/register?role=teacher" className={nav}>Teach</Link>
         <Link href="/login" className="text-[14px] font-bold text-[#072061] hover:underline">Sign in</Link>
@@ -45,7 +46,7 @@ export function PublicFooter() {
           <BrandLogo tone="onDark" size="md" href="/" />
           <p className="max-w-[300px] leading-relaxed">Exam prep with real teachers across Africa. Pay by mobile money or card.</p>
         </div>
-        <div className="flex flex-col gap-1.5"><b className="text-white">Learn</b><Link href="/courses" className="hover:text-white">Courses</Link><Link href="/packages" className="hover:text-white">Packages</Link><Link href="/register" className="hover:text-white">Start free</Link></div>
+        <div className="flex flex-col gap-1.5"><b className="text-white">Learn</b><Link href="/courses" className="hover:text-white">Courses</Link><Link href="/teachers" className="hover:text-white">Teachers</Link><Link href="/packages" className="hover:text-white">Packages</Link><Link href="/register" className="hover:text-white">Start free</Link></div>
         <div className="flex flex-col gap-1.5"><b className="text-white">CareerPath</b><Link href="/register?role=teacher" className="hover:text-white">Teach with us</Link><Link href="/verify" className="hover:text-white">Check a certificate</Link><a href="https://careerpathafrica.com" className="hover:text-white">careerpathafrica.com</a></div>
         <div className="flex flex-col gap-1.5"><b className="text-white">Legal</b><Link href="/legal/terms" className="hover:text-white">Terms</Link><Link href="/legal/privacy" className="hover:text-white">Privacy</Link><span className="mt-2 text-xs text-[#8FA3D6]">© {new Date().getFullYear()} CareerPath Africa</span></div>
       </div>

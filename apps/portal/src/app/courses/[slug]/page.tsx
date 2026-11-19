@@ -10,7 +10,7 @@ interface CoursePage {
   id: string; slug: string; title: string; shortDescription: string | null; description: string | null; outcomes: string[]; coverUrl: string | null;
   language: string; accessMonths: number | null; updatedAt: string; exam: string | null; subject: string | null; level: string | null;
   selling: 'free' | 'paid' | 'package' | 'notsale'; price: { amount: number; currency: string } | null; students: number;
-  teacher: { name: string | null; avatarUrl: string | null; bio: string | null; subjects: string[]; country: string | null; courses: number } | null;
+  teacher: { slug: string | null; name: string | null; avatarUrl: string | null; bio: string | null; subjects: string[]; country: string | null; courses: number } | null;
   modules: { title: string; lessons: Lesson[] }[];
   counts: { lessons: number; videos: number; notes: number; quizzes: number; live: number; questions: number; minutes: number };
   packages: { id: string; name: string; priceAmount: number; currency: string; courses: number; months: number | null }[];
@@ -95,7 +95,7 @@ export default async function PublicCoursePage({ params }: { params: Promise<{ s
             {(c.shortDescription || c.description) && <p className="max-w-[640px] text-[16.5px] leading-relaxed text-[#0B1F55]">{c.shortDescription ?? c.description!.slice(0, 220)}</p>}
             <div className="mt-1 flex items-center gap-2.5 text-[14px] text-[#0B1F55]">
               <Face name={c.teacher?.name ?? 'CareerPath Africa'} src={c.teacher?.avatarUrl} size={34} />
-              <span>By <b className="text-navy">{c.teacher?.name ?? 'CareerPath Africa'}</b> · {c.language}{c.level ? ` · ${c.level}` : ''} · Updated {updated}{c.students > 4 ? ` · ${c.students} students` : ''}</span>
+              <span>By {c.teacher?.slug ? <Link href={`/teachers/${c.teacher.slug}`} className="font-bold text-navy hover:underline">{c.teacher.name}</Link> : <b className="text-navy">{c.teacher?.name ?? 'CareerPath Africa'}</b>} · {c.language}{c.level ? ` · ${c.level}` : ''} · Updated {updated}{c.students > 4 ? ` · ${c.students} students` : ''}</span>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               {facts.map(f => <span key={f} className="inline-flex h-8 items-center rounded-md bg-white/25 px-3 text-[13px] font-bold text-navy">{f}</span>)}
@@ -163,6 +163,7 @@ export default async function PublicCoursePage({ params }: { params: Promise<{ s
                 <p className="mt-0.5 text-[13.5px] text-muted">{c.teacher ? [c.teacher.subjects.slice(0, 3).join(' · '), c.teacher.country].filter(Boolean).join(' · ') : 'Made by the CareerPath Africa team'}</p>
                 {c.teacher?.bio && <p className="mt-2 text-[14px] leading-relaxed text-ink2">{c.teacher.bio}</p>}
                 {c.teacher && c.teacher.courses > 1 && <p className="mt-2 text-[13px] font-semibold text-navy">{s(c.teacher.courses, 'course')} on CareerPath</p>}
+                {c.teacher?.slug && <Link href={`/teachers/${c.teacher.slug}`} className="mt-2 inline-block text-[13.5px] font-extrabold text-[#2F57C9] hover:underline">See {c.teacher.name?.split(' ')[0]}’s profile →</Link>}
               </div>
             </div>
           </section>

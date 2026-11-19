@@ -66,7 +66,7 @@ export class PublicPagesService {
       exam: c.programme ? c.programme.shortName ?? c.programme.name : null, subject: c.subject?.name ?? null, level: c.level?.name ?? null,
       selling, price: selling === 'paid' ? { amount: c.priceAmount!, currency: c.priceCurrency! } : null,
       students: c._count.enrollments,
-      teacher: t ? { name: nameOf(t), avatarUrl: t.avatarUrl, bio: clean(t.bio).slice(0, 600) || null, hasVideo: !!t.videoIntroUrl, subjects: t.teachingSubjects.map(s => s.name), country: t.country?.name ?? null, courses: teacherCourses } : null,
+      teacher: t ? { slug: (await this.teachers()).find(o => o.id === t.id)?.slug ?? null, name: nameOf(t), avatarUrl: t.avatarUrl, bio: clean(t.bio).slice(0, 600) || null, hasVideo: !!t.videoIntroUrl, subjects: t.teachingSubjects.map(s => s.name), country: t.country?.name ?? null, courses: teacherCourses } : null,
       modules: c.modules.filter(m => m.lessons.length).map(m => ({ title: m.title, lessons: m.lessons.map(l => ({ title: l.title, type: l.type, free: l.isFree, minutes: l.durationSecs ? Math.round(l.durationSecs / 60) : null })) })),
       counts: { lessons: lessons.length, videos: n('VIDEO'), notes: n('TEXT'), quizzes: n('QUIZ'), live: n('LIVE'), questions, minutes },
       packages: inPackages.map(p => ({ id: p.id, name: p.name, priceAmount: p.priceAmount, currency: p.currency, courses: p.courseIds.length, months: p.validityDays ? Math.round(p.validityDays / 30) : null })),
@@ -208,5 +208,100 @@ export class PublicPagesService {
         live: !!p.cohortId, liveAddOn: !!cfg.live, mentorship: !!p.mentorship || p.mentorshipSessionsPerMonth != null || !!cfg.mentorship,
       };
     });
+  }
+  /** A teacher's name for public pages: website names can carry a job title ("Ashu Kyria - Chemistry Tutor") or HTML entities */
+  private publicName = (p: { name: string | null; firstName: string | null; lastName: string | null }) =>
+    clean(nameOf(p) ?? 'Teacher').split(/\s+[-–—|]\s+|\s*\(/)[0].trim() || 'Teacher';
+  /** Gravatar's grey silhouette is what people without a photo get from the website: show their initials instead */
+  private photo = (u: string | null) => (u && !/gravatar.com/i.test(u) ? u : null);
+  private nameSlug = (n: string) => slugOf(n, 'x').replace(/-x$/, '');
+
+  private teacherWhere = { role: 'TEACHER' as const, approvalStatus: 'APPROVED' as const, wpUserId: { not: 0 } };
+  private realSubjects = (xs: string[] | undefined) => (xs ?? []).filter(x => !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(x));
+
+  /** /teachers for visitors: approved teachers with what a card needs. Never an email, phone or anything private. */
+  async teachers() {
+    const rows = await this.prisma.userProfile.findMany({
+      where: this.teacherWhere,
+      select: {
+        id: true, name: true, firstName: true, lastName: true, avatarUrl: true, videoIntroUrl: true,
+        country: { select: { code: true, name: true } },
+        teacherApplication: { select: { subjectAreas: true, yearsExperience: true } },
+        platformCourses: { where: { status: 'PUBLISHED', catalogueHidden: false, teacherPending: false }, select: { id: true } },
+        teacherReviews: { select: { rating: true } },
+      },
+    });
+    const list = rows.map(t => {
+      const name = this.publicName(t);
+      const r = t.teacherReviews.map(x => x.rating);
+      return {
+        id: t.id, slug: this.nameSlug(name), name, avatarUrl: this.photo(t.avatarUrl), country: t.country, hasVideo: !!t.videoIntroUrl,
+        subjects: this.realSubjects(t.teacherApplication?.subjectAreas), yearsExperience: t.teacherApplication?.yearsExperience ?? null,
+        courses: t.platformCourses.length,
+        rating: r.length ? Math.round((r.reduce((a, b) => a + b, 0) / r.length) * 10) / 10 : null, ratings: r.length,
+      };
+    }).sort((a, b) => Number(b.courses > 0) - Number(a.courses > 0) || Number(!!b.avatarUrl) - Number(!!a.avatarUrl) || b.courses - a.courses || a.name.localeCompare(b.name));
+    // Two teachers with the same name get a few characters of their id to tell them apart
+    const seen = new Map<string, number>();
+    list.forEach(t => seen.set(t.slug, (seen.get(t.slug) ?? 0) + 1));
+    list.forEach(t => { if ((seen.get(t.slug) ?? 0) > 1) t.slug = `${t.slug}-${t.id.slice(0, 6)}`; });
+    return list;
+  }
+
+  /** One teacher's public profile: who they are, their catalogue courses, reviews (first names only) and others who teach the same subject */
+  async teacher(idOrSlug: string) {
+    const all = await this.teachers();
+    const id = UUID.exec(idOrSlug)?.[1] ?? all.find(o => o.slug === idOrSlug.toLowerCase())?.id;
+    if (!id) throw new NotFoundException('Teacher not found');
+    const t = await this.prisma.userProfile.findFirst({
+      where: { id, ...this.teacherWhere },
+      select: {
+        id: true, name: true, firstName: true, lastName: true, avatarUrl: true, bio: true, videoIntroUrl: true,
+        country: { select: { code: true, name: true } },
+        teacherApplication: { select: { subjectAreas: true, yearsExperience: true, qualification: true } },
+        teacherReviews: { orderBy: { createdAt: 'desc' }, take: 12, select: { rating: true, comment: true, createdAt: true, student: { select: { firstName: true, name: true } } } },
+        teacherCohorts: { select: { students: { select: { studentId: true } } } },
+      },
+    });
+    if (!t) throw new NotFoundException('Teacher not found');
+    const [courses, packages, ratingAgg] = await Promise.all([
+      this.prisma.platformCourse.findMany({
+        where: { teacherId: id, status: 'PUBLISHED', catalogueHidden: false, teacherPending: false },
+        orderBy: { enrollments: { _count: 'desc' } },
+        select: {
+          id: true, title: true, coverUrl: true, source: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true,
+          programme: { select: { shortName: true, name: true } }, subject: { select: { name: true } },
+          modules: { select: { _count: { select: { lessons: true } } } },
+          enrollments: { select: { studentId: true } },
+        },
+      }),
+      this.publishedPackages(),
+      this.prisma.teacherReview.aggregate({ where: { teacherId: id }, _avg: { rating: true }, _count: { rating: true } }),
+    ]);
+    const name = this.publicName(t);
+    const subjects = this.realSubjects(t.teacherApplication?.subjectAreas);
+    const students = new Set([...courses.flatMap(c => c.enrollments.map(e => e.studentId)), ...t.teacherCohorts.flatMap(c => c.students.map(s => s.studentId))]).size;
+    const me = all.find(o => o.id === t.id)?.slug ?? this.nameSlug(name);
+    // Others who teach their first subject, with a photo first
+    const others = all.filter(o => o.slug !== me && subjects.length && o.subjects.some(s => s === subjects[0]))
+      .sort((a, b) => Number(!!b.avatarUrl) - Number(!!a.avatarUrl) || b.courses - a.courses).slice(0, 3);
+    const years = t.teacherApplication?.yearsExperience ?? null;
+    return {
+      id: t.id, slug: me, name, avatarUrl: this.photo(t.avatarUrl), country: t.country, bio: clean(t.bio) || null, videoUrl: t.videoIntroUrl,
+      subjects, yearsExperience: years, teachingSince: years ? new Date().getFullYear() - years : null,
+      qualification: t.teacherApplication?.qualification ?? null,
+      students,
+      rating: ratingAgg._avg.rating ? Math.round(ratingAgg._avg.rating * 10) / 10 : null, ratings: ratingAgg._count.rating,
+      reviews: t.teacherReviews.map(r => ({ rating: r.rating, comment: r.comment, at: r.createdAt, by: (r.student.firstName || (r.student.name ?? '').split(/\s+/)[0] || 'A student') })),
+      courses: courses.map(c => {
+        const selling = sellingOf(c, packages.some(p => p.courseIds.includes(c.id)));
+        return {
+          slug: slugOf(c.title, c.id), title: c.title, coverUrl: c.coverUrl, exam: c.programme ? c.programme.shortName ?? c.programme.name : null, subject: c.subject?.name ?? null,
+          lessons: c.modules.reduce((n, m) => n + m._count.lessons, 0), selling,
+          price: selling === 'paid' ? { amount: c.priceAmount!, currency: c.priceCurrency! } : null,
+        };
+      }),
+      others: others.map(o => ({ slug: o.slug, name: o.name, avatarUrl: o.avatarUrl, courses: o.courses, subjects: o.subjects.slice(0, 2) })),
+    };
   }
 }

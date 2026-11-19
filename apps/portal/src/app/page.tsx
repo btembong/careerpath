@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { BrandLogo } from '@/components/brand/BrandLogo';
+import { LandingNav } from '@/components/public/LandingNav';
+import { TeacherFaces, loadTeachers, pickFaces } from '@/components/public/PublicTeachers';
 
 export const metadata: Metadata = {
   title: 'CareerPath Africa · Exam prep with real teachers',
@@ -31,22 +32,14 @@ const CARDS = [
 
 /** Public home page at "/". Signed-in people are sent to their dashboard by the middleware. */
 export default async function HomePage() {
-  const data = await counts();
-  const nav = 'hidden text-sm text-[#072061]/85 hover:text-[#072061] md:inline';
+  const [data, teachers] = await Promise.all([counts(), loadTeachers()]);
+  const faces = pickFaces(teachers);
+  const countries = [...new Set(teachers.filter(t => t.country).map(t => t.country!.name))];
   return (
     <div className="keep-light flex min-h-screen flex-col bg-[#F8F9FC] text-navy">
       <div className="bg-[#3F6FE8]">
-        <header className="mx-auto flex max-w-[1240px] items-center gap-5 px-4 py-4 sm:px-8 lg:px-14">
-          <BrandLogo tone="onBlue" size="lg" href="/" />
-          <span className="flex-1" />
-          <Link href="/courses" className={nav}>Courses</Link>
-          <a href="#test-centre" className={nav}>Test Centre</a>
-          <a href="#schools" className={nav}>For schools</a>
-          <Link href="/register?role=teacher" className={nav}>Teach</Link>
-          <Link href="/login" className="text-sm font-bold text-white hover:underline">Sign in</Link>
-          <Link href="/register" className="inline-flex h-[38px] items-center rounded-md bg-white px-4 text-sm font-bold text-[#2F57C9] hover:bg-[#F4F7FF]">Start free</Link>
-        </header>
-        <section className="mx-auto grid max-w-[1240px] items-center gap-8 px-4 pb-16 pt-8 sm:px-8 lg:grid-cols-[1.2fr_1fr] lg:px-14 lg:pb-[70px] lg:pt-12">
+        <LandingNav />
+        <section className="mx-auto grid max-w-[1240px] items-center gap-8 px-4 pb-16 pt-[104px] sm:px-8 lg:grid-cols-[1.2fr_1fr] lg:px-14 lg:pb-[70px] lg:pt-[120px]">
           <div className="flex flex-col gap-5">
             <h1 className="text-[46px] font-extrabold leading-none tracking-[-0.04em] text-navy sm:text-[64px] lg:text-[80px]">
               Every pass<br />starts with <span className="text-white">one question.</span>
@@ -84,7 +77,22 @@ export default async function HomePage() {
           </div>
         </section>
 
-        <section id="test-centre" className="grid scroll-mt-6 gap-4 px-4 pb-12 sm:px-8 md:grid-cols-3 lg:px-14">
+        {faces.length > 0 && (
+          <section id="teachers" className="flex scroll-mt-24 flex-col gap-6 px-4 pb-14 pt-2 sm:px-8 lg:px-14">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[12.5px] font-extrabold uppercase tracking-[0.08em] text-[#3F6FE8]">Our teachers · {teachers.length}{countries.length ? ` · ${countries.slice(0, 4).join(', ')}` : ''}</p>
+                <h2 className="text-[30px] font-extrabold leading-[1.05] tracking-[-0.03em] sm:text-[38px]">Learn from teachers who’ve<br className="hidden sm:block" /> sat the same exams.</h2>
+              </div>
+              <span className="hidden flex-1 sm:block" />
+              <Link href="/teachers" className="hidden h-11 items-center rounded-md border border-line bg-white px-4 text-[15px] font-bold text-navy hover:bg-subtle sm:inline-flex">See all {teachers.length} teachers →</Link>
+            </div>
+            <TeacherFaces list={faces} />
+            <Link href="/teachers" className="inline-flex h-11 items-center justify-center rounded-md border border-line bg-white px-4 text-[15px] font-bold text-navy sm:hidden">See all {teachers.length} teachers →</Link>
+          </section>
+        )}
+
+        <section id="test-centre" className="grid scroll-mt-24 gap-4 px-4 pb-12 sm:px-8 md:grid-cols-3 lg:px-14">
           {PILLARS.map(x => (
             <div key={x.t} className="flex flex-col gap-2.5 rounded-[10px] border border-line bg-white p-6">
               <span className="flex h-10 w-10 items-center justify-center rounded-[9px] bg-[#3F6FE8] font-extrabold text-white">{x.i}</span>
@@ -94,7 +102,7 @@ export default async function HomePage() {
           ))}
         </section>
 
-        <section id="schools" className="grid scroll-mt-6 gap-4 px-4 pb-12 sm:px-8 md:grid-cols-2 lg:px-14">
+        <section id="schools" className="grid scroll-mt-24 gap-4 px-4 pb-12 sm:px-8 md:grid-cols-2 lg:px-14">
           <div className="flex flex-col gap-2.5 rounded-xl bg-[#072061] p-[30px] text-white">
             <strong className="text-2xl">For schools</strong>
             <span className="text-[15px] text-[#C9D6FF]">Buy places for your students, invite them with a link or a code, and see how they’re doing.</span>
@@ -112,6 +120,7 @@ export default async function HomePage() {
         <div className="mx-auto flex max-w-[1240px] flex-wrap gap-5 px-4 py-6 text-[13px] text-muted sm:px-8 lg:px-14">
           <span>© {new Date().getFullYear()} CareerPath Africa</span>
           <Link href="/verify" className="hover:text-navy">Check a certificate</Link>
+          <Link href="/teachers" className="hover:text-navy">Teachers</Link>
           <Link href="/packages" className="hover:text-navy">Packages</Link>
           <Link href="/legal/terms" className="hover:text-navy">Terms</Link>
           <Link href="/legal/privacy" className="hover:text-navy">Privacy</Link>
