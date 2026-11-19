@@ -319,14 +319,41 @@ export class PublicPagesService {
   /** /packages for visitors: every published package, with what's in it, for choosing side by side */
   async packages() {
     const rows = await this.prisma.package.findMany({ where: { isPublished: true }, orderBy: { priceAmount: 'asc' } });
-    const courses = await this.prisma.platformCourse.findMany({
-      where: { id: { in: [...new Set(rows.flatMap(r => r.courseIds))] }, status: 'PUBLISHED' },
-      select: { id: true, title: true, coverUrl: true, programme: { select: { shortName: true, name: true } }, modules: { select: { _count: { select: { lessons: true } } } } },
-    });
+    const ids = [...new Set(rows.flatMap(r => r.courseIds))];
+    const [courses, questions] = await Promise.all([
+      this.prisma.platformCourse.findMany({
+        where: { id: { in: ids }, status: 'PUBLISHED' },
+        select: {
+          id: true, title: true, coverUrl: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true, teacherPending: true,
+          programme: { select: { shortName: true, name: true } }, subject: { select: { name: true } },
+          teacher: { select: { id: true, name: true, firstName: true, lastName: true, avatarUrl: true } },
+          modules: { select: { _count: { select: { lessons: true } } } },
+        },
+      }),
+      this.prisma.questionBank.groupBy({ by: ['courseId'], where: { courseId: { in: ids }, status: 'LIVE' }, _count: { _all: true } }),
+    ]);
+    const qs = new Map(questions.map(q => [q.courseId, q._count._all]));
     return rows.map(p => {
       const cs = p.courseIds.map(id => courses.find(c => c.id === id)).filter(Boolean) as typeof courses;
-      const cfg = (p.addOns ?? {}) as { live?: unknown; mentorship?: unknown };
+      const cfg = (p.addOns ?? {}) as { live?: { price: number } | null; mentorship?: { perMonth: number; price: number } | null };
+      const lessonsOf = (c: (typeof cs)[number]) => c.modules.reduce((x, m) => x + m._count.lessons, 0);
+      // Teachers, most courses first, for the faces on the card
+      const tm = new Map<string, { name: string | null; avatarUrl: string | null; n: number }>();
+      for (const c of cs) if (!c.teacherPending) { const t = tm.get(c.teacher.id) ?? { name: this.publicName(c.teacher), avatarUrl: this.photo(c.teacher.avatarUrl), n: 0 }; t.n++; tm.set(c.teacher.id, t); }
+      // Worth on their own: only when every course has its own price in the package's currency
+      const priced = cs.length > 0 && cs.every(c => c.isSoldIndividually && (c.priceAmount ?? 0) > 0 && c.priceCurrency === p.currency);
+      const worth = priced ? cs.reduce((t, c) => t + (c.priceAmount ?? 0), 0) : null;
       return {
+        subjects: [...new Set(cs.map(c => c.subject?.name).filter(Boolean))].slice(0, 3) as string[],
+        teachers: [...tm.values()].sort((a, b) => Number(!!b.avatarUrl) - Number(!!a.avatarUrl) || b.n - a.n).slice(0, 3).map(({ name, avatarUrl }) => ({ name, avatarUrl })),
+        teacherCount: tm.size,
+        questions: cs.reduce((t, c) => t + (qs.get(c.id) ?? 0), 0),
+        // Courses whose lessons are still on careerpathafrica.com
+        soon: cs.filter(c => lessonsOf(c) === 0).length,
+        mentorPerMonth: p.mentorshipSessionsPerMonth ?? null, mentorIncluded: !!p.mentorship || p.mentorshipSessionsPerMonth != null,
+        mentorAddOn: cfg.mentorship ? { perMonth: cfg.mentorship.perMonth, price: cfg.mentorship.price } : null,
+        liveAddOnPrice: cfg.live ? cfg.live.price : null,
+        worth: worth && worth > p.priceAmount ? worth : null,
         id: p.id, name: p.name, description: p.description, priceAmount: p.priceAmount, currency: p.currency, bestValue: p.bestValue,
         months: p.validityDays ? Math.round(p.validityDays / 30) : null,
         courses: cs.length, lessons: cs.reduce((t, c) => t + c.modules.reduce((x, m) => x + m._count.lessons, 0), 0),
