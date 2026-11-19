@@ -51,6 +51,12 @@ export class CatalogueController {
     return this.pages.course(slug);
   }
 
+  @Get('course-preview/:slug')
+  @ApiOperation({ summary: 'A course’s first lesson, drawn like the player, for the preview on a course card' })
+  coursePreview(@Param('slug') slug: string) {
+    return this.pages.preview(slug);
+  }
+
   @Get('package-page/:id')
   @ApiOperation({ summary: 'Public package page: every course inside, teachers, totals, add-ons, FAQ (published packages only)' })
   packagePage(@Param('id') id: string) {

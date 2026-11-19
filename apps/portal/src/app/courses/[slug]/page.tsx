@@ -53,7 +53,8 @@ export default async function PublicCoursePage({ params }: { params: Promise<{ s
   const raw = await load((await params).slug);
   if (!raw) notFound();
   const c: CoursePage = { ...raw, examCountries: raw.examCountries ?? [], teacherMore: raw.teacherMore ?? [], examMore: raw.examMore ?? [], packages: raw.packages ?? [], outcomes: raw.outcomes ?? [], modules: raw.modules ?? [] };
-  const start = `/register?next=${encodeURIComponent(`/student/courses/${c.id}`)}`;
+  // Free courses: after signing up the student is enrolled and lands on the first lesson (?start=1)
+  const start = `/register?next=${encodeURIComponent(`/student/courses/${c.id}${c.selling === 'free' ? '?start=1' : ''}`)}`;
   const buy = `/register?next=${encodeURIComponent(`/student/courses/${c.id}/checkout`)}`;
   const pack = c.packages[0];
   const { main, sub } = splitTitle(c.title);

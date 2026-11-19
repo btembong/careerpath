@@ -94,6 +94,30 @@ export class PublicPagesService {
     };
   }
 
+  /** The preview behind a course card's play button: just the first lesson and what the buttons need */
+  async preview(idOrSlug: string) {
+    const id = UUID.exec(idOrSlug)?.[1];
+    if (!id) throw new NotFoundException('Course not found');
+    const [c, packages] = await Promise.all([
+      this.prisma.platformCourse.findUnique({
+        where: { id },
+        select: {
+          id: true, title: true, status: true, catalogueHidden: true, source: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true,
+          modules: { orderBy: { sortOrder: 'asc' }, select: { title: true, lessons: { orderBy: { sortOrder: 'asc' }, select: { id: true, title: true, type: true, isFree: true } } } },
+        },
+      }),
+      this.publishedPackages(),
+    ]);
+    if (!c || c.status !== 'PUBLISHED' || c.catalogueHidden) throw new NotFoundException('Course not found');
+    const selling = sellingOf(c, packages.some(p => p.courseIds.includes(id)));
+    const lessons = c.modules.flatMap(m => m.lessons);
+    return {
+      id: c.id, slug: slugOf(c.title, c.id), title: c.title, selling, lessons: lessons.length, hasFreeLesson: lessons.some(l => l.isFree),
+      price: selling === 'paid' ? { amount: c.priceAmount!, currency: c.priceCurrency! } : null,
+      preview: await this.firstLesson(c.modules, selling === 'free'),
+    };
+  }
+
   /**
    * The first lesson, drawn on the page like the course player: its module and title, and for a free course (or a
    * lesson marked free) its opening lines as plain text. Paid lessons show their title only.

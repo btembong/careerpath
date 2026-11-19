@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { Cover, price } from '@/components/public/PublicChrome';
+import { PlayPreview } from './PlayPreview';
 
 export interface CardCourse {
   id: string; slug: string; title: string; coverUrl: string | null;
@@ -81,7 +82,9 @@ export function BigCourseCard({ c }: { c: CardCourse }) {
       <div className="flex h-[26px] gap-1.5 overflow-hidden">
         {badges.map(b => <span key={b.label} className={clsx('inline-flex h-[26px] flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-extrabold', b.cls)}><Icon name={b.icon} size={13} />{b.label}</span>)}
       </div>
-      <Link href={`/courses/${c.slug}`} className="group relative flex flex-1 flex-col overflow-hidden rounded-2xl border border-[#E1E7F2] bg-[#FFFFFF] text-navy transition duration-300 hover:-translate-y-1 hover:border-[#3F6FE8] hover:shadow-[0_22px_44px_rgba(47,87,201,0.28)]">
+      <div className="group relative flex flex-1 flex-col overflow-hidden rounded-2xl border border-[#E1E7F2] bg-[#FFFFFF] text-navy transition duration-300 hover:-translate-y-1 hover:border-[#3F6FE8] hover:shadow-[0_22px_44px_rgba(47,87,201,0.28)]">
+        {/* The whole card opens the course; the play button sits above this link */}
+        <Link href={`/courses/${c.slug}`} aria-label={title} className="absolute inset-0 z-[1] rounded-2xl" />
         {/* Banner: the cover tilted like a book, the teacher on a blue swoosh */}
         <span className={clsx('relative block h-[150px] overflow-hidden', c.website ? 'bg-[linear-gradient(125deg,#3A4A6B,#637090)]' : 'bg-[linear-gradient(125deg,#072061_0%,#1B3A94_55%,#2F57C9_100%)]')}>
           <span className={clsx('absolute -right-[30px] -top-5 h-[220px] w-[190px] -skew-x-[14deg] rounded-[40px_0_0_120px] transition-transform duration-[350ms] group-hover:-translate-x-2.5', c.website ? 'bg-[linear-gradient(200deg,#C9D4F2,#9AA8D2)] opacity-70' : 'bg-[linear-gradient(200deg,#8EA8FF,#3F6FE8_60%,#2F57C9)] opacity-95')} />
@@ -99,7 +102,7 @@ export function BigCourseCard({ c }: { c: CardCourse }) {
           {eyebrow && <span className="relative truncate text-[11.5px] font-extrabold uppercase tracking-[0.05em] text-[#637090] transition-colors group-hover:text-[#EEF3FF]">{eyebrow}</span>}
           <span className="relative grid grid-cols-[minmax(0,1fr)_40px] items-start gap-2.5">
             <b className="line-clamp-2 text-[17px] font-extrabold leading-[1.2] tracking-[-0.015em]">{title}</b>
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#EAF0FF] text-[#2F57C9] transition-colors group-hover:bg-[#FFFFFF]"><Icon name="play" size={16} /></span>
+            <PlayPreview slug={c.slug} title={title} />
           </span>
           <span className="relative flex flex-wrap gap-x-3.5 gap-y-1 text-[13px] text-[#3A4A6B] transition-colors group-hover:text-[#EEF3FF]">
             {levelLabel && (
@@ -127,7 +130,7 @@ export function BigCourseCard({ c }: { c: CardCourse }) {
             <span className="inline-flex items-center gap-1 font-extrabold text-[#2F57C9] transition-all group-hover:gap-2 group-hover:text-[#FFFFFF]">Details<Icon name="arrowRight" size={14} /></span>
           </span>
         </span>
-      </Link>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
@@ -60,6 +60,36 @@ export default function CourseDetailPage() {
     notify.success('Payment confirmed', { description: 'Your extra is added. You’ll get a receipt by email.' });
     router.replace(`/student/courses/${courseId}`);
   }, [courseId, router]);
+  // Came from "Start free" on the public page (?start=1): enrol and go straight to the first lesson
+  const starting = useRef(false);
+  const [opening, setOpening] = useState(false);
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('start') === '1') setOpening(true); }, []);
+  useEffect(() => {
+    if (!c || starting.current || new URLSearchParams(window.location.search).get('start') !== '1') return;
+    starting.current = true;
+    const lessons = c.modules.flatMap(m => m.lessons);
+    const go = (lessonId?: string | null) => router.replace(lessonId ? `/student/learn/${c.id}/lesson/${lessonId}` : `/student/learn/${c.id}`);
+    // Already theirs: carry on where they left off
+    if (mine || c.hasAccess) return go(mine?.next?.id ?? lessons[0]?.id);
+    // Courses from the website enrol themselves when opened
+    if (c.source === 'WORDPRESS') return go(c.contentImportedAt ? lessons[0]?.id : null);
+    if (c.isSoldIndividually && !c.priceAmount) {
+      api.post(`/payments/enroll-free/${courseId}`).then(() => go(lessons[0]?.id))
+        .catch(() => { notify.error('Could not enrol you', { description: 'Press “Enrol for free” to try again.' }); setOpening(false); router.replace(`/student/courses/${courseId}`); });
+      return;
+    }
+    // Not free: stay here with the buying options
+    setOpening(false);
+    router.replace(`/student/courses/${courseId}`);
+  }, [c, mine, courseId, router]);
+
+  if (opening) return (
+    <div className="flex min-h-full flex-col items-center justify-center gap-3 p-8 text-center">
+      <span className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#DCE6FF] border-t-[#2F57C9]" />
+      <b className="text-[17px] text-navy">Opening your first lesson…</b>
+      {c && <p className="max-w-[360px] text-[14px] text-ink2">{c.title}</p>}
+    </div>
+  );
 
   if (!c) return (
     <div className="flex min-h-full flex-col">
