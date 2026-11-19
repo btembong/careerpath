@@ -1,4 +1,5 @@
 'use client';
+import { openCookieSettings } from '@/components/public/CookieConsent';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -597,6 +598,15 @@ function DisplayPanel({ prefs, save, saved, isStudent }: { prefs: Prefs | null; 
           </div>
         </div>
       )}
+      <div className="flex flex-col gap-2.5">
+        <h3 className="text-[15px] font-extrabold text-navy">Cookies</h3>
+        <div className={groupBox}>
+          <div className={row}>
+            <span className="min-w-0 flex-1"><span className="block text-[14px] font-semibold text-navy">Your cookie choice</span><span className="text-xs text-muted">One cookie keeps you signed in, and a few choices are saved on this device. No ads. <a href="/legal/cookies" className="font-semibold text-azure-strong hover:underline">Cookie policy</a></span></span>
+            <button type="button" onClick={openCookieSettings} className="inline-flex h-8 flex-shrink-0 items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Change</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

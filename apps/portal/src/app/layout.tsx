@@ -4,6 +4,7 @@ import { NotificationProvider, NotificationBridge } from '@/components/providers
 import { ServiceWorkerRegistration } from '@/components/providers/ServiceWorkerRegistration';
 import { DisplayPrefsApplier } from '@/components/providers/DisplayPrefsApplier';
 import { ErrorReporter } from '@/components/providers/ErrorReporter';
+import { CookieConsent } from '@/components/public/CookieConsent';
 import './globals.css';
 
 // Bricolage Grotesque is a variable font — no weight array needed.
@@ -51,6 +52,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <DisplayPrefsApplier />
           <ErrorReporter />
           {children}
+          <CookieConsent />
         </NotificationProvider>
       </body>
     </html>

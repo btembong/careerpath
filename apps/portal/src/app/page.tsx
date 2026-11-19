@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { LandingNav } from '@/components/public/LandingNav';
+import { SiteFooter } from '@/components/public/SiteFooter';
 import { TeacherFaces, loadTeachers, pickFaces } from '@/components/public/PublicTeachers';
 
 export const metadata: Metadata = {
@@ -116,17 +117,7 @@ export default async function HomePage() {
         </section>
       </main>
 
-      <footer className="mt-auto border-t border-line">
-        <div className="mx-auto flex max-w-[1240px] flex-wrap gap-5 px-4 py-6 text-[13px] text-muted sm:px-8 lg:px-14">
-          <span>© {new Date().getFullYear()} CareerPath Africa</span>
-          <Link href="/verify" className="hover:text-navy">Check a certificate</Link>
-          <Link href="/teachers" className="hover:text-navy">Teachers</Link>
-          <Link href="/packages" className="hover:text-navy">Packages</Link>
-          <Link href="/legal/terms" className="hover:text-navy">Terms</Link>
-          <Link href="/legal/privacy" className="hover:text-navy">Privacy</Link>
-          <Link href="/legal/tutor-agreement" className="hover:text-navy">Tutor agreement</Link>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

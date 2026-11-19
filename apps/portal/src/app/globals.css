@@ -592,3 +592,37 @@ html.dark .cpa-strip-warn .cpa-strip-icon { color: #F0B65A; }
   --os-handle-perpendicular-size-active: 100%;
   --os-handle-interactive-area-offset: 0px;
 }
+
+/* ── Site footer: closing line rises in, the mark floats, a glow drifts across the giant wordmark ── */
+@property --cpa-gx { syntax: '<percentage>'; inherits: true; initial-value: 70%; }
+.cpa-rise { display: inline-block; opacity: 0; transform: translateY(40%); }
+.cpa-in .cpa-rise { animation: cpa-rise .9s cubic-bezier(.2,.7,.2,1) forwards; }
+@keyframes cpa-rise { to { opacity: 1; transform: none; } }
+.cpa-fade-line { background: linear-gradient(180deg, #2A3B70 0%, #FFFFFF 80%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.cpa-mark { animation: cpa-float 6s ease-in-out infinite; }
+.cpa-mark::after { content: ''; position: absolute; inset: -40%; background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,.45) 50%, transparent 60%); animation: cpa-sheen 5s ease-in-out infinite; }
+@keyframes cpa-float { 0%, 100% { transform: rotate(-8deg) translateY(0); } 50% { transform: rotate(-4deg) translateY(-10px); } }
+@keyframes cpa-sheen { 0%, 60% { transform: translateX(-60%); } 100% { transform: translateX(60%); } }
+.cpa-word {
+  background: radial-gradient(28vw 22vw at var(--cpa-gx) 70%, #7FA3FF 0%, #3F6FE8 35%, rgba(63,111,232,0) 70%), linear-gradient(#34457A, #1E2B57);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  clip-path: inset(0 100% 0 0); translate: 0 30%;
+  animation: cpa-drift 9s ease-in-out infinite alternate;
+}
+.cpa-in .cpa-word { animation: cpa-drift 9s ease-in-out infinite alternate, cpa-word-in 1.2s cubic-bezier(.2,.7,.2,1) forwards; }
+.cpa-word.cpa-follow { animation: cpa-word-in 0s forwards; }
+@keyframes cpa-word-in { from { clip-path: inset(0 100% 0 0); translate: 0 30%; } to { clip-path: inset(0 0 0 0); translate: 0 0; } }
+@keyframes cpa-drift { from { --cpa-gx: 12%; } to { --cpa-gx: 88%; } }
+.cpa-roll { position: relative; overflow: hidden; }
+.cpa-roll > span { display: block; transition: transform .35s; }
+.cpa-roll > span + span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; transform: translateY(140%); }
+.cpa-roll:hover > span:first-child { transform: translateY(-140%); }
+.cpa-roll:hover > span + span { transform: none; }
+.cpa-ulink { background: linear-gradient(#5889FA, #5889FA) 0 100% / 0 1px no-repeat; transition: background-size .3s; }
+.cpa-ulink:hover { background-size: 100% 1px; }
+@keyframes cpa-pop { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) {
+  .cpa-rise, .cpa-in .cpa-rise { animation: none; opacity: 1; transform: none; }
+  .cpa-mark, .cpa-mark::after { animation: none; }
+  .cpa-word, .cpa-in .cpa-word { animation: none; clip-path: none; translate: none; }
+}

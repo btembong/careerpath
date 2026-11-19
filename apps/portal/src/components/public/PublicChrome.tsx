@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SiteFooter } from './SiteFooter';
 import { BrandLogo } from '@/components/brand/BrandLogo';
 import { minorToMajor } from '@cpa/shared';
 
@@ -38,20 +39,9 @@ export function PublicHeader() {
   );
 }
 
+/** The footer on every public page */
 export function PublicFooter() {
-  return (
-    <footer className="mt-auto bg-[#072061] text-[#C9D6FF]">
-      <div className="mx-auto grid max-w-[1240px] gap-6 px-4 py-10 text-[13.5px] sm:grid-cols-2 sm:px-8 lg:grid-cols-[1.4fr_repeat(3,1fr)]">
-        <div className="flex flex-col gap-2">
-          <BrandLogo tone="onDark" size="md" href="/" />
-          <p className="max-w-[300px] leading-relaxed">Exam prep with real teachers across Africa. Pay by mobile money or card.</p>
-        </div>
-        <div className="flex flex-col gap-1.5"><b className="text-white">Learn</b><Link href="/courses" className="hover:text-white">Courses</Link><Link href="/teachers" className="hover:text-white">Teachers</Link><Link href="/packages" className="hover:text-white">Packages</Link><Link href="/register" className="hover:text-white">Start free</Link></div>
-        <div className="flex flex-col gap-1.5"><b className="text-white">CareerPath</b><Link href="/register?role=teacher" className="hover:text-white">Teach with us</Link><Link href="/verify" className="hover:text-white">Check a certificate</Link><a href="https://careerpathafrica.com" className="hover:text-white">careerpathafrica.com</a></div>
-        <div className="flex flex-col gap-1.5"><b className="text-white">Legal</b><Link href="/legal/terms" className="hover:text-white">Terms</Link><Link href="/legal/privacy" className="hover:text-white">Privacy</Link><span className="mt-2 text-xs text-[#8FA3D6]">© {new Date().getFullYear()} CareerPath Africa</span></div>
-      </div>
-    </footer>
-  );
+  return <SiteFooter />;
 }
 
 /** A cover image, or a coloured panel with the exam and subject when there's none */
