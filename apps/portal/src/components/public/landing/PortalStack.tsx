@@ -40,8 +40,8 @@ export function PortalStack({ cards }: { cards: PortalCard[] }) {
     return <div className="flex flex-col gap-4">{cards.map(c => <Card key={c.key} c={c} />)}</div>;
   }
   return (
-    <div ref={ref} style={{ height: `${n * 85 + 25}vh` }} className="relative">
-      <div className="sticky top-[88px] h-[calc(100vh-110px)] overflow-hidden">
+    <div ref={ref} style={{ height: `calc(${(n - 1) * 55}vh + 520px)` }} className="relative">
+      <div className="sticky top-[max(96px,calc(50vh-240px))] h-[480px] overflow-hidden">
         {cards.map((c, i) => {
           // Card i arrives between steps i-1 and i; the first is there from the start
           const t = i === 0 ? 1 : Math.min(1, Math.max(0, p * (n - 1) - (i - 1)));
@@ -66,15 +66,15 @@ export function PortalStack({ cards }: { cards: PortalCard[] }) {
 function Card({ c, full }: { c: PortalCard; full?: boolean }) {
   return (
     <article className={clsx('grid overflow-hidden rounded-[22px] shadow-[0_24px_60px_rgba(7,32,97,0.22)] lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]', TONE[c.tone], full && 'h-full')}>
-      <div className="flex flex-col justify-center gap-3 p-6 sm:p-9">
+      <div className="flex flex-col justify-center gap-2.5 p-6 sm:p-8">
         <p className="k text-[12.5px] font-extrabold uppercase tracking-[0.08em]">{c.kicker}</p>
-        <h3 className="h text-[30px] font-extrabold leading-[1.04] tracking-[-0.035em] sm:text-[38px]">{c.title}</h3>
-        <p className="t text-[15.5px] leading-relaxed">{c.text}</p>
-        <ul className="t flex flex-col gap-1.5 text-[14.5px]">{c.ticks.map(t => <li key={t}><span aria-hidden className="mr-2 font-extrabold">✓</span>{t}</li>)}</ul>
+        <h3 className="h text-[26px] font-extrabold leading-[1.06] tracking-[-0.03em] sm:text-[30px]">{c.title}</h3>
+        <p className="t text-[15px] leading-relaxed">{c.text}</p>
+        <ul className="t flex flex-col gap-1 text-[14px]">{c.ticks.map(t => <li key={t}><span aria-hidden className="mr-2 font-extrabold">✓</span>{t}</li>)}</ul>
         <Link href={c.href} className={clsx('mt-2 inline-flex h-11 w-fit items-center rounded-[7px] px-[18px] text-[15px] font-extrabold', c.tone === 'navy' ? 'bg-[#FFFFFF] text-[#072061]' : c.tone === 'blue' ? 'bg-[#072061] text-[#FFFFFF]' : 'bg-[#2F57C9] text-[#FFFFFF]')}>{c.cta} →</Link>
       </div>
-      <div className="relative min-h-[220px] overflow-hidden lg:min-h-0">
-        <img src={c.img} alt={c.alt} className="absolute left-6 top-6 w-[880px] max-w-none rounded-tl-xl shadow-[0_18px_44px_rgba(7,32,97,0.25)] lg:left-0 lg:top-10" />
+      <div className="relative h-[200px] overflow-hidden sm:h-[240px] lg:h-auto">
+        <img src={c.img} alt={c.alt} className="absolute left-6 top-6 w-[640px] max-w-none rounded-tl-xl shadow-[0_18px_44px_rgba(7,32,97,0.25)] lg:left-0 lg:top-9 xl:w-[700px]" />
       </div>
     </article>
   );
