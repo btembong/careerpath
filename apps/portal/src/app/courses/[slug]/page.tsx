@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Cover, PayWith, PublicFooter, PublicHeader, price } from '@/components/public/PublicChrome';
 import { Icon, type IconName } from '@/components/ui/Icon';
+import { LessonPreview, type Preview } from '@/components/public/course/LessonPreview';
 import { AllCard, CourseCard, CourseContent, ExamMore, ReadMore, type Lesson, type MiniCourse } from '@/components/public/course/CourseParts';
 
 export const revalidate = 300;
@@ -17,6 +18,7 @@ interface CoursePage {
   packages: { id: string; name: string; priceAmount: number; currency: string; courses: number; months: number | null }[];
   examCountries: { code: string; name: string }[];
   teacherMore: MiniCourse[]; examMore: MiniCourse[];
+  preview?: Preview | null;
 }
 
 async function load(slug: string): Promise<CoursePage | null> {
@@ -187,6 +189,7 @@ export default async function PublicCoursePage({ params }: { params: Promise<{ s
         {/* The sidebar: stays in view on computers */}
         <aside className="order-first flex flex-col gap-[18px] lg:sticky lg:top-20 lg:order-last">
           <div className="flex flex-col gap-3.5 rounded-[20px] border border-line bg-[#FFFFFF] p-3.5 shadow-[0_18px_44px_rgba(7,32,97,0.12)]">
+            {c.preview ? <LessonPreview p={c.preview} href={firstFree ? start : main_cta.href} /> : (
             <Link href={firstFree ? start : main_cta.href} className="group relative block h-[190px] overflow-hidden rounded-[14px]">
               <Cover src={c.coverUrl} label={[c.exam, c.subject].filter(Boolean).join(' · ') || c.title} seed={c.id} className="h-full w-full" />
               {firstFree && <>
@@ -195,6 +198,7 @@ export default async function PublicCoursePage({ params }: { params: Promise<{ s
                 <span className="absolute bottom-3 left-3 rounded-md bg-[#FFFFFF] px-2.5 py-1 text-[12px] font-extrabold text-navy">Preview “{firstFree.title.replace(/^\d+[.)]\s*/, '')}” free</span>
               </>}
             </Link>
+            )}
             <div className="text-center"><b className="text-[30px] font-extrabold tracking-[-0.02em]">{priceLabel}</b><p className="mt-0.5 text-[13.5px] text-[#637090]">{c.selling === 'free' ? 'with a free account · no card needed' : c.selling === 'package' && pack ? `in ${pack.name}` : c.accessMonths ? `${c.accessMonths} months access` : ''}</p></div>
             <Link href={main_cta.href} className="flex h-12 items-center justify-center rounded-lg bg-[#2F57C9] text-[15.5px] font-extrabold text-[#FFFFFF] hover:bg-[#2548AE]">{main_cta.label}</Link>
             {c.selling !== 'free' && firstFree && <Link href={start} className="flex h-11 items-center justify-center rounded-lg border border-[#D5DDEC] text-[14.5px] font-extrabold text-navy hover:bg-subtle">Try a free lesson first</Link>}

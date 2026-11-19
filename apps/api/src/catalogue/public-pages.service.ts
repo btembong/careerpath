@@ -38,7 +38,7 @@ export class PublicPagesService {
         teacherPending: true, programmeId: true, subjectId: true,
         programme: { select: { name: true, shortName: true, countries: { select: { code: true, name: true } } } }, subject: { select: { name: true } }, level: { select: { name: true } },
         teacher: { select: { id: true, name: true, firstName: true, lastName: true, avatarUrl: true, bio: true, videoIntroUrl: true, teachingSubjects: { select: { name: true } }, country: { select: { name: true } }, teacherApplication: { select: { yearsExperience: true, subjectAreas: true } } } },
-        modules: { orderBy: { sortOrder: 'asc' }, select: { title: true, lessons: { orderBy: { sortOrder: 'asc' }, select: { title: true, type: true, isFree: true, durationSecs: true } } } },
+        modules: { orderBy: { sortOrder: 'asc' }, select: { title: true, lessons: { orderBy: { sortOrder: 'asc' }, select: { id: true, title: true, type: true, isFree: true, durationSecs: true } } } },
         _count: { select: { enrollments: true } },
       },
     });
@@ -77,6 +77,7 @@ export class PublicPagesService {
       students: c._count.enrollments,
       teacher: t ? { slug: (await this.teachers()).find(o => o.id === t.id)?.slug ?? null, name: nameOf(t), avatarUrl: this.photo(t.avatarUrl), bio: clean(t.bio).slice(0, 600) || null, hasVideo: !!t.videoIntroUrl, subjects: t.teachingSubjects.length ? t.teachingSubjects.map(s => s.name) : this.realSubjects(t.teacherApplication?.subjectAreas), yearsExperience: t.teacherApplication?.yearsExperience ?? null, country: t.country?.name ?? null, courses: teacherCourses } : null,
       examCountries: c.programme?.countries ?? [],
+      preview: await this.firstLesson(c.modules, selling === 'free'),
       teacherMore: teacherMore.map(mini), examMore: examMore.map(mini),
       modules: c.modules.filter(m => m.lessons.length).map(m => ({ title: m.title, lessons: m.lessons.map(l => ({ title: l.title, type: l.type, free: l.isFree, minutes: l.durationSecs ? Math.round(l.durationSecs / 60) : null })) })),
       counts: { lessons: lessons.length, videos: n('VIDEO'), notes: n('TEXT'), quizzes: n('QUIZ'), live: n('LIVE'), questions, minutes },
@@ -87,6 +88,28 @@ export class PublicPagesService {
         price: r.isSoldIndividually && (r.priceAmount ?? 0) > 0 ? { amount: r.priceAmount!, currency: r.priceCurrency! } : null,
       })),
     };
+  }
+
+  /**
+   * The first lesson, drawn on the page like the course player: its module and title, and for a free course (or a
+   * lesson marked free) its opening lines as plain text. Paid lessons show their title only.
+   */
+  private async firstLesson(modules: { title: string; lessons: { id: string; title: string; type: string; isFree: boolean }[] }[], free: boolean) {
+    const mod = modules.find(m => m.lessons.length);
+    if (!mod) return null;
+    const first = mod.lessons.find(l => l.type === 'TEXT') ?? mod.lessons[0];
+    let lines: string[] | null = null;
+    if (free || first.isFree) {
+      const row = await this.prisma.lesson.findUnique({ where: { id: first.id }, select: { content: true } });
+      const text = (row?.content ?? '')
+        .replace(/<(br|\/p|\/li|\/h\d|\/tr|\/div)[^>]*>/gi, '\n').replace(/<[^>]+>/g, ' ')
+        .replace(/&amp;/g, '&').replace(/&#0?39;|&rsquo;/g, '’').replace(/&nbsp;/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ');
+      lines = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(l => l.length > 2)
+        // Lessons often repeat their own title as the first line ("1. Meaning of First Aid" / "Meaning of First Aid")
+        .filter(l => l.toLowerCase().replace(/^\d+[.)]\s*/, '') !== first.title.toLowerCase().replace(/^\d+[.)]\s*/, '')).slice(0, 6).map(l => l.slice(0, 160));
+      if (!lines.length) lines = null;
+    }
+    return { module: mod.title, lesson: first.title, type: first.type, lines, lessons: mod.lessons.slice(0, 5).map(l => l.title) };
   }
 
   async package(id: string) {
