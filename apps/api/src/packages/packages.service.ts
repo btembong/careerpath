@@ -234,23 +234,31 @@ export class PackagesService {
 
   // ── Helpers ──────────────────────────────────────────────
 
+  /**
+   * A package can only be published when every course in it is live: published in the catalogue, or approved by a
+   * reviewer. Courses brought over from the website are published without a review record, and count as live.
+   */
   private async assertAllCoursesApproved(courseIds: string[]): Promise<void> {
     if (courseIds.length === 0) return;
 
-    const assignments = await this.prisma.courseAssignment.findMany({
-      where: { courseId: { in: courseIds } },
-      select: { courseId: true, reviewStatus: true },
-    });
-
-    const approvedIds = new Set(
-      assignments.filter((a) => a.reviewStatus === 'APPROVED').map((a) => a.courseId),
-    );
-
-    const blocked = courseIds.filter((id) => !approvedIds.has(id));
+    const [courses, assignments] = await Promise.all([
+      this.prisma.platformCourse.findMany({ where: { id: { in: courseIds } }, select: { id: true, title: true, status: true } }),
+      this.prisma.courseAssignment.findMany({ where: { courseId: { in: courseIds } }, select: { courseId: true, reviewStatus: true } }),
+    ]);
+    const approved = new Set(assignments.filter(a => a.reviewStatus === 'APPROVED').map(a => a.courseId));
+    const byId = new Map(courses.map(c => [c.id, c]));
+    const why = (id: string) => {
+      const c = byId.get(id);
+      if (!c) return 'no longer exists';
+      if (c.status === 'PUBLISHED' || approved.has(id)) return null;
+      return c.status === 'ARCHIVED' ? 'archived' : c.status === 'PENDING_REVIEW' ? 'waiting for review' : 'still a draft';
+    };
+    const blocked = courseIds.map(id => ({ id, reason: why(id) })).filter(b => b.reason);
 
     if (blocked.length > 0) {
+      const list = blocked.slice(0, 6).map(b => `“${byId.get(b.id)?.title ?? 'A removed course'}” (${b.reason})`).join('; ');
       throw new UnprocessableEntityException(
-        `Cannot publish: the following courses are not yet approved: ${blocked.join(', ')}`,
+        `This package can’t be published yet: ${blocked.length === 1 ? 'one course isn’t' : `${blocked.length} courses aren’t`} live. ${list}${blocked.length > 6 ? `; and ${blocked.length - 6} more` : ''}. Publish or approve ${blocked.length === 1 ? 'it' : 'them'}, or take ${blocked.length === 1 ? 'it' : 'them'} out of the package.`,
       );
     }
   }
