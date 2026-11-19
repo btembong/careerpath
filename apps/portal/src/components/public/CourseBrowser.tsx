@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Cover, Face, price } from '@/components/public/PublicChrome';
+import { Icon } from '@/components/ui/Icon';
+import { BigCourseCard, levelKey } from '@/components/public/course/BigCourseCard';
 
 export interface BrowseCourse {
   id: string; slug: string; title: string; summary: string | null; coverUrl: string | null;
@@ -13,6 +15,7 @@ export interface BrowseCourse {
   website: boolean; joinedThisMonth: number; students: number; added: string;
   /** Country codes of the course's exam; [] = international; null = no exam yet */
   countries: string[] | null;
+  level?: string | null; topics?: string[]; inPackage?: boolean;
 }
 export interface BrowseData {
   courses: BrowseCourse[];
@@ -23,11 +26,13 @@ export interface BrowseData {
   international: number;
 }
 const COUNTRY_KEY = 'cpa:courses-country';
-interface F { q: string; country: string; exam: string; price: string; subject: string; where: string; teacher: string; sort: string }
-const BLANK: F = { q: '', country: '', exam: '', price: '', subject: '', where: '', teacher: '', sort: 'popular' };
+interface F { q: string; country: string; exam: string; price: string; level: string; subject: string; where: string; teacher: string; sort: string }
+const BLANK: F = { q: '', country: '', exam: '', price: '', level: '', subject: '', where: '', teacher: '', sort: 'popular' };
+const LEVELS: [string, string][] = [['o', 'O-Level and WASSCE'], ['a', 'A-Level'], ['prep', 'Test prep']];
+const lv = (c: BrowseCourse) => levelKey(c.level, c.exam?.name ?? null);
+const PAGE = 12;
 
 const s = (n: number, w: string, ws = `${w}s`) => `${n} ${n === 1 ? w : ws}`;
-const priceText = (c: BrowseCourse) => c.selling === 'paid' && c.price ? price(c.price.amount, c.price.currency) : c.selling === 'free' ? 'Free' : c.selling === 'package' ? 'In a package' : 'Soon';
 const size = (c: BrowseCourse) => c.website ? null : [c.modules && s(c.modules, 'module'), c.lessons && s(c.lessons, 'lesson')].filter(Boolean).join(' · ') || null;
 const matches = (c: BrowseCourse, q: string) => {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -77,6 +82,7 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
     (skip === 'country' || inCountry(c))
     && (skip === 'exam' || !f.exam || c.exam?.id === f.exam)
     && (skip === 'price' || !f.price || (f.price === 'free' ? c.selling === 'free' : f.price === 'paid' ? c.selling === 'paid' : c.selling === 'package'))
+    && (skip === 'level' || !f.level || lv(c) === f.level)
     && (skip === 'subject' || !f.subject || c.subject?.id === f.subject)
     && (skip === 'where' || !f.where || (f.where === 'portal' ? !c.website : c.website))
     && (skip === 'teacher' || !f.teacher || c.teacher?.id === f.teacher)
@@ -100,20 +106,27 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
     return [...m.values()].sort((a, b) => Number(!!b.avatarUrl) - Number(!!a.avatarUrl) || b.n - a.n);
   }, [all]);
   const free = base.filter(c => c.selling === 'free').length;
-  const browsing = !f.q && !f.price && !f.subject && !f.where && !f.teacher && f.sort === 'popular';
+  const browsing = !f.q && !f.price && !f.level && !f.subject && !f.where && !f.teacher && f.sort === 'popular';
+  // The full grid shows a page at a time; a new choice starts again from the top
+  const [limit, setLimit] = useState(PAGE);
+  useEffect(() => setLimit(PAGE), [f]);
+  const levels = LEVELS.filter(([k]) => base.some(c => lv(c) === k));
   const set = (k: keyof F, v: string) => setF(x => ({ ...x, [k]: x[k] === v ? '' : v }));
-  const chosen = ([['country', country?.name], ['exam', exams.find(e => e.id === f.exam)?.name], ['price', { free: 'Free', paid: 'Paid', package: 'In a package' }[f.price]], ['subject', subjects.find(x => x.id === f.subject)?.name], ['where', { portal: 'On the portal', website: 'On careerpathafrica.com' }[f.where]], ['teacher', teachers.find(t => t.id === f.teacher)?.name]] as [keyof F, string | undefined][]).filter(([, v]) => v);
+  const chosen = ([['country', country?.name], ['exam', exams.find(e => e.id === f.exam)?.name], ['price', { free: 'Free', paid: 'Paid', package: 'In a package' }[f.price]], ['level', LEVELS.find(([k]) => k === f.level)?.[1]], ['subject', subjects.find(x => x.id === f.subject)?.name], ['where', { portal: 'On the portal', website: 'On careerpathafrica.com' }[f.where]], ['teacher', teachers.find(t => t.id === f.teacher)?.name]] as [keyof F, string | undefined][]).filter(([, v]) => v);
 
   const shelf = (title: string, list: BrowseCourse[], more?: { label: string; on: () => void }) => list.length > 0 && (
     <section key={title}>
       <div className="mb-3 flex items-baseline gap-3"><h2 className="flex-1 text-[20px] font-extrabold tracking-[-0.01em]">{title}</h2>{more && <button onClick={more.on} className="text-[13.5px] font-extrabold text-azure-strong hover:underline">{more.label}</button>}</div>
-      <Grid list={list.slice(0, 4)} />
+      <Grid list={list.slice(0, 3)} />
     </section>
   );
 
   const rail = (
     <div className="flex flex-col gap-5 text-[13.5px]">
+      <button onClick={() => { setF(x => ({ ...BLANK, country: x.country })); setQ(''); }} className="w-fit text-[12.5px] font-bold text-[#2F57C9] underline hover:no-underline">Clear all filters</button>
       <Group title="Price" value={f.price} onPick={v => set('price', v)} options={[['', 'Any', count('price', () => true)], ['free', 'Free', count('price', c => c.selling === 'free')], ['paid', 'Paid', count('price', c => c.selling === 'paid')], ...(data.packages ? [['package', 'In a package', count('price', c => c.selling === 'package')] as [string, string, number]] : [])]} />
+      {exams.length > 1 && <Group title="Exam" value={f.exam} onPick={v => set('exam', v)} options={[['', 'Any', count('exam', () => true)], ...exams.slice(0, 8).map(e => [e.id, e.name, count('exam', c => c.exam?.id === e.id)] as [string, string, number])]} />}
+      {levels.length > 1 && <Group title="Level" value={f.level} onPick={v => set('level', v)} options={[['', 'Any', count('level', () => true)], ...levels.map(([k, l]) => [k, l, count('level', c => lv(c) === k)] as [string, string, number])]} />}
       {subjects.length > 0 && <Group title="Subject" value={f.subject} onPick={v => set('subject', v)} options={[['', 'Any', count('subject', () => true)], ...subjects.map(x => [x.id, x.name, count('subject', c => c.subject?.id === x.id)] as [string, string, number]).sort((a, b) => b[2] - a[2])]} />}
       <Group title="Where you study" value={f.where} onPick={v => set('where', v)} options={[['', 'Any', count('where', () => true)], ['portal', 'On the portal', count('where', c => !c.website)], ['website', 'On careerpathafrica.com', count('where', c => c.website)]]} />
       {teachers.length > 0 && <Group title="Teacher" value={f.teacher} onPick={v => set('teacher', v)} options={[['', 'Anyone', count('teacher', () => true)], ...teachers.slice(0, 10).map(t => [t.id, t.name ?? 'Teacher', count('teacher', c => c.teacher?.id === t.id)] as [string, string, number])]} />}
@@ -166,17 +179,26 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
       </section>
 
       <main className="mx-auto grid w-full max-w-[1240px] gap-7 px-4 py-6 sm:px-8 lg:grid-cols-[230px_minmax(0,1fr)] lg:py-8">
-        <aside className="hidden lg:block" aria-label="Filters">{rail}</aside>
+        <aside className="hidden self-start rounded-2xl border border-[#E1E7F2] bg-white p-[18px] lg:block" aria-label="Filters">{rail}</aside>
         <div className="flex min-w-0 flex-col gap-7">
-          <div className="flex flex-wrap items-center gap-2">
-            <b className="text-[15px]">{s(shown.length, 'course')}{f.q ? ` for “${f.q}”` : ''}</b>
-            {chosen.map(([k, v]) => <button key={k} onClick={() => k === 'country' ? pickCountry('') : setF(x => ({ ...x, [k]: '' }))} className="inline-flex h-7 items-center gap-1 rounded-md bg-[#EAF0FF] px-2.5 text-[12.5px] font-bold text-[#2F57C9]">{v} <span aria-hidden>✕</span><span className="sr-only">remove</span></button>)}
-            {(chosen.length > 0 || f.q) && <button onClick={() => { setF(BLANK); setQ(''); }} className="text-[13px] font-bold text-azure-strong hover:underline">Clear all</button>}
-            <span className="flex-1" />
-            <button onClick={() => setSheet(true)} className="h-9 rounded-md border border-line bg-white px-3 text-[13.5px] font-bold lg:hidden">Filters{chosen.filter(([k]) => k !== 'exam').length ? ` · ${chosen.filter(([k]) => k !== 'exam').length}` : ''}</button>
-            <select aria-label="Sort" value={f.sort} onChange={e => setF(x => ({ ...x, sort: e.target.value }))} className="h-9 rounded-md border border-line bg-white px-2.5 text-[13.5px] font-bold text-navy">
-              <option value="popular">Most popular</option><option value="new">Newest</option><option value="az">A to Z</option>
-            </select>
+          <div className="flex flex-col gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <b className="flex-1 whitespace-nowrap text-[20px] font-extrabold tracking-[-0.01em]">Courses ({shown.length}){f.q ? <span className="font-bold text-[#637090]"> for “{f.q}”</span> : ''}</b>
+              <button onClick={() => setSheet(true)} className="h-11 rounded-[10px] border border-[#D5DDEC] bg-white px-3.5 text-[13.5px] font-bold lg:hidden">Filters{chosen.filter(([k]) => k !== 'exam').length ? ` · ${chosen.filter(([k]) => k !== 'exam').length}` : ''}</button>
+              <select aria-label="Sort" value={f.sort} onChange={e => setF(x => ({ ...x, sort: e.target.value }))} className="h-11 rounded-[10px] border border-[#D5DDEC] bg-white px-3 text-[13.5px] font-bold text-navy">
+                <option value="popular">Most popular</option><option value="new">Newest</option><option value="az">A to Z</option>
+              </select>
+              <label className="hidden h-11 w-[300px] items-center gap-2 rounded-[10px] border border-[#D5DDEC] bg-white px-3.5 focus-within:border-[#3F6FE8] md:flex">
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search courses" aria-label="Search courses" className="min-w-0 flex-1 bg-transparent text-[14px] text-navy outline-none placeholder:text-[#9AA6C2]" />
+                {q ? <button type="button" onClick={() => { setQ(''); setF(x => ({ ...x, q: '' })); }} aria-label="Clear the search" className="text-[#637090]">✕</button> : <Icon name="search" size={16} className="text-[#637090]" />}
+              </label>
+            </div>
+            {chosen.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                {chosen.map(([k, v]) => <button key={k} onClick={() => k === 'country' ? pickCountry('') : setF(x => ({ ...x, [k]: '' }))} className="inline-flex h-7 items-center gap-1 rounded-md bg-[#EAF0FF] px-2.5 text-[12.5px] font-bold text-[#2F57C9]">{v} <span aria-hidden>✕</span><span className="sr-only">remove</span></button>)}
+                <button onClick={() => { setF(BLANK); setQ(''); }} className="text-[13px] font-bold text-azure-strong hover:underline">Clear all</button>
+              </div>
+            )}
           </div>
 
           {country && auto && (
@@ -211,9 +233,10 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
             )}
             <section>
               <div className="mb-3 flex items-baseline gap-3"><h2 className="flex-1 text-[20px] font-extrabold tracking-[-0.01em]">{country ? `All courses for ${country.name}` : 'All courses'}</h2><span className="text-[13px] text-muted">{s(base.length, 'course')}</span></div>
-              <Grid list={shown} />
+              <Grid list={shown.slice(0, limit)} />
+              <More shown={Math.min(limit, shown.length)} total={shown.length} onMore={() => setLimit(l => l + PAGE)} />
             </section>
-          </> : shown.length ? <Grid list={shown} /> : (
+          </> : shown.length ? <div><Grid list={shown.slice(0, limit)} /><More shown={Math.min(limit, shown.length)} total={shown.length} onMore={() => setLimit(l => l + PAGE)} /></div> : (
             <div className="rounded-xl border border-dashed border-line bg-white p-8 text-center">
               <b className="text-[17px]">No courses{f.q ? ` for “${f.q}”` : ''} with these choices yet.</b>
               <p className="mt-1.5 text-[14px] text-ink2">Try {subjects.slice(0, 3).map((x, i) => <span key={x.id}>{i ? ', ' : ''}<button onClick={() => { setQ(x.name); setF({ ...BLANK, q: x.name }); }} className="font-bold text-azure-strong hover:underline">{x.name.toLowerCase()}</button></span>)}, or <button onClick={() => { setF(BLANK); setQ(''); }} className="font-bold text-azure-strong hover:underline">see every course</button>.</p>
@@ -253,42 +276,21 @@ function Group({ title, value, options, onPick }: { title: string; value: string
   );
 }
 
-/** Cards on computers, compact rows on phones */
+/** The course cards: one a row on phones, two on tablets, three on computers */
 function Grid({ list }: { list: BrowseCourse[] }) {
-  return <>
-    <div className="hidden gap-3.5 sm:grid sm:grid-cols-2 xl:grid-cols-4">{list.map(c => <Card key={c.id} c={c} />)}</div>
-    <div className="overflow-hidden rounded-xl border border-line bg-white sm:hidden">{list.map(c => <Row key={c.id} c={c} />)}</div>
-  </>;
-}
-
-function Card({ c }: { c: BrowseCourse }) {
-  const sz = size(c);
   return (
-    <Link href={`/courses/${c.slug}`} className="group flex flex-col overflow-hidden rounded-xl border border-line bg-white transition hover:-translate-y-0.5 hover:border-[#5889FA] hover:shadow-[0_12px_26px_rgba(7,32,97,0.1)]">
-      <Cover src={c.coverUrl} label={[c.exam?.name, c.subject?.name].filter(Boolean).join(' · ') || c.title} seed={c.id} className="h-[120px] w-full" />
-      <span className="flex flex-1 flex-col gap-1.5 p-3.5">
-        {(c.exam || c.subject) && <span className="text-[11px] font-extrabold uppercase tracking-[0.04em] text-muted">{[c.exam?.name, c.subject?.name].filter(Boolean).join(' · ')}</span>}
-        <b className="line-clamp-2 text-[14.5px] leading-snug group-hover:text-[#2F57C9]">{c.title}</b>
-        <span className="flex items-center gap-2 text-[12.5px] text-ink2"><Face name={c.teacher?.name ?? 'CareerPath Africa'} src={c.teacher?.avatarUrl} size={22} /><span className="truncate">{c.teacher?.name ?? 'CareerPath Africa'}</span></span>
-        <span className="mt-auto flex items-center justify-between gap-2 border-t border-[#EEF1F7] pt-2 text-[12.5px] text-muted">
-          {c.website ? <span className="rounded-[5px] bg-[#F1F4FA] px-1.5 py-0.5 text-[11px] font-extrabold">On careerpathafrica.com</span> : <span>{c.questions && !sz ? s(c.questions, 'practice question') : sz ?? ''}</span>}
-          <b className={clsx('text-[14px]', c.selling === 'free' ? 'text-[#17703A]' : 'text-navy')}>{priceText(c)}</b>
-        </span>
-      </span>
-    </Link>
+    <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">
+      {list.map(c => <BigCourseCard key={c.id} c={{ ...c, exam: c.exam?.name ?? null, subject: c.subject?.name ?? null }} />)}
+    </div>
   );
 }
 
-function Row({ c }: { c: BrowseCourse }) {
+function More({ shown, total, onMore }: { shown: number; total: number; onMore: () => void }) {
+  if (total <= shown) return null;
   return (
-    <Link href={`/courses/${c.slug}`} className="flex gap-3 border-t border-[#EEF1F7] p-3 first:border-t-0">
-      <Cover src={c.coverUrl} label={c.exam?.name ?? ''} seed={c.id} className="h-[76px] w-[76px] flex-shrink-0 rounded-lg" />
-      <span className="min-w-0 flex-1">
-        {(c.exam || c.subject) && <span className="block truncate text-[11px] font-extrabold uppercase tracking-[0.04em] text-muted">{[c.exam?.name, c.subject?.name].filter(Boolean).join(' · ')}</span>}
-        <b className="line-clamp-2 text-[14px] leading-snug">{c.title}</b>
-        <span className="block truncate text-[12px] text-muted">{c.teacher?.name ?? 'CareerPath Africa'}{size(c) ? ` · ${size(c)}` : c.website ? ' · on careerpathafrica.com' : ''}</span>
-        <b className={clsx('text-[13px]', c.selling === 'free' ? 'text-[#17703A]' : 'text-navy')}>{priceText(c)}</b>
-      </span>
-    </Link>
+    <div className="mt-7 flex flex-col items-center gap-2 text-[13px] text-[#637090]">
+      <button onClick={onMore} className="inline-flex h-11 items-center rounded-[10px] bg-[#2F57C9] px-6 text-[14.5px] font-extrabold text-white hover:bg-[#2548AE]">Load more</button>
+      Showing {shown} of {total}
+    </div>
   );
 }

@@ -12,7 +12,11 @@ const nameOf = (p: { name: string | null; firstName: string | null; lastName: st
   p ? [p.firstName, p.lastName].filter(Boolean).join(' ') || p.name || null : null;
 /** Bios saved from WordPress can carry HTML entities and tags */
 const clean = (s: string | null | undefined) => (s ?? '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#0?39;|&rsquo;/g, '’').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-const sellingOf = (c: { source: string; isSoldIndividually: boolean; priceAmount: number | null }, inPackage: boolean): Selling =>
+/** What a course covers, for its card: the first lesson titles without their numbers, leaving out quizzes and practice rounds */
+const topicsOf = (modules: { lessons: { title: string }[] }[]) =>
+  [...new Set(modules.flatMap(m => m.lessons.map(l => clean(l.title).replace(/^(lesson\s*)?\d+\s*[.):-]\s*/i, '').replace(/^[A-H][.)]\s+/, '').trim())))]
+    .filter(t => t.length > 2 && !/^(practice|question|revision|exercise|test|q\s*&\s*a)\b/i.test(t) && !/\bquiz(zes)?\b/i.test(t)).slice(0, 5);
+const sellingOf =(c: { source: string; isSoldIndividually: boolean; priceAmount: number | null }, inPackage: boolean): Selling =>
   c.isSoldIndividually ? ((c.priceAmount ?? 0) > 0 ? 'paid' : 'free') : c.source === 'WORDPRESS' ? 'free' : inPackage ? 'package' : 'notsale';
 
 /**
@@ -238,9 +242,9 @@ export class PublicPagesService {
         where: { status: 'PUBLISHED', catalogueHidden: false },
         select: {
           id: true, title: true, shortDescription: true, coverUrl: true, source: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true, teacherPending: true, createdAt: true,
-          programme: { select: { id: true, name: true, shortName: true, countries: { select: { code: true, name: true } } } }, subject: { select: { id: true, name: true } },
+          programme: { select: { id: true, name: true, shortName: true, countries: { select: { code: true, name: true } } } }, subject: { select: { id: true, name: true } }, level: { select: { name: true } },
           teacher: { select: { id: true, name: true, firstName: true, lastName: true, avatarUrl: true } },
-          modules: { select: { _count: { select: { lessons: true } } } },
+          modules: { orderBy: { sortOrder: 'asc' }, select: { _count: { select: { lessons: true } }, lessons: { orderBy: { sortOrder: 'asc' }, take: 8, select: { title: true } } } },
           _count: { select: { enrollments: true } },
         },
       }),
@@ -254,13 +258,16 @@ export class PublicPagesService {
     const qs = new Map(questions.map(q => [q.courseId, q._count._all]));
     const courses = rows.map(c => {
       const lessons = c.modules.reduce((t, m) => t + m._count.lessons, 0);
-      const selling = sellingOf(c, packages.some(p => p.courseIds.includes(c.id)));
+      const inPackage = packages.some(p => p.courseIds.includes(c.id));
+      const selling = sellingOf(c, inPackage);
       return {
-        id: c.id, slug: slugOf(c.title, c.id), title: c.title, summary: c.shortDescription, coverUrl: c.coverUrl,
+        id: c.id, slug: slugOf(c.title, c.id), title: c.title, summary: c.shortDescription, coverUrl: c.coverUrl, level: c.level?.name ?? null, inPackage,
+        // What it covers, for the card: the first lesson titles without their numbers, leaving out quizzes and practice rounds
+        topics: topicsOf(c.modules),
         exam: c.programme ? { id: c.programme.id, name: c.programme.shortName ?? c.programme.name } : null,
         // Where the course's exam is taken; an exam with no country (IELTS, ACCA) is international; no exam yet = unknown
         countries: c.programme ? c.programme.countries.map(x => x.code) : null,
-        subject: c.subject, teacher: c.teacherPending ? null : { id: c.teacher.id, name: nameOf(c.teacher), avatarUrl: c.teacher.avatarUrl },
+        subject: c.subject, teacher: c.teacherPending ? null : { id: c.teacher.id, name: nameOf(c.teacher), avatarUrl: this.photo(c.teacher.avatarUrl) },
         modules: c.modules.filter(m => m._count.lessons).length, lessons, questions: qs.get(c.id) ?? 0,
         selling, price: selling === 'paid' ? { amount: c.priceAmount!, currency: c.priceCurrency! } : null,
         // No lessons here yet: it opens on careerpathafrica.com
@@ -367,8 +374,8 @@ export class PublicPagesService {
         orderBy: { enrollments: { _count: 'desc' } },
         select: {
           id: true, title: true, coverUrl: true, source: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true,
-          programme: { select: { shortName: true, name: true } }, subject: { select: { name: true } },
-          modules: { select: { _count: { select: { lessons: true } } } },
+          programme: { select: { shortName: true, name: true } }, subject: { select: { name: true } }, level: { select: { name: true } }, createdAt: true,
+          modules: { orderBy: { sortOrder: 'asc' }, select: { _count: { select: { lessons: true } }, lessons: { orderBy: { sortOrder: 'asc' }, take: 8, select: { title: true } } } },
           enrollments: { select: { studentId: true } },
         },
       }),
@@ -383,6 +390,7 @@ export class PublicPagesService {
     const others = all.filter(o => o.slug !== me && subjects.length && o.subjects.some(s => s === subjects[0]))
       .sort((a, b) => Number(!!b.avatarUrl) - Number(!!a.avatarUrl) || b.courses - a.courses).slice(0, 3);
     const years = t.teacherApplication?.yearsExperience ?? null;
+    const qs = new Map((await this.prisma.questionBank.groupBy({ by: ['courseId'], where: { courseId: { in: courses.map(c => c.id) }, status: 'LIVE' }, _count: { _all: true } })).map(q => [q.courseId, q._count._all]));
     return {
       id: t.id, slug: me, name, avatarUrl: this.photo(t.avatarUrl), country: t.country, bio: clean(t.bio) || null, videoUrl: t.videoIntroUrl,
       subjects, yearsExperience: years, teachingSince: years ? new Date().getFullYear() - years : null,
@@ -391,9 +399,11 @@ export class PublicPagesService {
       rating: ratingAgg._avg.rating ? Math.round(ratingAgg._avg.rating * 10) / 10 : null, ratings: ratingAgg._count.rating,
       reviews: t.teacherReviews.map(r => ({ rating: r.rating, comment: r.comment, at: r.createdAt, by: (r.student.firstName || (r.student.name ?? '').split(/\s+/)[0] || 'A student') })),
       courses: courses.map(c => {
-        const selling = sellingOf(c, packages.some(p => p.courseIds.includes(c.id)));
+        const inPackage = packages.some(p => p.courseIds.includes(c.id));
+        const selling = sellingOf(c, inPackage);
         return {
-          slug: slugOf(c.title, c.id), title: c.title, coverUrl: c.coverUrl, exam: c.programme ? c.programme.shortName ?? c.programme.name : null, subject: c.subject?.name ?? null,
+          id: c.id, slug: slugOf(c.title, c.id), title: c.title, coverUrl: c.coverUrl, exam: c.programme ? c.programme.shortName ?? c.programme.name : null, subject: c.subject?.name ?? null,
+          level: c.level?.name ?? null, topics: topicsOf(c.modules), questions: qs.get(c.id) ?? 0, inPackage, added: c.createdAt,
           lessons: c.modules.reduce((n, m) => n + m._count.lessons, 0), selling,
           price: selling === 'paid' ? { amount: c.priceAmount!, currency: c.priceCurrency! } : null,
         };

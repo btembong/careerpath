@@ -2,10 +2,11 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
-import { Cover, PublicFooter, PublicHeader, price } from '@/components/public/PublicChrome';
+import { PublicFooter, PublicHeader } from '@/components/public/PublicChrome';
 import { TeacherPhoto } from '@/components/teachers/TeacherPhoto';
 import { Flag } from '@/components/ui/Flag';
 import { VideoEmbed } from '@/components/ui/VideoEmbed';
+import { BigCourseCard, type CardCourse } from '@/components/public/course/BigCourseCard';
 
 export const revalidate = 300;
 
@@ -14,7 +15,7 @@ interface Profile {
   subjects: string[]; yearsExperience: number | null; teachingSince: number | null; qualification: string | null; students: number;
   rating: number | null; ratings: number;
   reviews: { rating: number; comment: string | null; at: string; by: string }[];
-  courses: { slug: string; title: string; coverUrl: string | null; exam: string | null; subject: string | null; lessons: number; selling: 'free' | 'paid' | 'package' | 'notsale'; price: { amount: number; currency: string } | null }[];
+  courses: (Omit<CardCourse, 'teacher' | 'id'> & { id?: string })[];
   others: { slug: string; name: string; avatarUrl: string | null; courses: number; subjects: string[] }[];
 }
 
@@ -28,7 +29,6 @@ async function load(slug: string): Promise<Profile | null> {
 const QUAL: Record<string, string> = { HIGH_SCHOOL: 'High school certificate', BACHELOR: 'Bachelor’s degree', MASTER: 'Master’s degree', PHD: 'PhD', PROFESSIONAL: 'Professional certificate' };
 const short = (s: string) => s.replace('Literature in English', 'Literature').replace('English Language', 'English').replace('Core Mathematics', 'Maths');
 const first = (n: string) => n.split(/\s+/)[0];
-const sell = (c: Profile['courses'][number]) => c.selling === 'paid' && c.price ? price(c.price.amount, c.price.currency) : c.selling === 'free' ? 'Free' : c.selling === 'package' ? 'In a package' : 'Free';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const t = await load((await params).slug);
@@ -113,13 +113,13 @@ export default async function TeacherPublicPage({ params }: { params: Promise<{ 
             <section>
               <h2 className="mb-2.5 text-[20px] font-extrabold">Courses by {first(t.name)}</h2>
               {!t.courses.length ? <p className="rounded-lg border border-line bg-white p-5 text-[14px] text-ink2">{first(t.name)}’s first courses are on their way. <Link href="/courses" className="font-bold text-[#2F57C9] hover:underline">See all courses</Link></p> : <>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {t.courses.slice(0, 6).map(c => <CourseCard key={c.slug} c={c} />)}
+                <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
+                  {t.courses.slice(0, 6).map(c => <BigCourseCard key={c.slug} c={{ ...c, id: c.id ?? c.slug, teacher: { name: t.name, avatarUrl: t.avatarUrl } }} />)}
                 </div>
                 {t.courses.length > 6 && (
                   <details className="group mt-3">
                     <summary className="cursor-pointer list-none text-[13.5px] font-extrabold text-[#2F57C9] hover:underline group-open:hidden">See all {t.courses.length} courses →</summary>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{t.courses.slice(6).map(c => <CourseCard key={c.slug} c={c} />)}</div>
+                    <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">{t.courses.slice(6).map(c => <BigCourseCard key={c.slug} c={{ ...c, id: c.id ?? c.slug, teacher: { name: t.name, avatarUrl: t.avatarUrl } }} />)}</div>
                   </details>
                 )}
               </>}
@@ -191,15 +191,3 @@ export default async function TeacherPublicPage({ params }: { params: Promise<{ 
   );
 }
 
-function CourseCard({ c }: { c: Profile['courses'][number] }) {
-  return (
-    <Link href={`/courses/${c.slug}`} className="group flex flex-col overflow-hidden rounded-lg border border-line bg-white hover:border-[#C9D7FB]">
-      <Cover src={c.coverUrl} label={[c.exam, c.subject].filter(Boolean).join(' · ') || c.title} seed={c.slug} className="h-24 w-full" />
-      <span className="flex flex-1 flex-col gap-1 px-3 py-2.5">
-        {(c.exam || c.subject) && <span className="text-[11px] font-extrabold uppercase tracking-[0.04em] text-[#637090]">{[c.exam, c.subject].filter(Boolean).join(' · ')}</span>}
-        <b className="line-clamp-2 text-[14px] leading-snug group-hover:underline">{c.title}</b>
-        <span className="mt-auto flex justify-between pt-1 text-[12.5px]"><span className="text-[#637090]">{c.lessons ? `${c.lessons} lesson${c.lessons === 1 ? '' : 's'}` : 'On the website'}</span><b className={c.selling === 'paid' ? 'text-navy' : 'text-[#17703A]'}>{sell(c)}</b></span>
-      </span>
-    </Link>
-  );
-}

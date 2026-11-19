@@ -62,6 +62,7 @@ export const Icons = {
   clock:        'solar:clock-circle-bold',
   calendar:     'solar:calendar-bold',
   tag:          'solar:tag-bold',
+  gift:         'solar:gift-bold',
   hash:         'solar:hashtag-bold',
   card:         'solar:card-bold',
   dollar:       'solar:dollar-minimalistic-bold',
