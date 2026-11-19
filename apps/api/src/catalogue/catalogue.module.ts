@@ -8,6 +8,6 @@ import { MailModule } from '../mail/mail.module';
   imports: [MailModule],
   controllers: [CatalogueController],
   providers: [CatalogueService, PublicPagesService],
-  exports: [CatalogueService],
+  exports: [CatalogueService, PublicPagesService],
 })
 export class CatalogueModule {}

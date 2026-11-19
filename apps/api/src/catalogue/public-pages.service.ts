@@ -112,14 +112,32 @@ export class PublicPagesService {
     return { module: mod.title, lesson: first.title, type: first.type, lines, lessons: mod.lessons.slice(0, 5).map(l => l.title) };
   }
 
-  async package(id: string) {
+  /** More courses by a teacher, leaving out the ones given (already in the package): for the sidebar's course cards */
+  private async moreFrom(teacherId: string | null, exclude: string[]) {
+    if (!teacherId) return [];
+    const [rows, packages] = await Promise.all([
+      this.prisma.platformCourse.findMany({
+        where: { teacherId, id: { notIn: exclude }, status: 'PUBLISHED', catalogueHidden: false, teacherPending: false }, take: 3, orderBy: { enrollments: { _count: 'desc' } },
+        select: { id: true, title: true, source: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true, subject: { select: { name: true } }, level: { select: { name: true } }, teacher: { select: { name: true, firstName: true, lastName: true, avatarUrl: true } }, modules: { select: { _count: { select: { lessons: true } } } } },
+      }),
+      this.publishedPackages(),
+    ]);
+    return rows.map(r => ({
+      slug: slugOf(r.title, r.id), title: r.title, subject: r.subject?.name ?? null, level: r.level?.name ?? null, teacher: nameOf(r.teacher), teacherPhoto: this.photo(r.teacher.avatarUrl),
+      lessons: r.modules.reduce((n, m) => n + m._count.lessons, 0), selling: sellingOf(r, packages.some(p => p.courseIds.includes(r.id))),
+      price: r.isSoldIndividually && (r.priceAmount ?? 0) > 0 ? { amount: r.priceAmount!, currency: r.priceCurrency! } : null,
+    }));
+  }
+
+  /** A package for visitors; admins can preview one that isn't published yet (allowDraft) */
+  async package(id: string, allowDraft = false) {
     const p = await this.prisma.package.findUnique({ where: { id } });
-    if (!p || !p.isPublished) throw new NotFoundException('Package not found');
+    if (!p || (!p.isPublished && !allowDraft)) throw new NotFoundException('Package not found');
     const courses = await this.prisma.platformCourse.findMany({
       where: { id: { in: p.courseIds }, status: 'PUBLISHED' },
       select: {
-        id: true, title: true, coverUrl: true, catalogueHidden: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true, teacherPending: true,
-        programme: { select: { shortName: true, name: true } }, subject: { select: { name: true } },
+        id: true, title: true, coverUrl: true, catalogueHidden: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true, teacherPending: true, source: true,
+        programme: { select: { shortName: true, name: true } }, subject: { select: { name: true } }, level: { select: { name: true } },
         teacher: { select: { id: true, name: true, firstName: true, lastName: true, avatarUrl: true } },
         modules: { select: { lessons: { select: { type: true } } } },
       },
@@ -129,8 +147,16 @@ export class PublicPagesService {
       this.prisma.questionBank.count({ where: { courseId: { in: p.courseIds }, status: 'LIVE' } }),
       p.cohortId ? this.prisma.cohort.findUnique({ where: { id: p.cohortId }, select: { name: true, examDate: true, teacher: { select: { name: true, firstName: true, lastName: true } }, liveClasses: { where: { status: 'SCHEDULED', scheduledAt: { gt: new Date() } }, orderBy: { scheduledAt: 'asc' }, take: 4, select: { title: true, scheduledAt: true, durationMins: true } } } }) : null,
     ]);
-    const teachers = new Map<string, { name: string | null; avatarUrl: string | null }>();
-    for (const c of ordered) if (!c.teacherPending) teachers.set(c.teacher.id, { name: nameOf(c.teacher), avatarUrl: c.teacher.avatarUrl });
+    // The teachers, with what their profile card needs and how many of the package's courses they teach
+    const directory = await this.teachers();
+    const others = (await this.publishedPackages()).filter(o => o.id !== p.id);
+    const teachers = new Map<string, { name: string | null; avatarUrl: string | null; slug: string | null; subjects: string[]; yearsExperience: number | null; courses: number }>();
+    for (const c of ordered) {
+      if (c.teacherPending) continue;
+      const d = directory.find(t => t.id === c.teacher.id);
+      const cur = teachers.get(c.teacher.id);
+      teachers.set(c.teacher.id, cur ? { ...cur, courses: cur.courses + 1 } : { name: d?.name ?? nameOf(c.teacher), avatarUrl: d?.avatarUrl ?? this.photo(c.teacher.avatarUrl), slug: d?.slug ?? null, subjects: d?.subjects.slice(0, 3) ?? [], yearsExperience: d?.yearsExperience ?? null, courses: 1 });
+    }
     const all = ordered.flatMap(c => c.modules.flatMap(m => m.lessons));
     // Worth on their own: only when every course has its own price in the package's currency
     const priced = ordered.every(c => c.isSoldIndividually && (c.priceAmount ?? 0) > 0 && c.priceCurrency === p.currency);
@@ -147,12 +173,17 @@ export class PublicPagesService {
         return {
           id: c.id, slug: c.catalogueHidden ? null : slugOf(c.title, c.id), title: c.title, coverUrl: c.coverUrl,
           exam: c.programme ? c.programme.shortName ?? c.programme.name : null, subject: c.subject?.name ?? null,
-          teacher: c.teacherPending ? null : { name: nameOf(c.teacher), avatarUrl: c.teacher.avatarUrl },
+          teacher: c.teacherPending ? null : { name: nameOf(c.teacher), avatarUrl: this.photo(c.teacher.avatarUrl) }, level: c.level?.name ?? null,
+          // No lessons on the portal yet: it still opens on the website
+          website: ls.length === 0,
           modules: c.modules.filter(m => m.lessons.length).length, lessons: ls.length, quizzes: ls.filter(l => l.type === 'QUIZ').length,
           price: c.isSoldIndividually && (c.priceAmount ?? 0) > 0 ? { amount: c.priceAmount!, currency: c.priceCurrency! } : null,
         };
       }),
-      teachers: [...teachers.values()],
+      teachers: [...teachers.values()].sort((a, b) => b.courses - a.courses),
+      teacherMore: await this.moreFrom([...teachers.entries()].sort((a, b) => b[1].courses - a[1].courses)[0]?.[0] ?? null, p.courseIds),
+      published: p.isPublished,
+      others: others.map(o => ({ id: o.id, name: o.name, priceAmount: o.priceAmount, currency: o.currency, courses: o.courseIds.length, months: o.validityDays ? Math.round(o.validityDays / 30) : null, bestValue: o.bestValue })),
       counts: { courses: ordered.length, ready: ordered.filter(c => c.modules.some(m => m.lessons.length)).length, lessons: all.length, videos: all.filter(l => l.type === 'VIDEO').length, quizzes: all.filter(l => l.type === 'QUIZ').length, questions },
       live: cohort ? { cohort: cohort.name, teacher: nameOf(cohort.teacher), examDate: cohort.examDate, next: cohort.liveClasses } : null,
       mentorship: p.mentorship || p.mentorshipSessionsPerMonth != null ? { text: p.mentorship, perMonth: p.mentorshipSessionsPerMonth } : null,

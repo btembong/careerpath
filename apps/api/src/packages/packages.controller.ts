@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PackagesService } from './packages.service';
+import { PublicPagesService } from '../catalogue/public-pages.service';
 import { CreatePackageDto } from './dto/create-package.dto';
 import { UpdatePackageDto } from './dto/update-package.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
@@ -13,7 +14,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 @ApiTags('packages')
 @Controller()
 export class PackagesController {
-  constructor(private readonly packagesService: PackagesService) {}
+  constructor(private readonly packagesService: PackagesService, private readonly pages: PublicPagesService) {}
 
   // ── Public / Student ─────────────────────────────────────
 
@@ -32,6 +33,14 @@ export class PackagesController {
   }
 
   // ── Admin ────────────────────────────────────────────────
+
+  @Get('admin/packages/:id/public-preview')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] The public package page’s data, also for a package that isn’t published yet' })
+  publicPreview(@Param('id') id: string) {
+    return this.pages.package(id, true);
+  }
 
   @Get('admin/packages')
   @UseGuards(JwtAuthGuard, RolesGuard)

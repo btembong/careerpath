@@ -293,6 +293,7 @@ export default function AdminPackagesPage() {
                 ? <Button size="sm" variant="danger" loading={saving} onClick={() => save(false)}>Unpublish</Button>
                 : <Button size="sm" variant="secondary" loading={saving} onClick={() => save(true)}>Publish</Button>)}
               {selId === 'new' && <Button size="sm" variant="secondary" loading={saving} onClick={() => save(true)}>Create and publish</Button>}
+              {selId !== 'new' && <a href={`/packages/${selId}?preview=1`} target="_blank" rel="noreferrer" className="ml-auto inline-flex h-8 items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Preview the public page ↗</a>}
             </div>
             {selId !== 'new' && (
               <div className="flex flex-col gap-2 border-t border-line pt-4">
