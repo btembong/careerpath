@@ -36,15 +36,16 @@ export class PublicPagesService {
         id: true, title: true, shortDescription: true, description: true, outcomes: true, coverUrl: true, language: true, accessMonths: true,
         updatedAt: true, source: true, status: true, catalogueHidden: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true,
         teacherPending: true, programmeId: true, subjectId: true,
-        programme: { select: { name: true, shortName: true } }, subject: { select: { name: true } }, level: { select: { name: true } },
-        teacher: { select: { id: true, name: true, firstName: true, lastName: true, avatarUrl: true, bio: true, videoIntroUrl: true, teachingSubjects: { select: { name: true } }, country: { select: { name: true } } } },
+        programme: { select: { name: true, shortName: true, countries: { select: { code: true, name: true } } } }, subject: { select: { name: true } }, level: { select: { name: true } },
+        teacher: { select: { id: true, name: true, firstName: true, lastName: true, avatarUrl: true, bio: true, videoIntroUrl: true, teachingSubjects: { select: { name: true } }, country: { select: { name: true } }, teacherApplication: { select: { yearsExperience: true, subjectAreas: true } } } },
         modules: { orderBy: { sortOrder: 'asc' }, select: { title: true, lessons: { orderBy: { sortOrder: 'asc' }, select: { title: true, type: true, isFree: true, durationSecs: true } } } },
         _count: { select: { enrollments: true } },
       },
     });
     if (!c || c.status !== 'PUBLISHED' || c.catalogueHidden) throw new NotFoundException('Course not found');
 
-    const [packages, questions, teacherCourses, related] = await Promise.all([
+    const card = { id: true, title: true, coverUrl: true, source: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true, teacherPending: true, teacher: { select: { name: true, firstName: true, lastName: true, avatarUrl: true } }, programme: { select: { shortName: true, name: true } }, subject: { select: { name: true } }, level: { select: { name: true } }, modules: { select: { _count: { select: { lessons: true } } } } } as const;
+    const [packages, questions, teacherCourses, related, teacherMore, examMore] = await Promise.all([
       this.publishedPackages(),
       this.prisma.questionBank.count({ where: { courseId: id, status: 'LIVE' } }),
       c.teacherPending ? Promise.resolve(0) : this.prisma.platformCourse.count({ where: { teacherId: c.teacher.id, status: 'PUBLISHED', catalogueHidden: false } }),
@@ -53,7 +54,15 @@ export class PublicPagesService {
         take: 3, orderBy: { enrollments: { _count: 'desc' } },
         select: { id: true, title: true, coverUrl: true, source: true, isSoldIndividually: true, priceAmount: true, priceCurrency: true, teacherPending: true, teacher: { select: { name: true, firstName: true, lastName: true } }, programme: { select: { shortName: true, name: true } }, subject: { select: { name: true } } },
       }),
+      // More from this teacher, and more for this exam (grouped by subject on the page)
+      c.teacherPending ? Promise.resolve([]) : this.prisma.platformCourse.findMany({ where: { teacherId: c.teacher.id, id: { not: id }, status: 'PUBLISHED', catalogueHidden: false }, take: 3, orderBy: { enrollments: { _count: 'desc' } }, select: card }),
+      c.programmeId ? this.prisma.platformCourse.findMany({ where: { programmeId: c.programmeId, id: { not: id }, status: 'PUBLISHED', catalogueHidden: false }, take: 12, orderBy: { enrollments: { _count: 'desc' } }, select: card }) : Promise.resolve([]),
     ]);
+    const mini = (r: (typeof teacherMore)[number]) => ({
+      slug: slugOf(r.title, r.id), title: r.title, subject: r.subject?.name ?? null, level: r.level?.name ?? null, teacher: r.teacherPending ? null : nameOf(r.teacher), teacherPhoto: r.teacherPending ? null : this.photo(r.teacher.avatarUrl),
+      lessons: r.modules.reduce((n, m) => n + m._count.lessons, 0), selling: sellingOf(r, packages.some(p => p.courseIds.includes(r.id))),
+      price: r.isSoldIndividually && (r.priceAmount ?? 0) > 0 ? { amount: r.priceAmount!, currency: r.priceCurrency! } : null,
+    });
     const inPackages = packages.filter(p => p.courseIds.includes(id));
     const lessons = c.modules.flatMap(m => m.lessons);
     const n = (t: string) => lessons.filter(l => l.type === t).length;
@@ -66,7 +75,9 @@ export class PublicPagesService {
       exam: c.programme ? c.programme.shortName ?? c.programme.name : null, subject: c.subject?.name ?? null, level: c.level?.name ?? null,
       selling, price: selling === 'paid' ? { amount: c.priceAmount!, currency: c.priceCurrency! } : null,
       students: c._count.enrollments,
-      teacher: t ? { slug: (await this.teachers()).find(o => o.id === t.id)?.slug ?? null, name: nameOf(t), avatarUrl: t.avatarUrl, bio: clean(t.bio).slice(0, 600) || null, hasVideo: !!t.videoIntroUrl, subjects: t.teachingSubjects.map(s => s.name), country: t.country?.name ?? null, courses: teacherCourses } : null,
+      teacher: t ? { slug: (await this.teachers()).find(o => o.id === t.id)?.slug ?? null, name: nameOf(t), avatarUrl: this.photo(t.avatarUrl), bio: clean(t.bio).slice(0, 600) || null, hasVideo: !!t.videoIntroUrl, subjects: t.teachingSubjects.length ? t.teachingSubjects.map(s => s.name) : this.realSubjects(t.teacherApplication?.subjectAreas), yearsExperience: t.teacherApplication?.yearsExperience ?? null, country: t.country?.name ?? null, courses: teacherCourses } : null,
+      examCountries: c.programme?.countries ?? [],
+      teacherMore: teacherMore.map(mini), examMore: examMore.map(mini),
       modules: c.modules.filter(m => m.lessons.length).map(m => ({ title: m.title, lessons: m.lessons.map(l => ({ title: l.title, type: l.type, free: l.isFree, minutes: l.durationSecs ? Math.round(l.durationSecs / 60) : null })) })),
       counts: { lessons: lessons.length, videos: n('VIDEO'), notes: n('TEXT'), quizzes: n('QUIZ'), live: n('LIVE'), questions, minutes },
       packages: inPackages.map(p => ({ id: p.id, name: p.name, priceAmount: p.priceAmount, currency: p.currency, courses: p.courseIds.length, months: p.validityDays ? Math.round(p.validityDays / 30) : null })),
