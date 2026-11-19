@@ -149,7 +149,10 @@ export class PublicPagesService {
     ]);
     // The teachers, with what their profile card needs and how many of the package's courses they teach
     const directory = await this.teachers();
-    const others = (await this.publishedPackages()).filter(o => o.id !== p.id);
+    // Other packages: published ones for visitors; in an admin's preview the drafts too, so the page can be checked whole
+    const others = (allowDraft
+      ? await this.prisma.package.findMany({ select: { id: true, name: true, priceAmount: true, currency: true, courseIds: true, validityDays: true, bestValue: true, isPublished: true } })
+      : (await this.publishedPackages()).map(o => ({ ...o, isPublished: true }))).filter(o => o.id !== p.id);
     const teachers = new Map<string, { name: string | null; avatarUrl: string | null; slug: string | null; subjects: string[]; yearsExperience: number | null; courses: number }>();
     for (const c of ordered) {
       if (c.teacherPending) continue;
@@ -181,9 +184,12 @@ export class PublicPagesService {
         };
       }),
       teachers: [...teachers.values()].sort((a, b) => b.courses - a.courses),
-      teacherMore: await this.moreFrom([...teachers.entries()].sort((a, b) => b[1].courses - a[1].courses)[0]?.[0] ?? null, p.courseIds),
+      // Every teacher in the package with their other courses (the sidebar shows a tab each)
+      moreByTeacher: (await Promise.all([...teachers.entries()].sort((a, b) => b[1].courses - a[1].courses).slice(0, 6)
+        .map(async ([tid, t]) => ({ name: t.name, slug: t.slug, avatarUrl: t.avatarUrl, courses: await this.moreFrom(tid, p.courseIds) }))))
+        .filter(t => t.courses.length),
       published: p.isPublished,
-      others: others.map(o => ({ id: o.id, name: o.name, priceAmount: o.priceAmount, currency: o.currency, courses: o.courseIds.length, months: o.validityDays ? Math.round(o.validityDays / 30) : null, bestValue: o.bestValue })),
+      others: others.map(o => ({ id: o.id, name: o.name, priceAmount: o.priceAmount, currency: o.currency, courses: o.courseIds.length, months: o.validityDays ? Math.round(o.validityDays / 30) : null, bestValue: o.bestValue, published: o.isPublished })),
       counts: { courses: ordered.length, ready: ordered.filter(c => c.modules.some(m => m.lessons.length)).length, lessons: all.length, videos: all.filter(l => l.type === 'VIDEO').length, quizzes: all.filter(l => l.type === 'QUIZ').length, questions },
       live: cohort ? { cohort: cohort.name, teacher: nameOf(cohort.teacher), examDate: cohort.examDate, next: cohort.liveClasses } : null,
       mentorship: p.mentorship || p.mentorshipSessionsPerMonth != null ? { text: p.mentorship, perMonth: p.mentorshipSessionsPerMonth } : null,

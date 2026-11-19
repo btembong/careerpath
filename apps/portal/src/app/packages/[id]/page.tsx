@@ -5,8 +5,8 @@ import { notFound } from 'next/navigation';
 import PackageDetailApp from '@/components/packages/PackageDetailApp';
 import { Cover, PublicFooter, PublicHeader, perMonth, price } from '@/components/public/PublicChrome';
 import { Icon, type IconName } from '@/components/ui/Icon';
-import { AllCard, CourseCard, ReadMore, type MiniCourse } from '@/components/public/course/CourseParts';
-import { PackageCourses, type PkgCourse } from '@/components/public/course/PackageParts';
+import { AllCard, ReadMore } from '@/components/public/course/CourseParts';
+import { MoreFromTeachers, PackageCourses, type PkgCourse, type TeacherMore } from '@/components/public/course/PackageParts';
 
 export const revalidate = 300;
 
@@ -19,8 +19,8 @@ interface PackagePage {
   mentorship: { text: string | null; perMonth: number | null } | null;
   addOns: { live: { price: number; cohort: string } | null; mentorship: { price: number; perMonth: number } | null };
   faq: { q: string; a: string }[];
-  others?: { id: string; name: string; priceAmount: number; currency: string; courses: number; months: number | null; bestValue: boolean }[];
-  teacherMore?: MiniCourse[];
+  others?: { id: string; name: string; priceAmount: number; currency: string; courses: number; months: number | null; bestValue: boolean; published?: boolean }[];
+  moreByTeacher?: TeacherMore[];
 }
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -55,13 +55,12 @@ export default async function PackagePageRoute({ params, searchParams }: { param
   else if (token) return <PackageDetailApp />;
   else raw = await load(id);
   if (!raw) notFound();
-  const p: PackagePage = { ...raw, teachers: raw.teachers ?? [], courses: raw.courses ?? [], others: raw.others ?? [], teacherMore: raw.teacherMore ?? [], faq: raw.faq ?? [] };
+  const p: PackagePage = { ...raw, teachers: raw.teachers ?? [], courses: raw.courses ?? [], others: raw.others ?? [], moreByTeacher: raw.moreByTeacher ?? [], faq: raw.faq ?? [] };
 
   const checkout = `/register?next=${encodeURIComponent(`/packages/${p.id}/checkout`)}`;
   const monthly = perMonth(p.priceAmount, p.currency, p.months);
   const soon = p.courses.filter(c => c.lessons === 0).length;
   const subjects = [...new Set(p.courses.map(c => c.subject).filter(Boolean))] as string[];
-  const lead = p.teachers[0];
   const mentoring = p.mentorship?.perMonth ?? null;
   const tiles: [IconName, string][] = [
     ['courses', s(p.counts.courses, 'course')],
@@ -238,8 +237,8 @@ export default async function PackagePageRoute({ params, searchParams }: { param
             <div className="hidden flex-col gap-2.5 rounded-[20px] bg-[#072061] p-[18px] text-[#FFFFFF] lg:flex">
               <b className="text-center text-[17px]">Other packages</b>
               {p.others!.slice(0, 3).map(o => (
-                <Link key={o.id} href={`/packages/${o.id}`} className="group flex flex-col gap-2 rounded-[14px] bg-[rgba(255,255,255,0.07)] p-3.5 hover:bg-[rgba(255,255,255,0.12)]">
-                  <span className="flex items-start gap-3"><b className="flex-1 text-[15px] leading-snug">{o.name}</b><span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(255,255,255,0.14)]"><Icon name="packages" size={15} /></span></span>
+                <Link key={o.id} href={o.published === false ? `/packages/${o.id}?preview=1` : `/packages/${o.id}`} className="group flex flex-col gap-2 rounded-[14px] bg-[rgba(255,255,255,0.07)] p-3.5 hover:bg-[rgba(255,255,255,0.12)]">
+                  <span className="flex items-start gap-3"><b className="flex-1 text-[15px] leading-snug">{o.name}{o.published === false && <span className="ml-1.5 rounded bg-[rgba(255,241,214,0.9)] px-1.5 py-0.5 align-middle text-[10.5px] font-extrabold text-[#8A5A00]">Draft</span>}</b><span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(255,255,255,0.14)]"><Icon name="packages" size={15} /></span></span>
                   <span className="text-[12.5px] text-[#C9D4F2]">{[s(o.courses, 'course'), o.months ? `${o.months} months` : null, price(o.priceAmount, o.currency)].filter(Boolean).join(' · ')}</span>
                   <span className="flex items-center justify-end gap-1 text-[12.5px] font-bold text-[#7FA3FF]">Details<Icon name="arrowRight" size={13} /></span>
                 </Link>
@@ -248,23 +247,13 @@ export default async function PackagePageRoute({ params, searchParams }: { param
             </div>
           )}
 
-          {lead && p.teacherMore!.length > 0 && (
-            <div className="hidden flex-col gap-2.5 rounded-[20px] bg-[#EAF0FF] p-[18px] lg:flex">
-              <div className="flex flex-col items-center gap-1.5">
-                <span className="flex h-[60px] w-[60px] -rotate-3 items-center justify-center overflow-hidden rounded-[16px] bg-[#FFFDF8] font-extrabold text-[#3F6FE8] shadow-[0_10px_22px_rgba(7,32,97,0.2)]">{lead.avatarUrl ? <img src={lead.avatarUrl} alt="" className="h-full w-full object-cover" /> : initials(lead.name ?? '')}</span>
-                <b className="text-[16px]">More from {lead.name}</b>
-                {lead.slug && <Link href={`/teachers/${lead.slug}`} className="text-[13px] font-extrabold text-[#2F57C9] hover:underline">See profile</Link>}
-              </div>
-              {p.teacherMore!.map(m => <CourseCard key={m.slug} c={m} />)}
-              <AllCard href={lead.slug ? `/teachers/${lead.slug}` : '/courses'} />
-            </div>
-          )}
+          {p.moreByTeacher!.length > 0 && <div className="hidden lg:block"><MoreFromTeachers teachers={p.moreByTeacher!} /></div>}
         </aside>
 
         {/* Phones: the lists move under the content */}
-        {(p.others!.length > 0 || (lead && p.teacherMore!.length > 0)) && (
+        {(p.others!.length > 0 || p.moreByTeacher!.length > 0) && (
           <div className="flex flex-col gap-4 lg:hidden">
-            {lead && p.teacherMore!.length > 0 && <div className="flex flex-col gap-2.5 rounded-[20px] bg-[#EAF0FF] p-[18px]"><b className="text-[17px]">More from {lead.name}</b>{p.teacherMore!.map(m => <CourseCard key={m.slug} c={m} />)}<AllCard href={lead.slug ? `/teachers/${lead.slug}` : '/courses'} /></div>}
+            {p.moreByTeacher!.length > 0 && <MoreFromTeachers teachers={p.moreByTeacher!} />}
             {p.others!.length > 0 && <AllCard href="/packages" label="Compare all packages" />}
           </div>
         )}

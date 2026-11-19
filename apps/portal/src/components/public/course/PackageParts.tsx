@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Icon } from '@/components/ui/Icon';
+import { AllCard, CourseCard, type MiniCourse } from './CourseParts';
 
 export interface PkgCourse {
   id: string; slug: string | null; title: string; coverUrl: string | null; exam: string | null; subject: string | null; level?: string | null;
@@ -57,5 +58,40 @@ export function PackageCourses({ courses }: { courses: PkgCourse[] }) {
         ))}
       </div>
     </>
+  );
+}
+
+export interface TeacherMore { name: string | null; slug: string | null; avatarUrl: string | null; courses: MiniCourse[] }
+
+/**
+ * More from the package's teachers, as one list: their other courses taken in turn (one from each teacher, then the
+ * next), each card showing its teacher. Their faces at the top open their profiles; the last card opens all courses.
+ */
+export function MoreFromTeachers({ teachers }: { teachers: TeacherMore[] }) {
+  if (!teachers.length) return null;
+  const mixed: MiniCourse[] = [];
+  for (let i = 0; mixed.length < 6 && teachers.some(t => t.courses[i]); i++) for (const t of teachers) if (t.courses[i] && mixed.length < 6) mixed.push(t.courses[i]);
+  const first = (n: string | null) => (n ?? '').split(' ')[0];
+  return (
+    <div className="flex flex-col gap-2.5 rounded-[20px] bg-[#EAF0FF] p-[18px]">
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex">
+          {teachers.map((t, i) => {
+            const face = (
+              <span className={clsx('flex h-[52px] w-[52px] items-center justify-center overflow-hidden rounded-[14px] bg-[#FFFDF8] font-extrabold text-[#3F6FE8] shadow-[0_10px_22px_rgba(7,32,97,0.2)] transition-transform hover:z-10 hover:rotate-0', i ? '-ml-2.5' : '', ['-rotate-[4deg]', 'rotate-3', '-rotate-2', 'rotate-[4deg]', '-rotate-3', 'rotate-2'][i % 6])}>
+                {t.avatarUrl ? <img src={t.avatarUrl} alt={t.name ?? ''} className="h-full w-full object-cover" /> : initials(t.name ?? '')}
+              </span>
+            );
+            return t.slug ? <Link key={t.slug} href={`/teachers/${t.slug}`} title={`${t.name}’s profile`} className="relative">{face}</Link> : <span key={i} className="relative">{face}</span>;
+          })}
+        </div>
+        <b className="text-center text-[16px]">{teachers.length > 1 ? 'More from our teachers' : `More from ${teachers[0].name}`}</b>
+        <span className="text-center text-[12.5px] text-[#637090]">
+          {teachers.map((t, i) => <span key={(t.slug ?? '') + i}>{i ? (i === teachers.length - 1 ? ' and ' : ', ') : ''}{t.slug ? <Link href={`/teachers/${t.slug}`} className="font-bold text-[#2F57C9] hover:underline">{first(t.name)}</Link> : first(t.name)}</span>)}
+        </span>
+      </div>
+      {mixed.map(m => <CourseCard key={m.slug} c={m} />)}
+      <AllCard href={teachers.length === 1 && teachers[0].slug ? `/teachers/${teachers[0].slug}` : '/courses'} />
+    </div>
   );
 }
