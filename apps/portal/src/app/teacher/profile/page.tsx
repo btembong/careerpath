@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { clsx } from 'clsx';
@@ -98,7 +99,7 @@ export default function TeacherProfilePage() {
             bio={p.bio} chips={subjects.slice(0, 4)}
             actions={<>
               <button type="button" onClick={() => setEditing(true)} className={heroPrimary}>Edit profile</button>
-              <button type="button" onClick={() => setPreview(true)} className={heroSecondary}>See it as students do</button>
+              <Link href="/teacher/profile/public" className={heroSecondary}>See it as students do</Link>
             </>} />
           <StatTiles tiles={[
             { l: 'Students', v: String(p.studentCount) },
