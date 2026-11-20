@@ -34,6 +34,14 @@ export class PackagesController {
 
   // ── Admin ────────────────────────────────────────────────
 
+  @Get('admin/packages/public-list-preview')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] The public /packages page’s data with the drafts too, to check the page before publishing' })
+  publicListPreview() {
+    return this.pages.packages(true);
+  }
+
   @Get('admin/packages/:id/public-preview')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)

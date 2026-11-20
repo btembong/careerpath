@@ -317,8 +317,8 @@ export class PublicPagesService {
   }
 
   /** /packages for visitors: every published package, with what's in it, for choosing side by side */
-  async packages() {
-    const rows = await this.prisma.package.findMany({ where: { isPublished: true }, orderBy: { priceAmount: 'asc' } });
+  async packages(allowDraft = false) {
+    const rows = await this.prisma.package.findMany({ where: allowDraft ? {} : { isPublished: true }, orderBy: { priceAmount: 'asc' } });
     const ids = [...new Set(rows.flatMap(r => r.courseIds))];
     const [courses, questions] = await Promise.all([
       this.prisma.platformCourse.findMany({
@@ -344,6 +344,7 @@ export class PublicPagesService {
       const priced = cs.length > 0 && cs.every(c => c.isSoldIndividually && (c.priceAmount ?? 0) > 0 && c.priceCurrency === p.currency);
       const worth = priced ? cs.reduce((t, c) => t + (c.priceAmount ?? 0), 0) : null;
       return {
+        published: p.isPublished,
         subjects: [...new Set(cs.map(c => c.subject?.name).filter(Boolean))].slice(0, 3) as string[],
         teachers: [...tm.values()].sort((a, b) => Number(!!b.avatarUrl) - Number(!!a.avatarUrl) || b.n - a.n).slice(0, 3).map(({ name, avatarUrl }) => ({ name, avatarUrl })),
         teacherCount: tm.size,

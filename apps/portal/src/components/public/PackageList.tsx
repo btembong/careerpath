@@ -7,7 +7,7 @@ import { Cover, perMonth, price } from '@/components/public/PublicChrome';
 
 export interface ListPkg {
   id: string; name: string; description: string | null; priceAmount: number; currency: string; bestValue: boolean; months: number | null;
-  courses: number; lessons: number; exams: string[]; covers: string[]; live: boolean; liveAddOn: boolean; mentorship: boolean;
+  courses: number; lessons: number; exams: string[]; covers: string[]; live: boolean; liveAddOn: boolean; mentorship: boolean; published?: boolean;
   subjects?: string[]; teachers?: { name: string | null; avatarUrl: string | null }[]; teacherCount?: number; questions?: number; soon?: number;
   mentorPerMonth?: number | null; mentorIncluded?: boolean; mentorAddOn?: { perMonth: number; price: number } | null; liveAddOnPrice?: number | null; worth?: number | null;
 }
@@ -15,6 +15,8 @@ export interface ListPkg {
 const s = (n: number, w: string, ws = `${w}s`) => `${n} ${n === 1 ? w : ws}`;
 const initials = (n: string | null) => (n ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || 'C';
 const short = (n: string) => n.replace(/\s+Package$/i, '');
+// Drafts only show in an admin's preview, and open their own preview
+const pageOf = (p: ListPkg) => `/packages/${p.id}${p.published === false ? '?preview=1' : ''}`;
 const TILT = ['-rotate-[5deg]', 'rotate-[4deg]', '-rotate-2'];
 const mentorText = (p: ListPkg) => p.mentorIncluded
   ? (p.mentorPerMonth == null ? 'Mentoring included' : p.mentorPerMonth === 1 ? 'Mentor once a month' : `Mentor ${p.mentorPerMonth === 2 ? 'twice' : `${p.mentorPerMonth} times`} a month`)
@@ -74,8 +76,10 @@ export function PackagesView({ list, courseCount }: { list: ListPkg[]; courseCou
 
         {shown.length > 1 && (
           <section>
-            <h2 className="mb-3.5 text-[24px] font-extrabold tracking-[-0.02em]">Compare side by side</h2>
-            <PackageCompare list={shown} />
+            <h2 className="mb-1 text-[24px] font-extrabold tracking-[-0.02em]">Compare side by side</h2>
+            {/* More than four columns can't be read side by side: the first four, and the chips narrow it */}
+            <p className="mb-3.5 text-[13.5px] text-[#637090]">{shown.length > 4 ? `The first 4 of ${shown.length}.${exams.length > 1 ? ' Pick an exam above to compare others.' : ''}` : 'Everything each package includes, in one table.'}</p>
+            <PackageCompare list={shown.slice(0, 4)} />
           </section>
         )}
 
@@ -119,13 +123,14 @@ function Badge({ icon, label, cls }: { icon: IconName; label: string; cls: strin
 }
 
 export function PackageCard({ p, wide }: { p: ListPkg; wide?: boolean }) {
-  const href = `/packages/${p.id}`;
+  const href = pageOf(p);
   const checkout = `/register?next=${encodeURIComponent(`/packages/${p.id}/checkout`)}`;
   const monthly = perMonth(p.priceAmount, p.currency, p.months);
   const teachers = p.teachers ?? [];
   const mentor = mentorText(p);
   const live = liveText(p);
   const badges = [
+    p.published === false ? <Badge key="d" icon="edit" label="Draft" cls="bg-[#FFF1D6] text-[#8A5A00]" /> : null,
     p.bestValue ? <Badge key="b" icon="star" label="Best value" cls="bg-[#072061] text-[#FFFFFF]" /> : null,
     mentor && p.mentorIncluded ? <Badge key="m" icon="mentorship" label="Mentoring included" cls="bg-[linear-gradient(120deg,#2F57C9,#5B82F5)] text-[#FFFFFF]" /> : null,
     p.live ? <Badge key="l" icon="live" label="Live classes" cls="bg-[linear-gradient(120deg,#2F57C9,#5B82F5)] text-[#FFFFFF]" /> : null,
@@ -230,7 +235,7 @@ export function PackageCompare({ list }: { list: ListPkg[] }) {
           <tr>
             <th className="w-[190px] border-b border-[#EEF1F7]" />
             {list.map(p => (
-              <th key={p.id} className={clsx('border-b border-[#EEF1F7] px-4 py-3 text-left align-bottom text-[15px]', p.bestValue && 'bg-[#F4F7FF]')}>
+              <th key={p.id} className={clsx('border-b border-[#EEF1F7] min-w-[170px] px-4 py-3 text-left align-bottom text-[15px]', p.bestValue && 'bg-[#F4F7FF]')}>
                 {p.bestValue && <span className="block text-[11px] font-extrabold uppercase tracking-[0.06em] text-[#3F6FE8]">Best value</span>}{short(p.name)}
               </th>
             ))}
@@ -245,7 +250,7 @@ export function PackageCompare({ list }: { list: ListPkg[] }) {
           ))}
           <tr>
             <td className="px-4 py-3" />
-            {list.map(p => <td key={p.id} className={clsx('px-4 py-3', p.bestValue && 'bg-[#F4F7FF]')}><Link href={`/packages/${p.id}`} className="inline-flex h-9 items-center rounded-lg bg-[#2F57C9] px-3 text-[13px] font-extrabold text-[#FFFFFF] hover:bg-[#2548AE]">See inside</Link></td>)}
+            {list.map(p => <td key={p.id} className={clsx('px-4 py-3', p.bestValue && 'bg-[#F4F7FF]')}><Link href={pageOf(p)} className="inline-flex h-9 items-center whitespace-nowrap rounded-lg bg-[#2F57C9] px-3 text-[13px] font-extrabold text-[#FFFFFF] hover:bg-[#2548AE]">See inside</Link></td>)}
           </tr>
         </tbody>
       </table>
