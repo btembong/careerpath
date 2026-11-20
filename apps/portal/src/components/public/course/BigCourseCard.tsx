@@ -153,7 +153,7 @@ export function BigCourseCard({ c, href, mine, onlyIn }: { c: CardCourse; href?:
             <span className="min-w-0 flex-1 truncate font-bold">{c.teacher?.name ?? 'CareerPath Africa'}</span>
             {cost && <b className="whitespace-nowrap text-[14px]">{cost}</b>}
             {mine
-              ? <span className="inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-md bg-azure-strong px-3 font-extrabold text-on-accent transition-all group-hover:gap-2 group-hover:bg-[#FFFFFF] group-hover:text-[#2F57C9]">Continue<Icon name="arrowRight" size={14} /></span>
+              ? <span className="inline-flex h-8 items-center gap-1 whitespace-nowrap rounded-md bg-azure-strong px-3 font-extrabold text-on-accent transition-all group-hover:gap-2 group-hover:bg-[#FFFFFF] group-hover:text-[#2F57C9]">{mine.pct >= 100 ? 'Review' : mine.pct > 0 ? 'Continue' : 'Start'}<Icon name="arrowRight" size={14} /></span>
               : <span className="inline-flex items-center gap-1 font-extrabold text-azure-strong transition-all group-hover:gap-2 group-hover:text-[#FFFFFF]">Details<Icon name="arrowRight" size={14} /></span>}
           </span>
         </span>
