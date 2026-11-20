@@ -8,7 +8,8 @@ import api from '@/lib/api';
 
 interface Course {
   id: string; title: string; isSoldIndividually: boolean; priceAmount: number | null; priceCurrency: string | null; accessMonths: number | null;
-  teacher: { name: string | null; firstName: string | null; lastName: string | null } | null;
+  teacher: { name: string | null; firstName: string | null; lastName: string | null; avatarUrl?: string | null } | null;
+  coverUrl?: string | null;
   modules: { lessons: { type: string }[] }[];
 }
 
@@ -35,6 +36,7 @@ export default function CourseCheckoutPage() {
       const access = c.accessMonths ? `${c.accessMonths} month${c.accessMonths === 1 ? '' : 's'}` : 'no time limit';
       setItem({
         kind: 'course', id: c.id, title: c.title,
+        banner: { count: lessons.length, unit: 'lesson', coverUrl: c.coverUrl ?? null, faces: c.teacher?.avatarUrl && !/gravatar/.test(c.teacher.avatarUrl) ? [c.teacher.avatarUrl] : [] },
         meta: [teacher, `${lessons.length} lesson${lessons.length === 1 ? '' : 's'}`, access].filter(Boolean).join(' · '),
         includes: [`${lessons.length === 1 ? 'The lesson' : `All ${lessons.length} lessons`}${quizzes ? ` and ${quizzes} quiz${quizzes === 1 ? '' : 'zes'}` : ''}`, 'Certificate when you finish', 'Watch on phone or computer'],
         priceAmount: c.priceAmount, currency: c.priceCurrency,

@@ -29,7 +29,8 @@ export default function PackageCheckoutPage() {
   const addLater = (useSearchParams().get('add') ?? '').split(',').filter((k): k is 'live' | 'mentorship' => k === 'live' || k === 'mentorship');
 
   useEffect(() => {
-    api.get(`/packages/${id}/details`).then(r => {
+    Promise.all([api.get(`/packages/${id}/details`), api.get('/catalogue/package-list').catch(() => ({ data: [] }))]).then(([r, pl]) => {
+      const pub = ((pl.data ?? []) as { id: string; covers: string[]; teachers?: { avatarUrl: string | null }[] }[]).find(x => x.id === id);
       const d: Details = r.data;
       // Renewing is allowed in the last 30 days of access
       const daysLeft = d.mine?.expiresAt ? (new Date(d.mine.expiresAt).getTime() - Date.now()) / DAY : null;
@@ -46,6 +47,7 @@ export default function PackageCheckoutPage() {
           'Certificates for each course',
         ].filter(Boolean) as string[],
         priceAmount: d.priceAmount, currency: d.currency,
+        banner: { count: d.courses.length, unit: 'course', coverUrl: pub?.covers[0] ?? null, faces: (pub?.teachers ?? []).map(x => x.avatarUrl).filter(Boolean) as string[] },
         accessUntil: d.validityDays ? new Date(Date.now() + d.validityDays * DAY) : null,
         ...(has && addLater.length ? { addLater } : {}),
       });
