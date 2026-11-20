@@ -18,7 +18,7 @@ const fetchPreview = (slug: string) => {
 };
 
 /** The play button on a course card: opens the first lesson, drawn like the player, without leaving the list */
-export function PlayPreview({ slug, title, openHref }: { slug: string; title: string; openHref?: string }) {
+export function PlayPreview({ slug, title, openHref, onBanner }: { slug: string; title: string; openHref?: string; onBanner?: boolean }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<CardPreview | null | undefined>(undefined);
 
@@ -45,7 +45,7 @@ export function PlayPreview({ slug, title, openHref }: { slug: string; title: st
   return (
     <>
       <button type="button" onClick={e => { e.preventDefault(); e.stopPropagation(); setOpen(true); }} aria-label={`Preview the first lesson of ${title}`}
-        className="pointer-events-auto relative z-10 flex h-10 w-10 items-center justify-center rounded-full bg-accent-soft text-azure-strong transition hover:scale-110 group-hover:bg-[#FFFFFF]">
+        className={onBanner ? 'pointer-events-auto relative z-10 flex h-10 w-10 items-center justify-center rounded-full bg-[#FFFFFF] text-[#2F57C9] shadow-[0_8px_18px_rgba(7,32,97,0.35)] transition hover:scale-110' : 'pointer-events-auto relative z-10 flex h-10 w-10 items-center justify-center rounded-full bg-accent-soft text-azure-strong transition hover:scale-110 group-hover:bg-[#FFFFFF]'}>
         <Icon name="play" size={16} />
       </button>
       {open && createPortal(

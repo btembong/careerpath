@@ -57,8 +57,8 @@ export function ReadMore({ text }: { text: string }) {
   const long = text.length > 420;
   return (
     <div>
-      <p className={clsx('whitespace-pre-line text-[15.5px] leading-[1.65] text-[#3A4A6B]', long && !open && 'line-clamp-4')}>{text}</p>
-      {long && <button type="button" onClick={() => setOpen(v => !v)} className="mt-2 text-[13px] font-extrabold uppercase tracking-[0.04em] text-[#2F57C9] hover:underline">{open ? 'Read less' : 'Read more'}</button>}
+      <p className={clsx('whitespace-pre-line text-[15.5px] leading-[1.65] text-ink2', long && !open && 'line-clamp-4')}>{text}</p>
+      {long && <button type="button" onClick={() => setOpen(v => !v)} className="mt-2 text-[13px] font-extrabold uppercase tracking-[0.04em] text-azure-strong hover:underline">{open ? 'Read less' : 'Read more'}</button>}
     </div>
   );
 }

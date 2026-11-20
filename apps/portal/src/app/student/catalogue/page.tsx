@@ -13,7 +13,7 @@ import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 import { CourseCover } from '@/components/courses/CourseCover';
 import { PageHero, asideLabel } from '@/components/hero/PageHero';
-import { BigCourseCard, levelKey, type CardCourse, type CardMine } from '@/components/public/course/BigCourseCard';
+import { BigCourseCard, CARD_GRID, ROW_GRID, levelKey, type CardCourse, type CardMine } from '@/components/public/course/BigCourseCard';
 
 /** The public course list's extras for a card: cover, teacher photo, level, topics, practice questions */
 interface PubCourse { id: string; slug: string; coverUrl: string | null; level?: string | null; topics?: string[]; questions: number; lessons: number; website: boolean; added: string; teacher: { name: string | null; avatarUrl: string | null } | null }
@@ -230,7 +230,7 @@ function Catalogue() {
   const onlyInOf = (c: Course) => !owned.has(c.id) ? pkgsFor(c.id)[0]?.name ?? null : null;
   const Big = ({ c }: { c: Course }) => <BigCourseCard c={toCard(c)} href={`/student/courses/${c.id}`} mine={mineOf(c)} onlyIn={onlyInOf(c)} />;
   // Started courses, most recent first (the library is sorted that way)
-  const going = lib.filter(l => l.state === 'going').map(l => byId.get(l.id)).filter(Boolean).slice(0, 3) as Course[];
+  const going = lib.filter(l => l.state === 'going').map(l => byId.get(l.id)).filter(Boolean).slice(0, 4) as Course[];
 
   const PRICES: [PriceFilter, string][] = [['any', 'Any price'], ['free', 'Free to start'], ['single', 'Buy on its own'], ['package', 'In a package']];
   const filterGroups = (
@@ -336,7 +336,7 @@ function Catalogue() {
                     <h2 className="text-lg font-extrabold text-navy">Continue where you left off</h2>
                     <Link href="/student/courses" className="ml-auto text-[13px] font-semibold text-azure-strong hover:underline">My courses →</Link>
                   </div>
-                  <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">{going.map(c => <Big key={c.id} c={c} />)}</div>
+                  <div className="@container"><div className={ROW_GRID}>{going.map(c => <Big key={c.id} c={c} />)}</div></div>
                 </section>
               )}
               {freeRow.length > 0 && !going.length && (
@@ -346,7 +346,7 @@ function Catalogue() {
                     <span className="hidden text-[13px] text-muted sm:inline">Try a whole course before you pay for anything</span>
                     <button type="button" onClick={() => setPrice('free')} className="ml-auto text-[13px] font-semibold text-azure-strong hover:underline">See all {priceCount('free')}</button>
                   </div>
-                  <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">{freeRow.slice(0, 3).map(c => <Big key={c.id} c={c} />)}</div>
+                  <div className="@container"><div className={ROW_GRID}>{freeRow.slice(0, 4).map(c => <Big key={c.id} c={c} />)}</div></div>
                 </section>
               )}
 
@@ -375,7 +375,7 @@ function Catalogue() {
                     <Button size="sm" variant="secondary" className="mt-4" onClick={clearAll}>Clear filters</Button>
                   </div>
                 ) : <>
-                  <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">{shown.map(c => <Big key={c.id} c={c} />)}</div>
+                  <div className="@container"><div className={CARD_GRID}>{shown.map(c => <Big key={c.id} c={c} />)}</div></div>
                 </>}
               </section>
             </div>

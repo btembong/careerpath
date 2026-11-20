@@ -6,7 +6,7 @@ import { PublicFooter, PublicHeader } from '@/components/public/PublicChrome';
 import { TeacherPhoto } from '@/components/teachers/TeacherPhoto';
 import { Flag } from '@/components/ui/Flag';
 import { VideoEmbed } from '@/components/ui/VideoEmbed';
-import { BigCourseCard, type CardCourse } from '@/components/public/course/BigCourseCard';
+import { BigCourseCard, CARD_GRID, type CardCourse } from '@/components/public/course/BigCourseCard';
 
 export const revalidate = 300;
 
@@ -113,13 +113,13 @@ export default async function TeacherPublicPage({ params }: { params: Promise<{ 
             <section>
               <h2 className="mb-2.5 text-[20px] font-extrabold">Courses by {first(t.name)}</h2>
               {!t.courses.length ? <p className="rounded-lg border border-line bg-white p-5 text-[14px] text-ink2">{first(t.name)}’s first courses are on their way. <Link href="/courses" className="font-bold text-[#2F57C9] hover:underline">See all courses</Link></p> : <>
-                <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
-                  {t.courses.slice(0, 6).map(c => <BigCourseCard key={c.slug} c={{ ...c, id: c.id ?? c.slug, teacher: { name: t.name, avatarUrl: t.avatarUrl } }} />)}
-                </div>
-                {t.courses.length > 6 && (
+                <div className="@container"><div className={CARD_GRID}>
+                  {t.courses.slice(0, 8).map(c => <BigCourseCard key={c.slug} c={{ ...c, id: c.id ?? c.slug, teacher: { name: t.name, avatarUrl: t.avatarUrl } }} />)}
+                </div></div>
+                {t.courses.length > 8 && (
                   <details className="group mt-3">
                     <summary className="cursor-pointer list-none text-[13.5px] font-extrabold text-[#2F57C9] hover:underline group-open:hidden">See all {t.courses.length} courses →</summary>
-                    <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">{t.courses.slice(6).map(c => <BigCourseCard key={c.slug} c={{ ...c, id: c.id ?? c.slug, teacher: { name: t.name, avatarUrl: t.avatarUrl } }} />)}</div>
+                    <div className="@container"><div className={CARD_GRID}>{t.courses.slice(8).map(c => <BigCourseCard key={c.slug} c={{ ...c, id: c.id ?? c.slug, teacher: { name: t.name, avatarUrl: t.avatarUrl } }} />)}</div></div>
                   </details>
                 )}
               </>}

@@ -34,11 +34,12 @@ export function cardTitle(raw: string): { title: string; form: string | null } {
   if (f) { form = /sixth/i.test(f[1]) ? tidy(f[1].toUpperCase()) : `Form ${tidy(f[1].toUpperCase()).replace(/\s*[-–]\s*/, '–')}`; t = t.slice(f[0].length); }
   const parts = t.split(/\s+[–—-]\s+/);
   let head = parts.length > 1 ? parts.slice(0, -1).join(' – ') : null;
-  let tail = (parts.length > 1 ? parts[parts.length - 1] : t).replace(/^Lesson\s*Title\s*:\s*/i, '').replace(/\s*\([^)]{12,}\)\s*$/, '').trim();
+  let tail = (parts.length > 1 ? parts[parts.length - 1] : t).replace(/^[–—-]\s*/, '').replace(/^Lesson\s*Title\s*:\s*/i, '').replace(/\s*\([^)]{12,}\)\s*$/, '').trim();
   // "TOEFL TEST – Succeeding in …": the exam alone in front adds nothing
   if (head && /^(\w+\s+)?(test|exam)$/i.test(head)) head = null;
   tail = tidy(tail);
-  return { title: head ? `${tidy(head)}: ${tail}` : tail, form };
+  // Leftover separators at the start ("– LESSON 1: …")
+  return { title: (head ? `${tidy(head)}: ${tail}` : tail).replace(/^[\s–—.,:-]+/, ''), form };
 }
 
 const TEST_PREP = /^(ielts|toefl|sat|gre|gmat|duolingo)/i;
@@ -56,6 +57,13 @@ export function levelKey(level: string | null | undefined, exam: string | null):
   const n = bars(level, exam);
   return n === 3 ? 'a' : n === 2 ? 'o' : '';
 }
+
+/**
+ * Course card grids, by the room they have (wrap them in an `@container`): 4 a row when there's space, 3 on tablets, 2, then 1 on phones.
+ * ROW_GRID is for a single row of up to 4: the 4th card hides until there are 4 columns, so a row never leaves one alone.
+ */
+export const CARD_GRID = 'grid grid-cols-1 gap-x-4 gap-y-6 @[420px]:grid-cols-2 @[640px]:grid-cols-3 @[860px]:grid-cols-4';
+export const ROW_GRID = `${CARD_GRID} [&>*:nth-child(4)]:hidden @[860px]:[&>*:nth-child(4)]:flex`;
 
 const DAY = 86400000;
 type Badge = { icon: IconName; label: string; cls: string };
@@ -98,22 +106,21 @@ export function BigCourseCard({ c, href, mine, onlyIn }: { c: CardCourse; href?:
         {/* Banner: the cover tilted like a book, the teacher on a blue swoosh */}
         <span className={clsx('relative block h-[150px] overflow-hidden', c.website ? 'bg-[linear-gradient(125deg,#3A4A6B,#637090)]' : 'bg-[linear-gradient(125deg,#072061_0%,#1B3A94_55%,#2F57C9_100%)]')}>
           <span className={clsx('absolute -right-[30px] -top-5 h-[220px] w-[190px] -skew-x-[14deg] rounded-[40px_0_0_120px] transition-transform duration-[350ms] group-hover:-translate-x-2.5', c.website ? 'bg-[linear-gradient(200deg,#C9D4F2,#9AA8D2)] opacity-70' : 'bg-[linear-gradient(200deg,#8EA8FF,#3F6FE8_60%,#2F57C9)] opacity-95')} />
-          <span className="absolute left-[18px] top-5 h-[104px] w-[104px] -rotate-6 overflow-hidden rounded-xl bg-[#FFFFFF] shadow-[0_14px_28px_rgba(0,0,0,0.35)] transition-transform duration-[350ms] group-hover:-rotate-2 group-hover:scale-105">
+          <span className="absolute left-[7%] top-5 aspect-square w-[40%] max-w-[104px] -rotate-6 overflow-hidden rounded-xl bg-[#FFFFFF] shadow-[0_14px_28px_rgba(0,0,0,0.35)] transition-transform duration-[350ms] group-hover:-rotate-2 group-hover:scale-105">
             <Cover src={c.coverUrl} label={c.subject ?? c.exam} seed={c.id} className="h-full w-full" />
           </span>
-          <span className="absolute right-[22px] top-6 flex h-24 w-24 rotate-[4deg] items-center justify-center overflow-hidden rounded-[18px] bg-[#FFFDF8] text-[30px] font-extrabold text-[#3F6FE8] shadow-[0_14px_28px_rgba(7,32,97,0.45)] transition-transform duration-[350ms] group-hover:rotate-0 group-hover:scale-105">
+          <span className="absolute right-[8%] top-6 flex aspect-square w-[35%] max-w-24 rotate-[4deg] items-center justify-center overflow-hidden rounded-[18px] bg-[#FFFDF8] text-[30px] font-extrabold text-[#3F6FE8] shadow-[0_14px_28px_rgba(7,32,97,0.45)] transition-transform duration-[350ms] group-hover:rotate-0 group-hover:scale-105">
             {c.teacher?.avatarUrl ? <img src={c.teacher.avatarUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : 'c'}
           </span>
           {c.exam && <span className="absolute bottom-2.5 left-3.5 text-[11px] font-extrabold uppercase tracking-[0.06em] text-[#C9D4F2]">{c.exam}</span>}
+          {/* The preview button sits on the banner, so the title has the card's full width */}
+          <span className="absolute bottom-2.5 right-3 z-10"><PlayPreview slug={c.slug} title={title} openHref={href ? (mine?.href ?? href) : undefined} onBanner /></span>
         </span>
 
         <span className="relative flex flex-1 flex-col gap-2 px-4 pb-3.5 pt-[15px] transition-colors duration-300 group-hover:text-[#FFFFFF]">
           <span aria-hidden className="absolute inset-0 bg-[linear-gradient(210deg,#8EA8FF,#3F6FE8_46%,#2F57C9)] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
           {eyebrow && <span className="relative truncate text-[11.5px] font-extrabold uppercase tracking-[0.05em] text-muted transition-colors group-hover:text-[#EEF3FF]">{eyebrow}</span>}
-          <span className="relative grid grid-cols-[minmax(0,1fr)_40px] items-start gap-2.5">
-            <b className="line-clamp-2 text-[17px] font-extrabold leading-[1.2] tracking-[-0.015em]">{title}</b>
-            <PlayPreview slug={c.slug} title={title} openHref={href ? (mine?.href ?? href) : undefined} />
-          </span>
+          <b className="relative line-clamp-2 text-[17px] font-extrabold leading-[1.2] tracking-[-0.015em]">{title}</b>
           <span className="relative flex flex-wrap gap-x-3.5 gap-y-1 text-[13px] text-ink2 transition-colors group-hover:text-[#EEF3FF]">
             {levelLabel && (
               <span className="inline-flex items-center gap-1.5">

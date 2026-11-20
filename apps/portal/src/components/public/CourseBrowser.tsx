@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Cover, Face, price } from '@/components/public/PublicChrome';
 import { Icon } from '@/components/ui/Icon';
-import { BigCourseCard, levelKey } from '@/components/public/course/BigCourseCard';
+import { BigCourseCard, CARD_GRID, ROW_GRID, levelKey } from '@/components/public/course/BigCourseCard';
 
 export interface BrowseCourse {
   id: string; slug: string; title: string; summary: string | null; coverUrl: string | null;
@@ -117,7 +117,7 @@ export function CourseBrowser({ data, initial }: { data: BrowseData; initial: Re
   const shelf = (title: string, list: BrowseCourse[], more?: { label: string; on: () => void }) => list.length > 0 && (
     <section key={title}>
       <div className="mb-3 flex items-baseline gap-3"><h2 className="flex-1 text-[20px] font-extrabold tracking-[-0.01em]">{title}</h2>{more && <button onClick={more.on} className="text-[13.5px] font-extrabold text-azure-strong hover:underline">{more.label}</button>}</div>
-      <Grid list={list.slice(0, 3)} />
+      <Grid list={list.slice(0, 4)} row />
     </section>
   );
 
@@ -277,11 +277,11 @@ function Group({ title, value, options, onPick }: { title: string; value: string
 }
 
 /** The course cards: one a row on phones, two on tablets, three on computers */
-function Grid({ list }: { list: BrowseCourse[] }) {
+function Grid({ list, row }: { list: BrowseCourse[]; row?: boolean }) {
   return (
-    <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="@container"><div className={row ? ROW_GRID : CARD_GRID}>
       {list.map(c => <BigCourseCard key={c.id} c={{ ...c, exam: c.exam?.name ?? null, subject: c.subject?.name ?? null }} />)}
-    </div>
+    </div></div>
   );
 }
 
