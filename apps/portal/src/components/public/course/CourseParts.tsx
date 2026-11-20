@@ -18,7 +18,7 @@ export function CourseContent({ modules, start }: { modules: { title: string; le
   const toggle = () => { const next = !all; ref.current?.querySelectorAll('details').forEach(d => { d.open = next; }); setAll(next); };
   return (
     <>
-      <button type="button" onClick={toggle} className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#D5DDEC] bg-[#FFFFFF] px-3.5 text-[13px] font-bold text-navy hover:bg-subtle">
+      <button type="button" onClick={toggle} className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3.5 text-[13px] font-bold text-navy hover:bg-subtle">
         {all ? 'Collapse all' : 'Expand all'}<Icon name="chevronDown" size={14} className={clsx('transition-transform', all && 'rotate-180')} />
       </button>
       <div ref={ref} className="order-last mt-3.5 flex w-full flex-col gap-2.5">
@@ -26,20 +26,20 @@ export function CourseContent({ modules, start }: { modules: { title: string; le
           const notes = m.lessons.filter(l => l.type === 'TEXT').length, quizzes = m.lessons.filter(l => l.type === 'QUIZ').length, videos = m.lessons.filter(l => l.type === 'VIDEO').length;
           const locked = !m.lessons.some(l => l.free);
           return (
-            <details key={m.title + i} open={i === 0} className="group overflow-hidden rounded-xl border border-line bg-[#FFFFFF]">
-              <summary className="flex cursor-pointer list-none items-center gap-3 px-[18px] py-4 text-[15.5px] font-bold text-navy hover:bg-[#FAFBFE]">
-                <Icon name="chevronRight" size={16} className="flex-shrink-0 text-[#637090] transition-transform group-open:rotate-90" />
+            <details key={m.title + i} open={i === 0} className="group overflow-hidden rounded-xl border border-line bg-white">
+              <summary className="flex cursor-pointer list-none items-center gap-3 px-[18px] py-4 text-[15.5px] font-bold text-navy hover:bg-subtle">
+                <Icon name="chevronRight" size={16} className="flex-shrink-0 text-muted transition-transform group-open:rotate-90" />
                 <span className="min-w-0 flex-1">{i + 1} · {m.title}</span>
-                {locked && <Icon name="lock" size={15} className="flex-shrink-0 text-[#9AA6C2]" />}
-                <span className="whitespace-nowrap text-[13.5px] font-semibold text-[#637090]">{[videos && s(videos, 'video'), notes && s(notes, 'note'), quizzes && s(quizzes, 'quiz', 'quizzes')].filter(Boolean).join(' · ') || s(m.lessons.length, 'lesson')}</span>
+                {locked && <Icon name="lock" size={15} className="flex-shrink-0 text-muted" />}
+                <span className="whitespace-nowrap text-[13.5px] font-semibold text-muted">{[videos && s(videos, 'video'), notes && s(notes, 'note'), quizzes && s(quizzes, 'quiz', 'quizzes')].filter(Boolean).join(' · ') || s(m.lessons.length, 'lesson')}</span>
               </summary>
               <ul>
                 {m.lessons.map(l => (
-                  <li key={l.title} className="flex items-center gap-3 border-t border-[#EEF1F7] py-2.5 pl-[46px] pr-[18px] text-[14px] text-[#3A4A6B]">
-                    <Icon name={TYPE_ICON[l.type]} size={16} className="flex-shrink-0 text-[#3F6FE8]" />
+                  <li key={l.title} className="flex items-center gap-3 border-t border-line py-2.5 pl-[46px] pr-[18px] text-[14px] text-ink2">
+                    <Icon name={TYPE_ICON[l.type]} size={16} className="flex-shrink-0 text-azure-strong" />
                     <span className="min-w-0 flex-1">{l.title}</span>
-                    {l.minutes ? <span className="text-xs text-[#9AA6C2]">{l.minutes} min</span> : null}
-                    {l.free ? <Link href={start} className="whitespace-nowrap text-[12px] font-extrabold text-[#2F57C9] hover:underline">FREE PREVIEW</Link> : <Icon name="lock" size={14} className="flex-shrink-0 text-[#9AA6C2]" />}
+                    {l.minutes ? <span className="text-xs text-muted">{l.minutes} min</span> : null}
+                    {l.free ? <Link href={start} className="whitespace-nowrap text-[12px] font-extrabold text-azure-strong hover:underline">FREE PREVIEW</Link> : <Icon name="lock" size={14} className="flex-shrink-0 text-muted" />}
                   </li>
                 ))}
               </ul>

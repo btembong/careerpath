@@ -11,6 +11,7 @@ import api from '@/lib/api';
 import { PersonPhoto } from '@/components/ui/PersonPhoto';
 import { Celebrate } from '@/components/celebrate/Celebrate';
 import { AddExtras } from '@/components/checkout/AddExtras';
+import { CoursePageBody, type CoursePage } from '@/components/public/course/CoursePageBody';
 
 interface Lesson { id: string; title: string; type: 'VIDEO' | 'TEXT' | 'QUIZ' | 'LIVE'; durationSecs: number | null; isFree: boolean }
 interface Course {
@@ -35,7 +36,8 @@ const ICON: Record<Lesson['type'], string> = {
   VIDEO: 'M8 5v14l11-7z', TEXT: 'M7 3h7l5 5v13H7zM14 3v5h5', QUIZ: 'M9 9a3 3 0 1 1 4 2.8c-.6.3-1 .9-1 1.6V14M12 17h.01', LIVE: 'M15 10l5-3v10l-5-3M3 6h12v12H3z',
 };
 
-export default function CourseDetailPage() {
+/** The portal's own course page: kept for courses outside the public catalogue, and for the start / added hand-offs */
+function OldCourseDetail() {
   const { courseId } = useParams<{ courseId: string }>();
   const router = useRouter();
   const [c, setC] = useState<Course | null>(null);
@@ -317,5 +319,53 @@ function Check({ text }: { text: string }) {
     <li className="flex items-start gap-2">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mt-0.5 flex-shrink-0 text-azure-strong"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>{text}
     </li>
+  );
+}
+
+/**
+ * A course, signed in. Theirs: straight to its overview (one page per course to come back to).
+ * Not theirs yet: the public course page inside the portal, with Start and Buy going straight in.
+ */
+export default function CourseDetailPage() {
+  const { courseId } = useParams<{ courseId: string }>();
+  const router = useRouter();
+  const [mode, setMode] = useState<'loading' | 'public' | 'old'>('loading');
+  const [page, setPage] = useState<CoursePage | null>(null);
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    // The start and "extra added" hand-offs live on the portal's own page
+    if (q.get('start') === '1' || q.get('added') === '1') { setMode('old'); return; }
+    Promise.all([
+      api.get('/portals/student/library').catch(() => ({ data: { courses: [] } })),
+      api.get(`/platform-courses/${courseId}`).catch(() => ({ data: null })),
+      api.get(`/catalogue/course-page/${courseId}`).catch(() => ({ data: null })),
+    ]).then(([lib, own, pub]) => {
+      const mine = ((lib.data?.courses ?? []) as { id: string }[]).some(x => x.id === courseId) || !!own.data?.hasAccess;
+      if (mine) { router.replace(`/student/learn/${courseId}`); return; }
+      if (pub.data?.id) {
+        const r = pub.data as CoursePage;
+        setPage({ ...r, examCountries: r.examCountries ?? [], teacherMore: r.teacherMore ?? [], examMore: r.examMore ?? [], packages: r.packages ?? [], outcomes: r.outcomes ?? [], modules: r.modules ?? [] });
+        setMode('public');
+      } else setMode('old');
+    });
+  }, [courseId, router]);
+
+  if (mode === 'old') return <OldCourseDetail />;
+  if (mode === 'loading' || !page) return (
+    <div className="flex min-h-full flex-col">
+      <Topbar backHref="/student/catalogue" backLabel="Catalogue" title="Course" />
+      <div className="grid gap-6 p-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-7 lg:py-6">
+        <div className="h-[420px] animate-pulse rounded-[22px] border border-line bg-white" />
+        <div className="h-[520px] animate-pulse rounded-[20px] border border-line bg-white" />
+      </div>
+    </div>
+  );
+  // Free: enrol and open the first lesson (the ?start=1 hand-off); paid: checkout
+  return (
+    <div className="flex min-h-full flex-col text-navy">
+      <Topbar backHref="/student/catalogue" backLabel="Catalogue" title={page.title} />
+      <CoursePageBody c={page} portal start={`/student/courses/${page.id}?start=1`} buy={`/student/courses/${page.id}/checkout`} />
+    </div>
   );
 }

@@ -13,7 +13,7 @@ const clean = (t: string) => t.replace(/^\d+[.)]\s*/, '');
 export function LessonPreview({ p, href }: { p: Preview; href: string }) {
   const [icon, kind] = TYPE[p.type] ?? TYPE.TEXT;
   return (
-    <Link href={href} aria-label={`Open the first lesson: ${clean(p.lesson)}`} className="group relative grid h-[230px] grid-cols-[118px_minmax(0,1fr)] overflow-hidden rounded-[14px] bg-[#0B1640] text-[#FFFFFF]">
+    <Link href={href} aria-label={`Open the first lesson: ${clean(p.lesson)}`} className="keep-light group relative grid h-[230px] grid-cols-[118px_minmax(0,1fr)] overflow-hidden rounded-[14px] bg-[#0B1640] text-[#FFFFFF]">
       <div aria-hidden className="flex flex-col gap-1.5 border-r border-[rgba(255,255,255,0.08)] bg-[#0E1C4D] px-2.5 py-3">
         <span className="text-[8.5px] font-extrabold uppercase tracking-[0.08em] text-[#7FA3FF]">Course overview</span>
         <span className="h-1 rounded-full bg-[rgba(255,255,255,0.1)]"><span className="block h-1 w-[12%] rounded-full bg-[#3F6FE8]" /></span>
