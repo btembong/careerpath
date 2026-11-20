@@ -122,14 +122,18 @@ function Badge({ icon, label, cls }: { icon: IconName; label: string; cls: strin
   return <span className={clsx('inline-flex h-[26px] flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-extrabold', cls)}><Icon name={icon} size={13} />{label}</span>;
 }
 
-export function PackageCard({ p, wide }: { p: ListPkg; wide?: boolean }) {
+/** A signed-in student's package: until when, and an extra they can still add */
+export interface PkgOwned { until: string | null; add?: { label: string; href: string } | null }
+
+export function PackageCard({ p, wide, signedIn, owned, dim }: { p: ListPkg; wide?: boolean; signedIn?: boolean; owned?: PkgOwned | null; dim?: boolean }) {
   const href = pageOf(p);
-  const checkout = `/register?next=${encodeURIComponent(`/packages/${p.id}/checkout`)}`;
+  const checkout = signedIn ? `/packages/${p.id}/checkout` : `/register?next=${encodeURIComponent(`/packages/${p.id}/checkout`)}`;
   const monthly = perMonth(p.priceAmount, p.currency, p.months);
   const teachers = p.teachers ?? [];
   const mentor = mentorText(p);
   const live = liveText(p);
   const badges = [
+    owned ? <Badge key="y" icon="check" label="Yours" cls="bg-[#FFFFFF] text-[#17703A] shadow-[0_0_0_1px_rgba(23,112,58,0.35)]" /> : null,
     p.published === false ? <Badge key="d" icon="edit" label="Draft" cls="bg-[#FFF1D6] text-[#8A5A00]" /> : null,
     p.bestValue ? <Badge key="b" icon="star" label="Best value" cls="bg-[#072061] text-[#FFFFFF]" /> : null,
     mentor && p.mentorIncluded ? <Badge key="m" icon="mentorship" label="Mentoring included" cls="bg-[linear-gradient(120deg,#2F57C9,#5B82F5)] text-[#FFFFFF]" /> : null,
@@ -148,10 +152,10 @@ export function PackageCard({ p, wide }: { p: ListPkg; wide?: boolean }) {
   const who = teachers.length ? `${teachers.slice(0, 2).map(t => t.name).join(', ')}${(p.teacherCount ?? teachers.length) > 2 ? ` and ${(p.teacherCount ?? teachers.length) - 2} more` : ''}` : 'The CareerPath team';
 
   return (
-    <div className="flex min-w-0 flex-col gap-2">
+    <div className={clsx('flex min-w-0 flex-col gap-2 transition-opacity', dim && 'opacity-40')}>
       <div className="flex h-[26px] gap-1.5 overflow-hidden">{badges}</div>
-      <div className={clsx('group relative flex flex-1 overflow-hidden rounded-[18px] bg-[#FFFFFF] text-navy transition duration-300 hover:-translate-y-1 hover:border-[#3F6FE8] hover:shadow-[0_24px_48px_rgba(47,87,201,0.28)]',
-        p.bestValue ? 'border-2 border-[#3F6FE8]' : 'border border-[#E1E7F2]', wide ? 'flex-col md:flex-row' : 'flex-col')}>
+      <div className={clsx('group relative flex flex-1 overflow-hidden rounded-[18px] bg-white text-navy transition duration-300 hover:-translate-y-1 hover:border-[#3F6FE8] hover:shadow-[0_24px_48px_rgba(47,87,201,0.28)]',
+        p.bestValue ? 'border-2 border-[#3F6FE8]' : 'border border-line', wide ? 'flex-col md:flex-row' : 'flex-col')}>
         <Link href={href} aria-label={p.name} className="absolute inset-0 z-[1]" />
 
         {/* Banner: course pictures under the count, the teachers on the swoosh */}
@@ -187,28 +191,35 @@ export function PackageCard({ p, wide }: { p: ListPkg; wide?: boolean }) {
 
         <span className={clsx('relative flex flex-1 flex-col gap-2.5 transition-colors duration-300 group-hover:text-[#FFFFFF]', wide ? 'p-5 md:px-[26px] md:py-6' : 'px-[18px] py-4')}>
           <span aria-hidden className="absolute inset-0 bg-[linear-gradient(210deg,#8EA8FF,#3F6FE8_46%,#2F57C9)] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-          <span className="relative line-clamp-2 text-[11.5px] font-extrabold uppercase tracking-[0.05em] text-[#637090] transition-colors group-hover:text-[#EEF3FF]">{[...p.exams, ...(p.subjects ?? [])].join(' · ')}</span>
+          <span className="relative line-clamp-2 text-[11.5px] font-extrabold uppercase tracking-[0.05em] text-muted transition-colors group-hover:text-[#EEF3FF]">{[...p.exams, ...(p.subjects ?? [])].join(' · ')}</span>
           <b className={clsx('relative font-extrabold leading-[1.15] tracking-[-0.02em]', wide ? 'text-[24px] md:text-[28px]' : 'text-[20px]')}>{short(p.name)}</b>
-          {p.description && <span className="relative line-clamp-2 text-[14px] leading-normal text-[#3A4A6B] transition-colors group-hover:text-[#EEF3FF]">{p.description.replace(/\s*\n+\s*(\.{3}|…)?\s*/g, ' ').trim()}</span>}
+          {p.description && <span className="relative line-clamp-2 text-[14px] leading-normal text-ink2 transition-colors group-hover:text-[#EEF3FF]">{p.description.replace(/\s*\n+\s*(\.{3}|…)?\s*/g, ' ').trim()}</span>}
           <span className={clsx('relative grid gap-1.5', wide ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-2')}>
             {tiles.map(([icon, label, on]) => (
-              <span key={icon} className={clsx('flex items-center gap-2 rounded-[9px] px-2.5 py-[7px] text-[12.5px] font-bold leading-tight transition-colors', on ? 'bg-[#F4F6FB] group-hover:bg-[rgba(255,255,255,0.14)]' : 'bg-[#F4F6FB] text-[#9AA6C2] group-hover:bg-[rgba(255,255,255,0.08)] group-hover:text-[#C9D4F2]')}>
-                <span className={clsx('flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-[7px]', on ? 'bg-[#EAF0FF] text-[#3F6FE8] group-hover:bg-[#FFFFFF]' : 'bg-[#F1F4FA] text-[#C3CBDD]')}><Icon name={icon} size={13} /></span>{label}
+              <span key={icon} className={clsx('flex items-center gap-2 rounded-[9px] px-2.5 py-[7px] text-[12.5px] font-bold leading-tight transition-colors', on ? 'bg-subtle group-hover:bg-[rgba(255,255,255,0.14)]' : 'bg-subtle text-muted group-hover:bg-[rgba(255,255,255,0.08)] group-hover:text-[#C9D4F2]')}>
+                <span className={clsx('flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-[7px]', on ? 'bg-accent-soft text-azure-strong group-hover:bg-[#FFFFFF]' : 'bg-subtle text-muted opacity-60')}><Icon name={icon} size={13} /></span>{label}
               </span>
             ))}
           </span>
-          {!!p.soon && <span className="relative rounded-[7px] bg-[#FFF8EA] px-2.5 py-1.5 text-[12px] text-[#8A5A00] transition-colors group-hover:bg-[rgba(255,255,255,0.14)] group-hover:text-[#FFF1D6]">{p.soon} of {p.courses} courses still moving from the website</span>}
+          {owned && (
+            <span className="relative flex items-start gap-2 rounded-[9px] border border-[rgba(46,170,95,0.35)] bg-[rgba(23,112,58,0.12)] px-2.5 py-2 text-[12.5px] group-hover:border-[rgba(255,255,255,0.3)] group-hover:bg-[rgba(255,255,255,0.14)]">
+              <Icon name="check" size={14} className="mt-0.5 text-[#2EAA5F] group-hover:text-[#FFFFFF]" />
+              <span className="min-w-0"><b className="block">Yours{owned.until ? ` until ${new Date(owned.until).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}</b>
+                {owned.add && <Link href={owned.add.href} className="pointer-events-auto relative z-10 font-bold text-azure-strong hover:underline group-hover:text-[#FFFFFF]">{owned.add.label}</Link>}</span>
+            </span>
+          )}
+          {!!p.soon && <span className="relative rounded-[7px] bg-[#FFF8EA] px-2.5 py-1.5 text-[12px] text-[#8A5A00] transition-colors group-hover:bg-[rgba(255,255,255,0.14)] group-hover:text-[#FFF1D6]">{p.soon} of {s(p.courses, 'course')} still moving from the website</span>}
           <span className="relative flex items-center gap-2 text-[13px] font-bold">
-            {teachers.length > 0 && <span className="flex">{teachers.map((t, i) => <span key={i} className={clsx('flex h-[26px] w-[26px] items-center justify-center overflow-hidden rounded-[7px] border-2 border-[#FFFFFF] bg-[#EAF0FF] text-[9px] text-[#3F6FE8]', i ? '-ml-[7px]' : '')}>{t.avatarUrl ? <img src={t.avatarUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : initials(t.name)}</span>)}</span>}
+            {teachers.length > 0 && <span className="flex">{teachers.map((t, i) => <span key={i} className={clsx('flex h-[26px] w-[26px] items-center justify-center overflow-hidden rounded-[7px] border-2 border-white bg-accent-soft text-[9px] text-azure-strong', i ? '-ml-[7px]' : '')}>{t.avatarUrl ? <img src={t.avatarUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : initials(t.name)}</span>)}</span>}
             <span className="min-w-0 truncate">{who}</span>
           </span>
-          <span className="relative mt-auto flex items-end gap-2.5 border-t border-[#EEF1F7] pt-3 transition-colors group-hover:border-[rgba(255,255,255,0.25)]">
+          <span className="relative mt-auto flex items-end gap-2.5 border-t border-line pt-3 transition-colors group-hover:border-[rgba(255,255,255,0.25)]">
             <span className="min-w-0 flex-1">
               <b className="block text-[26px] font-extrabold leading-none tracking-[-0.02em]">{price(p.priceAmount, p.currency)}</b>
-              <span className="text-[12.5px] text-[#637090] transition-colors group-hover:text-[#EEF3FF]">{[p.months ? `${p.months} months` : null, monthly].filter(Boolean).join(' · ')}</span>
-              {p.worth && <span className="mt-1 block text-[11.5px] font-extrabold leading-snug text-[#17703A] group-hover:text-[#FFFFFF]">Save {price(p.worth - p.priceAmount, p.currency)} on buying them one by one</span>}
+              <span className="text-[12.5px] text-muted transition-colors group-hover:text-[#EEF3FF]">{owned ? 'Paid · it’s yours' : [p.months ? `${p.months} months` : null, monthly].filter(Boolean).join(' · ')}</span>
+              {p.worth && !owned && <span className="mt-1 block text-[11.5px] font-extrabold leading-snug text-[#17703A] group-hover:text-[#FFFFFF]">Save {price(p.worth - p.priceAmount, p.currency)} on buying them one by one</span>}
             </span>
-            <Link href={checkout} className="pointer-events-auto relative z-10 inline-flex h-[42px] flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] bg-[#2F57C9] px-[15px] text-[14px] font-extrabold text-[#FFFFFF] transition-all hover:bg-[#2548AE] group-hover:gap-2.5 group-hover:bg-[#FFFFFF] group-hover:text-[#2F57C9]">Get it<Icon name="arrowRight" size={14} /></Link>
+            <Link href={owned ? href : checkout} className="pointer-events-auto relative z-10 inline-flex h-[42px] flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] bg-[#2F57C9] px-[15px] text-[14px] font-extrabold text-[#FFFFFF] transition-all hover:bg-[#2548AE] group-hover:gap-2.5 group-hover:bg-[#FFFFFF] group-hover:text-[#2F57C9]">{owned ? 'Open' : 'Get it'}<Icon name="arrowRight" size={14} /></Link>
           </span>
         </span>
       </div>
@@ -220,7 +231,7 @@ export function PackageCard({ p, wide }: { p: ListPkg; wide?: boolean }) {
 export function PackageCompare({ list }: { list: ListPkg[] }) {
   if (list.length < 2) return null;
   const rows: [string, (p: ListPkg) => React.ReactNode][] = [
-    ['Price', p => <><b>{price(p.priceAmount, p.currency)}</b><br /><small className="text-[#637090]">{perMonth(p.priceAmount, p.currency, p.months) ?? ''}</small></>],
+    ['Price', p => <><b>{price(p.priceAmount, p.currency)}</b><br /><small className="text-muted">{perMonth(p.priceAmount, p.currency, p.months) ?? ''}</small></>],
     ['Courses', p => <>{p.courses}{p.soon ? <small className="text-[#8A5A00]"> ({p.soon} coming)</small> : null}</>],
     ['Lessons', p => p.lessons || null],
     ['Practice questions', p => p.questions || null],
@@ -229,14 +240,14 @@ export function PackageCompare({ list }: { list: ListPkg[] }) {
     ['Access', p => p.months ? `${p.months} months` : 'While on sale'],
   ];
   return (
-    <div className="overflow-x-auto rounded-2xl border border-[#E1E7F2] bg-[#FFFFFF]">
+    <div className="overflow-x-auto rounded-2xl border border-line bg-white">
       <table className="w-full min-w-[640px] border-collapse text-[14px]">
         <thead>
           <tr>
-            <th className="w-[190px] border-b border-[#EEF1F7]" />
+            <th className="w-[190px] border-b border-line" />
             {list.map(p => (
-              <th key={p.id} className={clsx('border-b border-[#EEF1F7] min-w-[170px] px-4 py-3 text-left align-bottom text-[15px]', p.bestValue && 'bg-[#F4F7FF]')}>
-                {p.bestValue && <span className="block text-[11px] font-extrabold uppercase tracking-[0.06em] text-[#3F6FE8]">Best value</span>}{short(p.name)}
+              <th key={p.id} className={clsx('border-b border-line min-w-[170px] px-4 py-3 text-left align-bottom text-[15px]', p.bestValue && 'bg-accent-soft')}>
+                {p.bestValue && <span className="block text-[11px] font-extrabold uppercase tracking-[0.06em] text-azure-strong">Best value</span>}{short(p.name)}
               </th>
             ))}
           </tr>
@@ -244,13 +255,13 @@ export function PackageCompare({ list }: { list: ListPkg[] }) {
         <tbody>
           {rows.map(([label, cell]) => (
             <tr key={label}>
-              <td className="border-b border-[#EEF1F7] px-4 py-3 font-bold text-[#637090]">{label}</td>
-              {list.map(p => { const v = cell(p); return <td key={p.id} className={clsx('border-b border-[#EEF1F7] px-4 py-3', p.bestValue && 'bg-[#F4F7FF]', v == null && 'text-[#9AA6C2]')}>{v ?? '—'}</td>; })}
+              <td className="border-b border-line px-4 py-3 font-bold text-muted">{label}</td>
+              {list.map(p => { const v = cell(p); return <td key={p.id} className={clsx('border-b border-line px-4 py-3', p.bestValue && 'bg-accent-soft', v == null && 'text-muted')}>{v ?? '—'}</td>; })}
             </tr>
           ))}
           <tr>
             <td className="px-4 py-3" />
-            {list.map(p => <td key={p.id} className={clsx('px-4 py-3', p.bestValue && 'bg-[#F4F7FF]')}><Link href={pageOf(p)} className="inline-flex h-9 items-center whitespace-nowrap rounded-lg bg-[#2F57C9] px-3 text-[13px] font-extrabold text-[#FFFFFF] hover:bg-[#2548AE]">See inside</Link></td>)}
+            {list.map(p => <td key={p.id} className={clsx('px-4 py-3', p.bestValue && 'bg-accent-soft')}><Link href={pageOf(p)} className="inline-flex h-9 items-center whitespace-nowrap rounded-lg bg-[#2F57C9] px-3 text-[13px] font-extrabold text-[#FFFFFF] hover:bg-[#2548AE]">See inside</Link></td>)}
           </tr>
         </tbody>
       </table>

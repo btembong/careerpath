@@ -226,7 +226,8 @@ function Catalogue() {
     const l = libById.get(c.id);
     return { pct: l?.pct ?? 0, next: l?.next?.title ?? null, href: l?.next ? `/student/learn/${c.id}/lesson/${l.next.id}` : `/student/learn/${c.id}` };
   };
-  const onlyInOf = (c: Course) => !owned.has(c.id) && !c.isSoldIndividually && !isWebsite(c) ? pkgsFor(c.id)[0]?.name ?? null : null;
+  // The package a course is in, by name (not just "In a package"), unless it's already theirs
+  const onlyInOf = (c: Course) => !owned.has(c.id) ? pkgsFor(c.id)[0]?.name ?? null : null;
   const Big = ({ c }: { c: Course }) => <BigCourseCard c={toCard(c)} href={`/student/courses/${c.id}`} mine={mineOf(c)} onlyIn={onlyInOf(c)} />;
   // Started courses, most recent first (the library is sorted that way)
   const going = lib.filter(l => l.state === 'going').map(l => byId.get(l.id)).filter(Boolean).slice(0, 3) as Course[];
@@ -328,17 +329,14 @@ function Catalogue() {
             {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-64 rounded-lg border border-line bg-white animate-pulse" />)}
           </div>
         ) : (
-          <div className="grid items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
-            <aside aria-label="Filters" className="hidden flex-col gap-5 lg:flex">{filterGroups}</aside>
-
-            <div className="flex min-w-0 flex-col gap-7">
+          <div className="flex flex-col gap-7">
               {going.length > 0 && !filtered && (
                 <section className="flex flex-col gap-3">
                   <div className="flex items-baseline gap-2">
                     <h2 className="text-lg font-extrabold text-navy">Continue where you left off</h2>
                     <Link href="/student/courses" className="ml-auto text-[13px] font-semibold text-azure-strong hover:underline">My courses →</Link>
                   </div>
-                  <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">{going.map(c => <Big key={c.id} c={c} />)}</div>
+                  <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">{going.map(c => <Big key={c.id} c={c} />)}</div>
                 </section>
               )}
               {freeRow.length > 0 && !going.length && (
@@ -348,10 +346,14 @@ function Catalogue() {
                     <span className="hidden text-[13px] text-muted sm:inline">Try a whole course before you pay for anything</span>
                     <button type="button" onClick={() => setPrice('free')} className="ml-auto text-[13px] font-semibold text-azure-strong hover:underline">See all {priceCount('free')}</button>
                   </div>
-                  <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">{freeRow.slice(0, 3).map(c => <Big key={c.id} c={c} />)}</div>
+                  <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">{freeRow.slice(0, 3).map(c => <Big key={c.id} c={c} />)}</div>
                 </section>
               )}
 
+          <div className="grid items-start gap-6 lg:grid-cols-[230px_minmax(0,1fr)]">
+            <aside aria-label="Filters" className="hidden flex-col gap-5 self-start rounded-2xl border border-line bg-white p-[18px] lg:sticky lg:top-4 lg:flex">{filterGroups}</aside>
+
+            <div className="flex min-w-0 flex-col gap-7">
               <section className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-lg font-extrabold text-navy">{filtered ? 'Results' : 'All courses'} ({shown.length})</h2>
@@ -377,6 +379,7 @@ function Catalogue() {
                 </>}
               </section>
             </div>
+          </div>
           </div>
         )}
       </div>
