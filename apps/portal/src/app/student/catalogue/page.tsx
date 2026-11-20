@@ -13,6 +13,12 @@ import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 import { CourseCover } from '@/components/courses/CourseCover';
 import { PageHero, asideLabel } from '@/components/hero/PageHero';
+import { BigCourseCard, levelKey, type CardCourse, type CardMine } from '@/components/public/course/BigCourseCard';
+
+/** The public course list's extras for a card: cover, teacher photo, level, topics, practice questions */
+interface PubCourse { id: string; slug: string; coverUrl: string | null; level?: string | null; topics?: string[]; questions: number; lessons: number; website: boolean; added: string; teacher: { name: string | null; avatarUrl: string | null } | null }
+/** A course in the student's library: how far they are */
+interface LibCourse { id: string; pct: number; state: 'new' | 'going' | 'done'; next: { id: string; title: string } | null }
 
 interface Programme { id: string; name: string; shortName: string | null }
 interface Course {
@@ -83,6 +89,9 @@ function Catalogue() {
   const [starting, setStarting] = useState<string | null>(null);
   const [allSubjects, setAllSubjects] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [pub, setPub] = useState<Map<string, PubCourse>>(new Map());
+  const [lib, setLib] = useState<LibCourse[]>([]);
+  const [level, setLevel] = useState('all');
 
   function setProg(id: string) {
     setProgState(id);
@@ -95,12 +104,14 @@ function Catalogue() {
     (async () => {
       const me = await api.get('/auth/me').then(r => r.data).catch(() => null);
       const progUrl = me?.countryId ? `/catalogue/programmes?countryId=${encodeURIComponent(me.countryId)}` : '/catalogue/programmes';
-      const [pr, cr, pk, cp] = await Promise.all([
+      const [pr, cr, pk, cp, pl] = await Promise.all([
         api.get(progUrl).catch(() => ({ data: [] })),
         api.get('/platform-courses').catch(() => ({ data: [] })),
         api.get('/packages').catch(() => ({ data: [] })),
         api.get('/portals/student/course-purchases').catch(() => ({ data: [] })),
+        api.get('/catalogue/course-list').catch(() => ({ data: { courses: [] } })),
       ]);
+      setPub(new Map(((pl.data?.courses ?? []) as PubCourse[]).map(x => [x.id, x])));
       const lib = await api.get('/portals/student/library').catch(() => ({ data: null }));
       const list: Course[] = (cr.data ?? []).filter((c: Course) => c.status === 'PUBLISHED');
       const pkgs: Package[] = pk.data ?? [];
@@ -109,6 +120,7 @@ function Catalogue() {
       pkgs.forEach(p => { if (activePkg.has(p.id)) p.courseIds.forEach(id => ids.add(id)); });
       // Free courses they've joined are theirs too: Continue, not Start
       ((lib.data?.courses ?? []) as { id: string }[]).forEach(c => ids.add(c.id));
+      setLib((lib.data?.courses ?? []) as LibCourse[]);
       // Only offer programmes that have something to buy
       const withCourses = (pr.data as Programme[] ?? []).filter(p => list.some(c => c.programme?.id === p.id));
       setProgrammes(withCourses); setCourses(list); setPackages(pkgs); setOwned(ids); setOwnedPkgs(activePkg);
@@ -155,6 +167,7 @@ function Catalogue() {
     const q = search.trim().toLowerCase();
     let list = progCourses.filter(c =>
       (subject === 'all' || c.subject?.id === subject) &&
+      (level === 'all' || levelKey(c.level?.name, c.programme ? short(c.programme) : null) === level) &&
       (lang === 'all' || c.language === lang) &&
       (price === 'any'
         || (price === 'single' && c.isSoldIndividually && !!c.priceAmount)
@@ -168,7 +181,7 @@ function Catalogue() {
       price: (a, b) => (isFree(a) ? 0 : a.isSoldIndividually ? a.priceAmount ?? 0 : Infinity) - (isFree(b) ? 0 : b.isSoldIndividually ? b.priceAmount ?? 0 : Infinity),
     };
     return [...list].sort(cmp[sort]);
-  }, [progCourses, search, subject, lang, price, sort]);
+  }, [progCourses, search, subject, lang, price, sort, level]);
 
   const open = openId ? byId.get(openId) ?? null : null;
   const selectBox = 'h-9 rounded-md border border-line bg-white pl-3 pr-8 text-[13px] text-navy outline-none focus:border-azure';
@@ -176,8 +189,8 @@ function Catalogue() {
   // Counts for the filter options, from the courses in the chosen exam
   const priceCount = (p: PriceFilter) => progCourses.filter(c => p === 'free' ? isFree(c) : p === 'single' ? c.isSoldIndividually && !!c.priceAmount : p === 'package' ? pkgsFor(c.id).length > 0 : true).length;
   const subjectCount = (id: string) => progCourses.filter(c => c.subject?.id === id).length;
-  const filtered = !!search.trim() || subject !== 'all' || price !== 'any' || lang !== 'all';
-  const clearAll = () => { setSearch(''); setSubject('all'); setLang('all'); setPrice('any'); };
+  const filtered = !!search.trim() || subject !== 'all' || price !== 'any' || lang !== 'all' || level !== 'all';
+  const clearAll = () => { setSearch(''); setSubject('all'); setLang('all'); setPrice('any'); setLevel('all'); };
   const freeRow = !filtered ? progCourses.filter(c => isFree(c) && !owned.has(c.id)).sort((a, b) => b._count.enrollments - a._count.enrollments).slice(0, 8) : [];
   const bestPkg = progPackages.find(x => x.saving != null) ?? progPackages[0] ?? null;
 
@@ -191,6 +204,33 @@ function Catalogue() {
     } catch (e: any) { notify.error(e?.response?.data?.message ?? 'Could not start the course'); setStarting(null); }
   }
 
+  const lvOf = (c: Course) => levelKey(c.level?.name, c.programme ? short(c.programme) : null);
+  const levels = ([['o', 'O-Level and WASSCE'], ['a', 'A-Level'], ['prep', 'Test prep']] as [string, string][]).filter(([k]) => progCourses.some(c => lvOf(c) === k));
+
+  /** A catalogue course as the public card, with the extras the public list knows (cover, teacher photo, topics, questions) */
+  const toCard = (c: Course): CardCourse => {
+    const p = pub.get(c.id);
+    const selling = isFree(c) ? 'free' : c.isSoldIndividually && c.priceAmount ? 'paid' : pkgsFor(c.id).length ? 'package' : 'notsale';
+    return {
+      id: c.id, slug: p?.slug ?? c.id, title: c.title, coverUrl: p?.coverUrl ?? c.coverUrl ?? null,
+      exam: c.programme ? short(c.programme) : null, subject: c.subject?.name ?? null, level: c.level?.name ?? p?.level ?? null,
+      lessons: p?.lessons ?? 0, questions: p?.questions ?? 0, topics: p?.topics ?? [], website: p?.website ?? false, added: p?.added ?? c.createdAt,
+      selling, price: selling === 'paid' ? { amount: c.priceAmount!, currency: c.priceCurrency! } : null, inPackage: pkgsFor(c.id).length > 0,
+      teacher: p?.teacher ?? (teacherOf(c) ? { name: teacherOf(c), avatarUrl: null } : null),
+    };
+  };
+  const libById = useMemo(() => new Map(lib.map(l => [l.id, l])), [lib]);
+  /** Theirs: progress, the next lesson, and Continue straight into it */
+  const mineOf = (c: Course): CardMine | null => {
+    if (!owned.has(c.id)) return null;
+    const l = libById.get(c.id);
+    return { pct: l?.pct ?? 0, next: l?.next?.title ?? null, href: l?.next ? `/student/learn/${c.id}/lesson/${l.next.id}` : `/student/learn/${c.id}` };
+  };
+  const onlyInOf = (c: Course) => !owned.has(c.id) && !c.isSoldIndividually && !isWebsite(c) ? pkgsFor(c.id)[0]?.name ?? null : null;
+  const Big = ({ c }: { c: Course }) => <BigCourseCard c={toCard(c)} href={`/student/courses/${c.id}`} mine={mineOf(c)} onlyIn={onlyInOf(c)} />;
+  // Started courses, most recent first (the library is sorted that way)
+  const going = lib.filter(l => l.state === 'going').map(l => byId.get(l.id)).filter(Boolean).slice(0, 3) as Course[];
+
   const PRICES: [PriceFilter, string][] = [['any', 'Any price'], ['free', 'Free to start'], ['single', 'Buy on its own'], ['package', 'In a package']];
   const filterGroups = (
     <>
@@ -203,6 +243,17 @@ function Catalogue() {
           </label>
         ))}
       </fieldset>
+      {levels.length > 1 && (
+        <fieldset className="flex flex-col gap-1">
+          <legend className="mb-1.5 text-[11.5px] font-bold uppercase tracking-[0.06em] text-muted">Level</legend>
+          {[['all', 'Any level'] as [string, string], ...levels].map(([k, l]) => (
+            <label key={k} className="flex cursor-pointer items-center gap-2.5 py-1 text-[13.5px] text-ink2">
+              <input type="radio" name="level" checked={level === k} onChange={() => setLevel(k)} className="accent-[var(--color-azure-strong)]" />
+              <span className="flex-1">{l}</span><span className="text-xs text-muted">{k === 'all' ? progCourses.length : progCourses.filter(c => lvOf(c) === k).length}</span>
+            </label>
+          ))}
+        </fieldset>
+      )}
       {subjects.length > 0 && (
         <fieldset className="flex flex-col gap-1">
           <legend className="mb-1.5 text-[11.5px] font-bold uppercase tracking-[0.06em] text-muted">Subject</legend>
@@ -227,59 +278,6 @@ function Catalogue() {
         </fieldset>
       )}
     </>
-  );
-
-  /** What a card or row needs to say: the exam and subject, what's inside, and the package it belongs to */
-  const facts = (c: Course) => [c.programme ? short(c.programme) : null, c.subject?.name, `${c._count.modules} module${c._count.modules === 1 ? '' : 's'}`, c._count.enrollments ? `${c._count.enrollments.toLocaleString()} student${c._count.enrollments === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ');
-  const priceOf = (c: Course) => owned.has(c.id) ? 'Yours' : isFree(c) ? 'Free' : c.isSoldIndividually && c.priceCurrency && c.priceAmount ? money(c.priceAmount, c.priceCurrency) : pkgsFor(c.id).length ? 'In a package' : 'Not on sale yet';
-  const PackageLine = ({ c }: { c: Course }) => {
-    const ps = pkgsFor(c.id);
-    if (!ps.length || owned.has(c.id)) return null;
-    return (
-      <Link href={`/packages/${ps[0].id}`} onClick={e => e.stopPropagation()} className="flex items-center gap-1.5 text-[12px] font-semibold text-[#8A5A0B] hover:underline">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 8l-9-5-9 5v8l9 5 9-5z" /><path d="M3 8l9 5 9-5M12 13v8" /></svg>
-        <span className="truncate">Part of {ps[0].name}{ps.length > 1 ? ` + ${ps.length - 1} more` : ''}</span>
-      </Link>
-    );
-  };
-  const Action = ({ c, full }: { c: Course; full?: boolean }) => owned.has(c.id)
-    ? <Link href={`/student/learn/${c.id}`} onClick={e => e.stopPropagation()} className={clsx('inline-flex h-[34px] items-center justify-center rounded-md bg-azure-strong px-3.5 text-[13px] font-semibold text-on-accent', full && 'w-full')}>Continue</Link>
-    : isFree(c)
-      ? <button type="button" disabled={starting === c.id} onClick={e => { e.stopPropagation(); void start(c); }} className={clsx('inline-flex h-[34px] items-center justify-center rounded-md bg-azure-strong px-3.5 text-[13px] font-semibold text-on-accent disabled:opacity-60', full && 'w-full')}>{starting === c.id ? 'Starting…' : 'Start'}</button>
-      : <button type="button" onClick={e => { e.stopPropagation(); setOpenId(c.id); }} className={clsx('inline-flex h-[34px] items-center justify-center rounded-md border border-line bg-white px-3.5 text-[13px] font-semibold text-navy hover:bg-subtle', full && 'w-full')}>View</button>;
-
-  const Card = ({ c }: { c: Course }) => (
-    <article role="link" tabIndex={0} onClick={() => setOpenId(c.id)} onKeyDown={e => { if (e.key === 'Enter') setOpenId(c.id); }}
-      className="flex cursor-pointer flex-col overflow-hidden rounded-lg border border-line bg-white transition hover:border-azure/60 hover:shadow-[0_8px_22px_rgba(7,32,97,0.08)]">
-      <div className="aspect-video overflow-hidden bg-subtle"><CourseCover course={c} noTag className="!h-full w-full" /></div>
-      <div className="flex flex-1 flex-col gap-1.5 p-3.5">
-        <p className="line-clamp-2 text-[14.5px] font-bold leading-snug text-navy">{c.title}</p>
-        {teacherOf(c) && <p className="truncate text-[12.5px] text-ink2">{teacherOf(c)}</p>}
-        <p className="truncate text-[12px] text-muted">{facts(c)}</p>
-        <PackageLine c={c} />
-        <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-3">
-          <span className={clsx('text-[15px] font-extrabold', isFree(c) && !owned.has(c.id) ? 'text-[#1A7F4B]' : 'text-navy')}>{priceOf(c)}</span>
-          <Action c={c} />
-        </div>
-      </div>
-    </article>
-  );
-
-  /** Phones: a compact row, the picture on the left; tapping it does what the button would */
-  const Row = ({ c }: { c: Course }) => (
-    <div role="button" tabIndex={0} onClick={() => owned.has(c.id) ? router.push(`/student/learn/${c.id}`) : setOpenId(c.id)} onKeyDown={e => { if (e.key === 'Enter') setOpenId(c.id); }}
-      className="flex w-full cursor-pointer gap-3 rounded-lg border border-line bg-white p-2.5 text-left">
-      <div className="h-[84px] w-[84px] flex-shrink-0 overflow-hidden rounded-md"><CourseCover course={c} variant="tile" noTag className="!h-[84px] !w-[84px] !rounded-md" /></div>
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className="line-clamp-2 text-[13.5px] font-bold leading-snug text-navy">{c.title}</p>
-        {teacherOf(c) && <p className="truncate text-xs text-ink2">{teacherOf(c)}</p>}
-        <p className="truncate text-[11.5px] text-muted">{facts(c)}</p>
-        <div className="mt-auto flex items-center justify-between gap-2">
-          <span className={clsx('text-[14px] font-extrabold', isFree(c) && !owned.has(c.id) ? 'text-[#1A7F4B]' : 'text-navy')}>{priceOf(c)}</span>
-        </div>
-        <PackageLine c={c} />
-      </div>
-    </div>
   );
 
   return (
@@ -333,25 +331,33 @@ function Catalogue() {
           <div className="grid items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
             <aside aria-label="Filters" className="hidden flex-col gap-5 lg:flex">{filterGroups}</aside>
 
-            <div className="flex min-w-0 flex-col gap-5">
-              {freeRow.length > 0 && (
+            <div className="flex min-w-0 flex-col gap-7">
+              {going.length > 0 && !filtered && (
                 <section className="flex flex-col gap-3">
                   <div className="flex items-baseline gap-2">
-                    <h2 className="text-base font-bold text-navy">Free to start</h2>
+                    <h2 className="text-lg font-extrabold text-navy">Continue where you left off</h2>
+                    <Link href="/student/courses" className="ml-auto text-[13px] font-semibold text-azure-strong hover:underline">My courses →</Link>
+                  </div>
+                  <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">{going.map(c => <Big key={c.id} c={c} />)}</div>
+                </section>
+              )}
+              {freeRow.length > 0 && !going.length && (
+                <section className="flex flex-col gap-3">
+                  <div className="flex items-baseline gap-2">
+                    <h2 className="text-lg font-extrabold text-navy">Free to start</h2>
                     <span className="hidden text-[13px] text-muted sm:inline">Try a whole course before you pay for anything</span>
                     <button type="button" onClick={() => setPrice('free')} className="ml-auto text-[13px] font-semibold text-azure-strong hover:underline">See all {priceCount('free')}</button>
                   </div>
-                  <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 lg:mx-0 lg:grid lg:overflow-visible lg:px-0 lg:grid-cols-3">
-                    {freeRow.slice(0, 6).map((c, i) => <div key={c.id} className={clsx('w-[230px] flex-shrink-0 lg:w-auto', i >= 3 && 'lg:hidden')}><Card c={c} /></div>)}
-                  </div>
+                  <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">{freeRow.slice(0, 3).map(c => <Big key={c.id} c={c} />)}</div>
                 </section>
               )}
 
               <section className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-base font-bold text-navy">{filtered ? 'Results' : 'All courses'} <span className="text-sm font-medium text-muted">· {shown.length}</span></h2>
+                  <h2 className="text-lg font-extrabold text-navy">{filtered ? 'Results' : 'All courses'} ({shown.length})</h2>
                   {price !== 'any' && <button type="button" onClick={() => setPrice('any')} className="inline-flex h-7 items-center gap-1 rounded-md bg-accent-soft px-2.5 text-xs font-semibold text-navy">{PRICES.find(p => p[0] === price)?.[1]} ✕</button>}
                   {subject !== 'all' && <button type="button" onClick={() => setSubject('all')} className="inline-flex h-7 items-center gap-1 rounded-md bg-accent-soft px-2.5 text-xs font-semibold text-navy">{subjects.find(s => s[0] === subject)?.[1]} ✕</button>}
+                  {level !== 'all' && <button type="button" onClick={() => setLevel('all')} className="inline-flex h-7 items-center gap-1 rounded-md bg-accent-soft px-2.5 text-xs font-semibold text-navy">{levels.find(l => l[0] === level)?.[1]} ✕</button>}
                   {lang !== 'all' && <button type="button" onClick={() => setLang('all')} className="inline-flex h-7 items-center gap-1 rounded-md bg-accent-soft px-2.5 text-xs font-semibold text-navy">{lang} ✕</button>}
                   <select aria-label="Sort" value={sort} onChange={e => setSort(e.target.value as Sort)} className={clsx(selectBox, 'ml-auto')}>
                     <option value="popular">Most popular</option>
@@ -367,8 +373,7 @@ function Catalogue() {
                     <Button size="sm" variant="secondary" className="mt-4" onClick={clearAll}>Clear filters</Button>
                   </div>
                 ) : <>
-                  <div className="hidden gap-4 sm:grid sm:[grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]">{shown.map(c => <Card key={c.id} c={c} />)}</div>
-                  <div className="flex flex-col gap-2.5 sm:hidden">{shown.map(c => <Row key={c.id} c={c} />)}</div>
+                  <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">{shown.map(c => <Big key={c.id} c={c} />)}</div>
                 </>}
               </section>
             </div>

@@ -46,7 +46,8 @@ export function PublicFooter() {
 }
 
 /** A cover image, or a coloured panel with the exam and subject when there's none */
-const SHADES = ['#2F57C9,#5889FA', '#17703A,#3BAA6A', '#6B3FB8,#9C72E0', '#8A5A00,#D9A33A', '#A0306A,#D2649A', '#072061,#2F57C9'];
+// Covers without a picture: our blues only (green is kept for "Free")
+const SHADES = ['#2F57C9,#5889FA', '#3F6FE8,#8EA8FF', '#1B3A94,#3F6FE8', '#072061,#2F57C9', '#2548AE,#6B8BFF', '#5B82F5,#9DB8FC'];
 export function Cover({ src, label, seed, className = '' }: { src?: string | null; label?: string | null; seed: string; className?: string }) {
   const shade = SHADES[[...seed].reduce((t, c) => t + c.charCodeAt(0), 0) % SHADES.length];
   if (src) return <img src={src} alt="" className={`object-cover ${className}`} />;
