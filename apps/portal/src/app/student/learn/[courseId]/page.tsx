@@ -6,6 +6,8 @@ import { clsx } from 'clsx';
 import { Icon } from '@/components/ui/Icon';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
+import { cardTitle } from '@/components/public/course/BigCourseCard';
+import { ReadMore } from '@/components/public/course/CourseParts';
 
 interface ActivePackage { id: string; name: string; expiresAt: string | null; }
 
@@ -33,7 +35,7 @@ interface CourseDetail {
   programme: { name: string; shortName: string | null } | null;
   subject: { name: string } | null;
   level: { name: string } | null;
-  teacher: { firstName?: string | null; lastName?: string | null; name?: string | null; email: string };
+  teacher: { firstName?: string | null; lastName?: string | null; name?: string | null; email: string; avatarUrl?: string | null };
 }
 interface ProgressData {
   courseId: string;
@@ -108,9 +110,9 @@ export default function StudentCourseLandingPage() {
   const [accessDenied,    setAccessDenied]    = useState(false);
   const [expiringPackage, setExpiringPackage] = useState<ActivePackage | null>(null);
   const [isDirectPurchase, setIsDirectPurchase] = useState(false);
-  const [moduleIdx,       setModuleIdx]       = useState<number | null>(null);
-  const [sideTab,         setSideTab]         = useState<'info' | 'teacher'>('info');
-  const [mainTab,         setMainTab]         = useState<'lessons' | 'about'>('lessons');
+  const [filter,          setFilter]          = useState<'all' | 'todo' | 'done' | 'quiz'>('all');
+  // The package this course comes from, for the side and the blue card
+  const [fromPackage,     setFromPackage]     = useState<ActivePackage | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -154,6 +156,7 @@ export default function StudentCourseLandingPage() {
             p => activePkgIds.has(p.id) && Array.isArray(p.courseIds) && p.courseIds.includes(courseId)
           );
           const activePkg = activePackages.find(p => p.id === pkgWithCourse?.id);
+          if (activePkg) setFromPackage({ id: activePkg.id, name: pkgWithCourse?.name ?? activePkg.name, expiresAt: activePkg.expiresAt });
           if (activePkg?.expiresAt) {
             const msLeft = new Date(activePkg.expiresAt).getTime() - now;
             if (msLeft > 0 && msLeft < sevenDays) setExpiringPackage(activePkg);
@@ -179,9 +182,6 @@ export default function StudentCourseLandingPage() {
 
   const allLessons = useMemo(() => progress?.modules.flatMap(m => m.lessons) ?? [], [progress]);
   const resumeLesson = allLessons.find(l => !l.locked && !l.progress?.completed) ?? allLessons[0];
-  // Open on the module the student is working in
-  const defaultModule = Math.max(0, progress?.modules.findIndex(m => m.lessons.some(l => l.id === resumeLesson?.id)) ?? 0);
-  const activeModule = moduleIdx ?? defaultModule;
 
   if (loading) return (
     <div className="flex min-h-full flex-col bg-white">
@@ -267,304 +267,163 @@ export default function StudentCourseLandingPage() {
   }
 
   const modules = progress.modules;
-  const current = modules[activeModule] ?? modules[0];
   const pct = progress.percentComplete;
-  const courseStatus = pct >= 100 ? 'Completed' : pct > 0 || allLessons.some(l => lessonState(l) === 'doing') ? 'In progress' : 'Not started';
-
-  const totalSecs = allLessons.reduce((s, l) => s + (l.durationSecs ?? 0), 0);
-  const totalLength = totalSecs
-    ? totalSecs >= 3600 ? `${Math.floor(totalSecs / 3600)} h ${Math.round((totalSecs % 3600) / 60)} min` : `${Math.round(totalSecs / 60)} min`
-    : '—';
+  const { title: short, form } = cardTitle(course.title);
   const teacherName = course.teacher
     ? course.teacher.name || [course.teacher.firstName, course.teacher.lastName].filter(Boolean).join(' ') || null
     : null;
+  const teacherPhoto = course.teacher?.avatarUrl && !/gravatar/.test(course.teacher.avatarUrl) ? course.teacher.avatarUrl : null;
   const programme = course.programme ? (course.programme.shortName ?? course.programme.name) : null;
-  const subtitleParts = [`${modules.length} module${modules.length === 1 ? '' : 's'}`, `${progress.totalLessons} lesson${progress.totalLessons === 1 ? '' : 's'}`];
   const resumeHref = resumeLesson ? `/student/learn/${courseId}/lesson/${resumeLesson.id}` : undefined;
-
-  const facts = [
-    { label: 'Programme', value: [programme, course.level?.name].filter(Boolean).join(' · ') || '—', d: P.layers },
-    { label: 'Subject', value: course.subject?.name ?? '—', d: P.book },
-    { label: 'Total length', value: totalLength, d: P.clock },
-    { label: 'Certificate', value: pct >= 100 ? 'Earned — view in Certificates' : 'Earned when all lessons are complete', d: P.badge },
-  ];
-
-  const moduleDone = current ? current.lessons.filter(l => l.progress?.completed).length : 0;
-  const moduleSummary = current
-    ? `${current.lessons.length} lesson${current.lessons.length === 1 ? '' : 's'} · ${moduleDone} completed`
-    : '';
+  const quizzes = allLessons.filter(l => l.type === 'QUIZ');
+  const quizzesDone = quizzes.filter(l => l.progress?.completed).length;
+  const readings = allLessons.filter(l => l.type !== 'QUIZ');
+  const readingsDone = readings.filter(l => l.progress?.completed).length;
+  const left = [readings.length - readingsDone ? `${readings.length - readingsDone} lesson${readings.length - readingsDone === 1 ? '' : 's'}` : null, quizzes.length - quizzesDone ? `${quizzes.length - quizzesDone} quiz${quizzes.length - quizzesDone === 1 ? '' : 'zes'}` : null].filter(Boolean).join(' and ');
+  const show = (l: Lesson) => filter === 'all' || (filter === 'quiz' ? l.type === 'QUIZ' : filter === 'done' ? !!l.progress?.completed : !l.progress?.completed);
+  const counts = { all: allLessons.length, todo: allLessons.filter(l => !l.progress?.completed).length, done: progress.completedLessons, quiz: quizzes.length };
 
   return (
-    <div className="flex min-h-full flex-col bg-white">
-      <Topbar />
+    <div className="flex min-h-full flex-col">
+      <Topbar backHref="/student/courses" backLabel="My courses" title={short} />
 
-      {/* Page header */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-[17px] lg:px-7">
-        <Link href="/student/courses" aria-label="Back to My Courses"
-          className="flex h-[38px] w-[38px] items-center justify-center rounded-md border border-line bg-white text-ink2 hover:bg-subtle transition-colors">
-          <Glyph d={P.back} size={18} strokeWidth={1.7} />
-        </Link>
-        <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-2 text-[15px]">
-          <Link href="/student/courses" className="font-semibold text-navy hover:text-azure-strong transition-colors">My Courses</Link>
-          <span aria-hidden className="text-muted">›</span>
-          <span className="truncate text-ink2">{course.title}</span>
-        </nav>
-        <span className="text-[13px] text-muted">Status:</span>
-        <span className="inline-flex h-6 items-center rounded bg-accent-soft px-2 text-xs font-semibold text-navy">{courseStatus}</span>
-      </div>
-
-      <div className="flex flex-1 flex-wrap">
-
-        {/* ── Course panel ── */}
-        <aside className="flex w-full flex-col border-b border-line md:w-[320px] md:flex-shrink-0 md:border-b-0 md:border-r">
-          <div className="flex flex-col items-center gap-3 px-6 pt-7 pb-[22px] text-center">
-            <span className="flex h-16 w-16 items-center justify-center rounded-lg bg-accent-soft text-azure-strong">
-              <Glyph d={P.book} size={28} strokeWidth={1.5} />
-            </span>
-            <div>
-              <h1 className="text-[19px] font-bold tracking-[-0.01em] text-navy">{course.title}</h1>
-              <p className="mt-1 text-[13px] text-muted">{subtitleParts.join(' · ')}</p>
+      <div className="flex flex-col gap-6 p-4 lg:px-7 lg:py-6">
+        {/* Where they are in the course */}
+        <section className="keep-light relative grid items-center gap-6 overflow-hidden rounded-[22px] bg-[linear-gradient(120deg,#2F57C9_0%,#3F6FE8_45%,#6B8BFF_100%)] p-6 text-[#FFFFFF] sm:p-8 md:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="min-w-0">
+            <div className="flex flex-wrap gap-1.5">
+              {[programme, course.subject?.name, form, fromPackage?.name.replace(/\s+Package$/i, '')].filter(Boolean).map(t => <span key={t} className="inline-flex h-7 items-center rounded-md bg-[rgba(255,255,255,0.22)] px-2.5 text-[13px] font-bold">{fromPackage && t === fromPackage.name.replace(/\s+Package$/i, '') ? `In ${t}` : t}</span>)}
             </div>
-            <div className="mt-1 flex gap-[18px]">
-              {[
-                { label: pct > 0 ? 'Continue' : 'Start', d: P.play, href: resumeHref, primary: true },
-                { label: 'Certificates', d: P.badge, href: '/student/certificates' },
-                { label: 'All courses', d: P.grid, href: '/student/courses' },
-              ].map(a => (
-                <Link key={a.label} href={a.href ?? '#'} className="flex flex-col items-center gap-1.5 text-[12.5px] text-ink2 hover:text-navy transition-colors">
-                  <span className={clsx('flex h-[42px] w-[42px] items-center justify-center rounded-md border',
-                    a.primary ? 'border-transparent bg-accent-soft text-azure-strong' : 'border-line bg-white text-ink2')}>
-                    <Glyph d={a.d} size={18} fill={a.primary ? 'currentColor' : 'none'} />
-                  </span>
-                  {a.label}
-                </Link>
-              ))}
+            <h1 className="mt-3.5 text-[28px] font-extrabold leading-[1.06] tracking-[-0.03em] text-[#FFFFFF] sm:text-[36px]">{short}</h1>
+            <p className="mt-1 text-[14px] font-bold text-[#DCE6FF]">{[course.subject?.name, form, teacherName ? `with ${teacherName}` : null].filter(Boolean).join(' · ')}</p>
+            <div className="mt-5 flex flex-wrap items-center gap-3.5">
+              {resumeHref && <Link href={resumeHref} className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-[#FFFFFF] px-4 text-[14.5px] font-extrabold text-[#2F57C9]">{pct >= 100 ? 'Review' : pct > 0 ? 'Continue' : 'Start'}{resumeLesson && pct < 100 ? `: ${resumeLesson.title}` : ''}<Icon name="arrowRight" size={15} /></Link>}
+              <span className="text-[13.5px] text-[#EEF3FF]">{progress.completedLessons} of {progress.totalLessons} done{left ? ` · ${left} left` : ' · all done'}</span>
             </div>
-            {resumeLesson && pct < 100 && (
-              <p className="mt-1 flex items-center gap-1.5 text-[12.5px] text-muted">
-                <span className="h-1.5 w-1.5 rounded-full bg-azure" />
-                Next: <strong className="font-semibold text-navy">{resumeLesson.title}</strong>
-              </p>
-            )}
           </div>
+          <span className="hidden h-[110px] w-[110px] items-center justify-center rounded-full md:flex" style={{ background: `conic-gradient(#FFFFFF ${pct * 3.6}deg, rgba(255,255,255,0.22) 0)` }}>
+            <span className="flex h-[94px] w-[94px] flex-col items-center justify-center rounded-full bg-[#2F57C9] leading-none"><b className="text-[24px]">{pct}%</b><span className="mt-1 text-[11px] text-[#DCE6FF]">done</span></span>
+          </span>
+        </section>
 
-          <div role="tablist" aria-label="Course details" className="grid grid-cols-2 border-y border-line">
-            {([['info', 'Course info'], ['teacher', 'Teacher']] as const).map(([k, l]) => (
-              <button key={k} type="button" role="tab" aria-selected={sideTab === k} onClick={() => setSideTab(k)}
-                className={clsx('h-11 border-b-2 text-[13.5px] transition-colors -mb-px',
-                  sideTab === k ? 'border-azure font-semibold text-navy' : 'border-transparent font-medium text-muted hover:text-navy')}>
-                {l}
-              </button>
-            ))}
-          </div>
-
-          {sideTab === 'info' ? (
-            <div className="flex flex-col gap-[22px] px-6 pt-[22px] pb-7">
-              <div className="flex flex-col gap-2.5">
-                <div className="flex items-baseline justify-between">
-                  <p className={label}>Progress</p>
-                  <span className="rounded bg-accent-soft px-1.5 py-0.5 text-xs font-bold text-navy">{pct}%</span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-[3px] bg-subtle" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-                  <div className="h-1.5 bg-azure transition-[width] duration-500" style={{ width: `${pct}%` }} />
-                </div>
-                <p className="text-[13px] text-ink2">{progress.completedLessons} of {progress.totalLessons} lessons complete</p>
-              </div>
-
-              <div className="h-px bg-line" />
-
-              <dl className="grid gap-3.5">
-                {facts.map(f => (
-                  <div key={f.label} className="flex items-center gap-3">
-                    <span className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-md bg-subtle text-ink2">
-                      <Glyph d={f.d} size={16} />
-                    </span>
-                    <div className="min-w-0">
-                      <dt className="text-xs text-muted">{f.label}</dt>
-                      <dd className="mt-px text-[13.5px] font-semibold text-navy">{f.value}</dd>
-                    </div>
-                  </div>
-                ))}
-              </dl>
-
-              {progress.hasAccess === false && (
-                <div className="flex flex-col gap-2.5 rounded-md border border-line bg-subtle p-3">
-                  <p className="text-[13px] text-ink2">
-                    You can watch the free preview lessons. Buy the course to unlock the rest.
-                  </p>
-                  <Link href="/student/catalogue" className={clsx(btnPrimary, 'self-start')}>Buy this course</Link>
-                </div>
-              )}
-              {expiringPackage && (
-                <div className="flex gap-2.5 rounded-md border border-line bg-subtle p-3">
-                  <Glyph d={P.clock} size={16} className="mt-0.5 flex-shrink-0 text-azure-strong" />
-                  <p className="text-[13px] text-ink2">
-                    {expiringPackage.name} ends on{' '}
-                    <strong className="font-semibold text-navy">
-                      {new Date(expiringPackage.expiresAt!).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
-                    </strong>.{' '}
-                    <Link href="/packages" className="font-semibold text-azure-strong hover:underline">Renew</Link>
-                  </p>
-                </div>
-              )}
-              {isDirectPurchase && (
-                <div className="flex gap-2.5 rounded-md border border-line p-3">
-                  <Glyph d={P.layers} size={16} className="mt-0.5 flex-shrink-0 text-azure-strong" />
-                  <p className="text-[13px] text-ink2">
-                    A package adds live classes and mentorship to this course.{' '}
-                    <Link href="/packages" className="font-semibold text-azure-strong hover:underline">See packages</Link>
-                  </p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3.5 px-6 pt-[22px] pb-7">
-              {(teacherName ? [{ label: 'Teacher', value: teacherName, d: P.user }] : []).map(f => (
-                <div key={f.label} className="flex items-center gap-3">
-                  <span className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-md bg-subtle text-ink2">
-                    <Glyph d={f.d} size={16} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted">{f.label}</p>
-                    <p className="mt-px truncate text-[13.5px] font-semibold text-navy">{f.value}</p>
-                  </div>
-                </div>
-              ))}
-              {teacherName
-                ? <Link href="/student/messages" className={clsx(btnSecondary, 'mt-1 self-start')}>Message the teacher</Link>
-                : <>
-                    <p className="text-[13.5px] text-ink2">This course doesn’t have a teacher yet. Questions about it go to CareerPath Africa.</p>
-                    <Link href="/student/support" className={clsx(btnSecondary, 'self-start')}>Ask CareerPath</Link>
-                  </>}
-            </div>
-          )}
-        </aside>
-
-        {/* ── Lessons ── */}
-        <section aria-label="Course content" className="flex min-w-0 flex-1 flex-col">
-          <div role="tablist" aria-label="Course sections" className="flex gap-1 overflow-x-auto border-b border-line px-4 lg:px-6">
-            {([['lessons', 'Lessons', progress.totalLessons], ['about', 'About', null]] as const).map(([k, l, n]) => (
-              <button key={k} type="button" role="tab" aria-selected={mainTab === k} onClick={() => setMainTab(k)}
-                className={clsx('-mb-px inline-flex h-12 items-center gap-2 whitespace-nowrap border-b-2 px-3 text-[13.5px] transition-colors',
-                  mainTab === k ? 'border-azure font-semibold text-navy' : 'border-transparent font-medium text-muted hover:text-navy')}>
-                {l}
-                {n !== null && (
-                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded bg-accent-soft px-1.5 text-[11.5px] font-bold text-navy">{n}</span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          {mainTab === 'about' ? (
-            <div className="max-w-2xl space-y-4 px-4 py-6 lg:px-6">
-              <h2 className="text-[17px] font-bold text-navy">About this course</h2>
-              <p className="whitespace-pre-line text-sm leading-relaxed text-ink2">
-                {course.description || 'The teacher has not added a description yet.'}
-              </p>
-            </div>
-          ) : !modules.length ? (
-            <div className="px-6 py-12 text-center text-sm text-muted">The teacher hasn&apos;t added any lessons yet.</div>
-          ) : (
-            <div className="flex flex-col gap-5 px-4 pt-5 pb-8 lg:px-6">
-              <div role="tablist" aria-label="Modules" className="flex flex-wrap gap-1 rounded-lg border border-line bg-subtle p-1">
-                {modules.map((m, i) => (
-                  <button key={m.id} type="button" role="tab" aria-selected={i === activeModule} onClick={() => setModuleIdx(i)}
-                    className={clsx('h-8 rounded-md px-3 text-[13px] transition-colors',
-                      i === activeModule ? 'bg-accent-soft font-semibold text-navy' : 'font-medium text-ink2 hover:text-navy')}>
-                    {m.title}
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="flex-1 text-[22px] font-extrabold tracking-[-0.02em] text-navy">Lessons</h2>
+              <div role="tablist" aria-label="Show" className="flex gap-1 overflow-x-auto rounded-[10px] border border-line bg-white p-1">
+                {([['all', 'All'], ['todo', 'To do'], ['done', 'Done'], ['quiz', 'Quizzes']] as const).map(([k, l]) => (
+                  <button key={k} type="button" role="tab" aria-selected={filter === k} onClick={() => setFilter(k)}
+                    className={clsx('h-8 whitespace-nowrap rounded-md px-3 text-[13px] transition-colors', filter === k ? 'bg-accent-soft font-bold text-navy' : 'font-medium text-ink2 hover:text-navy')}>
+                    {l} <span className="font-medium text-muted">{counts[k]}</span>
                   </button>
                 ))}
               </div>
-
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="text-[17px] font-bold text-navy">{current?.title}</h2>
-                <p className="text-[13px] text-muted">{moduleSummary}</p>
-              </div>
-
-              <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(290px,1fr))]">
-                {current?.lessons.map(l => <LessonCard key={l.id} lesson={l} courseId={courseId} />)}
-              </div>
             </div>
-          )}
-        </section>
+
+            {!modules.length ? (
+              <div className="rounded-2xl border border-line bg-white px-6 py-12 text-center text-sm text-muted">The teacher hasn’t added any lessons yet.</div>
+            ) : modules.map((m, mi) => {
+              const rows = m.lessons.filter(show);
+              if (!rows.length) return null;
+              const done = m.lessons.filter(l => l.progress?.completed).length;
+              return (
+                <section key={m.id} className="overflow-hidden rounded-2xl border border-line bg-white">
+                  <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b border-line px-4 py-3">
+                    <h3 className="text-[16px] font-extrabold text-navy">{m.title}</h3>
+                    <span className="text-[12.5px] text-muted">{modules.length > 1 ? `Module ${mi + 1} · ` : ''}{done} of {m.lessons.length} done</span>
+                  </div>
+                  {rows.map(l => <LessonRow key={l.id} lesson={l} courseId={courseId} next={l.id === resumeLesson?.id && pct < 100} />)}
+                </section>
+              );
+            })}
+
+            {course.description && (
+              <section className="rounded-2xl border border-line bg-white p-5">
+                <h2 className="mb-2 text-[17px] font-extrabold text-navy">About this course</h2>
+                <ReadMore text={course.description} />
+              </section>
+            )}
+          </div>
+
+          <aside className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-4 lg:sticky lg:top-4">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {([[`${readingsDone}/${readings.length}`, 'lessons'], [`${quizzesDone}/${quizzes.length}`, 'quizzes'], [`${pct}%`, 'done']] as [string, string][]).map(([n, l]) => (
+                <span key={l} className="rounded-[10px] bg-subtle p-2 text-[12px] text-muted"><b className="block text-[18px] text-navy">{n}</b>{l}</span>
+              ))}
+            </div>
+            <div className="flex items-start gap-2.5 rounded-[10px] border border-dashed border-line p-3 text-[13px] text-ink2">
+              <Icon name="certificates" size={16} className="mt-0.5 flex-shrink-0 text-azure-strong" />
+              <span>{pct >= 100 ? <><b className="text-navy">Certificate earned.</b> <Link href="/student/certificates" className="font-bold text-azure-strong hover:underline">See it</Link></> : <><b className="block text-navy">Certificate</b>When all {progress.totalLessons} lessons{quizzes.length ? ' and quizzes' : ''} are done</>}</span>
+            </div>
+            <Link href="/student/tests" className="flex h-11 items-center justify-center gap-2 rounded-lg border border-line text-[14px] font-extrabold text-navy hover:bg-subtle"><Icon name="grade" size={16} />Practise in the Test Centre</Link>
+            <Link href="/student/flashcards" className="flex h-11 items-center justify-center gap-2 rounded-lg border border-line text-[14px] font-extrabold text-navy hover:bg-subtle"><Icon name="docLine" size={16} />My notes and flashcards</Link>
+
+            <div className="flex items-center gap-3 border-t border-line pt-3">
+              <span className="flex h-12 w-12 flex-shrink-0 -rotate-[4deg] items-center justify-center overflow-hidden rounded-xl bg-accent-soft text-[15px] font-extrabold text-azure-strong">
+                {teacherPhoto ? <img src={teacherPhoto} alt="" className="h-full w-full object-cover" /> : (teacherName ?? 'C').slice(0, 1)}
+              </span>
+              <span className="min-w-0 text-[13px]">
+                <b className="block truncate text-[14px] text-navy">{teacherName ?? 'CareerPath Africa'}</b>
+                <span className="block text-muted">{teacherName ? 'Your teacher' : 'No teacher yet'}</span>
+                <Link href={teacherName ? '/student/messages' : '/student/support'} className="font-bold text-azure-strong hover:underline">{teacherName ? 'Ask a question' : 'Ask CareerPath'}</Link>
+              </span>
+            </div>
+
+            {fromPackage && (
+              <Link href={`/packages/${fromPackage.id}`} className="flex items-start gap-2 border-t border-line pt-3 text-[12.5px] text-ink2 hover:text-navy">
+                <Icon name="packages" size={15} className="mt-0.5 flex-shrink-0 text-azure-strong" />
+                <span>From <b className="text-navy">{fromPackage.name}</b>{fromPackage.expiresAt ? `, yours until ${new Date(fromPackage.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}</span>
+              </Link>
+            )}
+            {expiringPackage && (
+              <p className="flex gap-2 rounded-[10px] bg-subtle p-3 text-[13px] text-ink2">
+                <Icon name="clock" size={15} className="mt-0.5 flex-shrink-0 text-azure-strong" />
+                <span>{expiringPackage.name} ends on <b className="text-navy">{new Date(expiringPackage.expiresAt!).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}</b>. <Link href="/packages" className="font-bold text-azure-strong hover:underline">Renew</Link></span>
+              </p>
+            )}
+            {progress.hasAccess === false && (
+              <div className="flex flex-col gap-2 rounded-[10px] bg-accent-soft p-3 text-[13px] text-ink2">
+                You can open the free preview lessons. Get the course to unlock the rest.
+                <Link href={`/student/courses/${courseId}`} className="inline-flex h-9 w-fit items-center rounded-lg bg-azure-strong px-3 text-[13px] font-extrabold text-on-accent">Get the course</Link>
+              </div>
+            )}
+            {isDirectPurchase && (
+              <p className="text-[12.5px] text-ink2">A package can add live classes or a mentor to this course. <Link href="/packages" className="font-bold text-azure-strong hover:underline">See packages</Link></p>
+            )}
+          </aside>
+        </div>
       </div>
     </div>
   );
 }
 
-/* ─── Lesson card ─────────────────────────────────────────────────────────── */
+/* ─── A lesson in the list ────────────────────────────────────────────────── */
 
-function LessonCard({ lesson, courseId }: { lesson: Lesson; courseId: string }) {
+function LessonRow({ lesson, courseId, next }: { lesson: Lesson; courseId: string; next: boolean }) {
   const st = lessonState(lesson);
   const href = `/student/learn/${courseId}/lesson/${lesson.id}`;
   const kind = lesson.type === 'VIDEO' ? 'video' : lesson.type === 'QUIZ' ? 'quiz' : 'text';
-
-  const meta = kind === 'video' ? `Video · ${clock(lesson.durationSecs)}`
-    : kind === 'quiz' ? 'Quiz'
-    : `Reading · ${minutes(lesson.durationSecs)}`;
-  const cells = kind === 'video'
-    ? [['Length', clock(lesson.durationSecs)], ['Chapters', lesson.chapters?.length ? String(lesson.chapters.length) : '—']]
-    : kind === 'quiz'
-    ? [['Pass mark', lesson.passMark ? `${lesson.passMark}%` : '—'], ['Attempts', lesson.maxAttempts ? String(lesson.maxAttempts) : 'Unlimited']]
-    : [['Length', minutes(lesson.durationSecs)], ['Preview', lesson.isFree ? 'Free' : '—']];
-  const covers = lesson.chapters?.length ? lesson.chapters.map(c => c.title).join(', ') : null;
-
-  const primaryLabel = st === 'locked' ? 'Locked'
-    : st === 'done' ? (kind === 'video' ? 'Rewatch' : kind === 'quiz' ? 'Review answers' : 'Review')
-    : st === 'doing' ? 'Continue'
-    : kind === 'text' ? 'Read' : 'Start';
-
-  const statusTone = st === 'done' ? 'text-azure-strong' : st === 'doing' ? 'text-azure' : 'text-muted';
-  const statusIcon = st === 'done' ? P.check : st === 'doing' ? P.dot : st === 'locked' ? P.lock : P.ring;
-
-  return (
-    <article className="flex flex-col gap-3.5 rounded-lg border border-line bg-white p-4">
-      <div className="flex items-center gap-3">
-        <span className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-md bg-subtle text-ink2">
-          <Glyph d={kind === 'video' ? P.play : kind === 'quiz' ? P.quiz : P.text} size={18} />
-        </span>
-        <div className="min-w-0">
-          <h3 className="text-[14.5px] font-semibold leading-snug text-navy">{lesson.title}</h3>
-          <p className="mt-0.5 text-[12.5px] text-muted">{meta}</p>
-        </div>
-      </div>
-
-      <dl className="grid grid-cols-3 gap-2">
-        <div>
-          <dt className={label}>Status</dt>
-          <dd className={clsx('mt-[5px] flex items-center gap-1.5 text-[13px] font-semibold', statusTone)}>
-            <Glyph d={statusIcon} size={14} strokeWidth={2} fill={st === 'doing' ? 'currentColor' : 'none'} />
-            {STATE_LABEL[st]}
-          </dd>
-        </div>
-        {cells.map(([l, v]) => (
-          <div key={l}>
-            <dt className={label}>{l}</dt>
-            <dd className="mt-[5px] text-[13px] font-semibold text-navy">{v}</dd>
-          </div>
-        ))}
-      </dl>
-
-      {covers && (
-        <>
-          <div className="h-px bg-line" />
-          <div>
-            <p className={label}>Covers</p>
-            <p className="mt-[5px] text-[13px] leading-normal text-ink2">{covers}</p>
-          </div>
-        </>
-      )}
-
-      <div className="mt-auto flex flex-wrap gap-2">
-        {st === 'locked' ? (
-          <span className={btnDisabled} aria-disabled="true">Locked</span>
-        ) : (
-          <Link href={href} className={btnPrimary}>{primaryLabel}</Link>
-        )}
-        {st !== 'locked' && kind !== 'quiz' && (
-          <Link href={href} className={btnSecondary}>Practice</Link>
-        )}
-      </div>
-    </article>
+  const meta = kind === 'video' ? `Video${lesson.durationSecs ? ` · ${clock(lesson.durationSecs)}` : ''}`
+    : kind === 'quiz' ? ['Quiz', lesson.passMark ? `pass mark ${lesson.passMark}%` : null, lesson.maxAttempts ? `${lesson.maxAttempts} tries` : null].filter(Boolean).join(' · ')
+    : `Reading${lesson.durationSecs ? ` · ${minutes(lesson.durationSecs)}` : ''}${lesson.isFree ? ' · free preview' : ''}`;
+  const action = st === 'locked' ? 'Locked'
+    : st === 'done' ? (kind === 'quiz' ? 'Review answers' : 'Review')
+    : st === 'doing' || next ? 'Continue'
+    : kind === 'text' ? 'Read' : kind === 'video' ? 'Watch' : 'Start';
+  const row = (
+    <>
+      <span className={clsx('flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full',
+        st === 'done' ? 'bg-[rgba(46,170,95,0.15)] text-[#2EAA5F]' : next ? 'bg-azure-strong text-on-accent' : st === 'locked' ? 'text-muted' : 'text-muted')}>
+        {st === 'done' ? <Icon name="check" size={15} /> : next ? <Icon name="play" size={13} /> : st === 'locked' ? <Icon name="lock" size={14} /> : <span className="h-3.5 w-3.5 rounded-full border-[1.5px] border-current" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <b className={clsx('block truncate text-[14px]', st === 'done' ? 'font-semibold text-ink2' : 'text-navy')}>{lesson.title}</b>
+        <span className="block truncate text-[12px] text-muted">{meta}</span>
+      </span>
+      <span className={clsx('inline-flex h-8 flex-shrink-0 items-center rounded-lg px-3 text-[12.5px] font-extrabold',
+        next ? 'bg-azure-strong text-on-accent' : st === 'locked' ? 'text-muted' : 'border border-line text-azure-strong')}>{action}</span>
+    </>
   );
+  const cls = clsx('flex items-center gap-3 border-b border-line px-4 py-2.5 last:border-b-0', next && 'bg-accent-soft');
+  return st === 'locked' ? <div className={cls} aria-disabled="true">{row}</div> : <Link href={href} className={clsx(cls, 'hover:bg-subtle')}>{row}</Link>;
 }
