@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PackagesService } from './packages.service';
 import { PublicPagesService } from '../catalogue/public-pages.service';
@@ -77,6 +77,15 @@ export class PackagesController {
   })
   update(@Param('id') id: string, @Body() dto: UpdatePackageDto) {
     return this.packagesService.update(id, dto);
+  }
+
+  @Delete('admin/packages/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[Admin] Delete a draft package (refused if published, bought, used by a school, or tied to a coupon)' })
+  remove(@Param('id') id: string) {
+    return this.packagesService.remove(id);
   }
 
   @Get('admin/packages/:id/sales')

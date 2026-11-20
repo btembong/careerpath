@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import {
   Injectable,
+  BadRequestException,
   NotFoundException,
   UnprocessableEntityException,
   Inject,
@@ -77,6 +78,32 @@ export class PackagesService {
       include: { cohort: { select: { id: true, name: true } } },
     });
     return pkg;
+  }
+
+  /**
+   * Deletes a draft package. Refused for a published one (unpublish it first), and while anything still depends on it:
+   * purchases, school seats, or a coupon made for it. Mock exams that listed it just drop it; payment records keep their history.
+   */
+  async remove(id: string) {
+    const pkg = await this.findOne(id);
+    if (pkg.isPublished) throw new BadRequestException('Unpublish the package before deleting it.');
+    const [bought, seats, coupons] = await Promise.all([
+      this.prisma.packagePurchase.count({ where: { packageId: id } }),
+      this.prisma.orgEnrollment.count({ where: { packageId: id } }),
+      this.prisma.coupon.findMany({ where: { packageId: id }, select: { code: true } }),
+    ]);
+    const why = [
+      bought ? `${bought} student${bought === 1 ? ' has' : 's have'} bought it` : null,
+      seats ? `a school has ${seats} seat${seats === 1 ? '' : 's'} on it` : null,
+      coupons.length ? `coupon${coupons.length === 1 ? '' : 's'} ${coupons.map(c => c.code).join(', ')} ${coupons.length === 1 ? 'is' : 'are'} for it` : null,
+    ].filter(Boolean);
+    if (why.length) throw new BadRequestException(`This package can’t be deleted: ${why.join('; ')}.`);
+    const exams = await this.prisma.mockExam.findMany({ where: { packageIds: { has: id } }, select: { id: true, packageIds: true } });
+    await this.prisma.$transaction([
+      ...exams.map(e => this.prisma.mockExam.update({ where: { id: e.id }, data: { packageIds: e.packageIds.filter(x => x !== id) } })),
+      this.prisma.package.delete({ where: { id } }),
+    ]);
+    return { deleted: true, name: pkg.name };
   }
 
   async update(id: string, dto: UpdatePackageDto) {

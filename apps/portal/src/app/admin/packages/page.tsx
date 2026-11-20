@@ -90,6 +90,20 @@ export default function AdminPackagesPage() {
   const priceNum = Number(form.price);
   const allPriced = inPkg.length > 0 && sameCurrency.length === inPkg.length;
 
+  async function remove() {
+    if (!selId || selId === 'new' || !confirm(`Delete “${form.name}”? This can’t be undone.`)) return;
+    setSaving(true);
+    try {
+      await api.delete(`/admin/packages/${selId}`);
+      notify.success('Package deleted');
+      const ps = await loadPackages();
+      if (ps[0]) pick(ps[0]); else pick('new');
+    } catch (err: any) {
+      const m = err?.response?.data?.message;
+      notify.error(Array.isArray(m) ? m.join(', ') : m ?? 'Could not delete the package');
+    } finally { setSaving(false); }
+  }
+
   async function save(publish?: boolean) {
     if (!form.name.trim() || !(priceNum > 0)) { notify.error('Give the package a name and a price above zero'); return; }
     setSaving(true);
@@ -293,6 +307,8 @@ export default function AdminPackagesPage() {
                 ? <Button size="sm" variant="danger" loading={saving} onClick={() => save(false)}>Unpublish</Button>
                 : <Button size="sm" variant="secondary" loading={saving} onClick={() => save(true)}>Publish</Button>)}
               {selId === 'new' && <Button size="sm" variant="secondary" loading={saving} onClick={() => save(true)}>Create and publish</Button>}
+              {/* Drafts only; the server refuses while anyone has bought it, a school uses it or a coupon is for it */}
+              {selId !== 'new' && !form.isPublished && <Button size="sm" variant="danger" loading={saving} onClick={remove}>Delete</Button>}
               {selId !== 'new' && <a href={`/packages/${selId}?preview=1`} target="_blank" rel="noreferrer" className="ml-auto inline-flex h-8 items-center rounded-md border border-line px-3 text-[13px] font-semibold text-navy hover:bg-subtle">Preview the public page ↗</a>}
             </div>
             {selId !== 'new' && (
