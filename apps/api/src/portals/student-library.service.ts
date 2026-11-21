@@ -36,7 +36,7 @@ export class StudentLibraryService {
     });
 
     const ids = [...access.keys()];
-    if (!ids.length) return { stats: { courses: 0, packages: 0, single: 0, free: 0, lessonsThisWeek: 0, studySecs30d: 0, certificates: 0 }, resume: null, courses: [] };
+    if (!ids.length) return { stats: { courses: 0, packages: 0, single: 0, free: 0, lessonsThisWeek: 0, weekDays: [0, 0, 0, 0, 0, 0, 0], studySecs30d: 0, certificates: 0 }, resume: null, courses: [] };
 
     const [courses, progress, certs] = await Promise.all([
       this.prisma.platformCourse.findMany({
@@ -82,6 +82,11 @@ export class StudentLibraryService {
     const resume = rows.find(r => r.state === 'going' && r.next) ?? null;
     const weekAgo = now.getTime() - 7 * DAY, monthAgo = now.getTime() - 30 * DAY;
     const kinds = new Set(pkgBuys.map(p => p.package.id));
+    // Lessons finished each day of this week, Monday to Sunday (Cameroon time, UTC+1)
+    const local = new Date(now.getTime() + 3_600_000);
+    const monday = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - ((local.getUTCDay() + 6) % 7) * DAY - 3_600_000;
+    const weekDays = [0, 0, 0, 0, 0, 0, 0];
+    for (const p of progress) { const d = Math.floor((p.updatedAt.getTime() - monday) / DAY); if (p.completed && d >= 0 && d < 7) weekDays[d]++; }
     return {
       stats: {
         courses: rows.length,
@@ -90,6 +95,7 @@ export class StudentLibraryService {
         free: rows.filter(r => r.access.kind === 'free' || r.access.kind === 'website').length,
         lessonsDone: progress.filter(p => p.completed).length,
         lessonsThisWeek: progress.filter(p => p.completed && p.updatedAt.getTime() > weekAgo).length,
+        weekDays,
         // Seconds watched on lessons touched in the last 30 days (an estimate — totals aren't kept per day)
         studySecs30d: progress.filter(p => p.updatedAt.getTime() > monthAgo).reduce((n, p) => n + p.watchedSecs, 0),
         certificates: certs.length,
