@@ -10,6 +10,8 @@ import { PersonPhoto } from '@/components/ui/PersonPhoto';
 import { walletMoney } from '@/components/wallet/WalletCharts';
 import { STATUS } from '@/components/payout/GetPaid';
 import { ProviderLogo } from '@/components/payout/ProviderLogo';
+import { Flag } from '@/components/ui/Flag';
+import { minorToMajor } from '@cpa/shared';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 
@@ -18,11 +20,13 @@ interface Rules { autoLimit: number; twoApproversAbove: number; dailyMax: number
 interface Overview {
   tranzak: { ok: true; payout: { currency: string; total: number; available: number }; collection: { currency: string; total: number; available: number } } | { ok: false; error: string };
   owed: Record<string, number>; rules: Rules; unlocked: boolean; cover: { perDay: number; days: number | null; topUpForTwoWeeks: number | null; basedOnHistory: boolean };
-  awaiting: { count: number; amount: number }; today: { count: number; amount: number; failed: number }; accountsToCheck: number;
+  awaiting: { count: number; amount: number; otherCurrencies?: { currency: string; amount: number; count: number }[] }; today: { count: number; amount: number; failed: number }; accountsToCheck: number;
 }
 interface Row {
   id: string; amount: number; fee: number | null; currency: string; status: Status; method: string; paidTo: string; reference: string; ourRef: string; transferId: string | null;
-  failureReason: string | null; requestedAt: string; completedAt: string | null; approvals: number; approvalsNeeded: number; approvedBy: string[]; flags: string[]; payeeName: string | null;
+  failureReason: string | null; requestedAt: string; completedAt: string | null; approvals: number; approvalsNeeded: number; approvedBy: string[]; flags: string[]; payeeName: string | null; payeeNumber?: string;
+  /** What's needed to pay it by hand, as it was when they asked */
+  payeeDetails?: { country: string; method: string | null; name: string; bankId: string | null; sortCode: string | null; accountType: string | null; branchCode: string | null } | null;
   user: { id: string; name: string; email: string; role: string; avatarUrl: string | null; since: string };
   account: { nameCheck: string | null; holderName: string | null; isVerified: boolean; changedAt: string | null; createdAt: string; country: string } | null;
   earned90d: { source: string; amount: number }[] | null; months: number[] | null; usual: number | null; risk: 'low' | 'medium' | 'high' | null;
@@ -124,7 +128,7 @@ export default function AdminSettlementsPage() {
               {o.today.count ? `${o.today.count} paid today, ${walletMoney(o.today.amount, 'XAF')}${o.today.failed ? `; ${o.today.failed} returned by the operator` : ''}.` : ''}
             </>}
             chips={[
-              ...(o.awaiting.count ? [{ t: `${o.awaiting.count} to approve · ${walletMoney(o.awaiting.amount, 'XAF')}`, strong: true }] : []),
+              ...(o.awaiting.count ? [{ t: [`${o.awaiting.count} to approve`, o.awaiting.amount ? walletMoney(o.awaiting.amount, 'XAF') : null, ...(o.awaiting.otherCurrencies ?? []).map(x => walletMoney(x.amount, x.currency))].filter(Boolean).join(' · '), strong: true }] : []),
               { t: `Owed to earners ${walletMoney(xaf, 'XAF')}` },
             ]}
             actions={<>
@@ -143,7 +147,7 @@ export default function AdminSettlementsPage() {
                 <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 text-[13.5px]">
                   {parts.map(p => <div key={p[0]} className="contents"><dt className="flex items-center gap-2 text-ink2"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: p[2] }} />{p[0]}</dt><dd className="text-right font-bold">{walletMoney(p[1], 'XAF')}</dd></div>)}
                 </dl>
-                {short > 0 && <p className="rounded-lg bg-[#FFF3DC] px-3 py-2 text-xs text-[#8A5A0B]">The payout account is {walletMoney(short, 'XAF')} short of what’s owed.</p>}
+                {short > 0 && <p className="rounded-lg bg-accent-soft px-3 py-2 text-xs text-navy">The payout account is {walletMoney(short, 'XAF')} short of what’s owed.</p>}
               </>;
             })() : <>
               <p className={asideLabel}>Tranzak</p>
@@ -225,7 +229,7 @@ export default function AdminSettlementsPage() {
                   <p className="text-sm font-semibold text-navy">{a.user.name} <span className="font-medium text-muted">· {ROLE[a.user.role] ?? a.user.role}</span></p>
                   <p className="mt-0.5 text-[12.5px] text-muted">{a.label} ·· {a.last} · {a.country}{a.holderName ? ` · registered to ${a.holderName}` : ''}</p>
                 </div>
-                <span className={clsx(tag, a.nameCheck === 'mismatch' ? 'bg-[#FDE8E8] text-[#A12A2A]' : 'bg-[#FFF3DC] text-[#8A5A0B]')}>{a.nameCheck === 'mismatch' ? 'Name doesn’t match' : a.automatic ? 'Name not checked' : 'Outside Cameroon: paid by hand'}</span>
+                <span className={clsx(tag, a.nameCheck === 'mismatch' ? 'bg-[#FDE8E8] text-[#A12A2A]' : 'bg-accent-soft text-navy')}>{a.nameCheck === 'mismatch' ? 'Name doesn’t match' : a.automatic ? 'Name not checked' : 'Outside Cameroon: paid by hand'}</span>
                 <Button size="sm" variant="secondary" onClick={() => confirmAccount(a)}>Confirm</Button>
               </div>
             ))}
@@ -283,8 +287,8 @@ function RulesForm({ rules, run, onSaved }: { rules: Rules; run: (fn: (code: str
       <div className="flex flex-col gap-1.5 py-3">
         <p className="text-[13.5px] font-bold text-navy">What happens at each amount</p>
         <div className="flex h-9 gap-0.5 overflow-hidden rounded-md text-[12px] font-bold">
-          <span className="flex items-center justify-center bg-[#E3F5EC] text-[#1A7F4B]" style={{ width: band(0, r.autoLimit) }}>Sends by itself</span>
-          <span className="flex items-center justify-center bg-[#FFF3DC] text-[#8A5A0B]" style={{ width: band(r.autoLimit, r.twoApproversAbove) }}>1 admin</span>
+          <span className="flex items-center justify-center bg-accent-soft text-azure-strong" style={{ width: band(0, r.autoLimit) }}>Sends by itself</span>
+          <span className="flex items-center justify-center bg-accent-soft text-navy" style={{ width: band(r.autoLimit, r.twoApproversAbove) }}>1 admin</span>
           <span className="flex flex-1 items-center justify-center bg-[#FDE8E8] text-[#A12A2A]">2 admins</span>
         </div>
         <div className="relative h-4 text-[11.5px] text-muted">
@@ -310,14 +314,17 @@ function RulesForm({ rules, run, onSaved }: { rules: Rules; run: (fn: (code: str
   );
 }
 
-const RISK: Record<string, [string, string]> = { low: ['Low risk', 'bg-[#E3F5EC] text-[#1A7F4B]'], medium: ['Medium', 'bg-[#FFF3DC] text-[#8A5A0B]'], high: ['High risk', 'bg-[#FDE8E8] text-[#A12A2A]'] };
+const RISK: Record<string, [string, string]> = { low: ['Low risk', 'bg-accent-soft text-azure-strong'], medium: ['Medium', 'bg-accent-soft text-navy'], high: ['High risk', 'bg-[#FDE8E8] text-[#A12A2A]'] };
 const ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 /** Approvals as a review desk: the queue on the left, one decision on the right, with keyboard shortcuts */
 function ReviewDesk({ rows, twoAbove, onApprove, onPay, onRefuse }: { rows: Row[] | null; twoAbove: number; onApprove: (r: Row) => void; onPay: (r: Row) => void; onRefuse: (r: Row) => void }) {
   const [filter, setFilter] = useState<'all' | 'high' | 'hand'>('all');
+  const [country, setCountry] = useState('');
   const [sel, setSel] = useState<string | null>(null);
-  const list = (rows ?? []).filter(r => filter === 'all' || (filter === 'high' ? r.risk === 'high' : r.method === 'manual'))
+  const countryOf = (x: Row) => x.payeeDetails?.country ?? x.account?.country ?? '';
+  const countries = [...new Set((rows ?? []).map(countryOf).filter(Boolean))].sort();
+  const list = (rows ?? []).filter(r => (filter === 'all' || (filter === 'high' ? r.risk === 'high' : r.method === 'manual')) && (!country || countryOf(r) === country))
     .sort((a, b) => ORDER[a.risk ?? 'low'] - ORDER[b.risk ?? 'low'] || b.amount - a.amount);
   const r = list.find(x => x.id === sel) ?? list[0] ?? null;
   const i = r ? list.indexOf(r) : -1;
@@ -344,7 +351,7 @@ function ReviewDesk({ rows, twoAbove, onApprove, onPay, onRefuse }: { rows: Row[
     ['Size', r.usual ? `${(r.amount / r.usual).toFixed(1)}× their usual` : 'First withdrawal', !r.usual || r.amount > 2 * r.usual ? 'warn' : 'good'],
     ['Sending', r.flags.includes('send-failed') ? 'Tranzak couldn’t send it' : r.method === 'manual' ? 'Pay by hand' : r.flags.includes('bank') ? 'Bank: Tranzak or by hand' : 'Tranzak or by hand', r.flags.includes('send-failed') ? 'bad' : r.method === 'manual' ? 'warn' : 'good'],
   ] : [];
-  const tone = { good: 'bg-[#E3F5EC] text-[#1A7F4B]', warn: 'bg-[#FFF3DC] text-[#8A5A0B]', bad: 'bg-[#FDE8E8] text-[#A12A2A]' };
+  const tone = { good: 'bg-accent-soft text-azure-strong', warn: 'bg-accent-soft text-navy', bad: 'bg-[#FDE8E8] text-[#A12A2A]' };
   const monthsMax = Math.max(1, ...(r?.months ?? [0]));
   const monthLabel = (k: number) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 5 + k); return d.toLocaleDateString('en-GB', { month: 'short' }); };
   const FILTERS: ['all' | 'high' | 'hand', string][] = [['all', `All ${rows.length}`], ['high', `High risk ${rows.filter(x => x.risk === 'high').length}`], ['hand', `By hand ${rows.filter(x => x.method === 'manual').length}`]];
@@ -356,9 +363,15 @@ function ReviewDesk({ rows, twoAbove, onApprove, onPay, onRefuse }: { rows: Row[
           {FILTERS.map(([k, l]) => (
             <button key={k} type="button" onClick={() => setFilter(k)} className={clsx('inline-flex h-8 items-center rounded-md border px-2.5 text-[12.5px] font-semibold', filter === k ? 'border-[#3F6FE8] bg-accent-soft text-navy' : 'border-line text-ink2')}>{l}</button>
           ))}
+          {countries.length > 1 && (
+            <select value={country} onChange={e => setCountry(e.target.value)} aria-label="Country" className="input-base h-8 w-auto py-0 text-[12.5px]">
+              <option value="">All countries</option>
+              {countries.map(c => <option key={c} value={c}>{c} · {(rows ?? []).filter(x => countryOf(x) === c).length}</option>)}
+            </select>
+          )}
         </div>
         {list.map(x => (
-          <button key={x.id} type="button" onClick={() => setSel(x.id)} className={clsx('flex items-center justify-between gap-3 border-t border-line px-3.5 py-3 text-left', x.id === r?.id ? 'border-l-[3px] border-l-[#3F6FE8] bg-subtle' : 'hover:bg-subtle')}>
+          <button key={x.id} type="button" onClick={() => setSel(x.id)} className={clsx('flex items-center justify-between gap-3 border-t border-line px-3.5 py-3 text-left', x.id === r?.id ? 'bg-accent-soft' : 'hover:bg-subtle')}>
             <ProviderLogo label={x.paidTo} size={30} className="rounded-[7px]" />
             <span className="min-w-0 flex-1"><b className="block truncate text-[13.5px] text-navy">{x.user.name}</b><span className="block truncate text-xs text-muted">{ROLE[x.user.role] ?? x.user.role} · {x.paidTo}</span></span>
             <span className="flex flex-shrink-0 flex-col items-end gap-1"><b className="text-[13.5px] text-navy">{walletMoney(x.amount, x.currency)}</b><span className={clsx(tag, x.method === 'manual' ? 'bg-accent-soft text-[#2F57C9]' : RISK[x.risk ?? 'low'][1])}>{x.method === 'manual' ? 'By hand' : RISK[x.risk ?? 'low'][0]}</span></span>
@@ -387,6 +400,7 @@ function ReviewDesk({ rows, twoAbove, onApprove, onPay, onRefuse }: { rows: Row[
           {r.approvalsNeeded > 1 && <p><span className={clsx(tag, 'bg-accent-soft text-[#2F57C9]')}>{r.approvals} of {r.approvalsNeeded} approvals</span> <span className="text-ink2">Over {walletMoney(twoAbove, 'XAF')} needs two different admins.{r.approvedBy.length ? ` Approved by ${r.approvedBy.join(', ')}.` : ''}</span></p>}
           {r.failureReason && <p className="text-[#A12A2A]">{r.failureReason}</p>}
         </div>}
+        {r.method === 'manual' && <PayTo r={r} />}
         <div className="flex flex-wrap items-center gap-2">
           {r.method === 'manual' ? <Button onClick={() => onPay(r)}>Mark paid</Button> : <Button onClick={() => onApprove(r)}>{r.flags.includes('send-failed') ? 'Send again' : 'Approve and send'}</Button>}
           {/* Both ways: send it through Tranzak, or pay it yourself and record the reference */}
@@ -397,6 +411,44 @@ function ReviewDesk({ rows, twoAbove, onApprove, onPay, onRefuse }: { rows: Row[
           </span>
         </div>
       </section>}
+    </div>
+  );
+}
+
+const COUNTRY: Record<string, string> = { CM: 'Cameroon', NG: 'Nigeria', KE: 'Kenya', ZA: 'South Africa' };
+
+/** Everything to pay it by hand, one Copy each: bank and code, account, name, amount, our reference */
+function PayTo({ r }: { r: Row }) {
+  const p = r.payeeDetails;
+  const mobile = p?.method === 'MPESA' || p?.method === 'AIRTEL' || p?.method === 'MOMO' || p?.method === 'MTN' || p?.method === 'ORANGE';
+  const number = r.payeeNumber ? (/^\d+$/.test(r.payeeNumber) && mobile ? `+${r.payeeNumber}` : r.payeeNumber) : null;
+  const fields: [string, string | null][] = [
+    [mobile ? 'Provider' : 'Bank', p ? `${p.name}${p.sortCode ? ` (${p.sortCode})` : ''}` : r.paidTo.split(' ·· ')[0]],
+    [mobile ? 'Mobile number' : 'Account number', number],
+    ['Name on the account', r.payeeName],
+    ['Account type', p?.accountType === 'cheque' ? 'Cheque (current)' : p?.accountType === 'savings' ? 'Savings' : null],
+    [p?.country === 'ZA' ? 'Branch code' : 'SWIFT code', p?.branchCode ?? null],
+    ['Amount', `${minorToMajor(r.amount, r.currency)} ${r.currency}`],
+    ['Our reference', r.ourRef],
+  ];
+  const copy = (v: string) => navigator.clipboard?.writeText(v).then(() => notify.success('Copied')).catch(() => notify.error('Couldn’t copy'));
+  return (
+    <div className="overflow-hidden rounded-lg border border-line">
+      <p className="flex items-center gap-2 border-b border-line bg-subtle px-3.5 py-2 text-[12px] font-bold uppercase tracking-[0.06em] text-muted">
+        {p?.country && <Flag code={p.country} />}Pay to{p?.country ? ` · ${COUNTRY[p.country] ?? p.country}` : ''}
+      </p>
+      <dl className="grid [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
+        {fields.filter(([, v]) => v).map(([l, v]) => (
+          <div key={l} className="flex min-w-0 flex-col gap-0.5 border-b border-r border-line px-3.5 py-2.5">
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">{l}</dt>
+            <dd className="flex items-center justify-between gap-2 text-[13.5px] font-bold tabular-nums text-navy">
+              <span className="min-w-0 break-words">{v}</span>
+              <button type="button" onClick={() => copy(l === 'Amount' ? String(minorToMajor(r.amount, r.currency)) : v!)} className="flex-shrink-0 text-[12px] font-extrabold text-azure-strong hover:underline">Copy</button>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="px-3.5 py-2 text-xs text-muted">Put our reference in the transfer’s narration. Once sent, use Mark paid with the bank’s reference; they get an email.</p>
     </div>
   );
 }

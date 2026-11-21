@@ -10,11 +10,14 @@ import { notify } from '@/lib/notify';
 import api from '@/lib/api';
 import { ProviderLogo } from '@/components/payout/ProviderLogo';
 import { BankFields, BankValue, bankReady, emptyBank, ribOf } from '@/components/payout/BankFields';
+import { AbroadFields, type AbroadValue, abroadPayload, abroadReady, emptyAbroad } from '@/components/payout/AbroadFields';
+import { Flag } from '@/components/ui/Flag';
+import { Icon } from '@/components/ui/Icon';
 
 type Status = 'AWAITING_APPROVAL' | 'SENDING' | 'PAID' | 'FAILED' | 'REJECTED';
 interface WRow { id: string; amount: number; fee: number | null; currency: string; status: Status; method: string; paidTo: string; payeeName: string | null; reference: string; failureReason: string | null; requestedAt: string; sentAt: string | null; completedAt: string | null; approvals: number; approvalsNeeded: number }
 interface Account {
-  provider: string | null; bankId: string | null; label: string; last: string; country: string; holderName: string | null; nameCheck: string; confirmedByAdmin: boolean; automatic: boolean;
+  provider: string | null; bankId: string | null; accountType?: string | null; branchCode?: string | null; label: string; last: string; country: string; holderName: string | null; nameCheck: string; confirmedByAdmin: boolean; automatic: boolean;
   hasPin: boolean; readyAt: string | null; lockedUntil: string | null; pinSetAt: string | null; lockedByUser: boolean;
   autoMode: 'weekly' | 'monthly' | 'threshold' | null; autoThreshold: number | null; nextAutoAt: string | null; since: string; changedAt: string | null;
 }
@@ -22,12 +25,15 @@ interface Paid {
   currency: string | null; balance: number; clearing: number; available: number; sending: number; nextClearsAt: string | null; clearingByDay: { day: string; amount: number }[];
   minimum: number; dailyLeft: number | null; approvalAbove: number; paused: boolean; payeePaysFee: boolean;
   account: Account | null; withdrawals: WRow[];
+  /** The country on their profile (the form is for it); countries to choose from when the profile has none */
+  home?: { code: string; name: string; currency: string } | null; countries?: { code: string; name: string }[] | null;
 }
+const CURRENCY_NAME: Record<string, string> = { XAF: 'FCFA', NGN: 'naira (NGN)', KES: 'shillings (KES)', ZAR: 'rand (ZAR)', GHS: 'cedis (GHS)' };
 
 export const STATUS: Record<Status, { label: string; cls: string }> = {
-  PAID: { label: 'Received', cls: 'bg-[#E3F5EC] text-[#1A7F4B]' },
+  PAID: { label: 'Received', cls: 'bg-accent-soft text-azure-strong' },
   SENDING: { label: 'On its way', cls: 'bg-accent-soft text-[#2F57C9]' },
-  AWAITING_APPROVAL: { label: 'Waiting for approval', cls: 'bg-[#FFF3DC] text-[#8A5A0B]' },
+  AWAITING_APPROVAL: { label: 'Waiting for approval', cls: 'bg-accent-soft text-navy' },
   FAILED: { label: 'Back in balance', cls: 'bg-[#FDE8E8] text-[#A12A2A]' },
   REJECTED: { label: 'Refused', cls: 'bg-[#FDE8E8] text-[#A12A2A]' },
 };
@@ -84,62 +90,86 @@ function PinField({ value, onChange, label, autoFocus }: { value: string; onChan
 
 /* ── First time: number → PIN → code, as three steps ─────────────────── */
 
-function Setup({ onClose, onSaved, start }: { onClose: () => void; onSaved: (p: Paid) => void; start?: Account | null }) {
+function Setup({ onClose, onSaved, start, home, countries }: { onClose: () => void; onSaved: (p: Paid) => void; start?: Account | null; home?: Paid['home']; countries?: Paid['countries'] }) {
   const [step, setStep] = useState(0);
   const [provider, setProvider] = useState(start?.provider ?? 'MTN');
   const [number, setNumber] = useState('');
-  const [other, setOther] = useState(''), [country, setCountry] = useState('');
+  // The profile's country decides the form; only without one do they choose it here
+  const [chosen, setChosen] = useState('');
+  const country = home?.code ?? chosen;
+  const cm = country === 'CM';
+  // Changing an account abroad starts from how they're paid now (the number is asked again)
+  const [abroad, setAbroad] = useState<AbroadValue>(() => start && country && !cm && start.provider ? { ...emptyAbroad(country), provider: start.provider, bankId: start.bankId ?? '', accountType: (start.accountType as AbroadValue['accountType']) ?? '' } : emptyAbroad(country));
+  const pickCountry = (c: string) => { setChosen(c); setAbroad(emptyAbroad(c)); if (c === 'CM') setProvider(p => (p === 'MTN' || p === 'ORANGE' || p === 'BANK' ? p : 'MTN')); };
   const [bank, setBank] = useState<BankValue>({ ...emptyBank, bankId: start?.bankId ?? '' });
   const [pin, setPin] = useState(''), [pin2, setPin2] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const mobile = provider === 'MTN' || provider === 'ORANGE';
   const change = !!start;
 
   async function save() {
     if (pin && pin !== pin2) { notify.error('The two PINs don’t match'); setStep(1); return; }
     setBusy(true);
     try {
-      const r = await api.post('/me/get-paid/account', provider === 'BANK'
-        ? { provider: 'BANK', bankId: bank.bankId, holderName: bank.holderName, number: ribOf(bank), country: 'CM', ...(pin ? { pin } : {}), code }
-        : { provider: provider === 'OTHER' ? '' : provider, number, country: mobile ? 'CM' : country, bankName: provider === 'OTHER' ? other : undefined, ...(pin ? { pin } : {}), code });
+      const extra = { ...(home ? {} : { country }), ...(pin ? { pin } : {}), code };
+      const r = await api.post('/me/get-paid/account', !cm ? { ...abroadPayload(abroad), ...extra }
+        : provider === 'BANK' ? { provider: 'BANK', bankId: bank.bankId, holderName: bank.holderName, number: ribOf(bank), ...extra }
+        : { provider, number, ...extra });
       const acc = (r.data as Paid).account;
       notify.success(change ? 'Payout account changed' : 'You’re set up', { description: acc?.nameCheck === 'match' ? `Registered to ${acc.holderName}` : acc?.provider === 'BANK' ? 'Our team checks each bank payment before it’s sent.' : acc?.automatic ? 'Our team will confirm the name on the number before the first payment.' : 'Withdrawals to it are paid by hand by our team.' });
       onSaved(r.data);
     } catch (e) { notify.error(err(e, 'Could not save')); } finally { setBusy(false); }
   }
 
-  const steps = change ? ['Your number', 'New PIN (optional)', 'Confirm'] : ['Your number', 'Choose a PIN', 'Confirm'];
-  const ok = [provider === 'BANK' ? bankReady(bank) : !!number.trim() && (provider !== 'OTHER' || (!!other.trim() && !!country.trim())), change ? (!pin || (pin.length === 4 && pin2.length === 4)) : pin.length === 4 && pin2.length === 4, code.length === 6];
+  const first = cm && provider !== 'BANK' ? 'Your number' : 'Your details';
+  const steps = change ? [first, 'New PIN (optional)', 'Confirm'] : [first, 'Choose a PIN', 'Confirm'];
+  const ok = [!country ? false : !cm ? abroadReady(country, abroad) : provider === 'BANK' ? bankReady(bank) : !!number.trim(), change ? (!pin || (pin.length === 4 && pin2.length === 4)) : pin.length === 4 && pin2.length === 4, code.length === 6];
   return (
     <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent title={change ? 'Change your payout number' : 'Set up how you get paid'} description="Three short steps. MTN and Orange numbers in Cameroon are paid automatically.">
+      <DialogContent title={change ? (cm && provider !== 'BANK' ? 'Change your payout number' : 'Change where you get paid') : 'Set up how you get paid'} description={cm ? 'Three short steps. MTN and Orange numbers in Cameroon are paid automatically.' : 'Three short steps.'}>
         <ol className="mb-4 grid grid-cols-3 gap-2">
           {steps.map((t, i) => (
-            <li key={t} className={clsx('flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12.5px] font-semibold', i < step ? 'bg-[#E3F5EC] text-[#1A7F4B]' : i === step ? 'border-2 border-[#3F6FE8] text-navy' : 'bg-subtle text-muted')}>
+            <li key={t} className={clsx('flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12.5px] font-semibold', i < step ? 'bg-accent-soft text-azure-strong' : i === step ? 'border-2 border-[#3F6FE8] text-navy' : 'bg-subtle text-muted')}>
               <span>{i < step ? '✓' : i + 1}</span><span className="truncate">{t}</span>
             </li>
           ))}
         </ol>
         {step === 0 && <div className="flex flex-col gap-4">
-          <div role="radiogroup" aria-label="Where" className="flex flex-wrap gap-2">
-            {[['MTN', 'MTN Mobile Money'], ['ORANGE', 'Orange Money'], ['BANK', 'Bank account'], ['OTHER', 'Another country']].map(([k, l]) => (
-              <button key={k} type="button" role="radio" aria-checked={provider === k} onClick={() => setProvider(k)}
-                className={clsx('inline-flex h-10 items-center gap-2 rounded-md border px-2.5 text-[13px] font-semibold', provider === k ? 'border-[#3F6FE8] bg-accent-soft text-navy' : 'border-line text-ink2')}>{k === 'MTN' || k === 'ORANGE' ? <ProviderLogo provider={k} size={24} className="rounded-[5px]" /> : <span aria-hidden className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-subtle text-[13px]">{k === 'BANK' ? '🏦' : '🌍'}</span>}{l}</button>
-            ))}
-          </div>
-          {provider === 'OTHER' && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Mobile money or bank</span><input value={other} onChange={e => setOther(e.target.value)} placeholder="e.g. MTN MoMo Ghana" className="input-base" /></label>
-              <label className="flex flex-col gap-1.5"><span className="text-[13px] font-semibold text-navy">Country</span><input value={country} onChange={e => setCountry(e.target.value)} placeholder="e.g. Ghana" className="input-base" /></label>
-            </div>
+          {/* Where the money goes: the profile's country, or (only without one) chosen here */}
+          {home ? (
+            <p className="flex items-center gap-2.5 rounded-lg bg-subtle px-3 py-2.5 text-[13px] text-ink2">
+              <Flag code={home.code} className="h-3.5 w-[21px]" /><span><b className="text-navy">{home.name}</b> · from your profile · paid in {CURRENCY_NAME[home.currency] ?? home.currency}</span>
+            </p>
+          ) : (
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[13px] font-semibold text-navy">Which country do you live in?</span>
+              <select value={chosen} onChange={e => pickCountry(e.target.value)} className="input-base">
+                <option value="">Choose your country</option>
+                {(countries ?? []).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+              </select>
+              <span className="text-xs text-muted">Saved to your profile too, so you’re only asked once.</span>
+            </label>
           )}
-          {provider === 'BANK' ? <BankFields v={bank} onChange={setBank} /> : <label className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-semibold text-navy">{mobile ? 'Mobile number' : 'Phone or account number'}</span>
-            <input value={number} onChange={e => setNumber(e.target.value)} inputMode="tel" autoFocus placeholder={mobile ? '6 70 00 00 00' : ''} className="input-base" />
-            {mobile && <span className="text-xs text-muted">We check the name on it with {provider === 'MTN' ? 'MTN' : 'Orange'}. It should be yours.</span>}
-            {change && <span className="text-xs text-muted">For your safety, withdrawals to a new number open 48 hours after the change.</span>}
-          </label>}
+          {country && !cm && (
+            <p className="flex items-start gap-2 rounded-lg bg-accent-soft px-3 py-2.5 text-[12.5px] text-navy">
+              <Icon name="clock" size={15} className="mt-0.5 flex-shrink-0" /><span><b>Paid by our team within 2 working days.</b> Automatic payments are for MTN, Orange and banks in Cameroon for now.</span>
+            </p>
+          )}
+          {country && !cm && <AbroadFields country={country} v={abroad} onChange={setAbroad} />}
+          {cm && <>
+            <div role="radiogroup" aria-label="Where" className="flex flex-wrap gap-2">
+              {[['MTN', 'MTN Mobile Money'], ['ORANGE', 'Orange Money'], ['BANK', 'Bank account']].map(([k, l]) => (
+                <button key={k} type="button" role="radio" aria-checked={provider === k} onClick={() => setProvider(k)}
+                  className={clsx('inline-flex h-10 items-center gap-2 rounded-md border px-2.5 text-[13px] font-semibold', provider === k ? 'border-[#3F6FE8] bg-accent-soft text-navy' : 'border-line text-ink2')}>{k === 'BANK' ? <span aria-hidden className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-subtle text-[#2F57C9]"><Icon name="wallet" size={14} /></span> : <ProviderLogo provider={k} size={24} className="rounded-[5px]" />}{l}</button>
+              ))}
+            </div>
+            {provider === 'BANK' ? <BankFields v={bank} onChange={setBank} /> : <label className="flex flex-col gap-1.5">
+              <span className="text-[13px] font-semibold text-navy">Mobile number</span>
+              <input value={number} onChange={e => setNumber(e.target.value)} inputMode="tel" autoFocus placeholder="6 70 00 00 00" className="input-base" />
+              <span className="text-xs text-muted">We check the name on it with {provider === 'MTN' ? 'MTN' : 'Orange'}. It should be yours.</span>
+            </label>}
+          </>}
+          {change && <span className="text-xs text-muted">For your safety, withdrawals to a new account open 48 hours after the change.</span>}
         </div>}
         {step === 1 && <div className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-4"><PinField value={pin} onChange={setPin} label={change ? 'New PIN (leave empty to keep yours)' : 'Choose 4 digits'} autoFocus /><PinField value={pin2} onChange={setPin2} label="Again" /></div>
@@ -192,14 +222,14 @@ export function Tracker({ w, operatorName }: { w: WRow; operatorName: string }) 
   steps.push(back
     ? { t: 'Back in your balance', at: w.completedAt, note: w.failureReason ?? undefined, state: 'bad' }
     : { t: done ? 'Received' : w.status === 'SENDING' ? 'Arriving…' : 'Received', at: done ? w.completedAt : null, note: done ? [w.fee ? `${operatorName}’s fee ${walletMoney(w.fee, w.currency)}` : null, w.method === 'manual' ? `Reference ${w.reference}` : null].filter(Boolean).join(' · ') || undefined : undefined, state: done ? 'done' : w.status === 'SENDING' ? 'now' : 'todo' });
-  const colour = { done: 'bg-[#1A7F4B]', now: 'border-2 border-[#3F6FE8] bg-white', todo: 'border-2 border-[#C9D3E8] bg-white', bad: 'bg-[#A12A2A]' };
+  const colour = { done: 'bg-azure-strong', now: 'border-2 border-[#3F6FE8] bg-white', todo: 'border-2 border-[#C9D3E8] bg-white', bad: 'bg-[#A12A2A]' };
   return (
     <ol className="flex flex-col">
       {steps.map((s, i) => (
         <li key={s.t} className="flex gap-3">
           <span className="flex flex-col items-center">
             <span className={clsx('mt-1 h-3 w-3 rounded-full', colour[s.state])} />
-            {i < steps.length - 1 && <span className={clsx('w-0.5 flex-1', s.state === 'done' ? 'bg-[#1A7F4B]' : 'bg-line')} style={{ minHeight: 28 }} />}
+            {i < steps.length - 1 && <span className={clsx('w-0.5 flex-1', s.state === 'done' ? 'bg-azure-strong' : 'bg-line')} style={{ minHeight: 28 }} />}
           </span>
           <span className="pb-3 text-[13.5px]">
             <b className={clsx(s.state === 'now' ? 'text-[#2F57C9]' : s.state === 'todo' ? 'text-muted' : s.state === 'bad' ? 'text-[#A12A2A]' : 'text-navy')}>{s.t}</b>{s.at && <span className="text-muted"> · {clock(s.at)}</span>}
@@ -299,7 +329,7 @@ function WithdrawSheet({ d, onClose, onDone }: { d: Paid; onClose: () => void; o
           </dl>
           {tooSmall && minor > 0 && <p className="text-[13px] text-[#A12A2A]">The smallest withdrawal is {walletMoney(d.minimum, c)}.</p>}
           {tooBig && <p className="text-[13px] text-[#A12A2A]">That’s more than the {walletMoney(cap, c)} you can withdraw now.</p>}
-          {!tooSmall && !tooBig && needsApproval && <p className="rounded-lg bg-[#FFF3DC] px-3 py-2 text-[13px] text-[#8A5A0B]">{a.provider === 'BANK' ? 'Our team checks every bank payment first, then it reaches your bank within 1 to 2 working days.' : a.automatic ? `Over ${walletMoney(d.approvalAbove, c)}, an admin checks it first, usually the same day.` : 'Our team pays it by hand, usually within 2 working days.'}</p>}
+          {!tooSmall && !tooBig && needsApproval && <p className="rounded-lg bg-accent-soft px-3 py-2 text-[13px] text-navy">{a.provider === 'BANK' ? 'Our team checks every bank payment first, then it reaches your bank within 1 to 2 working days.' : a.automatic ? `Over ${walletMoney(d.approvalAbove, c)}, an admin checks it first, usually the same day.` : 'Our team pays it by hand, usually within 2 working days.'}</p>}
           <div className="flex flex-wrap items-center gap-3 rounded-lg bg-subtle px-3.5 py-3">
             {!useCode ? <>
               <span className="text-[13px] font-bold text-navy">PIN</span>
@@ -364,9 +394,9 @@ function SafetyCard({ d, onSaved, onPin, onChangeNumber }: { d: Paid; onSaved: (
     <section className="flex flex-col rounded-xl border border-line bg-white p-[18px]">
       <h2 className="mb-1 text-base font-bold text-navy">Safety</h2>
       <div className="flex items-center justify-between gap-3 border-b border-line py-2.5 text-[13.5px]"><span className="text-ink2">Withdrawal PIN</span>
-        <button type="button" onClick={onPin} className={clsx(tag, a.hasPin ? 'bg-[#E3F5EC] text-[#1A7F4B]' : 'bg-[#FFF3DC] text-[#8A5A0B]')}>{a.hasPin ? `Set${a.pinSetAt ? ` · ${short(a.pinSetAt)}` : ''} · change` : 'Not set · set it'}</button></div>
+        <button type="button" onClick={onPin} className={clsx(tag, a.hasPin ? 'bg-accent-soft text-azure-strong' : 'bg-accent-soft text-navy')}>{a.hasPin ? `Set${a.pinSetAt ? ` · ${short(a.pinSetAt)}` : ''} · change` : 'Not set · set it'}</button></div>
       <div className="flex items-center justify-between gap-3 border-b border-line py-2.5 text-[13.5px]"><span className="flex items-center gap-2 text-ink2"><ProviderLogo provider={a.provider} label={a.label} bankId={a.bankId} size={22} className="rounded-[5px]" />{a.label} ·· {a.last}</span>
-        <button type="button" onClick={onChangeNumber} className={clsx(tag, a.nameCheck === 'match' || a.confirmedByAdmin ? 'bg-[#E3F5EC] text-[#1A7F4B]' : 'bg-[#FFF3DC] text-[#8A5A0B]')}>{a.nameCheck === 'match' ? `Yours, checked by ${operator(a)}` : a.confirmedByAdmin ? 'Confirmed by our team' : 'Being checked'}</button></div>
+        <button type="button" onClick={onChangeNumber} className={clsx(tag, a.nameCheck === 'match' || a.confirmedByAdmin ? 'bg-accent-soft text-azure-strong' : 'bg-accent-soft text-navy')}>{a.nameCheck === 'match' ? `Yours, checked by ${operator(a)}` : a.confirmedByAdmin ? 'Confirmed by our team' : 'Being checked'}</button></div>
       <div className="flex items-center justify-between gap-3 border-b border-line py-2.5 text-[13.5px]"><span className="text-ink2">Last withdrawal</span><span className="text-navy">{last ? `${walletMoney(last.amount, last.currency)} · ${short(last.requestedAt)}` : 'None yet'}</span></div>
       <div className="flex items-start justify-between gap-3 py-2.5">
         <span className="text-[13.5px]"><b className="text-navy">Lock withdrawals</b><span className="block text-xs text-muted">Lost your phone? No one can withdraw until you unlock with a code.</span></span>
@@ -431,16 +461,19 @@ export function GetPaid() {
   const strip = d.clearingByDay.slice(0, 7);
   const maxBar = Math.max(1, d.available, ...strip.map(x => x.amount));
   const AUTO = { weekly: 'every Friday', monthly: 'on the 1st', threshold: 'at a threshold' } as const;
+  const abroad = !!d.home && d.home.code !== 'CM';
+  // Set up before the country forms (free text, no bank chosen): ask them to complete it
+  const incomplete = !!a && abroad && ['NG', 'KE', 'ZA'].includes(d.home!.code) && !a.provider;
 
   return (
     <>
       {!a ? (
         <PageHero kicker={`Get paid${d.balance > 0 ? ` · ${walletMoney(d.balance, c)} in your balance` : ''}`} l1="Set up how" l2="you get paid."
-          sub="Add your MTN Mobile Money or Orange Money number and a 4-digit PIN. Then take your money whenever you like: it reaches your phone in about a minute. Elsewhere, our team pays you by hand."
+          sub={abroad ? `Add your bank or mobile money details in ${d.home!.name} and a 4-digit PIN. Then take your money whenever you like: our team pays it by hand, usually within 2 working days.` : 'Add your MTN Mobile Money or Orange Money number and a 4-digit PIN. Then take your money whenever you like: it reaches your phone in about a minute. Elsewhere, our team pays you by hand.'}
           actions={<button type="button" onClick={() => setDialog('setup')} className={heroBtn}>Set it up</button>}
           aside={<>
             <p className={asideLabel}>Three short steps</p>
-            {[['Your number', 'We check the name with MTN or Orange'], ['Choose a PIN', '4 digits, for every withdrawal'], ['Confirm with a code', 'We email you 6 digits']].map(([t, s], i) => (
+            {[abroad ? ['Your details', `Your bank or mobile money in ${d.home!.name}`] : ['Your number', 'We check the name with MTN or Orange'], ['Choose a PIN', '4 digits, for every withdrawal'], ['Confirm with a code', 'We email you 6 digits']].map(([t, s], i) => (
               <div key={t} className="flex items-start gap-3">
                 <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-[13px] font-extrabold text-[#2F57C9]">{i + 1}</span>
                 <span><span className="block text-[13.5px] font-bold">{t}</span><span className="block text-xs text-muted">{s}</span></span>
@@ -486,6 +519,14 @@ export function GetPaid() {
         />
       )}
 
+      {incomplete && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-white px-4 py-3">
+          <Icon name="alert" size={18} className="text-navy" />
+          <p className="min-w-0 flex-1 text-[13.5px] text-ink2"><b className="text-navy">Complete your payout details.</b> Choose your bank or mobile money in {d.home!.name}, so our team can pay you without checking back.</p>
+          <Button size="sm" onClick={() => setDialog('change')}>Complete them</Button>
+        </div>
+      )}
+
       {a && (
         <div className="grid items-start gap-4 [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
           <AutoCard d={d} onSaved={setD} />
@@ -495,7 +536,7 @@ export function GetPaid() {
       )}
 
       {dialog === 'withdraw' && <WithdrawSheet d={d} onClose={() => setDialog(null)} onDone={load} />}
-      {(dialog === 'setup' || dialog === 'change') && <Setup start={dialog === 'change' ? a : null} onClose={() => setDialog(null)} onSaved={p => { setD(p); setDialog(null); }} />}
+      {(dialog === 'setup' || dialog === 'change') && <Setup start={dialog === 'change' ? a : null} home={d.home} countries={d.countries} onClose={() => setDialog(null)} onSaved={p => { setD(p); setDialog(null); }} />}
       {dialog === 'pin' && <PinDialog onClose={() => { setDialog(null); load(); }} />}
       {receipt && a && <ReceiptDialog w={receipt} account={a} onClose={() => setReceipt(null)} />}
     </>

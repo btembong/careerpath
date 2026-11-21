@@ -39,7 +39,7 @@ export class EarningsService {
       this.prisma.payoutAccount.findUnique({ where: { userId: user.id } }),
       this.prisma.payoutStatement.findMany({ where: { recipientId: user.id }, orderBy: { periodEnd: 'desc' }, take: 24 }),
     ]);
-    const currency = wallet?.currency ?? (await this.prisma.country.findUnique({ where: { id: user.countryId ?? '' }, select: { currency: true } }))?.currency ?? 'GHS';
+    const currency = wallet?.currency ?? (await this.prisma.country.findUnique({ where: { id: user.countryId ?? '' }, select: { currency: true } }))?.currency ?? 'XAF';
     const tx = wallet ? await this.prisma.walletTransaction.findMany({
       where: { walletId: wallet.id, createdAt: { gte: new Date(Math.min(+sixMonthsAgo, +prevStart)) } },
       orderBy: { createdAt: 'desc' },

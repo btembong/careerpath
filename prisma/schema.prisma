@@ -1220,6 +1220,10 @@ model PayoutAccount {
   provider       String?
   /// The name the operator has on the number, when it could be checked
   holderName     String?
+  /// South Africa: cheque or savings
+  accountType    String?
+  /// South Africa: the branch code; a bank abroad: its SWIFT code
+  branchCode     String?
   /// match, mismatch or unchecked
   nameCheck      String?
   /// When the number last changed: money waits a while before it can go to a new number
@@ -2031,6 +2035,8 @@ model Withdrawal {
   paidTo          String
   payeeNumber     String
   payeeName       String?
+  /// Everything needed to pay it by hand (country, bank and its code, account, type, branch), as it was at the time
+  payeeDetails    Json?
   /// Our reference, sent to Tranzak so a retry can never pay twice
   reference       String           @unique
   transferId      String?

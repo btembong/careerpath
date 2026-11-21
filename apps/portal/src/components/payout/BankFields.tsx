@@ -62,10 +62,10 @@ export function BankFields({ v, onChange }: { v: BankValue; onChange: (v: BankVa
           <input value={v.bank} onChange={e => set({ bank: digits(e.target.value, 5) })} inputMode="numeric" placeholder="10005" aria-label="Bank code (5 digits)" className={clsx(part, wrongBank && 'border-[#A12A2A]')} />
           <input value={v.branch} onChange={e => set({ branch: digits(e.target.value, 5) })} inputMode="numeric" placeholder="00022" aria-label="Branch code (5 digits)" className={part} />
           <input value={v.account} onChange={e => set({ account: digits(e.target.value, 11) })} inputMode="numeric" placeholder="04494961051" aria-label="Account number (11 digits)" className={part} />
-          <input value={v.key} onChange={e => set({ key: digits(e.target.value, 2) })} inputMode="numeric" placeholder="78" aria-label="RIB key (2 digits)" className={clsx(part, keyState === 'bad' && 'border-[#A12A2A]', keyState === 'ok' && 'border-[#1A7F4B]')} />
+          <input value={v.key} onChange={e => set({ key: digits(e.target.value, 2) })} inputMode="numeric" placeholder="78" aria-label="RIB key (2 digits)" className={clsx(part, keyState === 'bad' && 'border-[#A12A2A]', keyState === 'ok' && 'border-azure')} />
         </div>
         <div className="grid grid-cols-[5fr_5fr_11fr_2.6fr] gap-1.5 text-center text-[11px] text-muted"><span>Bank code</span><span>Branch</span><span>Account number</span><span>Key</span></div>
-        <span className={clsx('text-xs', keyState === 'bad' || wrongBank ? 'text-[#A12A2A]' : keyState === 'ok' ? 'text-[#1A7F4B]' : 'text-muted')}>
+        <span className={clsx('text-xs', keyState === 'bad' || wrongBank ? 'text-[#A12A2A]' : keyState === 'ok' ? 'text-azure-strong' : 'text-muted')}>
           {wrongBank ? `A ${chosen!.name} RIB starts with ${chosen!.code}.`
             : keyState === 'ok' ? '✓ The number checks out.'
             : keyState === 'bad' ? 'The key doesn’t match these digits: check them against your RIB.'

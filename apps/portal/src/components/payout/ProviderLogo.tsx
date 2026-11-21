@@ -12,7 +12,7 @@ export function providerOf(provider?: string | null, label?: string | null): 'MT
 
 /** A bank's logo tile, or its initials in its colour when we have no logo */
 export function BankLogo({ bank, size = 36, className }: { bank: Bank; size?: number; className?: string }) {
-  if (bank.logo) return <img src={`/brand/banks/${bank.id}.png`} alt={bank.name} width={size} height={size} className={clsx('flex-shrink-0 rounded-lg border border-line bg-white', className)} style={{ width: size, height: size }} />;
+  if (bank.logo) return <img src={`/brand/banks/${bank.file ?? bank.id}.png`} alt={bank.name} width={size} height={size} className={clsx('flex-shrink-0 rounded-lg border border-line bg-white', className)} style={{ width: size, height: size }} />;
   return (
     <span role="img" aria-label={bank.name} style={{ width: size, height: size, background: bank.colour, fontSize: Math.max(8, Math.round(size / (bank.short.length > 3 ? 4.2 : 3.3))) }}
       className={clsx('flex flex-shrink-0 items-center justify-center rounded-lg font-extrabold tracking-tight text-[#FFFFFF]', className)}>{bank.short}</span>

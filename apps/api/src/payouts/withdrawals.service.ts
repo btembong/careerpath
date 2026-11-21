@@ -10,6 +10,7 @@ import { MailService } from '../mail/mail.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TranzakGateway, TranzakTransfer } from '../payments/gateways/tranzak.gateway';
+import { BANKS_BY_COUNTRY, KE_MOBILE } from './payout-banks';
 import { minimumFor, payoutMinimums } from './payout-minimum';
 
 const DAY = 86_400_000;
@@ -170,6 +171,7 @@ export class WithdrawalsService {
       payoutMinimums(this.prisma),
     ]);
     const statements = await this.prisma.payoutStatement.findMany({ where: { recipientId: user.id, status: 'PAID' }, orderBy: { paidAt: 'desc' }, take: 10 });
+    const home = user.countryId ? await this.prisma.country.findUnique({ where: { id: user.countryId }, select: { code: true, name: true, currency: true } }) : null;
     const today = await this.todayTotal(user.id);
     const cur = bal.currency ?? 'XAF';
     const auto = !!account && this.automatic(account, cur);
@@ -179,13 +181,16 @@ export class WithdrawalsService {
       dailyLeft: auto ? Math.max(0, rules.dailyMax - today) : null,
       approvalAbove: rules.autoLimit, paused: rules.paused, payeePaysFee: rules.payeePaysFee,
       account: account ? {
-        provider: account.provider, bankId: account.provider === 'BANK' ? account.bankCode : null, label: account.bankName, last: last(account.accountNumber), country: account.country,
+        provider: account.provider, bankId: account.provider === 'BANK' ? account.bankCode : null, accountType: account.accountType, branchCode: account.branchCode, label: account.bankName, last: last(account.accountNumber), country: account.country,
         holderName: account.holderName, nameCheck: account.nameCheck ?? (account.isVerified ? 'confirmed' : 'unchecked'), confirmedByAdmin: account.isVerified,
         automatic: auto, hasPin: !!account.pinHash,
         readyAt: this.readyAt(account, rules), lockedUntil: account.pinLockedUntil && account.pinLockedUntil > new Date() ? account.pinLockedUntil : null,
         pinSetAt: account.pinSetAt, lockedByUser: account.lockedByUser, autoMode: account.autoMode, autoThreshold: account.autoThreshold, nextAutoAt: this.nextAuto(account),
         since: account.createdAt, changedAt: account.changedAt,
       } : null,
+      home,
+      // No country on the profile yet: the form asks for it once
+      countries: home ? null : await this.prisma.country.findMany({ select: { code: true, name: true }, orderBy: { name: 'asc' } }),
       withdrawals: list.map(w => this.row(w)),
       statements: statements.map(s => ({ id: s.id, amount: s.amount, currency: s.currency, paidAt: s.paidAt, paidTo: s.paidTo, reference: s.reference })),
     };
@@ -213,11 +218,15 @@ export class WithdrawalsService {
   }
 
   /** Save where money goes, with a one-time code; check the name with the operator where we can */
-  async setAccount(user: UserProfile, dto: { provider?: string; number?: string; country?: string; bankName?: string; bankId?: string; holderName?: string; pin?: string; code?: string }) {
+  async setAccount(user: UserProfile, dto: { provider?: string; number?: string; country?: string; bankName?: string; bankId?: string; holderName?: string; accountType?: string; swift?: string; pin?: string; code?: string }) {
     if (!EARNER_ROLES.includes(user.role)) throw new ForbiddenException();
     await this.checkCode(user.id, dto.code);
+    // The country is the one on their profile; only when it has none do they choose it here (and it's saved to the profile)
+    const home = await this.homeCountry(user, dto.country);
+    if (!home) throw new BadRequestException('Choose your country');
+    if (home.code !== 'CM') return this.setAbroad(user, home, dto);
     const provider = String(dto.provider ?? '').toUpperCase();
-    const country = (dto.country ?? 'CM').trim() || 'CM';
+    const country = 'CM';
     let number = String(dto.number ?? '').replace(/[^\d]/g, '');
     if (provider === 'MTN' || provider === 'ORANGE') {
       if (/^6\d{8}$/.test(number)) number = `237${number}`;
@@ -246,14 +255,74 @@ export class WithdrawalsService {
       } catch (err: any) { this.logger.log(`Name check unavailable: ${err?.message}`); }
     }
 
+    return this.store(user, { bankName: label, accountNumber: number, country, provider: provider || null, bankCode: bankRow?.id ?? null, accountType: null, branchCode: null }, holderName, nameCheck, dto.pin);
+  }
+
+  /** The country money goes to: the profile's; when the profile has none, the one chosen here, saved to the profile too */
+  private async homeCountry(user: UserProfile, chosen?: string) {
+    if (user.countryId) {
+      const c = await this.prisma.country.findUnique({ where: { id: user.countryId }, select: { code: true, name: true, currency: true } });
+      if (c) return c;
+    }
+    const code = String(chosen ?? '').trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(code)) return null;
+    const c = await this.prisma.country.findUnique({ where: { code }, select: { id: true, code: true, name: true, currency: true } });
+    if (!c) return null;
+    await this.prisma.userProfile.update({ where: { id: user.id }, data: { countryId: c.id } });
+    user.countryId = c.id;
+    return c;
+  }
+
+  /** Nigeria, Kenya, South Africa and anywhere else outside Cameroon: checked details, paid by hand by our team */
+  private async setAbroad(user: UserProfile, home: { code: string; name: string }, dto: { provider?: string; number?: string; bankName?: string; bankId?: string; holderName?: string; accountType?: string; swift?: string; pin?: string }) {
+    const provider = String(dto.provider ?? '').toUpperCase();
+    const holder = String(dto.holderName ?? '').trim();
+    if (holder.length < 3) throw new BadRequestException('Enter the name on the account, as your bank or provider has it');
+    const digits = String(dto.number ?? '').replace(/\D/g, '');
+    const banks = BANKS_BY_COUNTRY[home.code];
+    let f: { bankName: string; accountNumber: string; bankCode: string | null; accountType: string | null; branchCode: string | null };
+    if (home.code === 'KE' && KE_MOBILE[provider]) {
+      // 07xx / 01xx, or with 254 in front
+      let n = digits.replace(/^0(?=[17]\d{8}$)/, '254');
+      if (/^[17]\d{8}$/.test(n)) n = `254${n}`;
+      if (!/^254[17]\d{8}$/.test(n)) throw new BadRequestException('Enter a Kenyan mobile number, for example 0712 345 678');
+      f = { bankName: KE_MOBILE[provider], accountNumber: n, bankCode: null, accountType: null, branchCode: null };
+    } else if (banks && provider === 'BANK') {
+      const bank = banks.find(b => b.id === dto.bankId);
+      if (!bank) throw new BadRequestException('Choose your bank');
+      if (home.code === 'NG' && !/^\d{10}$/.test(digits)) throw new BadRequestException('A Nigerian account number (NUBAN) has 10 digits');
+      if (home.code === 'ZA' && !/^\d{7,12}$/.test(digits)) throw new BadRequestException('Enter your account number, 7 to 12 digits');
+      if (home.code === 'KE' && !/^\d{6,20}$/.test(digits)) throw new BadRequestException('Enter your bank account number');
+      const type = home.code === 'ZA' ? (dto.accountType === 'savings' ? 'savings' : dto.accountType === 'cheque' ? 'cheque' : null) : null;
+      if (home.code === 'ZA' && !type) throw new BadRequestException('Choose the account type: cheque (current) or savings');
+      f = { bankName: bank.name, accountNumber: digits, bankCode: bank.id, accountType: type, branchCode: bank.branch ?? null };
+    } else if (!banks && (provider === 'MOMO' || provider === 'BANK')) {
+      const name = String(dto.bankName ?? '').trim().slice(0, 80);
+      if (name.length < 2) throw new BadRequestException(provider === 'MOMO' ? 'Enter the mobile money provider, for example MTN MoMo' : 'Enter the name of your bank');
+      // A bank abroad may give an IBAN (letters and digits)
+      const account = provider === 'BANK' ? String(dto.number ?? '').replace(/[\s-]/g, '').toUpperCase() : digits;
+      if (!/^[A-Z0-9]{6,34}$/.test(account)) throw new BadRequestException(provider === 'MOMO' ? 'Enter the mobile number, with the country code' : 'Enter the account number or IBAN');
+      const swift = String(dto.swift ?? '').replace(/\s/g, '').toUpperCase();
+      if (swift && !/^[A-Z0-9]{8}([A-Z0-9]{3})?$/.test(swift)) throw new BadRequestException('A SWIFT code has 8 or 11 letters and digits');
+      f = { bankName: name, accountNumber: account, bankCode: null, accountType: null, branchCode: provider === 'BANK' ? swift || null : null };
+    } else throw new BadRequestException('Choose how you want to be paid');
+    if (dto.pin != null) this.validPin(dto.pin);
+    return this.store(user, { ...f, country: home.code, provider: provider || null }, holder.toUpperCase().slice(0, 100), 'unchecked', dto.pin);
+  }
+
+  /** Saves the account; a changed one waits before money can go to it, is emailed about, and goes to admins to check */
+  private async store(user: UserProfile, f: { bankName: string; accountNumber: string; country: string; provider: string | null; bankCode: string | null; accountType: string | null; branchCode: string | null }, holderName: string | null, nameCheck: string, pin?: string) {
+    const label = f.bankName, number = f.accountNumber;
     const before = await this.prisma.payoutAccount.findUnique({ where: { userId: user.id } });
-    const changed = !before || before.accountNumber.replace(/\D/g, '') !== number || before.provider !== (provider || null);
+    const changed = !before || before.accountNumber.replace(/\W/g, '') !== number.replace(/\W/g, '') || before.provider !== f.provider || before.bankCode !== f.bankCode;
     // A brand-new account can be paid straight away; a changed one waits, in case someone else changed it
     const hadMoneyOut = before ? await this.prisma.withdrawal.count({ where: { userId: user.id, status: 'PAID' } }) + await this.prisma.payoutStatement.count({ where: { recipientId: user.id, status: 'PAID' } }) : 0;
     const data = {
-      bankName: label, accountNumber: number, country: bankRow ? 'CM' : country, provider: provider || null, bankCode: bankRow?.id ?? null,
-      ...(changed ? { holderName, nameCheck, isVerified: false, verifiedAt: null, changedAt: before && hadMoneyOut ? new Date() : null } : {}),
-      ...(dto.pin != null ? { pinHash: await bcrypt.hash(dto.pin, 10), pinFailures: 0, pinLockedUntil: null, pinSetAt: new Date() } : {}),
+      ...f,
+      // Outside Cameroon the name is typed, so correcting it alone is a change too
+      ...(changed || (f.country !== 'CM' && holderName !== before?.holderName) ? { holderName, nameCheck, isVerified: false, verifiedAt: null } : {}),
+      ...(changed ? { changedAt: before && hadMoneyOut ? new Date() : null } : {}),
+      ...(pin != null ? { pinHash: await bcrypt.hash(pin, 10), pinFailures: 0, pinLockedUntil: null, pinSetAt: new Date() } : {}),
     };
     const saved = await this.prisma.payoutAccount.upsert({ where: { userId: user.id }, update: data, create: { userId: user.id, ...data } as Prisma.PayoutAccountUncheckedCreateInput });
     this.audit.log(user.id, 'payout.account', 'PayoutAccount', saved.id, before ? { to: `${before.bankName} ·· ${last(before.accountNumber)}` } : undefined, { to: `${label} ·· ${last(number)}`, nameCheck: changed ? nameCheck : saved.nameCheck });
@@ -264,7 +333,7 @@ export class WithdrawalsService {
         cta: 'Open Get paid', href: homeFor(user.role),
       }, 'security').catch(() => {});
     }
-    if (changed && nameCheck !== 'match') this.notifyAdmins('Payout account to check', `${nm(user)}: ${label} ·· ${last(number)}${holderName ? ` is registered to ${holderName}` : ''}`);
+    if (changed && nameCheck !== 'match') this.notifyAdmins('Payout account to check', `${nm(user)}: ${label} ·· ${last(number)}${holderName ? ` ${f.country === 'CM' ? 'is registered to' : 'in the name of'} ${holderName}` : ''}`);
     return this.mine(user);
   }
 
@@ -342,7 +411,8 @@ export class WithdrawalsService {
       return db.withdrawal.create({
         data: {
           userId: user.id, amount, currency, status: approvalsNeeded ? 'AWAITING_APPROVAL' : 'SENDING', method: auto ? 'tranzak' : 'manual',
-          paidTo, payeeNumber: account.accountNumber, payeeName: account.holderName, reference: this.newRef(), debitTxId: debit.id, approvalsNeeded, flags,
+          paidTo, payeeNumber: account.accountNumber, payeeName: account.holderName, reference: this.newRef(),
+          payeeDetails: { country: account.country, method: account.provider, name: account.bankName, bankId: account.bankCode, sortCode: BANKS_BY_COUNTRY[account.country]?.find(b => b.id === account.bankCode)?.code ?? null, accountType: account.accountType, branchCode: account.branchCode }, debitTxId: debit.id, approvalsNeeded, flags,
         },
       });
     });
@@ -542,8 +612,9 @@ export class WithdrawalsService {
     const start = new Date(); start.setHours(0, 0, 0, 0);
     const [tz, awaiting, today, failedToday, wallets, accounts] = await Promise.all([
       this.tranzak.balances().then(b => ({ ok: true as const, ...b })).catch((err: any) => ({ ok: false as const, error: err?.response?.data?.errorMsg ?? err?.message ?? 'Couldn’t reach Tranzak' })),
-      this.prisma.withdrawal.aggregate({ where: { status: 'AWAITING_APPROVAL' }, _sum: { amount: true }, _count: true }),
-      this.prisma.withdrawal.aggregate({ where: { status: 'PAID', completedAt: { gte: start } }, _sum: { amount: true }, _count: true }),
+      // The totals are in FCFA (the payout account's currency); withdrawals in other currencies are counted, not added in
+      this.prisma.withdrawal.groupBy({ by: ['currency'], where: { status: 'AWAITING_APPROVAL' }, _sum: { amount: true }, _count: true }),
+      this.prisma.withdrawal.groupBy({ by: ['currency'], where: { status: 'PAID', completedAt: { gte: start } }, _sum: { amount: true }, _count: true }),
       this.prisma.withdrawal.count({ where: { status: 'FAILED', completedAt: { gte: start } } }),
       this.prisma.wallet.findMany({ where: { balance: { gt: 0 }, user: { role: { in: EARNER_ROLES as any }, deletedAt: null } }, select: { balance: true, currency: true } }),
       this.prisma.payoutAccount.count({ where: { isVerified: false, OR: [{ nameCheck: { not: 'match' } }, { nameCheck: null }] } }),
@@ -557,8 +628,8 @@ export class WithdrawalsService {
     const cover = { perDay, days: perDay ? Math.floor(float / perDay) : null, topUpForTwoWeeks: tz.ok ? Math.max(0, Math.ceil((perDay * 14 + Math.max(0, (owed.XAF ?? 0) - perDay * 14) - float) / 1000) * 1000) : null, basedOnHistory: !!month._sum.amount };
     return {
       tranzak: tz, owed, rules, unlocked, cover,
-      awaiting: { count: awaiting._count, amount: awaiting._sum.amount ?? 0 },
-      today: { count: today._count, amount: today._sum.amount ?? 0, failed: failedToday },
+      awaiting: { count: awaiting.reduce((n, g) => n + g._count, 0), amount: awaiting.find(g => g.currency === 'XAF')?._sum.amount ?? 0, otherCurrencies: awaiting.filter(g => g.currency !== 'XAF').map(g => ({ currency: g.currency, amount: g._sum.amount ?? 0, count: g._count })) },
+      today: { count: today.reduce((n, g) => n + g._count, 0), amount: today.find(g => g.currency === 'XAF')?._sum.amount ?? 0, failed: failedToday },
       accountsToCheck: accounts,
     };
   }
@@ -598,7 +669,7 @@ export class WithdrawalsService {
       return 'low';
     };
     return rows.map(w => ({
-      ...this.row(w), flags: w.flags, transferId: w.transferId, ourRef: w.reference, payeeName: w.payeeName, sentAt: w.sentAt,
+      ...this.row(w), flags: w.flags, transferId: w.transferId, ourRef: w.reference, payeeName: w.payeeName, payeeNumber: w.payeeNumber, payeeDetails: w.payeeDetails, sentAt: w.sentAt,
       approvedBy: (w.approvals as Approval[]).map(a => a.name),
       user: { id: w.user.id, name: nm(w.user), email: w.user.email, role: w.user.role, avatarUrl: w.user.avatarUrl, since: w.user.createdAt },
       account: w.user.payoutAccount, earned90d: trail.get(w.userId) ?? null,
