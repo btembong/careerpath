@@ -45,3 +45,16 @@ export class OnboardingVideoController {
     return this.svc.upsert(dto);
   }
 }
+
+/** The welcome video on the public For tutors page: no sign-in, and nothing unless an admin has switched it on */
+@ApiTags('onboarding-video')
+@Controller('onboarding-video')
+export class OnboardingVideoPublicController {
+  constructor(private readonly svc: OnboardingVideoService) {}
+
+  @Get('public')
+  @ApiOperation({ summary: 'Public: the welcome video for the For tutors page, when shown there' })
+  getPublic() {
+    return this.svc.getPublic();
+  }
+}

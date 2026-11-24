@@ -7,6 +7,10 @@ import { FilesService } from '../files/files.service';
 import { ReportProgressDto, UpsertOnboardingVideoDto } from './onboarding-video.dto';
 
 const AUDIENCE = 'TEACHER';
+/** Whether the video is also on the public For tutors page, and who speaks in it (platform setting, no migration) */
+const PUBLIC_KEY = 'teacherWelcomePublic';
+type PublicSettings = { showPublic: boolean; speakerName: string; speakerTitle: string };
+const PUBLIC_DEFAULTS: PublicSettings = { showPublic: false, speakerName: 'John Mbout Nyah', speakerTitle: 'Founder and CEO, CareerPath Africa' };
 /** Progress may only advance at roughly real-time speed between reports. */
 const MAX_CREDIT_PER_REPORT_SEC = 30;
 const SPEED_SLACK = 1.25;
@@ -83,6 +87,22 @@ export class OnboardingVideoService {
     return { maxWatchedSec, completed };
   }
 
+  private async publicSettings(): Promise<PublicSettings> {
+    const row = await this.prisma.platformSetting.findUnique({ where: { key: PUBLIC_KEY } });
+    return { ...PUBLIC_DEFAULTS, ...((row?.value ?? {}) as Partial<PublicSettings>) };
+  }
+
+  /** Anyone: the welcome video for the public For tutors page, only when an admin has put it there */
+  async getPublic() {
+    const [video, s] = await Promise.all([this.prisma.onboardingVideo.findUnique({ where: { audience: AUDIENCE } }), this.publicSettings()]);
+    if (!video || !s.showPublic) return null;
+    return {
+      title: video.title, durationSec: video.durationSec, speakerName: s.speakerName || null, speakerTitle: s.speakerTitle || null,
+      videoUrl: await this.files.signUrl(video.videoUrl),
+      captionsUrl: video.captionsUrl ? await this.files.signUrl(video.captionsUrl) : null,
+    };
+  }
+
   // ── Admin ────────────────────────────────────────────────
 
   async getAdmin() {
@@ -101,6 +121,7 @@ export class OnboardingVideoService {
         previewUrl: await this.files.signUrl(video.videoUrl),
       },
       stats: { teachers, completed },
+      public: await this.publicSettings(),
     };
   }
 
@@ -109,6 +130,15 @@ export class OnboardingVideoService {
     if (dto.captionsUrl) this.assertOwnFile(dto.captionsUrl, 'Captions');
 
     const existing = await this.prisma.onboardingVideo.findUnique({ where: { audience: AUDIENCE } });
+    if (dto.showPublic != null || dto.speakerName != null || dto.speakerTitle != null) {
+      const before = await this.publicSettings();
+      const value = {
+        showPublic: dto.showPublic ?? before.showPublic,
+        speakerName: (dto.speakerName ?? before.speakerName).trim(),
+        speakerTitle: (dto.speakerTitle ?? before.speakerTitle).trim(),
+      };
+      await this.prisma.platformSetting.upsert({ where: { key: PUBLIC_KEY }, update: { value }, create: { key: PUBLIC_KEY, value } });
+    }
     const data = {
       title: dto.title.trim(),
       videoUrl: dto.videoUrl,

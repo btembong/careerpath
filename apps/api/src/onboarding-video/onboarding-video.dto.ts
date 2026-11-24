@@ -15,4 +15,9 @@ export class UpsertOnboardingVideoDto {
   @ApiProperty() @IsBoolean() isActive: boolean;
   @ApiPropertyOptional({ description: 'Bump the version so every teacher must watch again' })
   @IsBoolean() @IsOptional() requireRewatch?: boolean;
+  @ApiPropertyOptional({ description: 'Also show it on the public For tutors page' })
+  @IsBoolean() @IsOptional() showPublic?: boolean;
+  @ApiPropertyOptional({ description: 'Who speaks in it, shown beside it on the public page' })
+  @IsString() @IsOptional() @MaxLength(80) speakerName?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() @MaxLength(120) speakerTitle?: string;
 }

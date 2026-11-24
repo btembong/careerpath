@@ -4,6 +4,7 @@ import { LandingNav } from '@/components/public/LandingNav';
 import { SiteFooter } from '@/components/public/SiteFooter';
 import { loadTeachers } from '@/components/public/PublicTeachers';
 import { Faq, FloatCard, H2, Kicker, PersonSlot, StatRow, btnBlue, btnLine, btnWhite, loadSiteStats, wrap } from '@/components/public/landing/Pieces';
+import { CeoWelcome, CeoWelcomeButton } from '@/components/public/landing/CeoWelcome';
 import { ProductTour } from '@/components/public/landing/ProductTour';
 import { peoplePhoto } from '@/components/public/landing/people';
 
@@ -35,7 +36,7 @@ export default async function TeachPage() {
             <p className="text-[12.5px] font-extrabold uppercase tracking-[0.08em] text-[#0B1F55]">For tutors · {s.teachers} teaching already</p>
             <h1 className="mt-3 text-[44px] font-extrabold leading-[0.98] tracking-[-0.045em] sm:text-[62px]">Teach the exam<br />you know best.<br /><span className="text-[#FFFFFF]">Get paid to your phone.</span></h1>
             <p className="mt-4 max-w-[520px] text-[16.5px] leading-relaxed text-[#0B1F55] sm:text-[17px]">Build courses, run live classes and mentor students one-to-one. You earn {pct ? `${pct}%` : 'a share'} of every sale of your courses, and your earnings are paid to MTN Mobile Money or Orange Money.</p>
-            <div className="mt-6 flex flex-wrap gap-2.5"><Link href="/register?role=teacher" className={btnWhite}>Apply to teach</Link><a href="#earn" className={btnLine}>How earnings work</a></div>
+            <div className="mt-6 flex flex-wrap gap-2.5"><Link href="/register?role=teacher" className={btnWhite}>Apply to teach</Link><CeoWelcomeButton /><a href="#earn" className={btnLine}>How earnings work</a></div>
           </div>
           <div className="relative translate-y-3 -rotate-[1.5deg]">
             <div className="overflow-hidden rounded-t-xl bg-[#FFFFFF] shadow-[0_-10px_50px_rgba(7,32,97,0.35)]">
@@ -49,6 +50,8 @@ export default async function TeachPage() {
       </section>
 
       <StatRow items={[[pct ? `${pct}%` : 'A share', 'of every sale of your course'], ['3 ways', 'to earn: courses, classes, mentoring'], ['Monthly', 'statements, every sale listed'], ['Free', 'to join, nothing to pay']]} />
+
+      <CeoWelcome />
 
       <section className={`${wrap} py-16`}>
         <Kicker>Everything you need to teach online</Kicker>

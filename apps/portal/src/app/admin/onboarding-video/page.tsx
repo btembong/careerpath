@@ -15,6 +15,8 @@ interface AdminVideo {
     durationSec: number | null; version: number; isActive: boolean; updatedAt: string;
   } | null;
   stats: { teachers: number; completed: number };
+  /** Also on the public For tutors page, and who speaks in it */
+  public?: { showPublic: boolean; speakerName: string; speakerTitle: string };
 }
 
 /** Read a local video file's duration so the server knows the true length. */
@@ -48,6 +50,9 @@ export default function AdminOnboardingVideoPage() {
   const [durationSec, setDurationSec] = useState<number | null>(null);
   const [isActive, setIsActive] = useState(false);
   const [requireRewatch, setRequireRewatch] = useState(false);
+  const [showPublic, setShowPublic] = useState(false);
+  const [speakerName, setSpeakerName] = useState('John Mbout Nyah');
+  const [speakerTitle, setSpeakerTitle] = useState('Founder and CEO, CareerPath Africa');
   const [videoProgress, setVideoProgress] = useState<number | null>(null);
   const [captionsUploading, setCaptionsUploading] = useState(false);
 
@@ -55,6 +60,7 @@ export default function AdminOnboardingVideoPage() {
     return api.get('/onboarding-video/admin').then(r => {
       const d: AdminVideo = r.data;
       setData(d);
+      if (d.public) { setShowPublic(d.public.showPublic); setSpeakerName(d.public.speakerName); setSpeakerTitle(d.public.speakerTitle); }
       if (d.video) {
         setTitle(d.video.title);
         setVideoUrl(d.video.videoUrl);
@@ -114,6 +120,9 @@ export default function AdminOnboardingVideoPage() {
         durationSec: durationSec ?? undefined,
         isActive,
         requireRewatch,
+        showPublic,
+        speakerName: speakerName.trim(),
+        speakerTitle: speakerTitle.trim(),
       });
       setRequireRewatch(false);
       await load();
@@ -225,6 +234,22 @@ export default function AdminOnboardingVideoPage() {
                 </span>
               </label>
             )}
+          </div>
+
+          <div className="space-y-3 rounded-xl bg-surface border border-cloud p-4">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 accent-azure" checked={showPublic} onChange={e => setShowPublic(e.target.checked)} />
+              <span className="text-xs text-navy/80 leading-relaxed">
+                <strong className="text-navy">Also show it on the public For tutors page.</strong> Anyone can watch it at /teach, under “A word from our CEO”, with a button in the page’s top section.
+                <a href="/teach" target="_blank" rel="noreferrer" className="ml-1 font-semibold text-azure-strong hover:underline">Open the page</a>
+              </span>
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-1.5"><span className="text-xs font-semibold text-navy">Who speaks in it</span>
+                <input value={speakerName} onChange={e => setSpeakerName(e.target.value)} maxLength={80} className="input-base" placeholder="Name" /></label>
+              <label className="block space-y-1.5"><span className="text-xs font-semibold text-navy">Their title</span>
+                <input value={speakerTitle} onChange={e => setSpeakerTitle(e.target.value)} maxLength={120} className="input-base" placeholder="e.g. Founder and CEO, CareerPath Africa" /></label>
+            </div>
           </div>
 
           <div className="flex justify-end">

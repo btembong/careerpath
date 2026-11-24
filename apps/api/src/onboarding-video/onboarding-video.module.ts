@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { FilesModule } from '../files/files.module';
-import { OnboardingVideoController } from './onboarding-video.controller';
+import { OnboardingVideoController, OnboardingVideoPublicController } from './onboarding-video.controller';
 import { OnboardingVideoService } from './onboarding-video.service';
 
 @Module({
   imports: [FilesModule],
-  controllers: [OnboardingVideoController],
+  controllers: [OnboardingVideoController, OnboardingVideoPublicController],
   providers: [OnboardingVideoService],
   exports: [OnboardingVideoService],
 })
