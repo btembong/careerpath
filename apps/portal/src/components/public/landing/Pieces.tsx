@@ -44,7 +44,7 @@ export function PhoneShot({ src, alt, className }: { src: string; alt: string; c
 }
 
 /** A small card floating over a screenshot */
-export function FloatCard({ icon, title, sub, className }: { icon: string; title: string; sub: string; className?: string }) {
+export function FloatCard({ icon, title, sub, className }: { icon: React.ReactNode; title: string; sub: string; className?: string }) {
   return (
     <div aria-hidden className={clsx('absolute z-[2] hidden items-center gap-2.5 rounded-[10px] bg-[#FFFDF8] px-3.5 py-2.5 text-[13px] text-[#072061] shadow-[0_14px_30px_rgba(7,32,97,0.25)] md:flex', className)}>
       <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[#EAF0FF] font-extrabold text-[#3F6FE8]">{icon}</span>

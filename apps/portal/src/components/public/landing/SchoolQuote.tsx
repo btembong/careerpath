@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 
-/** "Ask for a quote" on /schools: emailed to our partnerships team, who reply to the school directly */
+/** "Request a partnership" on /schools: emailed to our partnerships team, who reply to the school directly */
 export function SchoolQuote() {
   const [f, setF] = useState({ organisation: '', name: '', email: '', phone: '', students: '', exam: '', message: '', website: '' });
   const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle');
@@ -29,7 +29,7 @@ export function SchoolQuote() {
   );
   return (
     <form onSubmit={send} className="flex flex-col gap-2.5 rounded-xl bg-[#FFFFFF] p-5 text-navy sm:p-6">
-      <b className="text-[19px]">Ask for a quote</b>
+      <b className="text-[19px]">Request a partnership</b>
       <input aria-label="School or organisation" required value={f.organisation} onChange={set('organisation')} placeholder="School or organisation" className={input} />
       <div className="grid gap-2.5 sm:grid-cols-2">
         <input aria-label="Your name" value={f.name} onChange={set('name')} placeholder="Your name" className={input} />
