@@ -57,6 +57,9 @@ const SENDERS = {
 
 export type SenderType = keyof typeof SENDERS;
 
+/** Subjects as they go in the log: one-time codes (4 to 8 digits) hidden, so the log can't be used to sign in or withdraw */
+const forLog = (subject: string) => subject.replace(/\b\d{4,8}\b/g, m => '•'.repeat(m.length));
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -87,7 +90,7 @@ export class MailService {
     replyToOverride?: string,
   ): Promise<void> {
     // Reserved domains can never receive mail (test accounts, deleted accounts): sending only bounces
-    if (/\.(test|invalid|example)$/i.test(to.trim())) { this.logger.log(`Mail to a reserved domain skipped: ${subject}`); return; }
+    if (/\.(test|invalid|example)$/i.test(to.trim())) { this.logger.log(`Mail to a reserved domain skipped: ${forLog(subject)}`); return; }
     if (!this.client) {
       this.logger.warn(`[DEV] Mail skipped — no BREVO_API_KEY (${senderType})`);
       this.logger.debug(`  To:      ${to}`);
@@ -106,7 +109,7 @@ export class MailService {
         // Brevo takes attachments as base64
         ...(attachments?.length ? { attachment: attachments.map(a => ({ name: a.name, content: Buffer.from(a.content).toString('base64') })) } : {}),
       });
-      this.logger.log(`[${who.name}] "${subject}" → ${to} | messageId: ${(res as any)?.messageId ?? 'n/a'}`);
+      this.logger.log(`[${who.name}] "${forLog(subject)}" → ${to} | messageId: ${(res as any)?.messageId ?? 'n/a'}`);
     } catch (err: any) {
       this.logger.error(`Email failed: "${subject}" → ${to} | ${JSON.stringify(err?.response?.data ?? err?.message)}`);
     }
