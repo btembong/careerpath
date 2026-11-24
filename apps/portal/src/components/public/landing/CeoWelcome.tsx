@@ -60,7 +60,6 @@ export function CeoWelcome() {
   }, [w, started]);
 
   if (!w) return null;
-  const sound = () => { const v = video.current; if (!v) return; v.muted = false; setMuted(false); if (v.paused) void v.play(); };
   return (
     <section id="welcome" className="mx-auto grid w-full max-w-[1240px] scroll-mt-24 items-center gap-10 px-4 py-16 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] lg:px-14">
       <div>
@@ -77,26 +76,12 @@ export function CeoWelcome() {
         )}
         <a href="/register?role=teacher" className={`${btnBlue} mt-6`}>Apply to teach</a>
       </div>
-      <div ref={box} className="relative -rotate-1 overflow-hidden rounded-2xl bg-[linear-gradient(135deg,#0B1B5C,#2F57C9_60%,#6B8BFF)] shadow-[0_24px_50px_rgba(7,32,97,0.28)]">
-        {/* Nothing downloads until play is pressed, so the page stays light on mobile data */}
-        <video ref={video} src={w.videoUrl} controls={started} preload="none" playsInline muted={muted} onVolumeChange={e => setMuted(e.currentTarget.muted)} crossOrigin="anonymous" className="block aspect-video w-full" aria-label={w.title}>
+      <div ref={box} className="min-w-0">
+        {/* Just the video, like a plain embed: the first frame shows (a little is loaded for it), the rest downloads on play */}
+        <video ref={video} src={`${w.videoUrl}#t=0.1`} controls preload="metadata" playsInline muted={muted} onVolumeChange={e => setMuted(e.currentTarget.muted)} onPlay={() => setStarted(true)}
+          crossOrigin="anonymous" className="block aspect-video w-full rounded-xl bg-[#000000] object-cover" aria-label={w.title}>
           {w.captionsUrl && <track kind="captions" src={w.captionsUrl} srcLang="en" label="English" default />}
         </video>
-        {started && muted && (
-          <button type="button" onClick={sound} className="absolute left-1/2 top-4 inline-flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#FFFFFF] px-4 py-2 text-[13.5px] font-extrabold text-[#2F57C9] shadow-[0_10px_24px_rgba(0,0,0,0.3)]">
-            <Icon name="volume" size={16} />Turn on sound
-          </button>
-        )}
-        {!started && (
-          <button type="button" onClick={() => { setStarted(true); sound(); }} aria-label={`Play: ${w.title}`}
-            className="group absolute inset-0 flex items-center justify-center">
-            <span className="flex h-[76px] w-[76px] items-center justify-center rounded-full bg-[#FFFFFF] text-[#2F57C9] shadow-[0_10px_30px_rgba(0,0,0,0.3)] transition-transform group-hover:scale-105"><Icon name="play" size={30} /></span>
-            <span className="absolute inset-x-4 bottom-3.5 flex items-end justify-between gap-3 text-left text-[13px] text-[#FFFFFF]">
-              <span><b className="block text-[16px]">{w.title}</b>{w.speakerName ? `From ${w.speakerName}` : 'From our CEO'}</span>
-              {(length(w.durationSec) || w.captionsUrl) && <span className="rounded-md bg-[rgba(255,255,255,0.18)] px-2 py-0.5 text-[12px] font-bold">{[length(w.durationSec), w.captionsUrl && 'CC'].filter(Boolean).join(' · ')}</span>}
-            </span>
-          </button>
-        )}
       </div>
     </section>
   );
