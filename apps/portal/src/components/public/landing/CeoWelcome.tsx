@@ -60,6 +60,7 @@ export function CeoWelcome() {
   }, [w, started]);
 
   if (!w) return null;
+  const sound = () => { const v = video.current; if (!v) return; v.muted = false; setMuted(false); if (v.paused) void v.play(); };
   return (
     <section id="welcome" className="mx-auto grid w-full max-w-[1240px] scroll-mt-24 items-center gap-10 px-4 py-16 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] lg:px-14">
       <div>
@@ -76,12 +77,18 @@ export function CeoWelcome() {
         )}
         <a href="/register?role=teacher" className={`${btnBlue} mt-6`}>Apply to teach</a>
       </div>
-      <div ref={box} className="min-w-0">
+      <div ref={box} className="relative min-w-0">
         {/* Just the video, like a plain embed: the first frame shows (a little is loaded for it), the rest downloads on play */}
         <video ref={video} src={`${w.videoUrl}#t=0.1`} controls preload="metadata" playsInline muted={muted} onVolumeChange={e => setMuted(e.currentTarget.muted)} onPlay={() => setStarted(true)}
           crossOrigin="anonymous" className="block aspect-video w-full rounded-xl bg-[#000000] object-cover" aria-label={w.title}>
           {w.captionsUrl && <track kind="captions" src={w.captionsUrl} srcLang="en" label="English" default />}
         </video>
+        {/* While it plays muted, the one thing on the video: a clear way to hear it */}
+        {started && muted && (
+          <button type="button" onClick={sound} className="absolute left-1/2 top-4 inline-flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#FFFFFF] px-4 py-2 text-[13.5px] font-extrabold text-[#2F57C9] shadow-[0_10px_24px_rgba(0,0,0,0.3)]">
+            <Icon name="volume" size={16} />Turn on sound
+          </button>
+        )}
       </div>
     </section>
   );
