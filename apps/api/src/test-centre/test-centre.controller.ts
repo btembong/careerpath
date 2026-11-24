@@ -131,6 +131,14 @@ export class QuestionBankController {
   @Get('courses')
   courses(@CurrentUser() user: UserProfile) { return this.bank.courses(user); }
 
+  @Get('bundles')
+  @ApiOperation({ summary: 'The bank as bundles: one per course under its exam and subject, with counts' })
+  bundles(@CurrentUser() user: UserProfile) { return this.bank.bundles(user); }
+
+  @Post('bulk')
+  @ApiOperation({ summary: 'Set difficulty, send for review or delete several questions; refusals are reported per question' })
+  bulk(@CurrentUser() user: UserProfile, @Body() body: { ids?: string[]; action?: string; difficulty?: QuestionDifficulty }) { return this.bank.bulk(user, body ?? {}); }
+
   @Get(':id')
   one(@CurrentUser() user: UserProfile, @Param('id') id: string) { return this.bank.one(user, id); }
 

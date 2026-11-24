@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Topbar } from '@/components/layout/Topbar';
 import { notify } from '@/lib/notify';
 import api from '@/lib/api';
@@ -7,13 +7,20 @@ import { TeacherBankHero } from '@/components/hero/TeacherWorkHeroes';
 import { AdminQuestionsHero } from '@/components/hero/AdminContentHeroes';
 import { useAiEnabled } from '@/lib/ai';
 import { HelpfulEmpty } from '@/components/ui/HelpfulEmpty';
+import { cardTitle } from '@/components/public/course/BigCourseCard';
 
 interface Row {
   id: string; text: string; type: string; difficulty: string; status: string; bankOnly: boolean; reviewNote: string | null;
   courseId: string; courseTitle: string; programme: string | null; moduleTitle: string | null; lessonTitle: string | null;
   hasExplanation: boolean; answered: number; percentRight: number | null;
   hasAiDraft: boolean; aiGenerated: boolean; aiFlag: boolean;
+  /** In a bundle: its number within the course, and its module's number */
+  number: number | null; moduleNo: number | null;
 }
+/** A course's questions as a bundle, under its exam and subject */
+interface Bundle { id: string; title: string; exam: { id: string; name: string } | null; subject: string | null; level: string | null; total: number; withWhy: number; inReview: number; drafts: number; types: Record<string, number> }
+interface BundleStats { total: number; withWhy: number; types: Record<string, number>; difficulty: Record<string, number>; percentRight: number | null }
+type View = 'bundles' | 'all' | 'needs';
 interface AiDraft { explanation: string; modelAnswer?: string | null; markSchemes?: string[] | null; answerLooksWrong: boolean; note: string }
 interface Job { id: string; total: number; done: number; failed: number; errors: string[]; status: 'running' | 'finished' }
 interface Stats { all: number; noWhy: number; mediumOnly: number; inReview: number; drafts: number; aiDrafts: number; aiCheck: number }
@@ -53,6 +60,32 @@ function parseCsv(text: string): Record<string, string>[] {
   return body.filter(r => r.some(c => c.trim())).map(r => Object.fromEntries(names.map((n, i) => [n, r[i] ?? ''])));
 }
 
+/** "Showing 26–50 of 380", page numbers (1 … 4 5 6 … 16), and 25, 50 or 100 a page */
+function Pager({ page, size, total, onPage, onSize }: { page: number; size: number; total: number; onPage: (p: number) => void; onSize: (s: number) => void }) {
+  const pages = Math.max(1, Math.ceil(total / size));
+  if (!total) return null;
+  const shown = [...new Set([1, page - 1, page, page + 1, pages].filter(p => p >= 1 && p <= pages))].sort((a, b) => a - b);
+  const btn = 'inline-flex h-8 min-w-8 items-center justify-center rounded-md border px-2 text-[13px] font-semibold';
+  return (
+    <nav aria-label="Pages" className="flex flex-wrap items-center gap-1.5 text-[13px] text-ink2">
+      <span>Showing {(page - 1) * size + 1}–{Math.min(page * size, total)} of {total}</span>
+      <span className="flex-1" />
+      <button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)} aria-label="Previous page" className={`${btn} border-line bg-white text-navy disabled:opacity-40`}>←</button>
+      {shown.map((p, i) => (
+        <React.Fragment key={p}>
+          {i > 0 && p - shown[i - 1] > 1 && <span className="px-0.5">…</span>}
+          <button type="button" onClick={() => onPage(p)} aria-current={p === page ? 'page' : undefined} className={`${btn} ${p === page ? 'border-[#2F57C9] bg-[#2F57C9] text-white' : 'border-line bg-white text-navy hover:bg-subtle'}`}>{p}</button>
+        </React.Fragment>
+      ))}
+      <button type="button" disabled={page >= pages} onClick={() => onPage(page + 1)} aria-label="Next page" className={`${btn} border-line bg-white text-navy disabled:opacity-40`}>→</button>
+      <label className="ml-2 flex items-center gap-1.5">Per page
+        <select value={size} onChange={e => onSize(Number(e.target.value))} className="h-8 rounded-md border border-line bg-white px-1.5 text-[13px] text-navy">{[25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</select>
+      </label>
+    </nav>
+  );
+}
+const mix = (types: Record<string, number>) => { const e = Object.entries(types).sort((a, b) => b[1] - a[1]); return e.length === 1 ? `${typeName(e[0][0]).replace(' (MCQ)', '').replace('Single answer', 'MCQ')} ${e[0][1]}` : e.length ? 'Mixed' : ''; };
+
 const TEMPLATE = 'question,type,a,b,c,d,correct,explanation,difficulty,module,tags\n"What is 2 + 2?",mcq,3,4,5,6,b,"Two and two make four.",easy,,"arithmetic"\n';
 
 export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_REVIEWER' }) {
@@ -61,6 +94,12 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
   const [stats, setStats] = useState<Stats | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [size, setSize] = useState(25);
+  const [view, setView] = useState<View>('bundles');
+  const [bundles, setBundles] = useState<Bundle[] | null>(null);
+  const [bundle, setBundle] = useState<BundleStats | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [ready, setReady] = useState(false);
   const [courses, setCourses] = useState<CourseOpt[]>([]);
   const [f, setF] = useState({ search: '', courseId: '', difficulty: '', type: '', status: '', missing: '', ai: '' });
   const aiOn = useAiEnabled();
@@ -74,11 +113,64 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
   const [report, setReport] = useState<{ created: number; errors: { row: number; message: string }[] } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Where you were (view, bundle, page, page size) comes back from the address and this device
+  useEffect(() => {
+    const u = new URLSearchParams(window.location.search);
+    const v = u.get('view'); if (v === 'all' || v === 'needs' || v === 'bundles') setView(v);
+    const b = u.get('bundle'); if (b) setF(c => ({ ...c, courseId: b }));
+    if (v === 'needs') setF(c => ({ ...c, missing: 'explanation' }));
+    const p = Number(u.get('page')); if (p > 1) setPage(p);
+    try { const s = Number(localStorage.getItem('cpa:qb-size')); if ([25, 50, 100].includes(s)) setSize(s); } catch { /* storage blocked */ }
+    setReady(true);
+  }, []);
+  useEffect(() => {
+    if (!ready) return;
+    const u = new URLSearchParams();
+    if (view !== 'bundles') u.set('view', view);
+    if (f.courseId) u.set('bundle', f.courseId);
+    if (page > 1) u.set('page', String(page));
+    window.history.replaceState(null, '', `${window.location.pathname}${u.toString() ? `?${u}` : ''}`);
+  }, [ready, view, f.courseId, page]);
+  const loadBundles = useCallback(() => api.get('/question-bank/bundles').then(r => setBundles(r.data)).catch(() => setBundles([])), []);
+  useEffect(() => { loadBundles(); }, [loadBundles]);
+
   const load = useCallback(() => {
-    const q = new URLSearchParams(Object.entries({ ...f, page: String(page) }).filter(([, v]) => v));
-    api.get(`/question-bank?${q}`).then(r => { setRows(r.data.rows); setStats(r.data.stats); setTotal(r.data.total); }).catch(() => { setRows([]); notify.error('Could not load questions'); });
-  }, [f, page]);
+    if (!ready) return;
+    const q = new URLSearchParams(Object.entries({ ...f, page: String(page), size: String(size) }).filter(([, v]) => v));
+    api.get(`/question-bank?${q}`).then(r => { setRows(r.data.rows); setStats(r.data.stats); setTotal(r.data.total); setBundle(r.data.bundle ?? null); }).catch(() => { setRows([]); notify.error('Could not load questions'); });
+  }, [f, page, size, ready]);
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [load]);
+  // Ticks don't carry over to other questions
+  useEffect(() => { setPicked(new Set()); }, [f, page, size]);
+
+  /** Bundles grouped by exam, in the order the API gives them (exam, subject, size) */
+  const examGroups = useMemo(() => {
+    const m = new Map<string, Bundle[]>();
+    for (const b of bundles ?? []) { const k = b.exam?.name ?? 'No exam yet'; m.set(k, [...(m.get(k) ?? []), b]); }
+    return [...m.entries()].sort((a, b) => Number(a[0] === 'No exam yet') - Number(b[0] === 'No exam yet'));
+  }, [bundles]);
+  const current = bundles?.find(b => b.id === f.courseId) ?? null;
+  function go(v: View) { setView(v); setPage(1); setF(c => ({ ...c, courseId: '', missing: v === 'needs' ? 'explanation' : '' })); }
+  function openBundle(id: string) { setView('bundles'); setPage(1); setF(c => ({ ...c, courseId: id, missing: '' })); window.scrollTo({ top: 0 }); }
+
+  /** The same action on every ticked question; what couldn't be done is said, not hidden */
+  async function bulk(action: 'difficulty' | 'submit' | 'delete', difficulty?: string) {
+    setSaving(true);
+    try {
+      const { data } = await api.post('/question-bank/bulk', { ids: [...picked], action, difficulty });
+      const verb = action === 'difficulty' ? `set to ${title(difficulty!)}` : action === 'submit' ? 'sent for review' : 'deleted';
+      if (data.skipped.length) notify.info(`${data.done} ${verb}; ${data.skipped.length} not`, { description: data.skipped[0].reason });
+      else notify.success(`${data.done} ${verb}`);
+      setPicked(new Set()); load(); loadBundles();
+    } catch (e) { notify.error(err(e, 'That didn’t work')); }
+    finally { setSaving(false); }
+  }
+  async function bulkWhys() {
+    setSaving(true);
+    try { const { data } = await api.post('/question-bank/ai/explanations', { ids: [...picked] }); setJob(data); setPicked(new Set()); }
+    catch (e) { notify.error(err(e, 'Could not start')); }
+    finally { setSaving(false); }
+  }
   useEffect(() => { api.get('/question-bank/courses').then(r => setCourses(r.data)).catch(() => {}); }, []);
   const set = (k: keyof typeof f, v: string) => { setPage(1); setF(c => ({ ...c, [k]: v })); };
 
@@ -196,7 +288,6 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
   const course = courses.find(c => c.id === draft?.courseId);
   const mod = course?.modules.find(m => m.id === draft?.moduleId);
   const put = (patch: Partial<Draft>) => setDraft(d => (d ? { ...d, ...patch } : d));
-  const pages = Math.max(Math.ceil(total / 50), 1);
 
   const tiles = stats ? [
     { l: 'All questions', v: stats.all, d: `${stats.drafts} drafts`, on: () => set('status', '') },
@@ -243,42 +334,127 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <input aria-label="Search questions" value={f.search} onChange={e => set('search', e.target.value)} placeholder="Search questions…" className={`${select} min-w-[220px] flex-1`} />
-          <select aria-label="Course" className={`${select} max-w-[240px]`} value={f.courseId} onChange={e => set('courseId', e.target.value)}><option value="">All courses</option>{courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}</select>
-          <select aria-label="Type" className={select} value={f.type} onChange={e => set('type', e.target.value)}><option value="">All types</option>{TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-          <select aria-label="Difficulty" className={select} value={f.difficulty} onChange={e => set('difficulty', e.target.value)}><option value="">All difficulty</option>{['EASY', 'MEDIUM', 'HARD'].map(k => <option key={k} value={k}>{title(k)}</option>)}</select>
-          <select aria-label="Status" className={select} value={f.status} onChange={e => set('status', e.target.value)}><option value="">All statuses</option>{Object.entries(STATUS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-          {f.ai && <button onClick={() => set('ai', '')} className="h-[38px] rounded-md border border-[#5889FA] bg-[#EAF0FF] px-3 text-[13px] font-semibold text-navy">{f.ai === 'drafts' ? 'AI drafts' : f.ai === 'check' ? 'Answer may be wrong' : 'Written by AI'} ✕</button>}
-          {f.missing && <button onClick={() => set('missing', '')} className="h-[38px] rounded-md border border-[#5889FA] bg-[#EAF0FF] px-3 text-[13px] font-semibold text-navy">No explanation ✕</button>}
+        <div role="tablist" aria-label="View" className="flex gap-1 overflow-x-auto border-b border-line">
+          {([['bundles', 'Bundles', bundles?.length], ['all', 'All questions', stats?.all], ['needs', 'Needs a why', stats?.noWhy]] as [View, string, number | undefined][]).map(([k, l, n]) => (
+            <button key={k} type="button" role="tab" aria-selected={view === k} onClick={() => go(k)}
+              className={`-mb-px h-[42px] whitespace-nowrap border-b-2 px-3 text-[13.5px] text-navy ${view === k ? 'border-azure-strong font-bold' : 'border-transparent font-medium text-ink2'}`}>
+              {l}{n != null && <span className="ml-1 font-medium text-muted">{n}</span>}
+            </button>
+          ))}
         </div>
 
-        <section className="overflow-x-auto rounded-[10px] border border-line bg-white">
-          <table className="w-full min-w-[820px] border-collapse text-[13.5px] text-navy">
-            <thead><tr className="bg-subtle text-left text-ink2"><th className="px-4 py-2.5 font-semibold">Question</th><th className="font-semibold">Where it belongs</th><th className="font-semibold">Type</th><th className="font-semibold">Difficulty</th><th className="font-semibold">Why</th><th className="font-semibold">% right</th><th className="pr-4 font-semibold">Status</th></tr></thead>
-            <tbody>
-              {rows === null && <tr><td colSpan={7} className="p-4 text-muted">Loading…</td></tr>}
-              {rows?.length === 0 && Object.values(f).some(Boolean) && <tr><td colSpan={7} className="p-4 text-muted">No questions match.</td></tr>}
-              {rows?.length === 0 && !Object.values(f).some(Boolean) && <tr><td colSpan={7} className="p-0"><HelpfulEmpty title="Start your question bank." body="Write a few questions, import a spreadsheet, or let AI draft some from your lessons." cta={{ label: 'Write a question', onClick: () => setDraft(blank(courses.length === 1 ? courses[0].id : '')) }} preview={{ icon: '?', title: 'Question 1', line: 'Draft · MCQ' }} /></td></tr>}
-              {rows?.map(r => (
-                <tr key={r.id} onClick={() => open(r.id)} className="cursor-pointer border-t border-line hover:bg-subtle">
-                  <td className="max-w-[340px] truncate px-4 py-2.5" title={r.text}>{r.text}</td>
-                  <td className="max-w-[260px] truncate text-ink2" title={r.courseTitle}>{[r.programme, r.courseTitle, r.moduleTitle].filter(Boolean).join(' · ')}</td>
-                  <td>{typeName(r.type).replace(' (MCQ)', '')}</td>
-                  <td>{title(r.difficulty)}</td>
-                  <td className={r.hasExplanation ? '' : 'text-muted'}>{r.hasExplanation ? '✓' : r.aiFlag ? <span className="font-semibold text-[#C1352B]">Check answer</span> : r.hasAiDraft ? <span className="font-semibold text-[#3F6FE8]">AI draft</span> : 'Missing'}</td>
-                  <td>{r.percentRight != null ? `${r.percentRight}%` : '—'}</td>
-                  <td className="pr-4 font-semibold">{STATUS[r.status]}{r.reviewNote ? ' · sent back' : ''}{r.aiGenerated ? <span className="ml-1.5 rounded bg-[#EAF0FF] px-1.5 py-px text-[10.5px] text-[#2F57C9]">AI</span> : null}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-        {pages > 1 && (
-          <div className="flex items-center gap-3 self-end text-[13px] text-ink2">
-            <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="font-semibold text-[#3F6FE8] disabled:text-muted">← Previous</button>
-            Page {page} of {pages}
-            <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="font-semibold text-[#3F6FE8] disabled:text-muted">Next →</button>
+        {/* Bundles: one per course, under its exam and subject */}
+        {view === 'bundles' && !f.courseId && (
+          !bundles ? <div className="h-48 animate-pulse rounded-xl border border-line bg-white" />
+          : !bundles.length ? <p className="rounded-xl border border-line bg-white p-6 text-center text-[13.5px] text-ink2">No courses with questions yet.</p>
+          : <div className="flex flex-col gap-5">
+            {examGroups.map(([exam, list]) => (
+              <section key={exam} className="flex flex-col gap-2.5">
+                <p className="flex items-baseline gap-2"><b className="text-[16px] text-navy">{exam}</b><span className="text-[12.5px] text-muted">{list.length} bundle{list.length === 1 ? '' : 's'} · {list.reduce((n, b) => n + b.total, 0)} questions</span></p>
+                <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {list.map(b => (
+                    <button key={b.id} type="button" onClick={() => openBundle(b.id)} className="flex min-w-0 flex-col gap-1.5 rounded-xl border border-line bg-white p-3.5 text-left transition hover:border-[#5889FA]">
+                      <span className="text-[10.5px] font-extrabold uppercase tracking-[0.06em] text-muted">{b.subject ?? 'No subject'}{b.level ? ` · ${b.level}` : ''}</span>
+                      <b className="line-clamp-2 text-[14.5px] leading-snug text-navy">{cardTitle(b.title).title}</b>
+                      <span className="flex justify-between text-[12px] text-ink2"><span>{b.total} question{b.total === 1 ? '' : 's'}</span><span>{mix(b.types)}</span></span>
+                      <span className="h-1.5 overflow-hidden rounded bg-subtle"><span className="block h-full rounded bg-[#3F6FE8]" style={{ width: `${b.total ? Math.round((b.withWhy / b.total) * 100) : 0}%` }} /></span>
+                      <span className="text-[11.5px] text-muted">{b.withWhy} of {b.total} with a why{b.inReview ? ` · ${b.inReview} in review` : ''}{b.drafts ? ` · ${b.drafts} drafts` : ''}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+
+        {(view !== 'bundles' || f.courseId) && (
+          <div className={f.courseId ? 'grid items-start gap-4 lg:grid-cols-[250px_minmax(0,1fr)]' : 'flex flex-col'}>
+            {/* Inside a bundle: the other bundles down the side */}
+            {f.courseId && (
+              <nav aria-label="Bundles" className="hidden flex-col gap-0.5 rounded-xl border border-line bg-white p-2 text-[13px] lg:flex">
+                <button type="button" onClick={() => go('bundles')} className="rounded-md px-2 py-1.5 text-left font-semibold text-azure-strong hover:bg-subtle">← All bundles</button>
+                {examGroups.map(([exam, list]) => (
+                  <div key={exam} className="flex flex-col gap-0.5">
+                    <span className="px-2 pb-1 pt-2.5 text-[10.5px] font-extrabold uppercase tracking-[0.06em] text-muted">{exam}</span>
+                    {list.map(b => (
+                      <button key={b.id} type="button" onClick={() => openBundle(b.id)} className={`flex justify-between gap-2 rounded-md px-2 py-1.5 text-left ${b.id === f.courseId ? 'bg-accent-soft font-bold text-navy' : 'text-ink2 hover:bg-subtle'}`}>
+                        <span className="min-w-0 truncate">{cardTitle(b.title).title}</span><span className="text-[12px] text-muted">{b.total}</span>
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </nav>
+            )}
+            <div className="flex min-w-0 flex-col gap-3">
+              {f.courseId && current && (
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-white px-4 py-3.5">
+                  <span className="min-w-0 flex-1">
+                    <span className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-muted">{[current.exam?.name, current.subject, cardTitle(current.title).form].filter(Boolean).join(' · ')}</span>
+                    <b className="block text-[19px] text-navy">{cardTitle(current.title).title}</b>
+                    {bundle && <span className="mt-1.5 flex flex-wrap gap-1.5 text-[11.5px] font-semibold text-ink2">
+                      {[`${bundle.total} questions`, mix(bundle.types), `Easy ${bundle.difficulty.EASY ?? 0} · Medium ${bundle.difficulty.MEDIUM ?? 0} · Hard ${bundle.difficulty.HARD ?? 0}`, `${bundle.withWhy} with a why`, bundle.percentRight != null ? `${bundle.percentRight}% answered right` : null].filter(Boolean).map(x => <span key={x} className="rounded-full bg-subtle px-2.5 py-0.5">{x}</span>)}
+                    </span>}
+                  </span>
+                  <button type="button" onClick={() => setDraft(blank(f.courseId))} className="h-9 rounded-md bg-[#3F6FE8] px-3.5 text-[13px] font-semibold text-white hover:bg-[#2F57C9]">Add to this bundle</button>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                <input aria-label="Search questions" value={f.search} onChange={e => set('search', e.target.value)} placeholder={f.courseId ? 'Search in this bundle…' : 'Search questions…'} className={`${select} min-w-[200px] flex-1`} />
+                {!f.courseId && <select aria-label="Course" className={`${select} max-w-[240px]`} value={f.courseId} onChange={e => openBundle(e.target.value)}><option value="">All courses</option>{courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}</select>}
+                <select aria-label="Type" className={select} value={f.type} onChange={e => set('type', e.target.value)}><option value="">All types</option>{TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+                <select aria-label="Difficulty" className={select} value={f.difficulty} onChange={e => set('difficulty', e.target.value)}><option value="">All difficulty</option>{['EASY', 'MEDIUM', 'HARD'].map(k => <option key={k} value={k}>{title(k)}</option>)}</select>
+                <select aria-label="Status" className={select} value={f.status} onChange={e => set('status', e.target.value)}><option value="">All statuses</option>{Object.entries(STATUS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+                {f.ai && <button onClick={() => set('ai', '')} className="h-[38px] rounded-md border border-[#5889FA] bg-[#EAF0FF] px-3 text-[13px] font-semibold text-navy">{f.ai === 'drafts' ? 'AI drafts' : f.ai === 'check' ? 'Answer may be wrong' : 'Written by AI'} ✕</button>}
+                {f.missing && view !== 'needs' && <button onClick={() => set('missing', '')} className="h-[38px] rounded-md border border-[#5889FA] bg-[#EAF0FF] px-3 text-[13px] font-semibold text-navy">No explanation ✕</button>}
+              </div>
+
+              {picked.size > 0 && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg bg-accent-soft px-3 py-2 text-[13px] text-navy">
+                  <b className="mr-1">{picked.size} selected</b>
+                  <select aria-label="Set difficulty" value="" onChange={e => e.target.value && bulk('difficulty', e.target.value)} className={`${select} h-8`}><option value="">Set difficulty…</option>{['EASY', 'MEDIUM', 'HARD'].map(k => <option key={k} value={k}>{title(k)}</option>)}</select>
+                  <button type="button" disabled={!aiOn || saving} onClick={bulkWhys} title={aiOn ? '' : 'Add the AI key to switch this on'} className="h-8 rounded-md border border-line bg-white px-3 font-semibold disabled:opacity-50">Draft whys with AI</button>
+                  <button type="button" disabled={saving} onClick={() => bulk('submit')} className="h-8 rounded-md border border-line bg-white px-3 font-semibold">Send for review</button>
+                  <button type="button" disabled={saving} onClick={() => { if (window.confirm(`Delete ${picked.size} question${picked.size === 1 ? '' : 's'}? Questions in a lesson quiz are kept; remove those in the course builder.`)) bulk('delete'); }} className="h-8 rounded-md border border-line bg-white px-3 font-semibold text-[#A12A2A]">Delete</button>
+                  <button type="button" onClick={() => setPicked(new Set())} className="ml-auto font-semibold text-ink2">Clear</button>
+                </div>
+              )}
+
+              <section className="overflow-x-auto rounded-[10px] border border-line bg-white">
+                <table className="w-full min-w-[820px] border-collapse text-[13.5px] text-navy">
+                  <thead><tr className="bg-subtle text-left text-ink2">
+                    <th className="w-9 pl-3"><input type="checkbox" aria-label="Select this page" className="h-4 w-4 accent-[#3F6FE8]" checked={!!rows?.length && rows.every(r => picked.has(r.id))} onChange={e => setPicked(p => { const n = new Set(p); rows?.forEach(r => (e.target.checked ? n.add(r.id) : n.delete(r.id))); return n; })} /></th>
+                    {f.courseId && <th className="w-10 font-semibold">#</th>}
+                    <th className="px-3 py-2.5 font-semibold">Question</th>{!f.courseId && <th className="font-semibold">Where it belongs</th>}<th className="font-semibold">Type</th><th className="font-semibold">Difficulty</th><th className="font-semibold">Why</th><th className="font-semibold">% right</th><th className="pr-4 font-semibold">Status</th>
+                  </tr></thead>
+                  <tbody>
+                    {rows === null && <tr><td colSpan={9} className="p-4 text-muted">Loading…</td></tr>}
+                    {rows?.length === 0 && Object.values(f).some(Boolean) && <tr><td colSpan={9} className="p-4 text-muted">No questions match.</td></tr>}
+                    {rows?.length === 0 && !Object.values(f).some(Boolean) && <tr><td colSpan={9} className="p-0"><HelpfulEmpty title="Start your question bank." body="Write a few questions, import a spreadsheet, or let AI draft some from your lessons." cta={{ label: 'Write a question', onClick: () => setDraft(blank(courses.length === 1 ? courses[0].id : '')) }} preview={{ icon: '?', title: 'Question 1', line: 'Draft · MCQ' }} /></td></tr>}
+                    {rows?.map((r, i) => (
+                      <React.Fragment key={r.id}>
+                        {/* In a bundle, a heading each time the module changes */}
+                        {f.courseId && r.moduleTitle && (i === 0 || rows[i - 1].moduleTitle !== r.moduleTitle) && (
+                          <tr className="border-t border-line bg-subtle"><td colSpan={9} className="px-3 py-1.5 text-[12.5px] font-extrabold text-ink2">{r.moduleNo ? `Module ${r.moduleNo} · ` : ''}{r.moduleTitle.replace(/^Module \d+\s*[:.–-]?\s*/i, '')}</td></tr>
+                        )}
+                        <tr onClick={() => open(r.id)} className={`cursor-pointer border-t border-line hover:bg-subtle ${picked.has(r.id) ? 'bg-accent-soft' : ''}`}>
+                          <td className="pl-3" onClick={e => e.stopPropagation()}><input type="checkbox" aria-label="Select" className="h-4 w-4 accent-[#3F6FE8]" checked={picked.has(r.id)} onChange={e => setPicked(p => { const n = new Set(p); if (e.target.checked) n.add(r.id); else n.delete(r.id); return n; })} /></td>
+                          {f.courseId && <td className="text-[12.5px] font-semibold text-muted tabular-nums">{r.number}</td>}
+                          <td className="max-w-[360px] truncate px-3 py-2.5" title={r.text}>{r.text}</td>
+                          {!f.courseId && <td className="max-w-[240px] truncate text-ink2" title={r.courseTitle}>{[r.programme, cardTitle(r.courseTitle).title, r.moduleTitle].filter(Boolean).join(' · ')}</td>}
+                          <td>{typeName(r.type).replace(' (MCQ)', '')}</td>
+                          <td>{title(r.difficulty)}</td>
+                          <td className={r.hasExplanation ? '' : 'text-muted'}>{r.hasExplanation ? '✓' : r.aiFlag ? <span className="font-semibold text-[#C1352B]">Check answer</span> : r.hasAiDraft ? <span className="font-semibold text-[#3F6FE8]">AI draft</span> : 'Missing'}</td>
+                          <td>{r.percentRight != null ? `${r.percentRight}%` : '—'}</td>
+                          <td className="pr-4 font-semibold">{STATUS[r.status]}{r.reviewNote ? ' · sent back' : ''}{r.aiGenerated ? <span className="ml-1.5 rounded bg-[#EAF0FF] px-1.5 py-px text-[10.5px] text-[#2F57C9]">AI</span> : null}</td>
+                        </tr>
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+              <Pager page={page} size={size} total={total} onPage={p => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onSize={s => { setSize(s); setPage(1); try { localStorage.setItem('cpa:qb-size', String(s)); } catch { /* storage blocked */ } }} />
+            </div>
           </div>
         )}
       </div>
@@ -339,7 +515,8 @@ export function QuestionBank({ role }: { role: 'ADMIN' | 'TEACHER' | 'SUBJECT_RE
         <div role="dialog" aria-modal="true" aria-label={draft.id ? 'Edit question' : 'New question'} className="fixed inset-0 z-50 flex justify-end bg-navy/40">
           <div className="flex h-full w-full max-w-[720px] flex-col bg-white">
             <div className="flex items-center gap-3 border-b border-line px-5 py-3.5">
-              <strong className="flex-1 text-lg text-navy">{draft.id ? 'Edit question' : 'New question'}</strong>
+              <strong className="flex-1 text-lg text-navy">{draft.id ? `Edit question${rows?.find(x => x.id === draft.id)?.number ? ` #${rows.find(x => x.id === draft.id)!.number}` : ''}` : 'New question'}</strong>
+              {draft.id && rows && (() => { const i = rows.findIndex(x => x.id === draft.id); return i < 0 ? null : <span className="flex gap-1"><button type="button" disabled={i <= 0} onClick={() => open(rows[i - 1].id)} aria-label="Previous question" className="h-8 rounded-md border border-line px-2.5 text-[13px] font-semibold text-navy disabled:opacity-40">←</button><button type="button" disabled={i >= rows.length - 1} onClick={() => open(rows[i + 1].id)} aria-label="Next question" className="h-8 rounded-md border border-line px-2.5 text-[13px] font-semibold text-navy disabled:opacity-40">→</button></span>; })()}
               {draft.status && <span className="rounded-md bg-subtle px-2 py-0.5 text-xs font-semibold text-ink2">{STATUS[draft.status]}</span>}
               <button aria-label="Close" onClick={() => setDraft(null)} className="text-lg text-muted">✕</button>
             </div>

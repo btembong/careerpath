@@ -78,9 +78,27 @@ export class QuestionBankService {
     if (q.search?.trim()) where.questionText = { contains: q.search.trim(), mode: 'insensitive' };
 
     const page = Math.max(Number(q.page) || 1, 1);
+    const size = [25, 50, 100].includes(Number(q.size)) ? Number(q.size) : PAGE;
+    // Inside one course (a bundle): in course order, module by module, each question numbered within the course
+    let order: { ids: string[]; numbers: Map<string, number>; lessons: Map<string, { title: string; module: string; moduleNo: number }> } | null = null;
+    if (q.courseId) {
+      const [all, mods] = await Promise.all([
+        this.prisma.questionBank.findMany({ where: { courseId: q.courseId }, select: { id: true, lessonId: true, sourceLessonId: true, sortOrder: true, createdAt: true } }),
+        this.prisma.courseModule.findMany({ where: { courseId: q.courseId }, orderBy: { sortOrder: 'asc' }, select: { title: true, lessons: { orderBy: { sortOrder: 'asc' }, select: { id: true, title: true } } } }),
+      ]);
+      const lessons = new Map<string, { title: string; module: string; moduleNo: number; at: number }>();
+      let at = 0;
+      mods.forEach((m, mi) => m.lessons.forEach(l => lessons.set(l.id, { title: l.title, module: m.title, moduleNo: mi + 1, at: at++ })));
+      const pos = (x: (typeof all)[number]) => lessons.get(x.sourceLessonId ?? x.lessonId ?? '')?.at ?? Number.MAX_SAFE_INTEGER;
+      const sorted = [...all].sort((a, b) => pos(a) - pos(b) || a.sortOrder - b.sortOrder || a.createdAt.getTime() - b.createdAt.getTime());
+      const matching = new Set((await this.prisma.questionBank.findMany({ where, select: { id: true } })).map(x => x.id));
+      order = { ids: sorted.filter(x => matching.has(x.id)).map(x => x.id), numbers: new Map(sorted.map((x, i) => [x.id, i + 1])), lessons };
+    }
     const [rows, total, stats] = await Promise.all([
-      this.prisma.questionBank.findMany({ where, orderBy: [{ createdAt: 'desc' }, { sortOrder: 'asc' }], skip: (page - 1) * PAGE, take: PAGE }),
-      this.prisma.questionBank.count({ where }),
+      order
+        ? this.prisma.questionBank.findMany({ where: { id: { in: order.ids.slice((page - 1) * size, page * size) } } }).then(rs => rs.sort((a, b) => order!.numbers.get(a.id)! - order!.numbers.get(b.id)!))
+        : this.prisma.questionBank.findMany({ where, orderBy: [{ createdAt: 'desc' }, { sortOrder: 'asc' }], skip: (page - 1) * size, take: size }),
+      order ? Promise.resolve(order.ids.length) : this.prisma.questionBank.count({ where }),
       this.stats(scope),
     ]);
     const [courses, answers, lessons] = await Promise.all([
@@ -91,10 +109,12 @@ export class QuestionBankService {
     const cBy = new Map(courses.map(c => [c.id, c]));
     const lBy = new Map(lessons.map(l => [l.id, l]));
     return {
-      total, page, pageSize: PAGE, stats,
+      total, page, pageSize: size, stats,
+      bundle: q.courseId ? await this.bundleStats(q.courseId) : null,
       rows: rows.map(r => {
         const c = cBy.get(r.courseId);
         const l = lBy.get(r.sourceLessonId ?? r.lessonId ?? '');
+        const ol = order?.lessons.get(r.sourceLessonId ?? r.lessonId ?? '');
         const n = answers.filter(a => a.questionId === r.id).reduce((s, a) => s + a._count, 0);
         const right = answers.find(a => a.questionId === r.id && a.isCorrect)?._count ?? 0;
         return {
@@ -102,9 +122,79 @@ export class QuestionBankService {
           courseId: r.courseId, courseTitle: c?.title ?? '', programme: c?.programme?.shortName ?? c?.programme?.name ?? null, moduleTitle: l?.module.title ?? null, lessonTitle: l?.title ?? null,
           hasExplanation: !!r.explanation?.trim(), answered: n, percentRight: n >= 5 ? Math.round((right / n) * 100) : null,
           hasAiDraft: !!r.aiDraft, aiGenerated: r.aiGenerated, aiFlag: !!(r.aiDraft as { answerLooksWrong?: boolean } | null)?.answerLooksWrong,
+          number: order?.numbers.get(r.id) ?? null, moduleNo: ol?.moduleNo ?? null,
         };
       }),
     };
+  }
+
+  /** One course's questions at a glance: types, difficulty, explanations, how often they're answered right */
+  private async bundleStats(courseId: string) {
+    const [types, diffs, noWhy, answers] = await Promise.all([
+      this.prisma.questionBank.groupBy({ by: ['type'], where: { courseId }, _count: true }),
+      this.prisma.questionBank.groupBy({ by: ['difficulty'], where: { courseId }, _count: true }),
+      this.prisma.questionBank.count({ where: { courseId, OR: [{ explanation: null }, { explanation: '' }] } }),
+      this.prisma.testAnswer.groupBy({ by: ['isCorrect'], where: { question: { courseId }, isCorrect: { not: null } }, _count: true }),
+    ]);
+    const total = types.reduce((n, t) => n + t._count, 0);
+    const answered = answers.reduce((n, a) => n + a._count, 0);
+    return {
+      total, withWhy: total - noWhy,
+      types: Object.fromEntries(types.map(t => [t.type, t._count])),
+      difficulty: Object.fromEntries(diffs.map(d => [d.difficulty, d._count])),
+      percentRight: answered >= 20 ? Math.round(((answers.find(a => a.isCorrect)?._count ?? 0) / answered) * 100) : null,
+    };
+  }
+
+  /**
+   * The bank as bundles: one per course under its exam and subject, with how many questions, of which types,
+   * and how many have a why. Admins see courses that have questions; teachers and reviewers all their courses.
+   */
+  async bundles(u: UserProfile) {
+    const courses = await this.prisma.platformCourse.findMany({
+      where: await this.courseScope(u),
+      select: { id: true, title: true, programme: { select: { id: true, name: true, shortName: true } }, subject: { select: { name: true } }, level: { select: { name: true } } },
+    });
+    const ids = courses.map(c => c.id);
+    const [counts, types, noWhy, review, drafts] = await Promise.all([
+      this.prisma.questionBank.groupBy({ by: ['courseId'], where: { courseId: { in: ids } }, _count: true }),
+      this.prisma.questionBank.groupBy({ by: ['courseId', 'type'], where: { courseId: { in: ids } }, _count: true }),
+      this.prisma.questionBank.groupBy({ by: ['courseId'], where: { courseId: { in: ids }, OR: [{ explanation: null }, { explanation: '' }] }, _count: true }),
+      this.prisma.questionBank.groupBy({ by: ['courseId'], where: { courseId: { in: ids }, status: QuestionStatus.IN_REVIEW }, _count: true }),
+      this.prisma.questionBank.groupBy({ by: ['courseId'], where: { courseId: { in: ids }, status: QuestionStatus.DRAFT }, _count: true }),
+    ]);
+    const n = (xs: { courseId: string; _count: number }[], id: string) => xs.find(x => x.courseId === id)?._count ?? 0;
+    return courses
+      .map(c => ({
+        id: c.id, title: c.title, exam: c.programme ? { id: c.programme.id, name: c.programme.shortName ?? c.programme.name } : null,
+        subject: c.subject?.name ?? null, level: c.level?.name ?? null,
+        total: n(counts, c.id), withWhy: n(counts, c.id) - n(noWhy, c.id), inReview: n(review, c.id), drafts: n(drafts, c.id),
+        types: Object.fromEntries(types.filter(t => t.courseId === c.id).map(t => [t.type, t._count])),
+      }))
+      .filter(b => b.total > 0 || !this.isAdmin(u))
+      .sort((a, b) => (a.exam?.name ?? '~').localeCompare(b.exam?.name ?? '~') || (a.subject ?? '~').localeCompare(b.subject ?? '~') || b.total - a.total);
+  }
+
+  /** The same action on several questions; each is checked on its own and refusals are reported, not thrown */
+  async bulk(u: UserProfile, body: { ids?: string[]; action?: string; difficulty?: QuestionDifficulty }) {
+    const ids = [...new Set(body.ids ?? [])].slice(0, 200);
+    if (!ids.length) throw new BadRequestException('Tick some questions first.');
+    if (body.action === 'difficulty' && !Object.values(QuestionDifficulty).includes(body.difficulty as QuestionDifficulty)) throw new BadRequestException('Choose a difficulty.');
+    let done = 0;
+    const skipped: { id: string; reason: string }[] = [];
+    for (const id of ids) {
+      try {
+        if (body.action === 'difficulty') {
+          const q = await this.get(u, id);
+          const back = q.bankOnly && q.status === QuestionStatus.LIVE && !this.isAdmin(u) && u.role !== 'SUBJECT_REVIEWER';
+          await this.prisma.questionBank.update({ where: { id }, data: { difficulty: body.difficulty, ...(back ? { status: QuestionStatus.DRAFT } : {}) } });
+        } else if (body.action === 'submit') await this.submitForReview(u, id);
+        else if (body.action === 'delete') await this.remove(u, id);
+        else throw new BadRequestException('Unknown action');
+        done++;
+      } catch (e: any) { skipped.push({ id, reason: e?.response?.message ?? e?.message ?? 'Not done' }); }
+    }
+    return { done, skipped };
   }
 
   private async stats(scope: Prisma.QuestionBankWhereInput) {
