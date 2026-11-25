@@ -75,7 +75,14 @@ export class WithdrawalsController {
 
   @Get('admin/settlements/accounts')
   @Roles(UserRole.ADMIN)
-  accounts() { return this.w.accountsToCheck(); }
+  @ApiOperation({ summary: '[Admin] Payout accounts in full: those to check, or every earner account with ?all=1' })
+  accounts(@Query('all') all?: string) { return this.w.accounts(all === '1'); }
+
+  @Post('admin/settlements/accounts/:id/ask')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: '[Admin] Ask an earner to correct or complete their payout account (message and email)' })
+  askToFix(@CurrentUser() u: UserProfile, @Param('id') id: string, @Body() b: { note?: string }) { return this.w.askToFix(u, id, b?.note); }
 
   @Post('admin/settlements/code')
   @HttpCode(HttpStatus.OK)

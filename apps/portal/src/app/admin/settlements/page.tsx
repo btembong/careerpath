@@ -32,9 +32,16 @@ interface Row {
   earned90d: { source: string; amount: number }[] | null; months: number[] | null; usual: number | null; risk: 'low' | 'medium' | 'high' | null;
 }
 interface Month { month: string; people: number; api: number; hand: number; fees: number; failed: number; returned: number; total: number; currency: string }
-interface Acc { id: string; user: { id: string; name: string; email: string; role: string }; label: string; last: string; country: string; holderName: string | null; nameCheck: string; automatic: boolean; updatedAt: string }
+/** A payout account in full: what's needed to check it, and to pay it by hand */
+interface Acc {
+  id: string; user: { id: string; name: string; email: string; role: string; avatarUrl: string | null; since: string; country: string | null };
+  label: string; last: string; accountNumber: string; provider: string | null; bankId: string | null; bankCode: string | null; accountType: string | null; branchCode: string | null; country: string;
+  holderName: string | null; nameCheck: string; confirmed: boolean; confirmedAt: string | null; names: 'same' | 'different' | 'missing'; oldForm: boolean; automatic: boolean;
+  owed: { amount: number; currency: string } | null; lastPaid: { amount: number; currency: string; at: string } | null;
+  withdrawals: { paid: number; waiting: number; refused: number }; setUpAt: string; changedAt: string | null; updatedAt: string;
+}
 
-type Tab = 'approvals' | 'transfers' | 'history' | 'accounts' | 'rules';
+type Tab = 'approvals' | 'transfers' | 'history' | 'accounts' | 'directory' | 'rules';
 const ROLE: Record<string, string> = { TEACHER: 'Teacher', SUBJECT_REVIEWER: 'Subject reviewer', COUNTRY_REP: 'Country rep' };
 const SOURCE: Record<string, string> = { COURSE_SALE: 'course sales', COHORT_SHARE: 'cohort share', COUNTRY_BONUS: 'country bonus', REVIEW_COMMISSION: 'review commission', LIVE_CLASS: 'live classes', MENTOR_SESSION: 'mentorship', MANUAL_CREDIT: 'added by admin', ADJUSTMENT: 'adjustments' };
 const tag = 'inline-flex h-6 items-center rounded-md px-2 text-[11.5px] font-bold whitespace-nowrap';
@@ -80,6 +87,9 @@ export default function AdminSettlementsPage() {
   const [q, setQ] = useState('');
   const [history, setHistory] = useState<Month[] | null>(null);
   const [accounts, setAccounts] = useState<Acc[] | null>(null);
+  const [directory, setDirectory] = useState<Acc[] | null>(null);
+  const [openAcc, setOpenAcc] = useState<string | null>(null);
+  const [asking, setAsking] = useState<Acc | null>(null);
   const [rejecting, setRejecting] = useState<Row | null>(null);
   const [paying, setPaying] = useState<Row | null>(null);
   const [topUp, setTopUp] = useState<false | string>(false);
@@ -95,6 +105,7 @@ export default function AdminSettlementsPage() {
     if (tab === 'approvals' || tab === 'transfers') { setRows(null); const t = setTimeout(loadRows, tab === 'transfers' ? 250 : 0); return () => clearTimeout(t); }
     if (tab === 'history') api.get('/admin/settlements/history').then(r => setHistory(r.data)).catch(() => setHistory([]));
     if (tab === 'accounts') api.get('/admin/settlements/accounts').then(r => setAccounts(r.data)).catch(() => setAccounts([]));
+    if (tab === 'directory') api.get('/admin/settlements/accounts', { params: { all: 1 } }).then(r => setDirectory(r.data)).catch(() => setDirectory([]));
   }, [tab, loadRows]);
   const reload = () => { loadO(); loadRows(); };
 
@@ -104,13 +115,13 @@ export default function AdminSettlementsPage() {
   });
   const refresh = async (r: Row) => { const x = await api.post(`/admin/settlements/withdrawals/${r.id}/refresh`).catch(() => null); notify.info(x ? STATUS[x.data.status as Status].label : 'Couldn’t reach Tranzak'); reload(); };
   async function confirmAccount(a: Acc) {
-    try { await api.post(`/payout-accounts/admin/${a.id}/verify`); notify.success('Account confirmed'); setAccounts(l => l?.filter(x => x.id !== a.id) ?? null); loadO(); }
+    try { await api.post(`/payout-accounts/admin/${a.id}/verify`); notify.success('Account confirmed'); setAccounts(l => l?.filter(x => x.id !== a.id) ?? null); setDirectory(l => l?.map(x => (x.id === a.id ? { ...x, confirmed: true } : x)) ?? null); setOpenAcc(null); loadO(); }
     catch (e) { notify.error(err(e, 'Could not confirm')); }
   }
 
   const tz = o?.tranzak, xaf = o?.owed.XAF ?? 0;
   const short = tz && tz.ok ? xaf - tz.payout.available : 0;
-  const TABS: [Tab, string, number | undefined][] = [['approvals', 'Approvals', o?.awaiting.count], ['transfers', 'Transfers', undefined], ['history', 'History', undefined], ['accounts', 'Accounts to check', o?.accountsToCheck], ['rules', 'Rules', undefined]];
+  const TABS: [Tab, string, number | undefined][] = [['approvals', 'Approvals', o?.awaiting.count], ['transfers', 'Transfers', undefined], ['history', 'History', undefined], ['accounts', 'Accounts to check', o?.accountsToCheck], ['directory', 'Payout accounts', undefined], ['rules', 'Rules', undefined]];
 
   return (
     <div className="flex min-h-full flex-col">
@@ -221,25 +232,32 @@ export default function AdminSettlementsPage() {
         )}
 
         {tab === 'accounts' && (
-          <section className="rounded-xl border border-line bg-white">
-            {!accounts ? <div className="m-4 h-32 animate-pulse rounded-md bg-subtle" /> : !accounts.length ? <p className="px-4 py-10 text-center text-[13px] text-ink2">Every payout account is confirmed.</p> : accounts.map(a => (
-              <div key={a.id} className="flex flex-wrap items-center gap-3 border-t border-line px-[18px] py-3 first:border-t-0">
-                <ProviderLogo label={a.label} size={32} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-navy">{a.user.name} <span className="font-medium text-muted">· {ROLE[a.user.role] ?? a.user.role}</span></p>
-                  <p className="mt-0.5 text-[12.5px] text-muted">{a.label} ·· {a.last} · {a.country}{a.holderName ? ` · registered to ${a.holderName}` : ''}</p>
-                </div>
-                <span className={clsx(tag, a.nameCheck === 'mismatch' ? 'bg-[#FDE8E8] text-[#A12A2A]' : 'bg-accent-soft text-navy')}>{a.nameCheck === 'mismatch' ? 'Name doesn’t match' : a.automatic ? 'Name not checked' : 'Outside Cameroon: paid by hand'}</span>
-                <Button size="sm" variant="secondary" onClick={() => confirmAccount(a)}>Confirm</Button>
-              </div>
-            ))}
-          </section>
+          <div className={clsx('grid items-start gap-4', openAcc && 'lg:grid-cols-[minmax(0,1fr)_440px]')}>
+            <section className="overflow-hidden rounded-xl border border-line bg-white">
+              {!accounts ? <div className="m-4 h-32 animate-pulse rounded-md bg-subtle" /> : !accounts.length ? <p className="px-4 py-10 text-center text-[13px] text-ink2">Every payout account is confirmed.</p> : accounts.map(a => (
+                <button key={a.id} type="button" onClick={() => setOpenAcc(a.id)} className={clsx('flex w-full flex-wrap items-center gap-3 border-t border-line px-[18px] py-3 text-left first:border-t-0', openAcc === a.id ? 'bg-accent-soft' : 'hover:bg-subtle')}>
+                  <ProviderLogo provider={a.provider} label={a.label} bankId={a.bankId} size={32} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-navy">{a.user.name} <span className="font-medium text-muted">· {ROLE[a.user.role] ?? a.user.role}</span></span>
+                    <span className="mt-0.5 block text-[12.5px] text-muted">{a.label} ·· {a.last} · {a.country}{a.holderName ? ` · in the name of ${a.holderName}` : ''}</span>
+                  </span>
+                  <span className={clsx(tag, accTone(a))}>{accTag(a)}</span>
+                </button>
+              ))}
+            </section>
+            {openAcc && accounts?.find(x => x.id === openAcc) && <AccountPanel a={accounts.find(x => x.id === openAcc)!} onClose={() => setOpenAcc(null)} onConfirm={confirmAccount} onAsk={setAsking} />}
+          </div>
         )}
+
+        {tab === 'directory' && <Directory rows={directory} open={openAcc} onOpen={setOpenAcc} onConfirm={confirmAccount} onAsk={setAsking} />}
 
         {tab === 'rules' && o && <RulesForm rules={o.rules} run={code.run} onSaved={r => setO({ ...o, rules: r })} />}
       </div>
 
       {code.dialog}
+      {asking && <ReasonDialog title={`Ask ${asking.user.name} to fix their payout account`} label="What should they change? (they’ll get this as a message and an email)" cta="Send"
+        initial={asking.oldForm ? 'Please complete your payout details: choose your bank or mobile money from the list, enter the full account number, and the name exactly as it’s registered.' : asking.names === 'different' ? `The account you gave is in the name of ${asking.holderName}. Please give an account in your own name, or tell us why it’s in another name.` : 'Please check your payout details and save them again.'}
+        onClose={() => setAsking(null)} onSubmit={async note => { await api.post(`/admin/settlements/accounts/${asking.id}/ask`, { note }); notify.success('Sent to them'); setAsking(null); }} />}
       {rejecting && <ReasonDialog title={`Refuse ${walletMoney(rejecting.amount, rejecting.currency)} to ${rejecting.user.name}?`} label="Why (they’ll see this)" cta="Refuse and return the money"
         onClose={() => setRejecting(null)} onSubmit={async reason => { await api.post(`/admin/settlements/withdrawals/${rejecting.id}/reject`, { reason }); notify.success('Refused. The money is back in their balance.'); setRejecting(null); reload(); }} />}
       {paying && <ReasonDialog title={`Paid ${walletMoney(paying.amount, paying.currency)} to ${paying.user.name}?`} label={`Reference of the payment to ${paying.paidTo}`} cta="Mark paid"
@@ -449,6 +467,115 @@ function PayTo({ r }: { r: Row }) {
         ))}
       </dl>
       <p className="px-3.5 py-2 text-xs text-muted">Put our reference in the transfer’s narration. Once sent, use Mark paid with the bank’s reference; they get an email.</p>
+    </div>
+  );
+}
+
+const plain = (n: string) => n.replace(/\D/g, '');
+/** Numbers as people read them: +237 6 70 00 00 00, +254 712 345 678, or the account number as given */
+function showNumber(a: Acc) {
+  const d = plain(a.accountNumber);
+  if (['MTN', 'ORANGE', 'MPESA', 'AIRTEL', 'MOMO'].includes(a.provider ?? '') && /^\d{9,15}$/.test(d)) return `+${d}`;
+  return a.accountNumber;
+}
+const accTag = (a: Acc) => a.oldForm ? 'Old form: incomplete' : a.names === 'different' ? 'Name differs' : a.nameCheck === 'mismatch' ? 'Name doesn’t match' : a.automatic ? 'Name not checked' : 'Paid by hand';
+const accTone = (a: Acc) => (a.oldForm || a.names === 'different' || a.nameCheck === 'mismatch' ? 'bg-[#FDE8E8] text-[#A12A2A]' : 'bg-accent-soft text-navy');
+const day = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+function Copy({ v }: { v: string }) {
+  return <button type="button" onClick={() => navigator.clipboard?.writeText(v).then(() => notify.success('Copied')).catch(() => notify.error('Couldn’t copy'))} className="ml-2 text-[12px] font-extrabold text-azure-strong hover:underline">Copy</button>;
+}
+
+/** One payout account in full: whose, how they're paid, every detail to pay it by hand, the two names, its history */
+function AccountPanel({ a, onClose, onConfirm, onAsk }: { a: Acc; onClose: () => void; onConfirm: (a: Acc) => void; onAsk: (a: Acc) => void }) {
+  const mobile = ['MTN', 'ORANGE', 'MPESA', 'AIRTEL', 'MOMO'].includes(a.provider ?? '');
+  const rows: [string, string | null, boolean?][] = [
+    ['How', `${mobile ? 'Mobile money' : a.provider === 'BANK' ? 'Bank account' : 'Not chosen (old form)'} · ${a.automatic ? 'sent automatically through Tranzak' : 'paid by hand'}`],
+    [mobile ? 'Provider' : 'Bank', `${a.label}${a.bankCode ? ` (code ${a.bankCode})` : ''}`],
+    [mobile ? 'Number' : 'Account number', showNumber(a), true],
+    ['Name on the account', a.holderName, true],
+    ['Account type', a.accountType === 'cheque' ? 'Cheque (current)' : a.accountType === 'savings' ? 'Savings' : null],
+    [a.country === 'ZA' ? 'Branch code' : 'SWIFT code', a.branchCode, true],
+    ['Country', a.country],
+    ['Owed to them now', a.owed ? walletMoney(a.owed.amount, a.owed.currency) : null],
+  ];
+  return (
+    <aside className="flex flex-col gap-3.5 rounded-xl border border-line bg-white p-4 lg:sticky lg:top-4">
+      <div className="flex items-center gap-2"><b className="flex-1 text-[16px] text-navy">{a.confirmed ? 'Payout account' : 'Check this payout account'}</b><button type="button" aria-label="Close" onClick={onClose} className="text-lg text-muted">✕</button></div>
+      <div className="flex items-center gap-3 rounded-lg bg-subtle px-3 py-2.5">
+        <PersonPhoto src={a.user.avatarUrl} name={a.user.name} id={a.user.id} size={38} />
+        <span className="min-w-0 text-[12.5px] text-muted"><b className="block text-[14.5px] text-navy">{a.user.name}</b>{[ROLE[a.user.role] ?? a.user.role, a.user.country, a.user.email].filter(Boolean).join(' · ')} · since {new Date(a.user.since).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}</span>
+      </div>
+      <dl className="overflow-hidden rounded-lg border border-line">
+        {rows.filter(([, v]) => v).map(([l, v, copy]) => (
+          <div key={l} className="flex justify-between gap-3 border-t border-line px-3 py-2 text-[13px] first:border-t-0">
+            <dt className="text-muted">{l}</dt><dd className="text-right font-semibold text-navy [overflow-wrap:anywhere]">{v}{copy && <Copy v={l.includes('umber') ? plain(v!) || v! : v!} />}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="grid grid-cols-2 gap-2 text-[12.5px]">
+        <div className="rounded-lg bg-accent-soft px-3 py-2"><span className="text-muted">Name on CareerPath</span><b className="block text-[13.5px] text-navy">{a.user.name}</b></div>
+        <div className={clsx('rounded-lg px-3 py-2', a.names === 'same' ? 'bg-accent-soft' : 'bg-[#FDE8E8]')}><span className="text-muted">Name they gave</span><b className={clsx('block text-[13.5px]', a.names === 'same' ? 'text-navy' : 'text-[#A12A2A]')}>{a.holderName ?? 'Not given'}</b></div>
+      </div>
+      <p className={clsx('rounded-lg px-3 py-2 text-[13px]', a.oldForm || a.names !== 'same' ? 'bg-[#FDE8E8] text-[#A12A2A]' : 'bg-accent-soft text-ink2')}>
+        {a.oldForm ? 'Set up with the old form: no bank or provider chosen from the list. Check the number is complete before paying, or ask them to complete it.'
+          : a.names === 'different' ? 'The account is in a different name. Ask them first: it may be a relative’s, or not theirs.'
+          : a.names === 'missing' ? 'They didn’t give the name on the account. Ask them for it before confirming.'
+          : a.automatic ? 'The names match. Tranzak couldn’t check the name with the operator, so confirm only if it looks right.'
+          : 'The names match. Our team pays this account by hand, so nobody else checks it: confirm only if it looks right.'}
+      </p>
+      <ul className="flex flex-col gap-1 text-[12.5px] text-ink2">
+        <li>Set up {day(a.setUpAt)}{a.changedAt ? ` · changed ${day(a.changedAt)}` : ' · never changed'}</li>
+        <li>{a.withdrawals.paid ? `${a.withdrawals.paid} withdrawal${a.withdrawals.paid === 1 ? '' : 's'} paid${a.lastPaid ? `, last ${day(a.lastPaid.at)} (${walletMoney(a.lastPaid.amount, a.lastPaid.currency)})` : ''}` : 'No withdrawals paid yet'}{a.withdrawals.waiting ? ` · ${a.withdrawals.waiting} waiting` : ''}{a.withdrawals.refused ? ` · ${a.withdrawals.refused} refused or failed` : ''}</li>
+        {a.confirmed && a.confirmedAt && <li>Confirmed by our team {day(a.confirmedAt)}</li>}
+      </ul>
+      <div className="flex flex-wrap gap-2">
+        {!a.confirmed && <Button size="sm" onClick={() => onConfirm(a)}>{a.names === 'same' && !a.oldForm ? 'Confirm this account' : 'Confirm anyway'}</Button>}
+        <Button size="sm" variant={a.confirmed || (a.names === 'same' && !a.oldForm) ? 'secondary' : 'primary'} onClick={() => onAsk(a)}>Ask them to fix it…</Button>
+      </div>
+    </aside>
+  );
+}
+
+/** Every earner's payout account, confirmed or not: searchable, so accounts paid by hand are always at hand */
+function Directory({ rows, open, onOpen, onConfirm, onAsk }: { rows: Acc[] | null; open: string | null; onOpen: (id: string | null) => void; onConfirm: (a: Acc) => void; onAsk: (a: Acc) => void }) {
+  const [q, setQ] = useState(''), [country, setCountry] = useState(''), [how, setHow] = useState(''), [state, setState] = useState('');
+  if (!rows) return <div className="h-64 animate-pulse rounded-xl border border-line bg-white" />;
+  const countries = [...new Set(rows.map(r => r.country))].sort();
+  const shown = rows.filter(r => (!country || r.country === country) && (!how || (how === 'auto' ? r.automatic : !r.automatic))
+    && (!state || (state === 'confirmed' ? r.confirmed : !r.confirmed))
+    && (!q.trim() || `${r.user.name} ${r.user.email} ${r.accountNumber} ${r.holderName ?? ''} ${r.label}`.toLowerCase().includes(q.trim().toLowerCase())));
+  const current = rows.find(r => r.id === open);
+  return (
+    <div className={clsx('grid items-start gap-4', current && 'lg:grid-cols-[minmax(0,1fr)_440px]')}>
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex flex-wrap gap-2">
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name, email or number" className="input-base h-9 min-w-[220px] flex-1" />
+          <select value={country} onChange={e => setCountry(e.target.value)} aria-label="Country" className="input-base h-9 w-auto"><option value="">All countries</option>{countries.map(c => <option key={c} value={c}>{c}</option>)}</select>
+          <select value={how} onChange={e => setHow(e.target.value)} aria-label="How paid" className="input-base h-9 w-auto"><option value="">Automatic and by hand</option><option value="hand">Paid by hand</option><option value="auto">Automatic</option></select>
+          <select value={state} onChange={e => setState(e.target.value)} aria-label="Status" className="input-base h-9 w-auto"><option value="">Any status</option><option value="confirmed">Confirmed</option><option value="check">To check</option></select>
+        </div>
+        <section className="overflow-x-auto rounded-xl border border-line bg-white">
+          <table className="w-full min-w-[760px] text-[13px]">
+            <thead><tr className="text-left text-[11.5px] uppercase tracking-[0.06em] text-muted"><th className="px-4 py-2.5 font-semibold">Earner</th><th className="px-3 font-semibold">How</th><th className="px-3 font-semibold">Account</th><th className="px-3 font-semibold">Status</th><th className="px-3 text-right font-semibold">Owed now</th><th className="px-4 font-semibold">Last paid</th></tr></thead>
+            <tbody>
+              {!shown.length && <tr><td colSpan={6} className="px-4 py-8 text-center text-ink2">No accounts match.</td></tr>}
+              {shown.map(r => (
+                <tr key={r.id} onClick={() => onOpen(r.id)} className={clsx('cursor-pointer border-t border-line', open === r.id ? 'bg-accent-soft' : 'hover:bg-subtle')}>
+                  <td className="px-4 py-2.5"><b className="block text-navy">{r.user.name}</b><span className="text-xs text-muted">{ROLE[r.user.role] ?? r.user.role} · {r.country}</span></td>
+                  <td className="px-3"><span className="flex items-center gap-2"><ProviderLogo provider={r.provider} label={r.label} bankId={r.bankId} size={24} className="rounded-[5px]" />{r.label}</span></td>
+                  <td className="px-3 tabular-nums">{showNumber(r)}{r.holderName && <span className="block text-xs text-muted">{r.holderName}</span>}</td>
+                  <td className="px-3"><span className={clsx(tag, r.confirmed ? 'bg-accent-soft text-navy' : accTone(r))}>{r.confirmed ? `Confirmed · ${r.automatic ? 'automatic' : 'by hand'}` : accTag(r)}</span></td>
+                  <td className="px-3 text-right font-semibold tabular-nums text-navy">{r.owed ? walletMoney(r.owed.amount, r.owed.currency) : '—'}</td>
+                  <td className="px-4 text-ink2">{r.lastPaid ? `${day(r.lastPaid.at)} · ${walletMoney(r.lastPaid.amount, r.lastPaid.currency)}` : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+        <p className="text-xs text-muted">{shown.length} of {rows.length} payout accounts</p>
+      </div>
+      {current && <AccountPanel a={current} onClose={() => onOpen(null)} onConfirm={onConfirm} onAsk={onAsk} />}
     </div>
   );
 }

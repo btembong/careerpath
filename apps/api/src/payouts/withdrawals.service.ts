@@ -751,11 +751,60 @@ export class WithdrawalsService {
     return [...months.values()].sort((a, b) => b.month.localeCompare(a.month)).map(m => ({ ...m, people: m.people.size, total: m.api + m.hand }));
   }
 
-  async accountsToCheck() {
+  /**
+   * Payout accounts in full, for checking and for paying by hand: the whole number, the bank and its code, the
+   * name given next to their CareerPath name, what's owed and their withdrawals. `all` lists every earner's
+   * account; otherwise only those still to check.
+   */
+  async accounts(all = false) {
     const rows = await this.prisma.payoutAccount.findMany({
-      where: { isVerified: false, OR: [{ nameCheck: { not: 'match' } }, { nameCheck: null }] },
-      include: { user: { select: { id: true, name: true, firstName: true, lastName: true, email: true, role: true } } }, orderBy: { updatedAt: 'desc' }, take: 100,
+      where: all ? {} : { isVerified: false, OR: [{ nameCheck: { not: 'match' } }, { nameCheck: null }] },
+      include: { user: { select: { id: true, name: true, firstName: true, lastName: true, email: true, role: true, avatarUrl: true, createdAt: true, country: { select: { name: true } }, wallet: { select: { balance: true, currency: true } } } } },
+      orderBy: { updatedAt: 'desc' }, take: all ? 500 : 100,
     });
-    return rows.map(a => ({ id: a.id, user: { id: a.user.id, name: nm(a.user), email: a.user.email, role: a.user.role }, label: a.bankName, last: last(a.accountNumber), country: a.country, holderName: a.holderName, nameCheck: a.nameCheck ?? 'unchecked', automatic: this.automatic(a, 'XAF'), updatedAt: a.updatedAt }));
+    const ids = rows.map(r => r.userId);
+    const [paid, counts] = await Promise.all([
+      this.prisma.withdrawal.findMany({ where: { userId: { in: ids }, status: 'PAID' }, orderBy: { completedAt: 'desc' }, select: { userId: true, amount: true, currency: true, completedAt: true } }),
+      this.prisma.withdrawal.groupBy({ by: ['userId', 'status'], where: { userId: { in: ids } }, _count: true }),
+    ]);
+    return rows.map(a => {
+      const bank = a.provider === 'BANK' ? (a.country === 'CM' ? CM_BANKS.find(b => b.id === a.bankCode) : BANKS_BY_COUNTRY[a.country]?.find(b => b.id === a.bankCode)) : undefined;
+      const mine = new Set(words(nm(a.user)));
+      const given = a.holderName ? words(a.holderName) : [];
+      const lastPay = paid.find(p => p.userId === a.userId);
+      const c = (st: string) => counts.find(x => x.userId === a.userId && x.status === st)?._count ?? 0;
+      return {
+        id: a.id,
+        user: { id: a.user.id, name: nm(a.user), email: a.user.email, role: a.user.role, avatarUrl: a.user.avatarUrl, since: a.user.createdAt, country: a.user.country?.name ?? null },
+        label: a.bankName, last: last(a.accountNumber), accountNumber: a.accountNumber, provider: a.provider, bankId: a.bankCode,
+        bankCode: (bank as { code?: string } | undefined)?.code ?? null, accountType: a.accountType, branchCode: a.branchCode, country: a.country,
+        holderName: a.holderName, nameCheck: a.nameCheck ?? 'unchecked', confirmed: a.isVerified, confirmedAt: a.verifiedAt,
+        // Their CareerPath name against the name they gave: same, different, or not given
+        names: !given.length ? 'missing' : given.some(w => mine.has(w)) ? 'same' : 'different',
+        // Set up before the country forms (free text, no bank or provider chosen): it may not be payable as it is
+        oldForm: !a.provider,
+        automatic: this.automatic(a, a.user.wallet?.currency ?? 'XAF'),
+        owed: a.user.wallet ? { amount: a.user.wallet.balance, currency: a.user.wallet.currency } : null,
+        lastPaid: lastPay ? { amount: lastPay.amount, currency: lastPay.currency, at: lastPay.completedAt } : null,
+        withdrawals: { paid: c('PAID'), waiting: c('AWAITING_APPROVAL') + c('SENDING'), refused: c('REJECTED') + c('FAILED') },
+        setUpAt: a.createdAt, changedAt: a.changedAt, updatedAt: a.updatedAt,
+      };
+    });
   }
+
+  /** Ask an earner to correct or complete their payout account: a message in the portal and an email */
+  async askToFix(admin: UserProfile, id: string, note?: string) {
+    const a = await this.prisma.payoutAccount.findUnique({ where: { id }, include: { user: { select: { id: true, email: true, firstName: true, role: true } } } });
+    if (!a) throw new NotFoundException();
+    const text = (note ?? '').trim().slice(0, 600) || 'Please check your payout details: choose your bank or mobile money, and give the name exactly as it’s registered.';
+    this.notifications.notify(a.user.id, { type: 'earnings', title: 'Please update your payout details', body: text, href: homeFor(a.user.role) });
+    this.mail.sendNotice(a.user.email, 'Please update your payout details', {
+      badge: 'Payouts', title: 'Please update your payout details', firstName: a.user.firstName,
+      text: `${text}\n\nOpen Get paid and choose Change, then save. Until then we can’t send your earnings to this account.`,
+      cta: 'Open Get paid', href: homeFor(a.user.role),
+    }, 'payouts').catch(() => {});
+    this.audit.log(admin.id, 'payout.account.ask', 'PayoutAccount', id, undefined, { note: text });
+    return { sent: true };
+  }
+
 }
