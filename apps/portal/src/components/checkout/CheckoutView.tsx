@@ -6,6 +6,7 @@ import { minorToMajor } from '@cpa/shared';
 import { Topbar } from '@/components/layout/Topbar';
 import api from '@/lib/api';
 import { Icon, type IconName } from '@/components/ui/Icon';
+import { PayWindow } from './PayWindow';
 
 /**
  * One checkout for single courses and packages. The server picks the payment gateway from the
@@ -20,7 +21,7 @@ const WAIT_SECS = 120;
 type Method = 'prompt' | 'tranzak' | 'paystack' | 'stripe';
 const METHODS: Record<Method, { t: string; d: string; via: string }> = {
   prompt: { t: 'MTN MoMo or Orange Money', d: 'A prompt is sent to your phone. No card needed.', via: 'Tranzak' },
-  tranzak: { t: 'On Tranzak’s secure page', d: 'Card or mobile money, then you come back here.', via: 'Tranzak' },
+  tranzak: { t: 'Card or mobile money with Tranzak', d: 'Tranzak’s secure page opens in a window here.', via: 'Tranzak' },
   paystack: { t: 'Card, bank transfer, USSD or mobile money', d: 'Any African bank card or account.', via: 'Paystack' },
   stripe: { t: 'International card', d: 'Visa, Mastercard or American Express.', via: 'Stripe' },
 };
@@ -71,6 +72,8 @@ export function CheckoutView({ item, backHref, backLabel }: { item: CheckoutItem
   const [chosen, setChosen] = useState<Set<AddOn>>(new Set(item.addLater ?? []));
   const [left, setLeft] = useState(WAIT_SECS);
   const [couponOpen, setCouponOpen] = useState(false);
+  const [payWin, setPayWin] = useState<{ url: string; sessionId: string } | null>(null);
+  const [notice, setNotice] = useState('');
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
   const tick = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -116,6 +119,8 @@ export function CheckoutView({ item, backHref, backLabel }: { item: CheckoutItem
         : item.kind === 'course'
         ? await api.post(`/payments/create-course-checkout/${item.id}`, body)
         : await api.post('/payments/create-checkout-session', { ...body, packageId: item.id });
+      // Tranzak's page opens in a window here; the others go to their own page and come back
+      if (data.url && data.gateway === 'tranzak' && data.sessionId) { setNotice(''); setPayWin({ url: data.url, sessionId: data.sessionId }); return; }
       if (data.url) { window.location.href = data.url; return; }
       if (data.ussdPending || data.ussdPush) { wait(data.sessionId); return; }
       setError('The payment could not be started. Please try again.');
@@ -195,7 +200,10 @@ export function CheckoutView({ item, backHref, backLabel }: { item: CheckoutItem
                   )}
                 </div>
               ))}
-              {method && method !== 'prompt' && (
+              {method === 'tranzak' && (
+                <p className="rounded-lg bg-subtle px-3.5 py-2.5 text-[13px] text-ink2">Tranzak’s secure page opens in a window over this one. You don’t leave CareerPath.</p>
+              )}
+              {method && method !== 'prompt' && method !== 'tranzak' && (
                 <p className="rounded-lg bg-subtle px-3.5 py-2.5 text-[13px] text-ink2">You’ll go to {METHODS[method].via}’s secure page to pay, then come straight back here.</p>
               )}
             </section>
@@ -235,6 +243,7 @@ export function CheckoutView({ item, backHref, backLabel }: { item: CheckoutItem
               <button type="button" onClick={() => setCouponOpen(true)} className="inline-flex w-fit items-center gap-1.5 text-[13.5px] font-bold text-azure-strong hover:underline"><Icon name="tag" size={15} />Have a coupon?</button>
             ))}
 
+            {notice && <p className="rounded-lg border border-line bg-white px-3.5 py-2.5 text-[13px] text-navy">{notice}</p>}
             {error && <p className="rounded-lg border border-error/30 bg-error/5 px-3.5 py-2.5 text-[13px] text-navy">{error}</p>}
           </> : (
             <section className="flex flex-col items-center gap-3 rounded-xl border-2 border-azure-strong bg-white px-6 py-10 text-center">
@@ -288,6 +297,11 @@ export function CheckoutView({ item, backHref, backLabel }: { item: CheckoutItem
           </div>
         </aside>
       </div>
+
+      {payWin && (
+        <PayWindow url={payWin.url} sessionId={payWin.sessionId} amount={money(total, cur)} title={item.title} successHref={successHref}
+          onClose={why => { setPayWin(null); setNotice(why === 'cancelled' ? 'Payment cancelled on Tranzak. Pick a way to pay to try again.' : 'Payment window closed and no payment reached us. Pick a way to pay to try again.'); }} />
+      )}
 
       {/* Phones: the total and the button stay in reach */}
       {step === 'choose' && (

@@ -43,6 +43,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={bricolage.className}>
       <head>
         {/* Catch the browser's "this can be installed" offer before anything else loads; the install card reads it later */}
+        {/* Tranzak sent the student back inside the checkout's pay window: tell the checkout and stay hidden */}
+        <script dangerouslySetInnerHTML={{ __html: "try{if(window.self!==window.top&&window.top.__cpaPayWindow){document.documentElement.style.visibility='hidden';window.top.postMessage({type:'cpa-pay-return',href:location.href},location.origin)}}catch(e){}" }} />
         <script dangerouslySetInnerHTML={{ __html: "addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__cpaInstall=e;dispatchEvent(new Event('cpa-install'))});addEventListener('appinstalled',function(){window.__cpaInstall=null;dispatchEvent(new Event('cpa-install'))});" }} />
       </head>
       <body>
