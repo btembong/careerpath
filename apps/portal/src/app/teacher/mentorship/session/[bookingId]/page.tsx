@@ -60,7 +60,7 @@ export default function TeacherMentorshipSessionPage() {
   const startsAt = sessionInfo?.startsAt ? new Date(sessionInfo.startsAt) : null;
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-navy">
+    <div className="flex h-screen w-full min-w-0 flex-col overflow-hidden bg-navy">
       {/* Minimal top bar */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-white/10">
         <div className="flex items-center gap-2">

@@ -148,7 +148,7 @@ export default function TeacherLiveClassPage() {
   }
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-navy overflow-hidden">
+    <div className="flex h-screen w-full min-w-0 flex-col overflow-hidden bg-navy">
       {/* Top bar */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
